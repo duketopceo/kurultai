@@ -59,7 +59,10 @@ impl App {
     }
 
     pub async fn atom_count(&self) -> Result<u64> {
-        self.store.count().await.map_err(|e| KurultaiError::Store(e.to_string()))
+        self.store
+            .count()
+            .await
+            .map_err(|e| KurultaiError::Store(e.to_string()))
     }
 
     pub fn schema_version(&self) -> i32 {
@@ -78,9 +81,7 @@ fn build_embedder(config: &Config) -> Result<Arc<dyn Embedder>> {
         );
     }
 
-    let key = api_key
-        .map(|k| k.expose().to_string())
-        .unwrap_or_default();
+    let key = api_key.map(|k| k.expose().to_string()).unwrap_or_default();
 
     let embedder: Arc<dyn Embedder> = Arc::new(OpenRouterEmbedder::new(
         key,

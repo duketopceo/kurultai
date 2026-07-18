@@ -47,16 +47,17 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         return Ok(());
     }
 
-    tracing::info!(from = current, to = CURRENT_SCHEMA_VERSION, "running migrations");
+    tracing::info!(
+        from = current,
+        to = CURRENT_SCHEMA_VERSION,
+        "running migrations"
+    );
 
     if current < 1 {
         conn.execute_batch(MIGRATION_001)
             .map_err(|e| KurultaiError::Store(format!("migration 001 failed: {e}")))?;
-        conn.execute(
-            "INSERT INTO schema_migrations (version) VALUES (?1)",
-            [1],
-        )
-        .map_err(|e| KurultaiError::Store(format!("migration 001 record failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [1])
+            .map_err(|e| KurultaiError::Store(format!("migration 001 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");

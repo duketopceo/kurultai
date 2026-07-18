@@ -5,9 +5,9 @@ use std::path::{Component, Path, PathBuf};
 pub fn resolve_allowed_path(path: &str) -> Result<PathBuf> {
     let expanded = expand_tilde(path)?;
     let canonical = if expanded.exists() {
-        expanded.canonicalize().map_err(|e| {
-            KurultaiError::security(format!("cannot canonicalize '{}': {e}", path))
-        })?
+        expanded
+            .canonicalize()
+            .map_err(|e| KurultaiError::security(format!("cannot canonicalize '{}': {e}", path)))?
     } else {
         // For not-yet-created paths, canonicalize the parent and rejoin the filename.
         let parent = expanded
@@ -54,7 +54,8 @@ pub fn validate_readable_path(path: &str, label: &str) -> Result<PathBuf> {
 
 fn expand_tilde(path: &str) -> Result<PathBuf> {
     if let Some(rest) = path.strip_prefix("~/") {
-        let home = dirs::home_dir().ok_or_else(|| KurultaiError::security("could not resolve home directory"))?;
+        let home = dirs::home_dir()
+            .ok_or_else(|| KurultaiError::security("could not resolve home directory"))?;
         Ok(home.join(rest))
     } else if path == "~" {
         dirs::home_dir().ok_or_else(|| KurultaiError::security("could not resolve home directory"))

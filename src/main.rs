@@ -5,7 +5,11 @@ use kurultai::logging;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "kurultai", version, about = "Unified knowledge retrieval layer. Assemble what you know.")]
+#[command(
+    name = "kurultai",
+    version,
+    about = "Unified knowledge retrieval layer. Assemble what you know."
+)]
 struct Cli {
     /// Log filter (overrides KURULTAI_LOG). Example: kurultai=trace,info
     #[arg(long, global = true)]
@@ -72,7 +76,9 @@ async fn main() -> Result<()> {
                 );
             }
             if stats.is_empty() {
-                println!("No enabled sources configured. Add sources to ~/.config/kurultai/config.toml");
+                println!(
+                    "No enabled sources configured. Add sources to ~/.config/kurultai/config.toml"
+                );
             }
         }
         Commands::Ask { question } => {
@@ -100,7 +106,11 @@ async fn main() -> Result<()> {
             println!("Kurultai status");
             println!("  Storage: {}", app.config.storage_path);
             println!("  Schema:  v{}", app.schema_version());
-            println!("  Embedder: {} ({}-dim)", app.embedder.name(), app.embedder.dim());
+            println!(
+                "  Embedder: {} ({}-dim)",
+                app.embedder.name(),
+                app.embedder.dim()
+            );
             println!("  Atoms:   {}", atom_count);
 
             if app.connectors.is_empty() {
@@ -115,15 +125,25 @@ async fn main() -> Result<()> {
                         .find(|s| s.name == name)
                         .map(|s| s.enabled)
                         .unwrap_or(false);
-                    println!("    - {} [{}]", name, if enabled { "enabled" } else { "disabled" });
+                    println!(
+                        "    - {} [{}]",
+                        name,
+                        if enabled { "enabled" } else { "disabled" }
+                    );
                 }
             }
         }
         Commands::Daemon { port } => {
             tracing::info!(port, "daemon starting (stub)");
-            println!("Daemon on port {} — HTTP/MCP not implemented yet. See issues #7, #11.", port);
+            println!(
+                "Daemon on port {} — HTTP/MCP not implemented yet. See issues #7, #11.",
+                port
+            );
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(app.config.poll_interval_secs)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(
+                    app.config.poll_interval_secs,
+                ))
+                .await;
                 tracing::debug!("daemon poll tick");
             }
         }

@@ -1,8 +1,8 @@
-use async_trait::async_trait;
 use crate::connectors::Connector;
 use crate::error::{KurultaiError, Result};
 use crate::security::validate_readable_path;
 use crate::types::{KnowledgeAtom, SourceConfig};
+use async_trait::async_trait;
 
 pub struct ObsidianConnector {
     vault_path: Option<String>,

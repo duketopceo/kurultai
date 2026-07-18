@@ -14,7 +14,8 @@ pub fn config_path() -> Result<PathBuf> {
         return Ok(PathBuf::from(path));
     }
 
-    let home = dirs::home_dir().ok_or_else(|| KurultaiError::config("could not resolve home directory"))?;
+    let home = dirs::home_dir()
+        .ok_or_else(|| KurultaiError::config("could not resolve home directory"))?;
     Ok(home.join(DEFAULT_CONFIG_RELATIVE))
 }
 
@@ -42,7 +43,8 @@ pub fn load_config_from(path: &Path) -> Result<Config> {
 }
 
 fn default_config() -> Result<Config> {
-    let home = dirs::home_dir().ok_or_else(|| KurultaiError::config("could not resolve home directory"))?;
+    let home = dirs::home_dir()
+        .ok_or_else(|| KurultaiError::config("could not resolve home directory"))?;
     Ok(Config {
         sources: vec![],
         storage_path: home
@@ -57,12 +59,14 @@ fn default_config() -> Result<Config> {
 }
 
 fn file_to_runtime(file: FileConfig) -> Result<Config> {
-    let home = dirs::home_dir().ok_or_else(|| KurultaiError::config("could not resolve home directory"))?;
+    let home = dirs::home_dir()
+        .ok_or_else(|| KurultaiError::config("could not resolve home directory"))?;
 
-    let storage_path = file
-        .storage
-        .path
-        .unwrap_or_else(|| home.join(DEFAULT_STORAGE_RELATIVE).to_string_lossy().into_owned());
+    let storage_path = file.storage.path.unwrap_or_else(|| {
+        home.join(DEFAULT_STORAGE_RELATIVE)
+            .to_string_lossy()
+            .into_owned()
+    });
 
     let sources = file
         .sources
@@ -86,7 +90,10 @@ fn file_to_runtime(file: FileConfig) -> Result<Config> {
     Ok(Config {
         sources,
         storage_path,
-        embed_model: file.embed.model.unwrap_or_else(|| "openai/text-embedding-3-large".into()),
+        embed_model: file
+            .embed
+            .model
+            .unwrap_or_else(|| "openai/text-embedding-3-large".into()),
         embed_dim: file.embed.dimension.unwrap_or(3072),
         reranker_model: file.runtime.reranker_model,
         poll_interval_secs: file.runtime.poll_interval_secs.unwrap_or(300),

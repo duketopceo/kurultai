@@ -25,9 +25,10 @@ impl ConnectorRegistry {
 
         for source in config.sources.iter().filter(|s| s.enabled) {
             let mut connector = build_connector(&source.kind)?;
-            connector.init(source).await.map_err(|e| {
-                KurultaiError::connector(&source.name, e.to_string())
-            })?;
+            connector
+                .init(source)
+                .await
+                .map_err(|e| KurultaiError::connector(&source.name, e.to_string()))?;
             registry.register(source.name.clone(), connector);
             tracing::info!(source = %source.name, kind = ?source.kind, "connector registered");
         }
@@ -79,10 +80,7 @@ fn build_connector(kind: &SourceKind) -> Result<Box<dyn Connector>> {
             ));
         }
         SourceKind::Custom(name) => {
-            return Err(KurultaiError::connector(
-                name,
-                "unknown custom connector",
-            ));
+            return Err(KurultaiError::connector(name, "unknown custom connector"));
         }
     };
     Ok(connector)

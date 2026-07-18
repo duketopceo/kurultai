@@ -14,8 +14,8 @@ pub fn init_logging(verbosity: Option<&str>) -> Result<()> {
         .or_else(|| std::env::var("KURULTAI_LOG").ok())
         .unwrap_or_else(|| DEFAULT_LOG_FILTER.to_string());
 
-    let env_filter =
-        EnvFilter::try_new(&filter).map_err(|e| KurultaiError::config(format!("invalid log filter '{filter}': {e}")))?;
+    let env_filter = EnvFilter::try_new(&filter)
+        .map_err(|e| KurultaiError::config(format!("invalid log filter '{filter}': {e}")))?;
 
     fmt()
         .with_env_filter(env_filter)

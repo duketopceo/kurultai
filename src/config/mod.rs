@@ -32,7 +32,11 @@ pub fn validate(config: &Config) -> Result<()> {
         }
 
         if source.enabled && matches!(source.kind, SourceKind::Obsidian) {
-            let vault = source.extra.get("vault_path").map(String::as_str).unwrap_or("");
+            let vault = source
+                .extra
+                .get("vault_path")
+                .map(String::as_str)
+                .unwrap_or("");
             if vault.trim().is_empty() {
                 return Err(KurultaiError::config(format!(
                     "source '{}' (obsidian) requires vault_path",
@@ -48,7 +52,8 @@ pub fn validate(config: &Config) -> Result<()> {
 /// Expand `~` and normalize storage path.
 pub fn expand_path(path: &str) -> Result<PathBuf> {
     let expanded = if let Some(rest) = path.strip_prefix("~/") {
-        let home = dirs::home_dir().ok_or_else(|| KurultaiError::config("could not resolve home directory"))?;
+        let home = dirs::home_dir()
+            .ok_or_else(|| KurultaiError::config("could not resolve home directory"))?;
         home.join(rest)
     } else if path == "~" {
         dirs::home_dir().ok_or_else(|| KurultaiError::config("could not resolve home directory"))?

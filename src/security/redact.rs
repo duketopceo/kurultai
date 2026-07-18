@@ -5,9 +5,7 @@ pub fn redact_secrets(input: &str) -> String {
     // Bearer tokens
     if let Some(idx) = out.find("Bearer ") {
         let rest = &out[idx + 7..];
-        let token_len = rest
-            .find(|c: char| c.is_whitespace())
-            .unwrap_or(rest.len());
+        let token_len = rest.find(|c: char| c.is_whitespace()).unwrap_or(rest.len());
         if token_len > 0 {
             out.replace_range(idx..idx + 7 + token_len, "Bearer ***");
         }
@@ -36,8 +34,10 @@ mod tests {
 
     #[test]
     fn redacts_bearer_token() {
-        let s = "Authorization: Bearer abcdefghijklmnop";
-        assert!(redact_secrets(s).contains("Bearer ***"));
-        assert!(!redact_secrets(s).contains("abcdefghijklmnop"));
+        // Use obviously fake token material — not a real secret pattern.
+        let s = "Authorization: Bearer FAKE_TOKEN_FOR_UNIT_TEST_ONLY";
+        let redacted = redact_secrets(s);
+        assert!(redacted.contains("Bearer ***"));
+        assert!(!redacted.contains("FAKE_TOKEN_FOR_UNIT_TEST_ONLY"));
     }
 }

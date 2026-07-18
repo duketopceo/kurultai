@@ -12,6 +12,7 @@ pub trait QueryEngine: Send + Sync {
 }
 
 /// Default query engine implementation.
+#[derive(Default)]
 pub struct DefaultQueryEngine;
 
 impl DefaultQueryEngine {

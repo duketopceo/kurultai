@@ -11,6 +11,7 @@ pub trait Embedder: Send + Sync {
 
 /// Uses OpenRouter API for embeddings (fast, no local GPU).
 pub struct OpenRouterEmbedder {
+    #[allow(dead_code)] // used when #2 OpenRouter integration lands
     api_key: String,
     model: String,
     dimension: usize,
@@ -18,14 +19,22 @@ pub struct OpenRouterEmbedder {
 
 impl OpenRouterEmbedder {
     pub fn new(api_key: String, model: String, dimension: usize) -> Self {
-        Self { api_key, model, dimension }
+        Self {
+            api_key,
+            model,
+            dimension,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl Embedder for OpenRouterEmbedder {
-    fn name(&self) -> &str { &self.model }
-    fn dim(&self) -> usize { self.dimension }
+    fn name(&self) -> &str {
+        &self.model
+    }
+    fn dim(&self) -> usize {
+        self.dimension
+    }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         let _ = text;

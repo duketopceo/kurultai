@@ -1,0 +1,40 @@
+# Runs on self-hosted ARC runners when available.
+# Requires Actions Runner Controller (ARC) scale set named `kurultai-runners`.
+#
+# See: https://github.com/duketopceo/kurultai/issues/20
+name: Self-Hosted CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  full-build:
+    name: Full build (self-hosted)
+    runs-on: kurultai-runners
+    timeout-minutes: 30
+    container:
+      image: rust:1-bookworm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Format, lint, test, release build
+        run: |
+          rustup component add rustfmt clippy
+          cargo fmt --all -- --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --release --locked
+
+      - name: Upload release binary
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kurultai-linux-x86_64
+          path: target/release/kurultai
+          retention-days: 7

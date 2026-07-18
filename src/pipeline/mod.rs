@@ -27,7 +27,11 @@ impl IndexPipeline {
     }
 
     /// Index all registered connectors.
-    pub async fn index_all(&self, registry: &ConnectorRegistry, full: bool) -> Result<Vec<IndexStats>> {
+    pub async fn index_all(
+        &self,
+        registry: &ConnectorRegistry,
+        full: bool,
+    ) -> Result<Vec<IndexStats>> {
         let mut results = Vec::new();
 
         for (name, connector) in registry.iter() {
@@ -53,18 +57,20 @@ impl IndexPipeline {
                 KurultaiError::connector(source_name, format!("full_sync failed: {e}"))
             })?
         } else {
-            connector.poll().await.map_err(|e| {
-                KurultaiError::connector(source_name, format!("poll failed: {e}"))
-            })?
+            connector
+                .poll()
+                .await
+                .map_err(|e| KurultaiError::connector(source_name, format!("poll failed: {e}")))?
         };
 
         let fetched = atoms.len();
         tracing::debug!(source = %source_name, atoms = fetched, "connector returned atoms");
 
         if full && fetched > 0 {
-            self.store.delete_source(source_name).await.map_err(|e| {
-                KurultaiError::Store(format!("delete_source failed: {e}"))
-            })?;
+            self.store
+                .delete_source(source_name)
+                .await
+                .map_err(|e| KurultaiError::Store(format!("delete_source failed: {e}")))?;
         }
 
         // Embedding pass — batch when embedder supports it.
@@ -80,9 +86,10 @@ impl IndexPipeline {
         }
 
         if !enriched.is_empty() {
-            self.store.upsert_batch(&enriched).await.map_err(|e| {
-                KurultaiError::Store(format!("upsert_batch failed: {e}"))
-            })?;
+            self.store
+                .upsert_batch(&enriched)
+                .await
+                .map_err(|e| KurultaiError::Store(format!("upsert_batch failed: {e}")))?;
         }
 
         let duration_ms = started.elapsed().as_millis();
