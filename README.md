@@ -1,3 +1,15 @@
+```
+                    ╭──────────────────────────╮
+                   ╱    ·    kurultai    ·    ╲
+                  │    ╭──────────────────╮    │
+                  │   ╱   assemble what   ╲   │
+                  │  │    you know  ·  yurt │  │
+                  │   ╲   from wherever   ╱   │
+                  │    ╰──────────────────╯    │
+                   ╲         ⌂ ⌂ ⌂         ╱
+                    ╰──────────────────────────╯
+```
+
 # Kurultai
 
 **Assemble what you know, from wherever it lives.**
@@ -111,6 +123,12 @@ pub trait Connector: Send + Sync {
 - [ ] GitHub connector
 - [ ] Tech Tracker connector
 - [ ] Local embedding model support (llama.cpp)
+- [ ] Yurt terminal art for CLI (`kurultai status`, banners) — see [#22](https://github.com/duketopceo/kurultai/issues/22)
+- [ ] Testing & CI gates expanding per phase — see [#23](https://github.com/duketopceo/kurultai/issues/23)
+
+## Quality
+
+CI runs on every PR: `cargo fmt`, `clippy -D warnings`, `cargo test --locked`, `cargo audit`, and a macOS smoke build. Coverage and stricter gates expand by milestone ([#23](https://github.com/duketopceo/kurultai/issues/23)).
 
 ## License
 
