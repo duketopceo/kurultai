@@ -1,13 +1,27 @@
-use async_trait::async_trait;
 use crate::connectors::Connector;
+use crate::error::Result;
 use crate::types::{KnowledgeAtom, SourceConfig};
-use anyhow::Result;
+use async_trait::async_trait;
 
 pub struct AppFlowyConnector;
 
+impl AppFlowyConnector {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for AppFlowyConnector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl Connector for AppFlowyConnector {
-    fn name(&self) -> &str { "appflowy" }
+    fn name(&self) -> &str {
+        "appflowy"
+    }
 
     async fn init(&mut self, _config: &SourceConfig) -> Result<()> {
         // TODO: Connect to AppFlowy via its REST API or MCP

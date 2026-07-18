@@ -1,5 +1,5 @@
+use crate::error::Result;
 use crate::types::{Answer, SearchResult};
-use anyhow::Result;
 
 /// Full query pipeline: embed → search → fuse → rerank → synthesize.
 #[async_trait::async_trait]
@@ -12,6 +12,7 @@ pub trait QueryEngine: Send + Sync {
 }
 
 /// Default query engine implementation.
+#[derive(Default)]
 pub struct DefaultQueryEngine;
 
 impl DefaultQueryEngine {

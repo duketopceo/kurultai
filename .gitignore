@@ -1,6 +1,7 @@
 # Rust
 target/
-Cargo.lock
+# Commit Cargo.lock for the CLI binary (reproducible CI builds).
+
 
 # OS
 .DS_Store

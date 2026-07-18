@@ -1,9 +1,12 @@
 pub mod appflowy;
 pub mod obsidian;
+pub mod registry;
 
-use async_trait::async_trait;
+pub use registry::ConnectorRegistry;
+
+use crate::error::Result;
 use crate::types::{KnowledgeAtom, SourceConfig};
-use anyhow::Result;
+use async_trait::async_trait;
 
 /// Trait every data source connector must implement.
 #[async_trait]
