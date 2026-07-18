@@ -22,6 +22,19 @@ Inspired by Cerebras's internal knowledge base architecture: one embeddings tabl
 
 Your knowledge lives in many places: notes (AppFlowy/Obsidian), conversations (Pond), code (GitHub), activity logs. Kurultai indexes all of them into one queryable store so you can ask anything and get answers with citations — no matter where the source data lives.
 
+## Who we build for (in order)
+
+We ship **developer → solo → team → company**. Each layer builds on the last without rework ([#25](https://github.com/duketopceo/kurultai/issues/25)).
+
+| Audience | Phases | What they get |
+|----------|--------|---------------|
+| **Developer** | 1–3 | CLI + MCP, local config, agent transcript indexing |
+| **Solo** | 1–4 | One-command install, on-prem data, Dayflow + notes unified |
+| **Team** | 4–5 | Shared daemon, per-user capture policies, internal network |
+| **Company** | 5–6+ | Multi-tenant, RBAC, audit, enterprise connectors, VPC deploy |
+
+> Rule: never build company-wide features before developer + solo paths work.
+
 ## Architecture
 
 ```
