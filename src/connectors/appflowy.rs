@@ -1,0 +1,26 @@
+use async_trait::async_trait;
+use crate::connectors::Connector;
+use crate::types::{KnowledgeAtom, SourceConfig};
+use anyhow::Result;
+
+pub struct AppFlowyConnector;
+
+#[async_trait]
+impl Connector for AppFlowyConnector {
+    fn name(&self) -> &str { "appflowy" }
+
+    async fn init(&mut self, _config: &SourceConfig) -> Result<()> {
+        // TODO: Connect to AppFlowy via its REST API or MCP
+        Ok(())
+    }
+
+    async fn poll(&self) -> Result<Vec<KnowledgeAtom>> {
+        // TODO: Fetch new/changed pages from AppFlowy
+        Ok(vec![])
+    }
+
+    async fn full_sync(&self) -> Result<Vec<KnowledgeAtom>> {
+        // TODO: Full re-index of all AppFlowy pages
+        Ok(vec![])
+    }
+}

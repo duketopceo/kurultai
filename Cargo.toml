@@ -1,0 +1,44 @@
+[package]
+name = "kurultai"
+version = "0.1.0"
+edition = "2021"
+description = "Kurultai — a unified knowledge retrieval layer. Assemble what you know, from wherever it lives."
+authors = ["Luke Kimball <duketopceo@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/duketopceo/kurultai"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP client (for API calls, embedding endpoints)
+reqwest = { version = "0.12", features = ["json"] }
+
+# SQLite with vector support
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Embeddings - via OpenRouter/API initially
+# Local embedding support via llama-cpp-rs will be added later
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+thiserror = "1"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# File watching for auto-indexing
+notify = "6"
+
+# Glob for file discovery
+glob = "0.3"

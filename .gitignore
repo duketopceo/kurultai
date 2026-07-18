@@ -1,0 +1,23 @@
+# Rust
+target/
+Cargo.lock
+
+# OS
+.DS_Store
+*.swp
+*.swo
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Config (user-specific)
+config.toml
+.env
+
+# Data
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
