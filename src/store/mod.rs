@@ -1,5 +1,10 @@
+pub mod migrations;
+
+use crate::error::{KurultaiError, Result};
 use crate::types::KnowledgeAtom;
-use anyhow::Result;
+use rusqlite::Connection;
+use std::path::PathBuf;
+use std::sync::Mutex;
 
 /// Storage backend for knowledge atoms and their embeddings.
 #[async_trait::async_trait]
@@ -11,7 +16,11 @@ pub trait Store: Send + Sync {
     async fn upsert_batch(&self, atoms: &[KnowledgeAtom]) -> Result<()>;
 
     /// Vector search: find atoms by embedding similarity.
-    async fn vector_search(&self, query_embed: &[f32], limit: usize) -> Result<Vec<(KnowledgeAtom, f64)>>;
+    async fn vector_search(
+        &self,
+        query_embed: &[f32],
+        limit: usize,
+    ) -> Result<Vec<(KnowledgeAtom, f64)>>;
 
     /// Full-text search over atom content.
     async fn fts_search(&self, query: &str, limit: usize) -> Result<Vec<(KnowledgeAtom, f64)>>;
@@ -24,13 +33,30 @@ pub trait Store: Send + Sync {
 }
 
 /// SQLite + sqlite-vec storage implementation.
+///
+/// Vector search and FTS are stubs until #1 lands; migrations and CRUD skeleton are real.
 pub struct SqliteVecStore {
-    path: String,
+    conn: Mutex<Connection>,
+    path: PathBuf,
 }
 
 impl SqliteVecStore {
-    pub fn new(path: String) -> Self {
-        Self { path }
+    /// Open (or create) the database and run migrations.
+    pub fn open(path: PathBuf) -> Result<Self> {
+        let conn = Connection::open(&path)
+            .map_err(|e| KurultaiError::Store(format!("failed to open {}: {e}", path.display())))?;
+
+        migrations::migrate(&conn)?;
+
+        tracing::debug!(path = %path.display(), "sqlite store opened");
+        Ok(Self {
+            conn: Mutex::new(conn),
+            path,
+        })
+    }
+
+    pub fn path(&self) -> &PathBuf {
+        &self.path
     }
 }
 
@@ -38,6 +64,8 @@ impl SqliteVecStore {
 impl Store for SqliteVecStore {
     async fn upsert(&self, atom: &KnowledgeAtom) -> Result<()> {
         let _ = atom;
+        // TODO(#1): real upsert with embedding blob
+        tracing::trace!(id = %atom.id, source = %atom.source, "upsert stub");
         Ok(())
     }
 
@@ -48,7 +76,11 @@ impl Store for SqliteVecStore {
         Ok(())
     }
 
-    async fn vector_search(&self, query_embed: &[f32], limit: usize) -> Result<Vec<(KnowledgeAtom, f64)>> {
+    async fn vector_search(
+        &self,
+        query_embed: &[f32],
+        limit: usize,
+    ) -> Result<Vec<(KnowledgeAtom, f64)>> {
         let _ = (query_embed, limit);
         Ok(vec![])
     }
@@ -59,11 +91,24 @@ impl Store for SqliteVecStore {
     }
 
     async fn delete_source(&self, source: &str) -> Result<()> {
-        let _ = source;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| KurultaiError::Store(format!("lock poisoned: {e}")))?;
+        conn.execute("DELETE FROM knowledge_atoms WHERE source = ?1", [source])
+            .map_err(|e| KurultaiError::Store(format!("delete_source failed: {e}")))?;
+        tracing::debug!(source, "deleted atoms for source");
         Ok(())
     }
 
     async fn count(&self) -> Result<u64> {
-        Ok(0)
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| KurultaiError::Store(format!("lock poisoned: {e}")))?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM knowledge_atoms", [], |row| row.get(0))
+            .map_err(|e| KurultaiError::Store(format!("count failed: {e}")))?;
+        Ok(count as u64)
     }
 }

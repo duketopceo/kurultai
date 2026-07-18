@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::Result;
 
 /// Generates embeddings for text via an API or local model.
 #[async_trait::async_trait]
