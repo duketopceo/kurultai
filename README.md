@@ -122,22 +122,36 @@ pub trait Connector: Send + Sync {
 }
 ```
 
-## Roadmap
+## Phases & work orders
 
-- [ ] Working AppFlowy connector
-- [ ] Working Obsidian connector (Markdown vault reader)
-- [ ] OpenRouter embeddings integration
-- [ ] SQLite + sqlite-vec vector store
-- [ ] FTS5 full-text search
-- [ ] RRF fusion + reranking
-- [ ] LLM synthesis with citations
-- [ ] MCP tool interface
-- [ ] HTTP daemon for external querying
-- [ ] GitHub connector
-- [ ] Tech Tracker connector
-- [ ] Local embedding model support (llama.cpp)
-- [ ] Yurt terminal art for CLI (`kurultai status`, banners) — see [#22](https://github.com/duketopceo/kurultai/issues/22)
-- [ ] Testing & CI gates expanding per phase — see [#23](https://github.com/duketopceo/kurultai/issues/23)
+Master plan: **[#27 — Work Order: Master phase plan](https://github.com/duketopceo/kurultai/issues/27)**  
+Audience strategy: **[#25 — Developer → Solo → Team → Company](https://github.com/duketopceo/kurultai/issues/25)**
+
+| Phase | Audience unlocked | Milestone | Work order (in sequence) |
+|-------|-------------------|-----------|--------------------------|
+| **1** Foundation | Developer | [Phase 1](https://github.com/duketopceo/kurultai/milestone/1) | ✅ [#18](https://github.com/duketopceo/kurultai/issues/18) framework → [#1](https://github.com/duketopceo/kurultai/issues/1) storage → [#2](https://github.com/duketopceo/kurultai/issues/2) embed → [#3](https://github.com/duketopceo/kurultai/issues/3)/[#4](https://github.com/duketopceo/kurultai/issues/4) connectors → [#5](https://github.com/duketopceo/kurultai/issues/5) CLI → [#11](https://github.com/duketopceo/kurultai/issues/11) MCP/install |
+| **2** Search | Developer | [Phase 2](https://github.com/duketopceo/kurultai/milestone/2) | [#6](https://github.com/duketopceo/kurultai/issues/6) FTS + vector + RRF + rerank |
+| **3** Synthesis | Developer ✓ | [Phase 3](https://github.com/duketopceo/kurultai/milestone/3) | [#7](https://github.com/duketopceo/kurultai/issues/7) synthesis + MCP + daemon + agent capture |
+| **4** Expansion | Solo ✓ | [Phase 4](https://github.com/duketopceo/kurultai/milestone/4) | [#8](https://github.com/duketopceo/kurultai/issues/8) GitHub/Pond → [#21](https://github.com/duketopceo/kurultai/issues/21) Dayflow |
+| **5** Production | Team | [Phase 5](https://github.com/duketopceo/kurultai/milestone/5) | [#9](https://github.com/duketopceo/kurultai/issues/9) perf + shared daemon → [#20](https://github.com/duketopceo/kurultai/issues/20) self-hosted CI |
+| **6** Launch | Company | [Phase 6](https://github.com/duketopceo/kurultai/milestone/6) | [#10](https://github.com/duketopceo/kurultai/issues/10) release → [#22](https://github.com/duketopceo/kurultai/issues/22) yurt art |
+
+**Cross-cutting (every phase):** [#23](https://github.com/duketopceo/kurultai/issues/23) testing & CI gates — coverage rises 50% → 60% → 75% → 80%.
+
+## Roadmap checklist
+
+- [x] Framework foundation ([#18](https://github.com/duketopceo/kurultai/issues/18) / PR [#19](https://github.com/duketopceo/kurultai/pull/19))
+- [ ] Storage ([#1](https://github.com/duketopceo/kurultai/issues/1))
+- [ ] Embeddings ([#2](https://github.com/duketopceo/kurultai/issues/2))
+- [ ] Obsidian connector ([#3](https://github.com/duketopceo/kurultai/issues/3))
+- [ ] AppFlowy connector ([#4](https://github.com/duketopceo/kurultai/issues/4))
+- [ ] CLI wired ([#5](https://github.com/duketopceo/kurultai/issues/5))
+- [ ] MCP + installer ([#11](https://github.com/duketopceo/kurultai/issues/11))
+- [ ] Search & retrieval ([#6](https://github.com/duketopceo/kurultai/issues/6))
+- [ ] Synthesis & interface ([#7](https://github.com/duketopceo/kurultai/issues/7))
+- [ ] Expansion connectors ([#8](https://github.com/duketopceo/kurultai/issues/8), [#21](https://github.com/duketopceo/kurultai/issues/21))
+- [ ] Production readiness ([#9](https://github.com/duketopceo/kurultai/issues/9), [#20](https://github.com/duketopceo/kurultai/issues/20))
+- [ ] Open source launch ([#10](https://github.com/duketopceo/kurultai/issues/10), [#22](https://github.com/duketopceo/kurultai/issues/22))
 
 ## Quality
 
