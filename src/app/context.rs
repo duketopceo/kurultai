@@ -1,6 +1,7 @@
-use crate::config::{ensure_storage_parent, expand_path, load_config, load_config_from};
+use crate::config::{ensure_storage_parent, expand_path, load_config_with_env};
 use crate::connectors::ConnectorRegistry;
 use crate::embed::{Embedder, OpenRouterEmbedder};
+use crate::environment::Environment;
 use crate::error::{KurultaiError, Result};
 use crate::pipeline::IndexPipeline;
 use crate::security::api_key_from_env_optional;
@@ -12,6 +13,7 @@ use std::sync::Arc;
 /// Top-level application context. Single wiring point for all subsystems.
 pub struct App {
     pub config: Config,
+    pub environment: Environment,
     pub store: Arc<dyn Store>,
     pub embedder: Arc<dyn Embedder>,
     pub connectors: ConnectorRegistry,
@@ -20,29 +22,31 @@ pub struct App {
 
 impl App {
     /// Bootstrap from default config path.
-    pub async fn bootstrap() -> Result<Self> {
-        let config = load_config()?;
+    pub async fn bootstrap(env_override: Option<&str>) -> Result<Self> {
+        let config = load_config_with_env(None, env_override)?;
         Self::from_config(config).await
     }
 
     /// Bootstrap from an explicit config file.
-    pub async fn bootstrap_from(path: &Path) -> Result<Self> {
-        let config = load_config_from(path)?;
+    pub async fn bootstrap_from(path: &Path, env_override: Option<&str>) -> Result<Self> {
+        let config = load_config_with_env(Some(path), env_override)?;
         Self::from_config(config).await
     }
 
     async fn from_config(config: Config) -> Result<Self> {
+        let environment = config.environment;
         let storage_path = expand_path(&config.storage_path)?;
         ensure_storage_parent(&storage_path)?;
 
         tracing::debug!(storage = %storage_path.display(), "initializing store");
         let store: Arc<dyn Store> = Arc::new(SqliteVecStore::open(storage_path)?);
 
-        let embedder = build_embedder(&config)?;
+        let embedder = build_embedder(&config, environment)?;
         let connectors = ConnectorRegistry::from_config(&config).await?;
         let pipeline = IndexPipeline::new(Arc::clone(&store), Arc::clone(&embedder));
 
         tracing::info!(
+            env = %environment,
             sources = connectors.len(),
             embedder = embedder.name(),
             dim = embedder.dim(),
@@ -51,6 +55,7 @@ impl App {
 
         Ok(Self {
             config,
+            environment,
             store,
             embedder,
             connectors,
@@ -70,14 +75,15 @@ impl App {
     }
 }
 
-fn build_embedder(config: &Config) -> Result<Arc<dyn Embedder>> {
+fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>> {
     // API keys come from env only — never from config files.
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
         .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));
 
     if api_key.is_none() {
         tracing::warn!(
-            "no OPENROUTER_API_KEY or KURULTAI_API_KEY set — embedder will return zero vectors (dev mode)"
+            env = %env,
+            "no OPENROUTER_API_KEY or KURULTAI_API_KEY set — embedder will return zero vectors until a key is set"
         );
     }
 

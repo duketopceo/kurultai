@@ -1,3 +1,4 @@
+use crate::environment::Environment;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -85,6 +86,9 @@ pub enum SourceKind {
 /// Top-level config.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    /// Deployment environment (dev, staging, prod).
+    #[serde(default)]
+    pub environment: Environment,
     pub sources: Vec<SourceConfig>,
     pub storage_path: String,
     pub embed_model: String,

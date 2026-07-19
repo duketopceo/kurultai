@@ -1,0 +1,58 @@
+# Deploy pipeline: staging branch → staging env, main → production env.
+# Configure GitHub Environments (staging, production) with approval gates + secrets.
+name: Deploy
+
+on:
+  push:
+    branches: [main, staging]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  build-staging:
+    name: Build (staging)
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release
+        run: cargo build --release --locked
+        env:
+          KURULTAI_ENV: staging
+      - name: Smoke status
+        run: KURULTAI_ENV=staging ./target/release/kurultai status
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kurultai-staging-linux-x86_64
+          path: target/release/kurultai
+          retention-days: 14
+
+  build-production:
+    name: Build (production)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release
+        run: cargo build --release --locked
+        env:
+          KURULTAI_ENV: prod
+      - name: Smoke status
+        run: KURULTAI_ENV=prod ./target/release/kurultai status
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kurultai-prod-linux-x86_64
+          path: target/release/kurultai
+          retention-days: 30

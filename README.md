@@ -82,6 +82,8 @@ kurultai daemon --port 8421
 Create `~/.config/kurultai/config.toml`:
 
 ```toml
+environment = "dev"   # dev | staging | prod
+
 [sources]
 [sources.appflowy]
 enabled = true
@@ -95,12 +97,31 @@ vault_path = "/Users/you/Documents/Obsidian/Vault"
 poll_interval_secs = 60
 
 [storage]
-path = "~/.local/share/kurultai/store.db"
+# Optional — defaults per environment (see below)
+# path = "~/.local/share/kurultai/dev/store.db"
 
 [embed]
 model = "openai/text-embedding-3-large"
 dimension = 3072
 ```
+
+Override via CLI or env: `kurultai --env staging status` or `KURULTAI_ENV=prod kurultai daemon`.
+
+## Environments (dev · staging · prod)
+
+| | **Dev** | **Staging** | **Prod** |
+|---|---------|-------------|----------|
+| **Who** | Developer laptop | Team pre-prod | Company deployment |
+| **Audience** | Developer | Team | Enterprise |
+| **Storage** | `~/.local/share/kurultai/dev/store.db` | `.../staging/store.db` | `.../store.db` |
+| **Logging** | `kurultai=debug` | `info,warn` | `warn,error` |
+| **API keys** | Optional (zero-vector fallback) | Required for index | Required + audit |
+| **CI branch** | PR / feature branches | `staging` branch | `main` branch |
+| **Phase** | 1–3 | 4–5 | 5–6 |
+
+**GitHub Actions:** PRs run `ci.yml` (dev). Push to `staging` → deploy workflow (staging environment). Push to `main` → production environment. Configure approval gates in GitHub → Settings → Environments.
+
+Track full deployment plan in [#27](https://github.com/duketopceo/kurultai/issues/27).
 
 ## Connectors
 

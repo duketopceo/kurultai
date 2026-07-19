@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use kurultai::app::App;
+use kurultai::environment::Environment;
 use kurultai::error::Result;
 use kurultai::logging;
 use std::path::PathBuf;
@@ -14,6 +15,10 @@ struct Cli {
     /// Log filter (overrides KURULTAI_LOG). Example: kurultai=trace,info
     #[arg(long, global = true)]
     log: Option<String>,
+
+    /// Deployment environment: dev, staging, prod (overrides KURULTAI_ENV)
+    #[arg(long, global = true, value_name = "ENV")]
+    env: Option<String>,
 
     /// Path to config file (overrides KURULTAI_CONFIG)
     #[arg(long, global = true)]
@@ -57,12 +62,13 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    logging::init_logging(cli.log.as_deref())?;
+    let env = Environment::resolve(cli.env.as_deref())?;
+    logging::init_logging(cli.log.as_deref(), env)?;
 
     let app = if let Some(ref path) = cli.config {
-        App::bootstrap_from(path).await?
+        App::bootstrap_from(path, cli.env.as_deref()).await?
     } else {
-        App::bootstrap().await?
+        App::bootstrap(cli.env.as_deref()).await?
     };
 
     match cli.command {
@@ -104,6 +110,7 @@ async fn main() -> Result<()> {
         Commands::Status => {
             let atom_count = app.atom_count().await?;
             println!("Kurultai status");
+            println!("  Environment: {}", app.environment);
             println!("  Storage: {}", app.config.storage_path);
             println!("  Schema:  v{}", app.schema_version());
             println!(

@@ -16,6 +16,10 @@ pub struct FileConfig {
 
     #[serde(default)]
     pub runtime: FileRuntimeConfig,
+
+    /// Deployment environment: dev | staging | prod
+    #[serde(default)]
+    pub environment: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
