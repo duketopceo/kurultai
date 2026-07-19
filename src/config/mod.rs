@@ -2,7 +2,7 @@ mod file;
 mod loader;
 
 pub use file::FileConfig;
-pub use loader::{config_path, load_config, load_config_from};
+pub use loader::{config_path, load_config, load_config_from, load_config_with_env};
 
 use crate::error::{KurultaiError, Result};
 use crate::types::{Config, SourceKind};
@@ -75,11 +75,13 @@ pub fn ensure_storage_parent(storage_path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::environment::Environment;
     use crate::types::Config;
 
     #[test]
     fn validate_rejects_empty_storage() {
         let config = Config {
+            environment: Environment::Dev,
             sources: vec![],
             storage_path: "  ".into(),
             embed_model: "model".into(),
