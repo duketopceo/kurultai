@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kurultai Phase 1 Foundation — Ideation</title>
+  <style>
+    :root {
+      --ink: #1a1a1a;
+      --muted: #5a5a5a;
+      --line: #d8d8d8;
+      --bg: #faf9f7;
+      --card: #ffffff;
+      --accent: #0b5fff;
+      --reject: #b42318;
+      --ok: #067647;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 2.25rem 1.5rem 4rem;
+      line-height: 1.55;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    h1 { font-size: 1.85rem; margin: 0 0 0.35rem; letter-spacing: -0.02em; }
+    h2 { font-size: 1.25rem; margin: 2.2rem 0 0.75rem; border-bottom: 1px solid var(--line); padding-bottom: 0.35rem; }
+    h3 { font-size: 1.05rem; margin: 0 0 0.5rem; }
+    .meta { color: var(--muted); font-size: 0.92rem; margin-bottom: 1.5rem; font-family: ui-sans-serif, system-ui, sans-serif; }
+    .meta code, code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.86em;
+      background: #eee;
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+    }
+    ul.compact { margin: 0.4rem 0 1rem; padding-left: 1.2rem; }
+    .axis-list { columns: 2; gap: 1.5rem; }
+    .axis-list li { break-inside: avoid; margin-bottom: 0.25rem; }
+    .jump { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.92rem; background: var(--card); border: 1px solid var(--line); padding: 0.85rem 1rem; margin: 1rem 0 1.5rem; }
+    .jump a { color: var(--accent); text-decoration: none; }
+    .jump a:hover { text-decoration: underline; }
+    .idea {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      padding: 1rem 1.15rem;
+      margin: 1rem 0;
+    }
+    .idea .label { font-weight: 650; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.88rem; color: #333; }
+    .idea .basis, .idea .meta-row { font-size: 0.92rem; color: #444; margin: 0.4rem 0; }
+    .badge {
+      display: inline-block;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.75rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 3px;
+      background: #e8eefc;
+      color: #123;
+      margin-right: 0.35rem;
+    }
+    .rejected {
+      background: #fff8f7;
+      border: 1px solid #f0d0cc;
+      border-left: 4px solid var(--reject);
+      padding: 0.85rem 1rem;
+      margin: 0.75rem 0;
+    }
+    .prior {
+      background: #f5f7fa;
+      border-left: 4px solid #889;
+      padding: 0.85rem 1rem;
+      margin: 0.75rem 0;
+      font-size: 0.95rem;
+    }
+    .diagram {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 1rem;
+      margin: 1rem 0;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      white-space: pre;
+    }
+    .menu {
+      background: #eef5ff;
+      border: 1px solid #c5daf5;
+      padding: 1rem 1.2rem;
+      margin-top: 2rem;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+    footer.composition-signal {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <h1>Kurultai Phase 1 Foundation — Ideation</h1>
+  <p class="meta">
+    <strong>Date:</strong> <time datetime="2026-07-19">2026-07-19</time>
+    · <strong>Topic:</strong> phase-1-foundation
+    · <strong>Focus:</strong> Phase 1 (storage, embeddings, connectors, CLI/MCP, CI)
+    · <strong>Mode:</strong> repo-grounded
+    · <strong>Resume:</strong> continued from 2026-07-18 future-directions ideation
+  </p>
+
+  <h2 id="what">What we are ideating on</h2>
+  <p>Phase 1 of Kurultai: the thinnest vertical slice that lets a developer index local knowledge and search it from CLI and MCP — without distillation, enterprise multi-tenancy, or plugin runtimes. The codebase is still a trait stub (~574 LOC); issue <code>#27</code> is the work-order source of truth.</p>
+
+  <h2 id="grounding">Grounding context</h2>
+  <ul class="compact">
+    <li><strong>Codebase:</strong> Rust 2021 CLI + lib; traits for <code>Connector</code>, <code>Store</code>, <code>Embedder</code>, <code>QueryEngine</code>. <code>main.rs</code> never imports the library. No SQL, no tests, no CI, no MCP module. <code>rusqlite</code> present; sqlite-vec not yet a dependency. Embedder stub returns all-zero vectors.</li>
+    <li><strong>Plan:</strong> GitHub <code>#27</code> Phase 1 — framework (done), sqlite-vec, OpenRouter embeddings, Obsidian/AppFlowy, CLI wire-up, MCP+installer, CI gates. Audience: developer.</li>
+    <li><strong>External:</strong> Canonical hybrid schema (base + FTS5 + vec0 shared rowid, RRF k≈60). Prior art: obsidian-hybrid-search, opencode-memory, Loci, markdown-vault-mcp, codebase-memory-mcp installers. Convergent Phase 1: MCP stdio, 4–8 read tools, hash-incremental index, defer LLM distillation.</li>
+    <li><strong>Past learnings:</strong> none (<code>docs/solutions/</code> absent).</li>
+  </ul>
+
+  <h2 id="axes">Topic axes</h2>
+  <ul class="compact axis-list">
+    <li>Storage &amp; schema</li>
+    <li>Embeddings &amp; providers</li>
+    <li>Connectors &amp; indexing</li>
+    <li>CLI, config &amp; wiring</li>
+    <li>MCP, installer &amp; CI gates</li>
+  </ul>
+
+  <h2 id="carried">Carried forward from 2026-07-18</h2>
+  <div class="prior">
+    Prior survivors still valid, now subsumed or sharpened below: sqlite-vec+FTS5 hybrid schema · filesystem connector · Obsidian connector · Git connector · multi-provider embeddings · <code>kurultai init</code> · MCP as primary interface · hybrid RRF + citations.
+    Prior rejections retained: Neo4j/Kùzu · AST indexer in core · Luke-specific defaults · webhook-first · chat wrapper · local-only embeds · full multi-user in Phase 1.
+  </div>
+
+  <h2 id="ranked">Ranked ideas (2026-07-19 deepening)</h2>
+  <p class="meta">~48 raw ideas across 5 frames → ~22 after dedupe → 7 survivors. Verifier: 8 sound, 2 weak (Pond-second and hash-id doc-only nuance).</p>
+  <nav class="jump" aria-label="Jump to ideas">
+    <ol>
+      <li><a href="#i1">FTS-First Boot + Zero-Vector Guard</a></li>
+      <li><a href="#i2">Schema-at-Open + Embedding Contract</a></li>
+      <li><a href="#i3">Raw-First Atoms + Filesystem Connector</a></li>
+      <li><a href="#i4">Shared Runtime Kernel</a></li>
+      <li><a href="#i5">MCP Stdio Primary + install/doctor</a></li>
+      <li><a href="#i6">Golden-Path CI (fixture vault as spec)</a></li>
+      <li><a href="#i7">Content-Hash Incremental + index --watch</a></li>
+    </ol>
+  </nav>
+
+  <div class="diagram" aria-label="Phase 1 vertical slice">connectors (raw .md)
+        │
+        ▼
+   content-hash upsert ──► atoms + FTS5 ──► search (FTS-first)
+        │                      │
+        │                      └──► vec0 (when embedder healthy)
+        ▼
+   kurultai::app ──┬── CLI: init / index / status
+                   └── MCP: search · read · status · reindex
+        │
+        ▼
+   CI: fixture vault → index → assert hits
+  </div>
+
+  <div class="idea" id="i1">
+    <h3>1. FTS-First Boot + Zero-Vector Guard</h3>
+    <p><span class="badge">Embeddings &amp; providers</span> <span class="badge">Conf 92%</span> <span class="badge">Cx Medium</span></p>
+    <p><span class="label">Description:</span> Index always fills base table + FTS5. Vector embed runs only when a real provider key exists. <code>search</code>/MCP default to FTS until vectors exist, then hybrid RRF. Reject all-zero (or near-zero-norm) vectors at upsert so the stub embedder cannot silently poison the store.</p>
+    <p class="basis"><span class="label">Basis:</span> <code>direct:</code> <code>OpenRouterEmbedder::embed</code> returns <code>vec![0.0; dim]</code> (<code>src/embed/mod.rs</code>). <code>external:</code> obsidian-hybrid-search / markdown-vault-mcp ship lexical before vectors; Alex Garcia hybrid treats FTS and vec as parallel arms.</p>
+    <p><span class="label">Rationale:</span> Delivers useful retrieval on day one without API spend, and fails loud when embeddings are fake — the current worst failure mode.</p>
+    <p><span class="label">Downsides:</span> Two retrieval modes to document; users may think “vector search is broken” when it is intentionally offline.</p>
+  </div>
+
+  <div class="idea" id="i2">
+    <h3>2. Schema-at-Open + Embedding Contract</h3>
+    <p><span class="badge">Storage &amp; schema</span> <span class="badge">Conf 90%</span> <span class="badge">Cx Medium</span></p>
+    <p><span class="label">Description:</span> On <code>SqliteVecStore::open</code>, run one idempotent DDL block: atoms + FTS5 + <code>vec0</code> sharing <code>rowid</code>, dimension from config. Persist <code>store_meta</code> (<code>embed_model</code>, <code>embed_dim</code>, schema version). Refuse mixed dimensions; model change requires explicit <code>--rebuild-vectors</code>. No migrations framework in Phase 1.</p>
+    <p class="basis"><span class="label">Basis:</span> <code>direct:</code> no SQL/migrations in repo; <code>Cargo.toml</code> has <code>rusqlite</code> only; README/<code>types.rs</code> fix 3072-dim. <code>external:</code> sqlite-vec #48 hybrid pattern; dim is schema-fixed across prior art.</p>
+    <p><span class="label">Rationale:</span> Unblocks upsert + hybrid search in one atomic step and prevents silent vector corruption when providers change.</p>
+    <p><span class="label">Downsides:</span> Dimension changes are loud and costly (full re-embed); acceptable for Phase 1.</p>
+  </div>
+
+  <div class="idea" id="i3">
+    <h3>3. Raw-First Atoms + Filesystem Connector</h3>
+    <p><span class="badge">Connectors &amp; indexing</span> <span class="badge">Conf 88%</span> <span class="badge">Cx Low–Medium</span></p>
+    <p><span class="label">Description:</span> Connectors emit title + raw content + path metadata only; leave <code>summary</code>/<code>question</code>/<code>resolution</code> empty. Ship a filesystem <code>.md</code> connector using existing <code>glob</code>/<code>notify</code> deps; treat Obsidian as <code>vault_path</code> → filesystem root for Phase 1. Defer AppFlowy API and LLM distillation.</p>
+    <p class="basis"><span class="label">Basis:</span> <code>direct:</code> Obsidian/AppFlowy return <code>[]</code>; no distillation module; <code>notify</code>/<code>glob</code> unused. <code>external:</code> successful Phase 1 tools index raw chunks first; distillation is a precision lever later.</p>
+    <p><span class="label">Rationale:</span> Shortest path from stub to atoms-in-store; validates the whole loop without cloud note APIs.</p>
+    <p><span class="label">Downsides:</span> AppFlowy (#4) slips; chunking quality is naive until distillation returns.</p>
+  </div>
+
+  <div class="idea" id="i4">
+    <h3>4. Shared Runtime Kernel</h3>
+    <p><span class="badge">CLI, config &amp; wiring</span> <span class="badge">Conf 91%</span> <span class="badge">Cx Medium</span></p>
+    <p><span class="label">Description:</span> Extract <code>kurultai::app</code> (load/init config → store + embedder + connector registry → orchestrate). <code>main.rs</code> becomes a thin clap wrapper. <code>kurultai init</code> writes the Rust <code>Config</code> shape (single source of truth) so README/TOML drift ends. Honest registry: only implemented kinds report ready.</p>
+    <p class="basis"><span class="label">Basis:</span> <code>direct:</code> <code>main.rs</code> never <code>use kurultai::</code>; status hardcodes five sources; README TOML shape ≠ <code>Config</code> struct.</p>
+    <p><span class="label">Rationale:</span> One kernel means every store/search improvement compounds to CLI and MCP without divergent paths; makes integration tests call the library directly.</p>
+    <p><span class="label">Downsides:</span> Requires a short CLI refactor before features land; resist the urge to rewrite clap surface.</p>
+  </div>
+
+  <div class="idea" id="i5">
+    <h3>5. MCP Stdio Primary + install/doctor</h3>
+    <p><span class="badge">MCP, installer &amp; CI gates</span> <span class="badge">Conf 87%</span> <span class="badge">Cx Medium–High</span></p>
+    <p><span class="label">Description:</span> Ship <code>kurultai mcp</code> (stdio) with 4 read tools: <code>search</code>, <code>read_atom</code>, <code>status</code>, <code>reindex</code> — sharing the runtime kernel. CLI keeps <code>init</code>/<code>index</code>/<code>status</code> (and thin <code>search</code> for humans). <code>kurultai install</code> writes Cursor/Claude Code MCP config; <code>doctor</code> checks binary path, store, embedder health.</p>
+    <p class="basis"><span class="label">Basis:</span> <code>direct:</code> no <code>src/mcp/</code>, README promises MCP. <code>external:</code> Loci/opencode-memory MCP+shared SQLite; codebase-memory-mcp <code>install</code> pattern.</p>
+    <p><span class="label">Rationale:</span> Without MCP, Kurultai is invisible to the agents that are the product’s distribution channel.</p>
+    <p><span class="label">Downsides:</span> MCP crate choice and host quirks; keep tool surface capped at 4–8.</p>
+  </div>
+
+  <div class="idea" id="i6">
+    <h3>6. Golden-Path CI (fixture vault as Phase 1 spec)</h3>
+    <p><span class="badge">MCP, installer &amp; CI gates</span> <span class="badge">Conf 89%</span> <span class="badge">Cx Low</span></p>
+    <p><span class="label">Description:</span> One integration test is the Phase 1 definition of done: fixture vault (3–5 markdown files) → <code>index</code> → assert FTS hit (and vector hit when key present). Add GitHub Actions <code>cargo test</code> + <code>clippy</code>. Optionally MCP <code>tools/list</code> smoke after MCP lands.</p>
+    <p class="basis"><span class="label">Basis:</span> <code>direct:</code> no <code>tests/</code>, no <code>.github/</code>, no <code>#[test]</code>. Aligns with <code>#23</code> testing gates.</p>
+    <p><span class="label">Rationale:</span> Turns “Phase 1 done” from a narrative into a failing/passing gate every PR can enforce.</p>
+    <p><span class="label">Downsides:</span> Needs sqlite-vec in CI (bundled extension or skip vector arm when unavailable).</p>
+  </div>
+
+  <div class="idea" id="i7">
+    <h3>7. Content-Hash Incremental + index --watch</h3>
+    <p><span class="badge">Connectors &amp; indexing</span> <span class="badge">Conf 78%</span> <span class="badge">Cx Medium</span></p>
+    <p><span class="label">Description:</span> Drive upserts from content-addressed atom ids; skip re-embed when hash unchanged. Replace the sleeping <code>daemon</code> stub with <code>kurultai index --watch</code> (debounced <code>notify</code>). Keep <code>--full</code> as rebuild, not a second connector API forever.</p>
+    <p class="basis"><span class="label">Basis:</span> <code>direct:</code> <code>KnowledgeAtom.id</code> documented as content hash; daemon is a sleep loop; <code>notify</code> unused. <code>external:</code> hash-incremental is table stakes. Verifier: <strong>weak</strong> on “hash already implemented” — it is documented intent, not code yet.</p>
+    <p><span class="label">Rationale:</span> Makes re-index cheap and removes a misleading always-on HTTP fiction from Phase 1.</p>
+    <p><span class="label">Downsides:</span> Orphan deletion / manifest sync still needed; watch mode is optional sugar after batch index works.</p>
+  </div>
+
+  <h2 id="rejected">Rejection summary</h2>
+
+  <div class="rejected">
+    <h3>Pond-second before AppFlowy</h3>
+    <p><span class="label">Why reject:</span> Verifier weak; conflicts with <code>#27</code> order (Obsidian/AppFlowy before Pond). Strong as Phase 4 differentiator, not Phase 1.</p>
+  </div>
+  <div class="rejected">
+    <h3>Init-only / drop TOML loader as sole answer</h3>
+    <p><span class="label">Why reject:</span> Subsumed by Shared Runtime Kernel (init writes Config shape). Prefer one wiring story.</p>
+  </div>
+  <div class="rejected">
+    <h3>Remove CLI search entirely</h3>
+    <p><span class="label">Why reject:</span> Too aggressive; keep thin CLI search for humans while MCP is primary for agents.</p>
+  </div>
+  <div class="rejected">
+    <h3>Named embedding spaces / multi-root indexes / batch-API-only embed</h3>
+    <p><span class="label">Why reject:</span> Over-scope for Phase 1; fingerprint + rebuild covers the real risk.</p>
+  </div>
+  <div class="rejected">
+    <h3>Analogy-only metaphors (cadastral, emulsion, harbor, customs)</h3>
+    <p><span class="label">Why reject:</span> Useful framing, not distinct product moves beyond survivors above.</p>
+  </div>
+  <div class="rejected">
+    <h3>Prior rejections (retained)</h3>
+    <p>Neo4j/Kùzu · AST code graph in core · Luke-specific defaults · webhook-first · chat wrapper · local-only embeds · full multi-user in Phase 1.</p>
+  </div>
+
+  <div class="menu">
+    <h2 id="next">Next steps</h2>
+    <ol>
+      <li><strong>Open in browser</strong> — this file.</li>
+      <li><strong>Brainstorm one idea</strong> with <code>ce-brainstorm</code> (recommended: #1 FTS-First or #2 Schema-at-Open).</li>
+      <li><strong>Discuss / refine</strong> the set before committing.</li>
+      <li><strong>Done</strong> — keep the file.</li>
+    </ol>
+  </div>
+
+  <footer class="composition-signal">
+    Composed 2026-07-19 by ce-ideate · resumed from <code>kurultai-future-directions-2026-07-18.html</code> · focus: Phase 1 Foundation · scratch <code>/tmp/compound-engineering/ce-ideate/a7f3c91e</code>
+  </footer>
+</body>
+</html>
