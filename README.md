@@ -172,18 +172,19 @@ pub trait Connector: Send + Sync {
 ## Phases & work orders
 
 Master plan: **[#27 — Work Order: Master phase plan](https://github.com/duketopceo/kurultai/issues/27)**  
-Audience strategy: **[#25 — Developer → Solo → Team → Company](https://github.com/duketopceo/kurultai/issues/25)**
+Audience strategy: **[#25 — Developer → Solo → Team → Company](https://github.com/duketopceo/kurultai/issues/25)**  
+Upstream repos (depend / inspire / integrate): **[#40](https://github.com/duketopceo/kurultai/issues/40)** · [docs/upstream-inspiration.md](docs/upstream-inspiration.md)
 
-| Phase | Audience unlocked | Milestone | Work order (in sequence) |
-|-------|-------------------|-----------|--------------------------|
-| **1** Foundation | Developer | [Phase 1](https://github.com/duketopceo/kurultai/milestone/1) | ✅ [#18](https://github.com/duketopceo/kurultai/issues/18) framework → [#1](https://github.com/duketopceo/kurultai/issues/1) storage → [#2](https://github.com/duketopceo/kurultai/issues/2) embed → [#3](https://github.com/duketopceo/kurultai/issues/3)/[#4](https://github.com/duketopceo/kurultai/issues/4) connectors → [#5](https://github.com/duketopceo/kurultai/issues/5) CLI → [#11](https://github.com/duketopceo/kurultai/issues/11) MCP/install |
-| **2** Search | Developer | [Phase 2](https://github.com/duketopceo/kurultai/milestone/2) | [#6](https://github.com/duketopceo/kurultai/issues/6) FTS + vector + RRF + rerank |
-| **3** Synthesis | Developer ✓ | [Phase 3](https://github.com/duketopceo/kurultai/milestone/3) | [#7](https://github.com/duketopceo/kurultai/issues/7) synthesis + MCP + daemon + agent capture |
-| **4** Expansion | Solo ✓ | [Phase 4](https://github.com/duketopceo/kurultai/milestone/4) | [#8](https://github.com/duketopceo/kurultai/issues/8) GitHub/Pond → [#21](https://github.com/duketopceo/kurultai/issues/21) Dayflow |
-| **5** Production | Team | [Phase 5](https://github.com/duketopceo/kurultai/milestone/5) | [#9](https://github.com/duketopceo/kurultai/issues/9) perf + shared daemon → [#20](https://github.com/duketopceo/kurultai/issues/20) self-hosted CI |
-| **6** Launch | Company | [Phase 6](https://github.com/duketopceo/kurultai/milestone/6) | [#10](https://github.com/duketopceo/kurultai/issues/10) release → [#22](https://github.com/duketopceo/kurultai/issues/22) yurt art |
+| Phase | Audience unlocked | Milestone | Work order (in sequence) | Upstream (pull / inspire) |
+|-------|-------------------|-----------|--------------------------|---------------------------|
+| **1** Foundation | Developer | [Phase 1](https://github.com/duketopceo/kurultai/milestone/1) | ✅ [#18](https://github.com/duketopceo/kurultai/issues/18) framework → [#1](https://github.com/duketopceo/kurultai/issues/1) storage → [#2](https://github.com/duketopceo/kurultai/issues/2) embed → [#31](https://github.com/duketopceo/kurultai/issues/31)/[#4](https://github.com/duketopceo/kurultai/issues/4) connectors → [#5](https://github.com/duketopceo/kurultai/issues/5) CLI → [#11](https://github.com/duketopceo/kurultai/issues/11) MCP/install | [sqlite-vec](https://github.com/asg017/sqlite-vec), [layer0](https://github.com/amajorai/layer0), [kb-mcp](https://github.com/alphabet-h/kb-mcp), [mdvault](https://github.com/sderosiaux/mdvault), [Stratum](https://github.com/DakodaStemen/Stratum), [smithery](https://github.com/smithery-ai/cli) |
+| **2** Search | Developer | [Phase 2](https://github.com/duketopceo/kurultai/milestone/2) | [#6](https://github.com/duketopceo/kurultai/issues/6) FTS + vector + RRF + rerank | [kb-mcp](https://github.com/alphabet-h/kb-mcp), [Stratum](https://github.com/DakodaStemen/Stratum), [sqmd](https://github.com/itkoren/sqmd), [Cerebras KB](https://mer.vin/2026/07/how-cerebras-built-a-15k-query-day-internal-knowledge-base/) |
+| **3** Synthesis | Developer ✓ | [Phase 3](https://github.com/duketopceo/kurultai/milestone/3) | [#7](https://github.com/duketopceo/kurultai/issues/7) synthesis + MCP + daemon + agent capture | [gbrain](https://github.com/imphillip/gbrain-openclaw), [agent-knowledge](https://github.com/keshrath/agent-knowledge), [recall](https://github.com/pratikgajjar/recall), [atomic](https://github.com/yun-lim/atomic) |
+| **4** Expansion | Solo ✓ | [Phase 4](https://github.com/duketopceo/kurultai/milestone/4) | [#8](https://github.com/duketopceo/kurultai/issues/8) GitHub/Pond → [#21](https://github.com/duketopceo/kurultai/issues/21) Dayflow | [cocoindex](https://github.com/cocoindex-io/cocoindex), [codebase-graph](https://github.com/Phoenixrr2113/codebase-graph), [Dayflow](https://github.com/JerryZLiu/Dayflow) |
+| **5** Production | Team | [Phase 5](https://github.com/duketopceo/kurultai/milestone/5) | [#9](https://github.com/duketopceo/kurultai/issues/9) perf + shared daemon → [#20](https://github.com/duketopceo/kurultai/issues/20) self-hosted CI | [layer0](https://github.com/amajorai/layer0), [engram-mcp](https://github.com/edg-l/engram-mcp) |
+| **6** Launch | Company | [Phase 6](https://github.com/duketopceo/kurultai/milestone/6) | [#10](https://github.com/duketopceo/kurultai/issues/10) release → [#22](https://github.com/duketopceo/kurultai/issues/22) yurt art | — |
 
-**Cross-cutting (every phase):** [#23](https://github.com/duketopceo/kurultai/issues/23) testing & CI gates — coverage rises 50% → 60% → 75% → 80%.
+**Cross-cutting (every phase):** [#37](https://github.com/duketopceo/kurultai/issues/37) speed + token doctrine · [#40](https://github.com/duketopceo/kurultai/issues/40) upstream matrix · [#23](https://github.com/duketopceo/kurultai/issues/23) testing & CI gates — coverage rises 50% → 60% → 75% → 80%.
 
 ## Roadmap checklist
 
@@ -199,6 +200,14 @@ Audience strategy: **[#25 — Developer → Solo → Team → Company](https://g
 - [ ] Expansion connectors ([#8](https://github.com/duketopceo/kurultai/issues/8), [#21](https://github.com/duketopceo/kurultai/issues/21))
 - [ ] Production readiness ([#9](https://github.com/duketopceo/kurultai/issues/9), [#20](https://github.com/duketopceo/kurultai/issues/20))
 - [ ] Open source launch ([#10](https://github.com/duketopceo/kurultai/issues/10), [#22](https://github.com/duketopceo/kurultai/issues/22))
+
+## Upstream inspiration
+
+Per-work-order context for external repos we **depend on**, **port patterns from**, or **integrate as connectors** — full detail in [docs/upstream-inspiration.md](docs/upstream-inspiration.md) ([#40](https://github.com/duketopceo/kurultai/issues/40)).
+
+**Study first:** [kb-mcp](https://github.com/alphabet-h/kb-mcp) · [layer0](https://github.com/amajorai/layer0) · [cocoindex](https://github.com/cocoindex-io/cocoindex) · [Stratum](https://github.com/DakodaStemen/Stratum) · [recall](https://github.com/pratikgajjar/recall)
+
+**Avoid fork:** [basic-memory](https://github.com/basicmachines-co/basic-memory) (AGPL, markdown-as-truth) · [Graphiti](https://github.com/getzep/graphiti) (Neo4j stack)
 
 ## Quality
 
