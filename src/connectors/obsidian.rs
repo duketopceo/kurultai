@@ -1,34 +1,50 @@
-use async_trait::async_trait;
+use crate::connectors::filesystem::FilesystemConnector;
 use crate::connectors::Connector;
 use crate::types::{KnowledgeAtom, SourceConfig};
 use anyhow::Result;
+use async_trait::async_trait;
 
+/// Obsidian vault = filesystem connector with `vault_path` alias.
 pub struct ObsidianConnector {
-    vault_path: Option<String>,
+    inner: FilesystemConnector,
 }
 
 impl ObsidianConnector {
     pub fn new() -> Self {
-        Self { vault_path: None }
+        Self {
+            inner: FilesystemConnector::new("obsidian"),
+        }
+    }
+}
+
+impl Default for ObsidianConnector {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[async_trait]
 impl Connector for ObsidianConnector {
-    fn name(&self) -> &str { "obsidian" }
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
 
     async fn init(&mut self, config: &SourceConfig) -> Result<()> {
-        self.vault_path = config.extra.get("vault_path").cloned();
-        Ok(())
+        let mut mapped = config.clone();
+        if let Some(vp) = mapped.extra.get("vault_path").cloned() {
+            mapped.extra.insert("path".into(), vp);
+        }
+        if !mapped.extra.contains_key("path") {
+            anyhow::bail!("obsidian source requires extra.vault_path (or path)");
+        }
+        self.inner.init(&mapped).await
     }
 
     async fn poll(&self) -> Result<Vec<KnowledgeAtom>> {
-        // TODO: Watch for changed .md files in vault
-        Ok(vec![])
+        self.inner.poll().await
     }
 
     async fn full_sync(&self) -> Result<Vec<KnowledgeAtom>> {
-        // TODO: Recursively read all .md files, extract frontmatter + content
-        Ok(vec![])
+        self.inner.full_sync().await
     }
 }

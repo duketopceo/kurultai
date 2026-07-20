@@ -1,23 +1,35 @@
 pub mod appflowy;
+pub mod filesystem;
 pub mod obsidian;
 
+use crate::types::{KnowledgeAtom, SourceConfig, SourceKind};
+use anyhow::{bail, Result};
 use async_trait::async_trait;
-use crate::types::{KnowledgeAtom, SourceConfig};
-use anyhow::Result;
 
 /// Trait every data source connector must implement.
 #[async_trait]
 pub trait Connector: Send + Sync {
-    /// Name of this connector (matches source config).
     fn name(&self) -> &str;
-
-    /// Initialize the connector with its config.
     async fn init(&mut self, config: &SourceConfig) -> Result<()>;
-
-    /// Fetch all atoms since the last index timestamp.
-    /// Returns new/changed atoms. Empty if nothing changed.
     async fn poll(&self) -> Result<Vec<KnowledgeAtom>>;
-
-    /// Full re-index: fetch everything this source has.
     async fn full_sync(&self) -> Result<Vec<KnowledgeAtom>>;
+}
+
+/// Build a connector for an implemented kind, or error honestly.
+pub fn build_connector(config: &SourceConfig) -> Result<Box<dyn Connector>> {
+    match config.kind {
+        SourceKind::Filesystem => Ok(Box::new(filesystem::FilesystemConnector::new(
+            config.name.clone(),
+        ))),
+        SourceKind::Obsidian => Ok(Box::new(obsidian::ObsidianConnector::new())),
+        SourceKind::AppFlowy => bail!(
+            "source '{}' kind appflowy is not implemented yet (Phase 1: filesystem/obsidian only)",
+            config.name
+        ),
+        other => bail!(
+            "source '{}' kind {} is not registered in this build",
+            config.name,
+            other.as_str()
+        ),
+    }
 }

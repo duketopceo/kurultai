@@ -10,107 +10,110 @@ Inspired by Cerebras's internal knowledge base architecture: one embeddings tabl
 
 Your knowledge lives in many places: notes (AppFlowy/Obsidian), conversations (Pond), code (GitHub), activity logs. Kurultai indexes all of them into one queryable store so you can ask anything and get answers with citations — no matter where the source data lives.
 
-## Architecture
+## Architecture (Phase 1)
 
 ```
-Source Connectors → LLM Distillation → Embeddings → Vector Store
-                                                          ↓
-Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthesize → Answer + Citations
+Filesystem / Obsidian → raw atoms → SQLite (FTS5 + vec0)
+                                      ↓
+CLI / MCP → FTS-first search (+ vectors when OpenRouter keyed) → citations
 ```
 
 ### Components
 
 | Layer | Technology | Status |
 |-------|-----------|--------|
-| **Connectors** | Trait-based, one per source (AppFlowy, Obsidian, Pond, GitHub, Tech Tracker) | 🚧 Stubs |
-| **Distillation** | LLM extractors (question, summary, resolution, tags) per source | 📋 Planned |
-| **Embeddings** | OpenRouter API (initial), local model (future) | 🚧 Stub |
-| **Vector Store** | SQLite + sqlite-vec | 🚧 Stub |
-| **Search** | Vector similarity + FTS5 + RRF fusion + LLM rerank | 📋 Planned |
-| **Synthesis** | Planner → Executor → Answer with citations | 📋 Planned |
-| **Interface** | CLI + MCP tools + HTTP daemon | 🚧 CLI stub |
+| **Connectors** | Filesystem + Obsidian alias; AppFlowy honest-unimplemented | ✅ Phase 1 |
+| **Distillation** | LLM extractors (question, summary, resolution) | 📋 Later |
+| **Embeddings** | OpenRouter when keyed; FTS-only without key; zero-vector refused | ✅ Phase 1 |
+| **Vector Store** | SQLite + FTS5 + sqlite-vec (`store_meta` embed contract) | ✅ Phase 1 |
+| **Search** | FTS-first + basic vector fuse | ✅ Phase 1 |
+| **Synthesis** | Light answer from top hits (full planner later) | 🚧 Minimal |
+| **Interface** | CLI + MCP stdio (`search`, `read_atom`, `status`, `reindex`) | ✅ Phase 1 |
 
 ## Quick Start
 
 ```bash
-# Build
 cargo build --release
 
-# Index your sources
-kurultai index
+# Write config for this env (dev|staging|prod)
+kurultai init --vault ~/Documents/Notes
+# or: KURULTAI_ENV=staging kurultai init
 
-# Ask a question
-kurultai ask "what deployments are we running?"
-
-# Search
+kurultai index --full
 kurultai search "database migration" --limit 10
-
-# Check status
 kurultai status
+kurultai doctor
 
-# Run daemon
-kurultai daemon --port 8421
+# MCP for agents
+kurultai install --client cursor
+kurultai mcp
 ```
+
+FTS works without an API key. Set `OPENROUTER_API_KEY` to enable embeddings.
 
 ## Configuration
 
-Create `~/.config/kurultai/config.toml`:
+`kurultai init` writes `~/.config/kurultai/{env}/config.toml` (Rust `Config` shape):
 
 ```toml
-[sources]
-[sources.appflowy]
-enabled = true
-kind = "appflowy"
-poll_interval_secs = 300
-
-[sources.obsidian]
-enabled = true
-kind = "obsidian"
-vault_path = "/Users/you/Documents/Obsidian/Vault"
+env = "dev"
+storage_path = ""  # empty → ~/.local/share/kurultai/{env}/store.db
+embed_model = "openai/text-embedding-3-small"
+embed_dim = 1536
+openrouter_api_key_env = "OPENROUTER_API_KEY"
 poll_interval_secs = 60
 
-[storage]
-path = "~/.local/share/kurultai/store.db"
+[[sources]]
+name = "notes"
+kind = "filesystem"   # or "obsidian" with extra.vault_path
+enabled = true
+poll_interval_secs = 60
 
-[embed]
-model = "openai/text-embedding-3-large"
-dimension = 3072
+[sources.extra]
+path = "~/Documents/Notes"
 ```
 
 ## Connectors
 
-- **AppFlowy** — Index pages, databases, and AI chats via REST API or MCP
-- **Obsidian** — Watch and index local Markdown vault files
-- **Pond** — Index agent conversation history (FTS5 + embeddings)
-- **Tech Tracker** — Index Dayflow activity and git history
-- **GitHub** — Index code repositories via file system + CodeGraph
+- **Filesystem** — Index a directory of `.md` files (content-hash IDs; unchanged skip re-embed)
+- **Obsidian** — Alias: `vault_path` → filesystem root
+- **AppFlowy** — Not implemented in Phase 1 (status reports honestly)
+- **Pond / Tech Tracker / GitHub** — Roadmap
 
-Each connector implements the `Connector` trait:
+**Orphan policy:** `index --full` removes atoms whose `source_id` is no longer present on disk.
 
-```rust
-#[async_trait]
-pub trait Connector: Send + Sync {
-    fn name(&self) -> &str;
-    async fn init(&mut self, config: &SourceConfig) -> Result<()>;
-    async fn poll(&self) -> Result<Vec<KnowledgeAtom>>;
-    async fn full_sync(&self) -> Result<Vec<KnowledgeAtom>>;
-}
-```
+## Post-train export contract
+
+Hot SQLite atoms keep these fields stable for a future cold tier / labeling export (no object storage in Phase 1):
+
+| Field | Purpose |
+|-------|---------|
+| `id` | Content-addressed stable ID |
+| `source` / `source_id` / `source_uri` | Provenance join keys |
+| `title` / `content` / `summary` | Text corpus |
+| `tags` | Durable labels (JSON array) |
+| `provenance` | Free-form / JSON provenance |
+| `source_updated_at` / `indexed_at` | Temporal ordering |
+| `content_hash` | Change detection |
+| `metadata` | Source-specific extras |
+| `embedding` (optional) | Vector when keyed |
+
+See `docs/plans/2026-07-19-001-feat-phase-1-foundation-plan.md`.
 
 ## Roadmap
 
-- [ ] Working AppFlowy connector
-- [ ] Working Obsidian connector (Markdown vault reader)
-- [ ] OpenRouter embeddings integration
-- [ ] SQLite + sqlite-vec vector store
-- [ ] FTS5 full-text search
-- [ ] RRF fusion + reranking
-- [ ] LLM synthesis with citations
-- [ ] MCP tool interface
-- [ ] HTTP daemon for external querying
-- [ ] GitHub connector
-- [ ] Tech Tracker connector
-- [ ] Local embedding model support (llama.cpp)
+- [x] Filesystem + Obsidian connectors
+- [x] OpenRouter embeddings + FTS-first / zero-vector guard
+- [x] SQLite + sqlite-vec + FTS5
+- [x] MCP tool interface + install/doctor
+- [x] Golden-path GitHub-hosted CI
+- [ ] AppFlowy connector
+- [ ] RRF polish + LLM rerank / synthesis
+- [ ] Object storage cold tier (#34)
+- [ ] GlitchTip projects (#35)
+- [ ] Self-hosted runners (#20 — Docker ephemeral first)
+- [ ] HTTP daemon productization
+- [ ] Local embedding model (llama.cpp)
 
 ## License
 

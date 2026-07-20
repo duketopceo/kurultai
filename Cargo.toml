@@ -8,37 +8,28 @@ license = "MIT"
 repository = "https://github.com/duketopceo/kurultai"
 
 [dependencies]
-# Async runtime
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
-
-# CLI
-clap = { version = "4", features = ["derive"] }
-
-# Serialization
+clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-# HTTP client (for API calls, embedding endpoints)
 reqwest = { version = "0.12", features = ["json"] }
-
-# SQLite with vector support
-rusqlite = { version = "0.31", features = ["bundled"] }
-
-# Embeddings - via OpenRouter/API initially
-# Local embedding support via llama-cpp-rs will be added later
-
-# Logging
+rusqlite = { version = "0.32", features = ["bundled"] }
+sqlite-vec = "0.1.6"
+zerocopy = { version = "0.8", features = ["derive"] }
+toml = "0.8"
+directories = "5"
+sha2 = "0.10"
+hex = "0.4"
+glob = "0.3"
+walkdir = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1"
 thiserror = "1"
-
-# Date/time
 chrono = { version = "0.4", features = ["serde"] }
-
-# File watching for auto-indexing
 notify = "6"
 
-# Glob for file discovery
-glob = "0.3"
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["full", "test-util"] }

@@ -1,26 +1,26 @@
-use async_trait::async_trait;
 use crate::connectors::Connector;
 use crate::types::{KnowledgeAtom, SourceConfig};
-use anyhow::Result;
+use anyhow::{bail, Result};
+use async_trait::async_trait;
 
+/// AppFlowy connector — honest stub until filesystem path is proven (#4 after #31).
 pub struct AppFlowyConnector;
 
 #[async_trait]
 impl Connector for AppFlowyConnector {
-    fn name(&self) -> &str { "appflowy" }
+    fn name(&self) -> &str {
+        "appflowy"
+    }
 
     async fn init(&mut self, _config: &SourceConfig) -> Result<()> {
-        // TODO: Connect to AppFlowy via its REST API or MCP
-        Ok(())
+        bail!("appflowy connector not implemented in Phase 1 (use filesystem/obsidian)")
     }
 
     async fn poll(&self) -> Result<Vec<KnowledgeAtom>> {
-        // TODO: Fetch new/changed pages from AppFlowy
-        Ok(vec![])
+        bail!("appflowy connector not implemented")
     }
 
     async fn full_sync(&self) -> Result<Vec<KnowledgeAtom>> {
-        // TODO: Full re-index of all AppFlowy pages
-        Ok(vec![])
+        bail!("appflowy connector not implemented")
     }
 }
