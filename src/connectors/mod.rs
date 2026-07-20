@@ -1,5 +1,5 @@
 pub mod appflowy;
-pub mod obsidian;
+pub mod markdown;
 pub mod registry;
 
 pub use registry::ConnectorRegistry;

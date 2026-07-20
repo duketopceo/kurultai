@@ -9,7 +9,7 @@ use std::collections::HashMap;
 pub struct KnowledgeAtom {
     /// Unique ID (hash of source + source_id + content)
     pub id: String,
-    /// Which source this came from (e.g. "appflowy", "obsidian", "pond", "tech_tracker")
+    /// Which source this came from (e.g. "markdown", "appflowy", "pond", "github")
     pub source: String,
     /// ID within the source (page ID, file path, message ID, etc.)
     pub source_id: String,
@@ -76,7 +76,8 @@ pub struct SourceConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SourceKind {
     AppFlowy,
-    Obsidian,
+    /// Local `.md` directory (Obsidian vault, git wiki, any markdown tree).
+    Markdown,
     Pond,
     TechTracker,
     GitHub,

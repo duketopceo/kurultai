@@ -31,15 +31,16 @@ pub fn validate(config: &Config) -> Result<()> {
             )));
         }
 
-        if source.enabled && matches!(source.kind, SourceKind::Obsidian) {
-            let vault = source
+        if source.enabled && matches!(source.kind, SourceKind::Markdown) {
+            let root = source
                 .extra
-                .get("vault_path")
+                .get("root_path")
+                .or_else(|| source.extra.get("vault_path"))
                 .map(String::as_str)
                 .unwrap_or("");
-            if vault.trim().is_empty() {
+            if root.trim().is_empty() {
                 return Err(KurultaiError::config(format!(
-                    "source '{}' (obsidian) requires vault_path",
+                    "source '{}' (markdown) requires root_path",
                     source.name
                 )));
             }

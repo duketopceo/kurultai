@@ -1,5 +1,5 @@
 use crate::connectors::appflowy::AppFlowyConnector;
-use crate::connectors::obsidian::ObsidianConnector;
+use crate::connectors::markdown::MarkdownConnector;
 use crate::connectors::Connector;
 use crate::error::{KurultaiError, Result};
 use crate::types::{Config, SourceConfig, SourceKind};
@@ -72,7 +72,7 @@ impl Default for ConnectorRegistry {
 fn build_connector(kind: &SourceKind) -> Result<Box<dyn Connector>> {
     let connector: Box<dyn Connector> = match kind {
         SourceKind::AppFlowy => Box::new(AppFlowyConnector::new()),
-        SourceKind::Obsidian => Box::new(ObsidianConnector::new()),
+        SourceKind::Markdown => Box::new(MarkdownConnector::new()),
         SourceKind::Pond | SourceKind::TechTracker | SourceKind::GitHub => {
             return Err(KurultaiError::connector(
                 format!("{kind:?}"),
