@@ -5,6 +5,7 @@ pub mod embed;
 pub mod environment;
 pub mod error;
 pub mod logging;
+pub mod mcp;
 pub mod pipeline;
 pub mod query;
 pub mod security;

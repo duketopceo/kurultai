@@ -20,7 +20,33 @@ Inspired by Cerebras's internal knowledge base architecture: one embeddings tabl
 
 ## Why
 
-Your knowledge lives in many places: notes (AppFlowy/Obsidian), conversations (Pond), code (GitHub), activity logs. Kurultai indexes all of them into one queryable store so you can ask anything and get answers with citations — no matter where the source data lives.
+Your knowledge lives in many places: notes (markdown folders), conversations (agents), code (GitHub), activity logs (Dayflow). Kurultai indexes all of them into one queryable store so you can ask anything and get answers with citations — no matter where the source data lives.
+
+## The brain vs your files
+
+| | **Your files** (`.md` folders, agent logs, etc.) | **Kurultai brain** (`store.db`) |
+|---|---------------------------------------------------|----------------------------------|
+| Format | `.md`, JSONL, SQLite… per tool | **SQLite + vector index** |
+| You edit here | ✅ Notes, code, chats | ❌ Index only |
+| Agent access | Slow, high tokens (read whole files) | **Fast, low tokens** (excerpts + citations) |
+
+Markdown vaults (including Obsidian folders) are **ingest sources** — Kurultai reads `.md` from disk. It does not integrate with the Obsidian desktop app.
+
+## Agent interface: read & write (MCP)
+
+Agents interact with the brain through two operations — exposed via **MCP** (stdio) and HTTP daemon (Phase 3):
+
+| Operation | MCP tools | What moves | Token budget |
+|-----------|-----------|------------|--------------|
+| **Read** | `search`, `cite`, `ask` | Excerpts + citations out | Minimal — never full vaults |
+| **Write** | `remember` | Distilled facts in | Minimal — summary/tags, not raw chat |
+
+```
+Agent ──read──► search/cite/ask ──► SQLite brain ──► ranked excerpts
+Agent ─write──► remember ──► distilled KnowledgeAtom ──► SQLite brain
+```
+
+MCP is an agent-ready API: structured tools instead of dumping files into context. See `src/mcp/` for the contract (#7).
 
 ## Who we build for (in order)
 
@@ -47,7 +73,7 @@ Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthes
 
 | Layer | Technology | Status |
 |-------|-----------|--------|
-| **Connectors** | Trait-based, one per source (AppFlowy, Obsidian, Pond, GitHub, Tech Tracker) | 🚧 Stubs |
+| **Connectors** | Trait-based, one per source (markdown, AppFlowy, agents, GitHub, Dayflow) | 🚧 Stubs |
 | **Distillation** | LLM extractors (question, summary, resolution, tags) per source | 📋 Planned |
 | **Embeddings** | OpenRouter API (initial), local model (future) | 🚧 Stub |
 | **Vector Store** | SQLite + sqlite-vec | 🚧 Stub |
@@ -90,10 +116,10 @@ enabled = true
 kind = "appflowy"
 poll_interval_secs = 300
 
-[sources.obsidian]
+[sources.notes]
 enabled = true
-kind = "obsidian"
-vault_path = "/Users/you/Documents/Obsidian/Vault"
+kind = "markdown"
+root_path = "/Users/you/Documents/Obsidian/Vault"  # any .md folder — Obsidian app not required
 poll_interval_secs = 60
 
 [storage]
@@ -125,10 +151,10 @@ Track full deployment plan in [#27](https://github.com/duketopceo/kurultai/issue
 
 ## Connectors
 
+- **Markdown** — Index any directory of `.md` files (`root_path`). Works with Obsidian vaults, git wikis, plain folders — no desktop app integration
 - **AppFlowy** — Index pages, databases, and AI chats via REST API or MCP
-- **Obsidian** — Watch and index local Markdown vault files
-- **Pond** — Index agent conversation history (FTS5 + embeddings)
-- **Tech Tracker** — Index Dayflow activity and git history
+- **Agents** — Index Cursor, Codex, Claude Code conversation history (Phase 3)
+- **Dayflow** — Mac activity journal (Phase 4)
 - **GitHub** — Index code repositories via file system + CodeGraph
 
 Each connector implements the `Connector` trait:
@@ -164,7 +190,7 @@ Audience strategy: **[#25 — Developer → Solo → Team → Company](https://g
 - [x] Framework foundation ([#18](https://github.com/duketopceo/kurultai/issues/18) / PR [#19](https://github.com/duketopceo/kurultai/pull/19))
 - [ ] Storage ([#1](https://github.com/duketopceo/kurultai/issues/1))
 - [ ] Embeddings ([#2](https://github.com/duketopceo/kurultai/issues/2))
-- [ ] Obsidian connector ([#3](https://github.com/duketopceo/kurultai/issues/3))
+- [ ] Markdown / filesystem connector ([#31](https://github.com/duketopceo/kurultai/issues/31), was #3)
 - [ ] AppFlowy connector ([#4](https://github.com/duketopceo/kurultai/issues/4))
 - [ ] CLI wired ([#5](https://github.com/duketopceo/kurultai/issues/5))
 - [ ] MCP + installer ([#11](https://github.com/duketopceo/kurultai/issues/11))
