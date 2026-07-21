@@ -1,8 +1,10 @@
 //! Query pipeline: hybrid retrieval (Phase 2) and thin ask stub (#7 later).
 
+mod context;
 mod hybrid;
 mod rrf;
 
+pub use context::expand_markdown_context;
 pub use hybrid::hybrid_search;
 pub use rrf::{candidate_limit, fuse_rrf, fuse_rrf_ids, FusedId, RRF_K};
 
@@ -76,6 +78,8 @@ impl QueryEngine for HybridQueryEngine {
     }
 
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        hybrid_search(&self.store, &self.embedder, &self.reranker, query, limit).await
+        let results =
+            hybrid_search(&self.store, &self.embedder, &self.reranker, query, limit).await?;
+        expand_markdown_context(&self.store, results).await
     }
 }

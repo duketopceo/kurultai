@@ -58,6 +58,14 @@ pub trait Store: Send + Sync {
         source_id: &str,
     ) -> Result<Option<KnowledgeAtom>>;
 
+    /// Markdown neighbor by `rel_path` + `chunk_index` metadata (same source).
+    async fn get_by_chunk_meta(
+        &self,
+        source: &str,
+        rel_path: &str,
+        chunk_index: u32,
+    ) -> Result<Option<KnowledgeAtom>>;
+
     /// True when atom `id` already has `content_hash` and a stored vector (hash-skip re-embed).
     async fn has_fresh_embedding(&self, id: &str, content_hash: &str) -> Result<bool>;
 }
@@ -422,6 +430,31 @@ impl Store for SqliteVecStore {
     ) -> Result<Option<KnowledgeAtom>> {
         let conn = self.lock()?;
         load_atom_by_source_id(&conn, source, source_id)
+    }
+
+    async fn get_by_chunk_meta(
+        &self,
+        source: &str,
+        rel_path: &str,
+        chunk_index: u32,
+    ) -> Result<Option<KnowledgeAtom>> {
+        let conn = self.lock()?;
+        conn.query_row(
+            r#"
+            SELECT id, source, source_id, title, summary, content,
+                   question, resolution, tags_json,
+                   source_updated_at, indexed_at, metadata_json
+            FROM knowledge_atoms
+            WHERE source = ?1
+              AND json_extract(metadata_json, '$.rel_path') = ?2
+              AND CAST(json_extract(metadata_json, '$.chunk_index') AS INTEGER) = ?3
+            LIMIT 1
+            "#,
+            params![source, rel_path, chunk_index as i64],
+            row_to_atom,
+        )
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("get_by_chunk_meta: {e}")))
     }
 
     async fn has_fresh_embedding(&self, id: &str, content_hash: &str) -> Result<bool> {

@@ -237,11 +237,14 @@ fn file_to_atoms(
             content,
             &tags,
             source_updated_at,
+            0,
+            1,
         ));
         return atoms;
     }
 
-    for chunk in chunks {
+    let chunk_count = chunks.len();
+    for (chunk_index, chunk) in chunks.into_iter().enumerate() {
         let title = if chunk.heading.is_empty() {
             file_title.clone()
         } else {
@@ -261,6 +264,8 @@ fn file_to_atoms(
             &content,
             &tags,
             source_updated_at,
+            chunk_index as u32,
+            chunk_count as u32,
         ));
     }
     atoms
@@ -323,6 +328,7 @@ fn split_by_words(text: &str, max_words: usize) -> Vec<String> {
     words.chunks(max_words).map(|c| c.join(" ")).collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_atom(
     source: &str,
     rel_path: &str,
@@ -331,14 +337,28 @@ fn make_atom(
     content: &str,
     tags: &[String],
     source_updated_at: DateTime<Utc>,
+    chunk_index: u32,
+    chunk_count: u32,
 ) -> KnowledgeAtom {
+    // Include chunk_index so repeated headings / split pieces stay unique for cite.
     let source_id = match heading {
-        Some(h) if !h.is_empty() => format!("{rel_path}#{h}"),
+        Some(h) if !h.is_empty() => format!("{rel_path}#{h}#c{chunk_index}"),
+        _ if chunk_count > 1 => format!("{rel_path}#c{chunk_index}"),
         _ => rel_path.to_string(),
     };
     let hash = crate::hashutil::sha256_hex(content);
     let id = crate::hashutil::atom_id_from_hash(source, &source_id, &hash);
     let summary: String = content.chars().take(280).collect();
+
+    let mut metadata = HashMap::from([
+        ("content_hash".into(), hash),
+        ("rel_path".into(), rel_path.to_string()),
+        ("chunk_index".into(), chunk_index.to_string()),
+        ("chunk_count".into(), chunk_count.to_string()),
+    ]);
+    if let Some(h) = heading.filter(|h| !h.is_empty()) {
+        metadata.insert("heading".into(), h.to_string());
+    }
 
     KnowledgeAtom {
         id,
@@ -353,7 +373,7 @@ fn make_atom(
         source_updated_at,
         indexed_at: Utc::now(),
         embedding: None,
-        metadata: HashMap::from([("content_hash".into(), hash)]),
+        metadata,
     }
 }
 
@@ -402,6 +422,13 @@ How to rollback a bad deploy.
             .any(|a| a.content.contains("database migration")));
         assert!(atoms.iter().all(|a| a.source == "notes"));
         assert!(atoms.iter().any(|a| a.tags.contains(&"ops".into())));
+        assert!(atoms.iter().all(|a| a.metadata.contains_key("rel_path")));
+        assert!(atoms.iter().all(|a| a.metadata.contains_key("chunk_index")));
+        let indexes: Vec<u32> = atoms
+            .iter()
+            .filter_map(|a| a.metadata.get("chunk_index")?.parse().ok())
+            .collect();
+        assert!(indexes.contains(&0));
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@ use crate::embed::Embedder;
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::atom_id;
 use crate::mcp::interface::{AgentRead, AgentWrite};
-use crate::query::hybrid_search;
+use crate::query::{expand_markdown_context, hybrid_search};
 use crate::rerank::Reranker;
 use crate::store::Store;
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
@@ -64,7 +64,9 @@ fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Ci
 #[async_trait::async_trait]
 impl AgentRead for BrainService {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        hybrid_search(&self.store, &self.embedder, &self.reranker, query, limit).await
+        let results =
+            hybrid_search(&self.store, &self.embedder, &self.reranker, query, limit).await?;
+        expand_markdown_context(&self.store, results).await
     }
 
     async fn cite(&self, source: &str, source_id: &str) -> Result<Option<Citation>> {
