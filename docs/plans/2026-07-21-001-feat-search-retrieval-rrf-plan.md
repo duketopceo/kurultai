@@ -346,6 +346,8 @@ Diamond doctrine: independent arms run concurrently; the only merge wait is RRF 
 - Prove AE1–AE4 via unit/integration tests named above
 - Clear ambient `OPENROUTER_API_KEY` in FTS-only tests (existing CLI smoke pattern)
 
+---
+
 ## Definition of Done
 
 - [ ] U1–U5 complete with listed test scenarios
