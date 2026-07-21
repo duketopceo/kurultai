@@ -5,6 +5,8 @@ use crate::embed::Embedder;
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::atom_id;
 use crate::mcp::interface::{AgentRead, AgentWrite};
+use crate::query::{expand_markdown_context, hybrid_search};
+use crate::rerank::Reranker;
 use crate::store::Store;
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
 use chrono::Utc;
@@ -18,11 +20,20 @@ static REMEMBER_SEQ: AtomicU64 = AtomicU64::new(1);
 pub struct BrainService {
     store: Arc<dyn Store>,
     embedder: Arc<dyn Embedder>,
+    reranker: Arc<dyn Reranker>,
 }
 
 impl BrainService {
-    pub fn new(store: Arc<dyn Store>, embedder: Arc<dyn Embedder>) -> Self {
-        Self { store, embedder }
+    pub fn new(
+        store: Arc<dyn Store>,
+        embedder: Arc<dyn Embedder>,
+        reranker: Arc<dyn Reranker>,
+    ) -> Self {
+        Self {
+            store,
+            embedder,
+            reranker,
+        }
     }
 
     /// Search returning token-capped views (primary MCP payload).
@@ -53,69 +64,9 @@ fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Ci
 #[async_trait::async_trait]
 impl AgentRead for BrainService {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        let limit = limit.clamp(1, 50);
-        let mut by_id: HashMap<String, SearchResult> = HashMap::new();
-
-        // FTS is local; embedding may hit the network — overlap them when live.
-        let fts_fut = self.store.fts_search(query, limit);
-        let embed_fut = async {
-            if !self.embedder.is_live() {
-                return None;
-            }
-            match self.embedder.embed(query).await {
-                Ok(emb) => Some(emb),
-                Err(err) => {
-                    tracing::warn!(error = %err, "semantic search skipped; using FTS only");
-                    None
-                }
-            }
-        };
-        let (fts_res, emb_opt) = tokio::join!(fts_fut, embed_fut);
-        let fts = fts_res?;
-
-        for (rank, (atom, score)) in fts.into_iter().enumerate() {
-            by_id.insert(
-                atom.id.clone(),
-                SearchResult {
-                    atom,
-                    score,
-                    rank,
-                    matched_by: vec!["fts".into()],
-                },
-            );
-        }
-
-        if let Some(emb) = emb_opt {
-            let vec_hits = self.store.vector_search(&emb, limit).await?;
-            for (rank, (atom, score)) in vec_hits.into_iter().enumerate() {
-                by_id
-                    .entry(atom.id.clone())
-                    .and_modify(|existing| {
-                        existing.score = existing.score.max(score);
-                        if !existing.matched_by.iter().any(|m| m == "vector") {
-                            existing.matched_by.push("vector".into());
-                        }
-                    })
-                    .or_insert(SearchResult {
-                        atom,
-                        score,
-                        rank,
-                        matched_by: vec!["vector".into()],
-                    });
-            }
-        }
-
-        let mut results: Vec<SearchResult> = by_id.into_values().collect();
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        results.truncate(limit);
-        for (i, r) in results.iter_mut().enumerate() {
-            r.rank = i;
-        }
-        Ok(results)
+        let results =
+            hybrid_search(&self.store, &self.embedder, &self.reranker, query, limit).await?;
+        expand_markdown_context(&self.store, results).await
     }
 
     async fn cite(&self, source: &str, source_id: &str) -> Result<Option<Citation>> {
@@ -227,6 +178,7 @@ mod tests {
     use crate::connectors::Connector;
     use crate::embed::NullEmbedder;
     use crate::pipeline::IndexPipeline;
+    use crate::rerank::NullReranker;
     use crate::store::SqliteVecStore;
     use crate::types::{SourceConfig, SourceKind};
     use std::path::PathBuf;
@@ -261,7 +213,7 @@ mod tests {
             .await
             .unwrap();
 
-        BrainService::new(store, embedder)
+        BrainService::new(store, embedder, Arc::new(NullReranker::new()))
     }
 
     #[tokio::test]
@@ -275,6 +227,22 @@ mod tests {
         assert!(views[0].excerpt.chars().count() <= DEFAULT_EXCERPT_CAP);
         // Full vault content must not appear as unbounded dump
         assert!(!views[0].excerpt.contains(&"x".repeat(500)));
+    }
+
+    #[tokio::test]
+    async fn blank_query_returns_empty() {
+        let brain = brain_with_fixture().await;
+        let hits = brain.search("   ", 5).await.unwrap();
+        assert!(hits.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fts_only_marks_matched_by_fts() {
+        let brain = brain_with_fixture().await;
+        let hits = brain.search("KNOWN_PHRASE_KURULTAI_42", 5).await.unwrap();
+        assert!(!hits.is_empty());
+        assert!(hits[0].matched_by.iter().any(|m| m == "fts"));
+        assert!(!hits[0].matched_by.iter().any(|m| m == "vector"));
     }
 
     #[tokio::test]

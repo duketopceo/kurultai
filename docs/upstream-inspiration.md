@@ -110,6 +110,8 @@ How we use external repos while building Kurultai. Tracked in [#40](https://gith
 
 ## Phase 2 — Search & retrieval
 
+**Status:** ✅ Retrieval path shipped (RRF diamond + optional rerank). Distillation from #6 deferred to #12.
+
 ### [#6 FTS + vector + RRF + rerank](https://github.com/duketopceo/kurultai/issues/6)
 
 **Build:** Parallel FTS5 + vec KNN → RRF (`k=60`) → optional cross-encoder rerank → `SearchResult` → `AgentAtomView`.

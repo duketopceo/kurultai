@@ -51,7 +51,8 @@ fn status_shows_environment_and_sources() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Kurultai status"))
-        .stdout(predicate::str::contains("notes"));
+        .stdout(predicate::str::contains("notes"))
+        .stdout(predicate::str::contains("Reranker: none"));
 }
 
 #[test]

@@ -93,7 +93,7 @@ Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthes
 | **Distillation** | LLM extractors (question, summary, resolution, tags) per source | 📋 Planned (#7 / #12) |
 | **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key | ✅ |
 | **Vector Store** | SQLite + FTS5 + sqlite-vec (`=0.1.6`) | ✅ |
-| **Search** | FTS + vector (naive merge); RRF + rerank | 🚧 Phase 1 merge · 📋 RRF (#6) |
+| **Search** | FTS ∥ vector → **RRF (k=60)** → optional OpenRouter rerank → capped views | ✅ (#6) · distillation deferred (#12) |
 | **Synthesis** | Planner → Executor → Answer with citations | 📋 Planned (#7) |
 | **Interface** | CLI + MCP stdio (`search`/`cite`/`remember`); HTTP daemon later | ✅ CLI+MCP · 📋 daemon |
 
@@ -147,6 +147,10 @@ poll_interval_secs = 60
 [embed]
 model = "openai/text-embedding-3-large"
 dimension = 3072
+
+[runtime]
+# Optional — OpenRouter chat model for post-RRF rerank (needs API key)
+# reranker_model = "openai/gpt-4o-mini"
 ```
 
 Override via CLI or env: `kurultai --env staging status` or `KURULTAI_ENV=prod kurultai daemon`.
@@ -193,12 +197,13 @@ Master plan: **[#27 — Work Order: Master phase plan](https://github.com/duketo
 Audience strategy: **[#25 — Developer → Solo → Team → Company](https://github.com/duketopceo/kurultai/issues/25)**  
 Upstream repos (depend / inspire / integrate): **[#40](https://github.com/duketopceo/kurultai/issues/40)** · [docs/upstream-inspiration.md](docs/upstream-inspiration.md)  
 Phase 1 CE plan: [docs/plans/phase-1-work-orders.md](docs/plans/phase-1-work-orders.md) · **complete:** [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md)  
+Phase 2 search plan: [docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md](docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md) (#6)  
 Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)
 
 | Phase | Audience unlocked | Milestone | Work order (in sequence) | Upstream (pull / inspire) |
 |-------|-------------------|-----------|--------------------------|---------------------------|
 | **1** Foundation | Developer | [Phase 1](https://github.com/duketopceo/kurultai/milestone/1) | ✅ [#18](https://github.com/duketopceo/kurultai/issues/18) framework → [#1](https://github.com/duketopceo/kurultai/issues/1) storage → [#2](https://github.com/duketopceo/kurultai/issues/2) embed → [#31](https://github.com/duketopceo/kurultai/issues/31)/[#4](https://github.com/duketopceo/kurultai/issues/4) connectors → [#5](https://github.com/duketopceo/kurultai/issues/5) CLI → [#11](https://github.com/duketopceo/kurultai/issues/11) MCP/install | [sqlite-vec](https://github.com/asg017/sqlite-vec), [layer0](https://github.com/amajorai/layer0), [kb-mcp](https://github.com/alphabet-h/kb-mcp), [mdvault](https://github.com/sderosiaux/mdvault), [Stratum](https://github.com/DakodaStemen/Stratum), [smithery](https://github.com/smithery-ai/cli) |
-| **2** Search | Developer | [Phase 2](https://github.com/duketopceo/kurultai/milestone/2) | [#6](https://github.com/duketopceo/kurultai/issues/6) FTS + vector + RRF + rerank | [kb-mcp](https://github.com/alphabet-h/kb-mcp), [Stratum](https://github.com/DakodaStemen/Stratum), [sqmd](https://github.com/itkoren/sqmd), [Cerebras KB](https://mer.vin/2026/07/how-cerebras-built-a-15k-query-day-internal-knowledge-base/) |
+| **2** Search | Developer | [Phase 2](https://github.com/duketopceo/kurultai/milestone/2) | ✅ [#6](https://github.com/duketopceo/kurultai/issues/6) RRF diamond + optional rerank (distillation deferred) | [kb-mcp](https://github.com/alphabet-h/kb-mcp), [Stratum](https://github.com/DakodaStemen/Stratum), [sqmd](https://github.com/itkoren/sqmd), [Cerebras KB](https://mer.vin/2026/07/how-cerebras-built-a-15k-query-day-internal-knowledge-base/) |
 | **3** Synthesis | Developer ✓ | [Phase 3](https://github.com/duketopceo/kurultai/milestone/3) | [#7](https://github.com/duketopceo/kurultai/issues/7) synthesis + MCP + daemon + agent capture | [gbrain](https://github.com/imphillip/gbrain-openclaw), [agent-knowledge](https://github.com/keshrath/agent-knowledge), [recall](https://github.com/pratikgajjar/recall), [atomic](https://github.com/yun-lim/atomic) |
 | **4** Expansion | Solo ✓ | [Phase 4](https://github.com/duketopceo/kurultai/milestone/4) | [#8](https://github.com/duketopceo/kurultai/issues/8) GitHub/Pond → [#21](https://github.com/duketopceo/kurultai/issues/21) Dayflow | [cocoindex](https://github.com/cocoindex-io/cocoindex), [codebase-graph](https://github.com/Phoenixrr2113/codebase-graph), [Dayflow](https://github.com/JerryZLiu/Dayflow) |
 | **5** Production | Team | [Phase 5](https://github.com/duketopceo/kurultai/milestone/5) | [#9](https://github.com/duketopceo/kurultai/issues/9) perf + shared daemon → [#20](https://github.com/duketopceo/kurultai/issues/20) self-hosted CI | [layer0](https://github.com/amajorai/layer0), [engram-mcp](https://github.com/edg-l/engram-mcp) |
@@ -216,7 +221,7 @@ Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase
 - [x] CLI wired ([#5](https://github.com/duketopceo/kurultai/issues/5)) — index/status/search via brain views
 - [x] MCP + installer ([#11](https://github.com/duketopceo/kurultai/issues/11)) — stdio `search`/`cite`/`remember` + `init --agent cursor`
 - [x] **Phase 1 exit** — wrap-up: [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md)
-- [ ] Search & retrieval ([#6](https://github.com/duketopceo/kurultai/issues/6)) — **Phase 2**
+- [x] Search & retrieval ([#6](https://github.com/duketopceo/kurultai/issues/6)) — RRF diamond + optional rerank; distillation deferred (#12)
 - [ ] Synthesis & interface ([#7](https://github.com/duketopceo/kurultai/issues/7))
 - [ ] Expansion connectors ([#8](https://github.com/duketopceo/kurultai/issues/8), [#21](https://github.com/duketopceo/kurultai/issues/21))
 - [ ] Production readiness ([#9](https://github.com/duketopceo/kurultai/issues/9), [#20](https://github.com/duketopceo/kurultai/issues/20))

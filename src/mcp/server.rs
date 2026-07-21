@@ -409,7 +409,11 @@ mod tests {
             .index_connector("notes", &connector, true)
             .await
             .unwrap();
-        BrainService::new(store, embedder)
+        BrainService::new(
+            store,
+            embedder,
+            Arc::new(crate::rerank::NullReranker::new()),
+        )
     }
 
     #[test]

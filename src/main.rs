@@ -85,7 +85,11 @@ async fn main() -> Result<()> {
         }
         Commands::Mcp => {
             let app = bootstrap_app(&cli).await?;
-            let brain = BrainService::new(Arc::clone(&app.store), Arc::clone(&app.embedder));
+            let brain = BrainService::new(
+                Arc::clone(&app.store),
+                Arc::clone(&app.embedder),
+                Arc::clone(&app.reranker),
+            );
             // MCP must not spam logs to stdout — stderr only via tracing.
             tracing::info!("mcp stdio server starting");
             kurultai::mcp::run_stdio(brain).await?;
@@ -109,7 +113,11 @@ async fn main() -> Result<()> {
         Commands::Ask { ref question } => {
             let app = bootstrap_app(&cli).await?;
             tracing::info!(question = %question, "ask requested");
-            let brain = BrainService::new(Arc::clone(&app.store), Arc::clone(&app.embedder));
+            let brain = BrainService::new(
+                Arc::clone(&app.store),
+                Arc::clone(&app.embedder),
+                Arc::clone(&app.reranker),
+            );
             let answer = brain.ask(question).await?;
             println!("Q: {}", answer.question);
             println!("A: {}", answer.answer);
@@ -120,7 +128,11 @@ async fn main() -> Result<()> {
         Commands::Search { ref query, limit } => {
             let app = bootstrap_app(&cli).await?;
             tracing::info!(query = %query, limit, "search requested");
-            let brain = BrainService::new(Arc::clone(&app.store), Arc::clone(&app.embedder));
+            let brain = BrainService::new(
+                Arc::clone(&app.store),
+                Arc::clone(&app.embedder),
+                Arc::clone(&app.reranker),
+            );
             let views = brain.search_views(query, limit).await?;
             if views.is_empty() {
                 println!("No results.");
@@ -148,6 +160,11 @@ async fn main() -> Result<()> {
                 );
             } else {
                 println!("  Embedder: none (FTS-only — set OPENROUTER_API_KEY for vectors)");
+            }
+            if app.reranker.is_live() {
+                println!("  Reranker: {}", app.reranker.name());
+            } else {
+                println!("  Reranker: none (set runtime.reranker_model + API key)");
             }
             println!("  Atoms:   {}", atom_count);
 

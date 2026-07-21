@@ -4,6 +4,7 @@ use crate::embed::{Embedder, NullEmbedder, OpenRouterEmbedder};
 use crate::environment::Environment;
 use crate::error::{KurultaiError, Result};
 use crate::pipeline::IndexPipeline;
+use crate::rerank::{NullReranker, OpenRouterReranker, Reranker};
 use crate::security::api_key_from_env_optional;
 use crate::store::{migrations, SqliteVecStore, Store};
 use crate::types::Config;
@@ -16,6 +17,7 @@ pub struct App {
     pub environment: Environment,
     pub store: Arc<dyn Store>,
     pub embedder: Arc<dyn Embedder>,
+    pub reranker: Arc<dyn Reranker>,
     pub connectors: ConnectorRegistry,
     pub pipeline: IndexPipeline,
 }
@@ -46,6 +48,7 @@ impl App {
         let store: Arc<dyn Store> = Arc::new(SqliteVecStore::open(storage_path, config.embed_dim)?);
 
         let embedder = build_embedder(&config, environment)?;
+        let reranker = build_reranker(&config);
         let connectors = ConnectorRegistry::from_config(&config).await?;
         let pipeline = IndexPipeline::new(Arc::clone(&store), Arc::clone(&embedder));
 
@@ -53,6 +56,7 @@ impl App {
             env = %environment,
             sources = connectors.len(),
             embedder = embedder.name(),
+            reranker = reranker.name(),
             dim = embedder.dim(),
             "app initialized"
         );
@@ -62,6 +66,7 @@ impl App {
             environment,
             store,
             embedder,
+            reranker,
             connectors,
             pipeline,
         })
@@ -99,6 +104,28 @@ fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>
                 "no OPENROUTER_API_KEY or KURULTAI_API_KEY — FTS-only mode (NullEmbedder)"
             );
             Ok(Arc::new(NullEmbedder::new(config.embed_dim)))
+        }
+    }
+}
+
+fn build_reranker(config: &Config) -> Arc<dyn Reranker> {
+    let Some(model) = config
+        .reranker_model
+        .as_ref()
+        .filter(|m| !m.trim().is_empty())
+    else {
+        return Arc::new(NullReranker::new());
+    };
+    let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
+        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));
+    match api_key {
+        Some(key) => Arc::new(OpenRouterReranker::new(
+            key.expose().to_string(),
+            model.clone(),
+        )),
+        None => {
+            tracing::warn!("reranker_model set but no API key — rerank disabled");
+            Arc::new(NullReranker::new())
         }
     }
 }
