@@ -6,6 +6,7 @@ use crate::error::{KurultaiError, Result};
 use crate::hashutil::atom_id;
 use crate::mcp::interface::{AgentRead, AgentWrite};
 use crate::query::hybrid_search;
+use crate::rerank::Reranker;
 use crate::store::Store;
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
 use chrono::Utc;
@@ -19,11 +20,20 @@ static REMEMBER_SEQ: AtomicU64 = AtomicU64::new(1);
 pub struct BrainService {
     store: Arc<dyn Store>,
     embedder: Arc<dyn Embedder>,
+    reranker: Arc<dyn Reranker>,
 }
 
 impl BrainService {
-    pub fn new(store: Arc<dyn Store>, embedder: Arc<dyn Embedder>) -> Self {
-        Self { store, embedder }
+    pub fn new(
+        store: Arc<dyn Store>,
+        embedder: Arc<dyn Embedder>,
+        reranker: Arc<dyn Reranker>,
+    ) -> Self {
+        Self {
+            store,
+            embedder,
+            reranker,
+        }
     }
 
     /// Search returning token-capped views (primary MCP payload).
@@ -54,7 +64,7 @@ fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Ci
 #[async_trait::async_trait]
 impl AgentRead for BrainService {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        hybrid_search(&self.store, &self.embedder, query, limit).await
+        hybrid_search(&self.store, &self.embedder, &self.reranker, query, limit).await
     }
 
     async fn cite(&self, source: &str, source_id: &str) -> Result<Option<Citation>> {
@@ -166,6 +176,7 @@ mod tests {
     use crate::connectors::Connector;
     use crate::embed::NullEmbedder;
     use crate::pipeline::IndexPipeline;
+    use crate::rerank::NullReranker;
     use crate::store::SqliteVecStore;
     use crate::types::{SourceConfig, SourceKind};
     use std::path::PathBuf;
@@ -200,7 +211,7 @@ mod tests {
             .await
             .unwrap();
 
-        BrainService::new(store, embedder)
+        BrainService::new(store, embedder, Arc::new(NullReranker::new()))
     }
 
     #[tokio::test]

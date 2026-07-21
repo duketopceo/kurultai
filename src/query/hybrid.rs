@@ -1,19 +1,20 @@
-//! Diamond hybrid search: FTS ∥ vector → RRF barrier.
+//! Diamond hybrid search: FTS ∥ vector → RRF barrier → optional rerank.
 
+use crate::brain::{AgentAtomView, DEFAULT_EXCERPT_CAP};
 use crate::embed::Embedder;
 use crate::error::Result;
 use crate::query::rrf::{candidate_limit, fuse_rrf_ids, RRF_K};
+use crate::rerank::{apply_rerank_order, Reranker};
 use crate::store::Store;
 use crate::types::SearchResult;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Parallel FTS + optional vector, fused with RRF (`k=60`).
-///
-/// Arms return id ranks only; full atoms are batch-loaded for the fused top-N.
+/// Parallel FTS + optional vector, fused with RRF (`k=60`), optional LLM rerank.
 pub async fn hybrid_search(
     store: &Arc<dyn Store>,
     embedder: &Arc<dyn Embedder>,
+    reranker: &Arc<dyn Reranker>,
     query: &str,
     limit: usize,
 ) -> Result<Vec<SearchResult>> {
@@ -78,5 +79,25 @@ pub async fn hybrid_search(
     for (i, r) in results.iter_mut().enumerate() {
         r.rank = i;
     }
+
+    if reranker.is_live() && !results.is_empty() {
+        let candidates: Vec<(String, String)> = results
+            .iter()
+            .map(|r| {
+                let view = AgentAtomView::from_atom(&r.atom, r.score, DEFAULT_EXCERPT_CAP);
+                (r.atom.id.clone(), view.excerpt)
+            })
+            .collect();
+        match reranker.rerank(query, &candidates).await {
+            Ok(order) if !order.is_empty() => {
+                results = apply_rerank_order(results, &order);
+            }
+            Ok(_) => {}
+            Err(err) => {
+                tracing::warn!(error = %err, "rerank failed; keeping RRF order");
+            }
+        }
+    }
+
     Ok(results)
 }

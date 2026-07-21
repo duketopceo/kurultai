@@ -8,6 +8,7 @@ pub use rrf::{candidate_limit, fuse_rrf, fuse_rrf_ids, FusedId, RRF_K};
 
 use crate::embed::Embedder;
 use crate::error::Result;
+use crate::rerank::Reranker;
 use crate::store::Store;
 use crate::types::{Answer, SearchResult};
 use std::sync::Arc;
@@ -22,22 +23,30 @@ pub trait QueryEngine: Send + Sync {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>>;
 }
 
-/// Hybrid FTS ∥ vector → RRF engine used by CLI/MCP brain.
+/// Hybrid FTS ∥ vector → RRF → optional rerank engine used by CLI/MCP brain.
 pub struct HybridQueryEngine {
     store: Arc<dyn Store>,
     embedder: Arc<dyn Embedder>,
+    reranker: Arc<dyn Reranker>,
 }
 
 impl HybridQueryEngine {
-    pub fn new(store: Arc<dyn Store>, embedder: Arc<dyn Embedder>) -> Self {
-        Self { store, embedder }
+    pub fn new(
+        store: Arc<dyn Store>,
+        embedder: Arc<dyn Embedder>,
+        reranker: Arc<dyn Reranker>,
+    ) -> Self {
+        Self {
+            store,
+            embedder,
+            reranker,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl QueryEngine for HybridQueryEngine {
     async fn ask(&self, question: &str) -> Result<Answer> {
-        // Thin stub — full planner/synthesis is #7.
         let hits = self.search(question, 5).await?;
         let answer = if hits.is_empty() {
             "No indexed atoms matched. Run `kurultai index` first.".into()
@@ -67,6 +76,6 @@ impl QueryEngine for HybridQueryEngine {
     }
 
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        hybrid_search(&self.store, &self.embedder, query, limit).await
+        hybrid_search(&self.store, &self.embedder, &self.reranker, query, limit).await
     }
 }

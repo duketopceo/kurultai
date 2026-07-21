@@ -10,6 +10,7 @@ pub mod logging;
 pub mod mcp;
 pub mod pipeline;
 pub mod query;
+pub mod rerank;
 pub mod security;
 pub mod store;
 pub mod types;
