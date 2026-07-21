@@ -19,13 +19,13 @@ jobs:
   check:
     name: Lint & Test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -37,8 +37,29 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: Unit tests
-        run: cargo test --locked
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Unit & integration tests (nextest)
+        run: cargo nextest run --locked
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Coverage report (informational, no fail gate)
+        run: |
+          cargo llvm-cov nextest --locked \
+            --lcov --output-path lcov.info \
+            --html --output-dir coverage-html
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            lcov.info
+            coverage-html
+          if-no-files-found: error
 
       - name: Release build
         run: cargo build --release --locked
@@ -54,6 +75,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # Keep cargo test on macOS for a lighter smoke path (nextest lives on Linux Lint & Test).
       - name: Build & test
         run: |
           cargo test --locked

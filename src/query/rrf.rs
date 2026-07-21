@@ -184,4 +184,43 @@ mod tests {
         assert_eq!(fused[0].id, "a");
         assert_eq!(fused[1].id, "b");
     }
+
+    #[test]
+    fn golden_empty_lists() {
+        assert!(fuse_rrf_ids(&[], RRF_K).is_empty());
+        assert!(fuse_rrf_ids(&[(vec![], "fts"), (vec![], "vector")], RRF_K).is_empty());
+    }
+
+    #[test]
+    fn golden_three_way_shared_scores() {
+        // id "x" rank1 in both lists; "y" rank2 fts; "z" rank2 vector
+        let fused = fuse_rrf_ids(
+            &[
+                (vec![("x".into(), 1.0), ("y".into(), 0.5)], "fts"),
+                (vec![("x".into(), 1.0), ("z".into(), 0.5)], "vector"),
+            ],
+            RRF_K,
+        );
+        assert_eq!(fused[0].id, "x");
+        assert!((fused[0].score - 2.0 / 61.0).abs() < 1e-12);
+        assert_eq!(fused[0].matched_by, vec!["fts", "vector"]);
+        // y and z each get 1/62 — tie broken by id
+        assert_eq!(fused[1].id, "y");
+        assert_eq!(fused[2].id, "z");
+        assert!((fused[1].score - 1.0 / 62.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn golden_single_list_rank_contributions() {
+        let fused = fuse_rrf_ids(
+            &[(
+                vec![("a".into(), 1.0), ("b".into(), 0.9), ("c".into(), 0.8)],
+                "fts",
+            )],
+            RRF_K,
+        );
+        assert!((fused[0].score - 1.0 / 61.0).abs() < 1e-12);
+        assert!((fused[1].score - 1.0 / 62.0).abs() < 1e-12);
+        assert!((fused[2].score - 1.0 / 63.0).abs() < 1e-12);
+    }
 }
