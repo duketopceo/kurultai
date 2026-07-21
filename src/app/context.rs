@@ -38,8 +38,12 @@ impl App {
         let storage_path = expand_path(&config.storage_path)?;
         ensure_storage_parent(&storage_path)?;
 
-        tracing::debug!(storage = %storage_path.display(), "initializing store");
-        let store: Arc<dyn Store> = Arc::new(SqliteVecStore::open(storage_path)?);
+        tracing::debug!(
+            storage = %storage_path.display(),
+            embed_dim = config.embed_dim,
+            "initializing store"
+        );
+        let store: Arc<dyn Store> = Arc::new(SqliteVecStore::open(storage_path, config.embed_dim)?);
 
         let embedder = build_embedder(&config, environment)?;
         let connectors = ConnectorRegistry::from_config(&config).await?;
