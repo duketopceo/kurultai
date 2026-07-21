@@ -46,7 +46,7 @@ Agent ──read──► search/cite/ask ──► SQLite brain ──► ranke
 Agent ─write──► remember ──► distilled KnowledgeAtom ──► SQLite brain
 ```
 
-MCP is an agent-ready API: structured tools instead of dumping files into context. See `src/mcp/` for the contract (#7).
+MCP is an agent-ready API: structured tools instead of dumping files into context. See `src/mcp/` (#11 Phase 1 slice; full synthesis #7).
 
 ## Design doctrine: speed + token budget
 
@@ -89,13 +89,13 @@ Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthes
 
 | Layer | Technology | Status |
 |-------|-----------|--------|
-| **Connectors** | Trait-based, one per source (markdown, AppFlowy, agents, GitHub, Dayflow) | 🚧 Stubs |
-| **Distillation** | LLM extractors (question, summary, resolution, tags) per source | 📋 Planned |
-| **Embeddings** | OpenRouter API (initial), local model (future) | 🚧 Stub |
-| **Vector Store** | SQLite + sqlite-vec | 🚧 Stub |
-| **Search** | Vector similarity + FTS5 + RRF fusion + LLM rerank | 📋 Planned |
-| **Synthesis** | Planner → Executor → Answer with citations | 📋 Planned |
-| **Interface** | CLI + MCP tools + HTTP daemon | 🚧 CLI stub |
+| **Connectors** | Trait-based; **markdown** live; AppFlowy stub; agents/GitHub/Dayflow later | ✅ Markdown · 🚧 others |
+| **Distillation** | LLM extractors (question, summary, resolution, tags) per source | 📋 Planned (#7 / #12) |
+| **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key | ✅ |
+| **Vector Store** | SQLite + FTS5 + sqlite-vec (`=0.1.6`) | ✅ |
+| **Search** | FTS + vector (naive merge); RRF + rerank | 🚧 Phase 1 merge · 📋 RRF (#6) |
+| **Synthesis** | Planner → Executor → Answer with citations | 📋 Planned (#7) |
+| **Interface** | CLI + MCP stdio (`search`/`cite`/`remember`); HTTP daemon later | ✅ CLI+MCP · 📋 daemon |
 
 ## Quick Start
 
@@ -103,19 +103,21 @@ Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthes
 # Build
 cargo build --release
 
-# Index your sources
-kurultai index
+# Wire config + Cursor MCP
+kurultai init --agent cursor
 
-# Ask a question
+# Index your sources (FTS-only without OPENROUTER_API_KEY)
+kurultai index --full
+
+# Search / status / thin ask
+kurultai search "database migration" --limit 10
+kurultai status
 kurultai ask "what deployments are we running?"
 
-# Search
-kurultai search "database migration" --limit 10
+# MCP stdio (Cursor / agents)
+kurultai mcp
 
-# Check status
-kurultai status
-
-# Run daemon
+# Daemon stub (HTTP later — #7)
 kurultai daemon --port 8421
 ```
 
@@ -190,7 +192,7 @@ pub trait Connector: Send + Sync {
 Master plan: **[#27 — Work Order: Master phase plan](https://github.com/duketopceo/kurultai/issues/27)**  
 Audience strategy: **[#25 — Developer → Solo → Team → Company](https://github.com/duketopceo/kurultai/issues/25)**  
 Upstream repos (depend / inspire / integrate): **[#40](https://github.com/duketopceo/kurultai/issues/40)** · [docs/upstream-inspiration.md](docs/upstream-inspiration.md)  
-Phase 1 CE plan: [docs/plans/phase-1-work-orders.md](docs/plans/phase-1-work-orders.md)  
+Phase 1 CE plan: [docs/plans/phase-1-work-orders.md](docs/plans/phase-1-work-orders.md) · **complete:** [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md)  
 Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)
 
 | Phase | Audience unlocked | Milestone | Work order (in sequence) | Upstream (pull / inspire) |
@@ -210,10 +212,11 @@ Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase
 - [x] Storage ([#1](https://github.com/duketopceo/kurultai/issues/1)) — SqliteVecStore FTS + vec0
 - [x] Embeddings ([#2](https://github.com/duketopceo/kurultai/issues/2)) — OpenRouter + NullEmbedder FTS-first
 - [x] Markdown / filesystem connector ([#31](https://github.com/duketopceo/kurultai/issues/31), was #3)
-- [ ] AppFlowy connector ([#4](https://github.com/duketopceo/kurultai/issues/4))
+- [ ] AppFlowy connector ([#4](https://github.com/duketopceo/kurultai/issues/4)) — deferred non-blocking
 - [x] CLI wired ([#5](https://github.com/duketopceo/kurultai/issues/5)) — index/status/search via brain views
 - [x] MCP + installer ([#11](https://github.com/duketopceo/kurultai/issues/11)) — stdio `search`/`cite`/`remember` + `init --agent cursor`
-- [ ] Search & retrieval ([#6](https://github.com/duketopceo/kurultai/issues/6))
+- [x] **Phase 1 exit** — wrap-up: [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md)
+- [ ] Search & retrieval ([#6](https://github.com/duketopceo/kurultai/issues/6)) — **Phase 2**
 - [ ] Synthesis & interface ([#7](https://github.com/duketopceo/kurultai/issues/7))
 - [ ] Expansion connectors ([#8](https://github.com/duketopceo/kurultai/issues/8), [#21](https://github.com/duketopceo/kurultai/issues/21))
 - [ ] Production readiness ([#9](https://github.com/duketopceo/kurultai/issues/9), [#20](https://github.com/duketopceo/kurultai/issues/20))
