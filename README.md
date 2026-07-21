@@ -193,6 +193,7 @@ Master plan: **[#27 — Work Order: Master phase plan](https://github.com/duketo
 Audience strategy: **[#25 — Developer → Solo → Team → Company](https://github.com/duketopceo/kurultai/issues/25)**  
 Upstream repos (depend / inspire / integrate): **[#40](https://github.com/duketopceo/kurultai/issues/40)** · [docs/upstream-inspiration.md](docs/upstream-inspiration.md)  
 Phase 1 CE plan: [docs/plans/phase-1-work-orders.md](docs/plans/phase-1-work-orders.md) · **complete:** [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md)  
+Phase 2 search plan: [docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md](docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md) (#6)  
 Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)
 
 | Phase | Audience unlocked | Milestone | Work order (in sequence) | Upstream (pull / inspire) |
