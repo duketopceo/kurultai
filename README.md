@@ -198,6 +198,7 @@ Audience strategy: **[#25 — Developer → Solo → Team → Company](https://g
 Upstream repos (depend / inspire / integrate): **[#40](https://github.com/duketopceo/kurultai/issues/40)** · [docs/upstream-inspiration.md](docs/upstream-inspiration.md)  
 Phase 1 CE plan: [docs/plans/phase-1-work-orders.md](docs/plans/phase-1-work-orders.md) · **complete:** [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md)  
 Phase 2 search plan: [docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md](docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md) (#6)  
+Phase 2 testing plan: [docs/plans/2026-07-21-002-feat-phase2-testing-gates-plan.md](docs/plans/2026-07-21-002-feat-phase2-testing-gates-plan.md) (#23) · [work orders](docs/plans/phase-2-testing-work-orders.md)  
 Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)
 
 | Phase | Audience unlocked | Milestone | Work order (in sequence) | Upstream (pull / inspire) |
@@ -237,7 +238,7 @@ Per-work-order context for external repos we **depend on**, **port patterns from
 
 ## Quality
 
-CI runs on every PR: `cargo fmt`, `clippy -D warnings`, `cargo test --locked`, `cargo audit`, and a macOS smoke build. Coverage and stricter gates expand by milestone ([#23](https://github.com/duketopceo/kurultai/issues/23)).
+CI runs on every PR: `cargo fmt`, `clippy -D warnings`, `cargo nextest run --locked` (Linux), `cargo llvm-cov` artifact (no coverage % gate yet), `cargo audit`, and a macOS smoke build (`cargo test`). Coverage floors and stricter gates expand by milestone ([#23](https://github.com/duketopceo/kurultai/issues/23)).
 
 ## License
 
