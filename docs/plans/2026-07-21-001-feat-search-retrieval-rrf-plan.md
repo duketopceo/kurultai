@@ -172,6 +172,7 @@ Diamond doctrine: independent arms run concurrently; the only merge wait is RRF 
 | Context expansion blows token budget | Per-result + response budgets; hit-first trim |
 | Markdown `source_id` collisions (`path#heading`) | Add `chunk_index` metadata; do not rely on heading alone for order |
 | Prefetch hydrate cost | Project/rank first; load full atoms only for fused top |
+| SQLite mutex serializes store calls | Diamond still overlaps embed HTTP with FTS; rank-only queries stay short; accept store-lock serialization until WAL/multi-conn is justified |
 | External RRF blog egress blocked | Formula fixed in KTD2; upstream doc already cites pattern |
 
 ### Alternative Approaches Considered
