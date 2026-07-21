@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
                 .await
                 .map_err(|e| kurultai::KurultaiError::Store(e.to_string()))?;
             if results.is_empty() {
-                println!("No results (FTS not implemented yet — see issue #6).");
+                println!("No results.");
             } else {
                 for (atom, score) in results {
                     println!("  [{:.3}] {} — {}", score, atom.source, atom.title);

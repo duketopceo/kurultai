@@ -22,8 +22,13 @@ serde_json = "1"
 # HTTP client (for API calls, embedding endpoints)
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
-# SQLite with vector support
+# SQLite with vector support (pin 0.1.6 — newer alphas fail to compile)
 rusqlite = { version = "0.31", features = ["bundled"] }
+sqlite-vec = "=0.1.6"
+zerocopy = "0.7"
+
+# Content hashing for incremental index skip
+sha2 = "0.10"
 
 # Embeddings - via OpenRouter/API initially
 # Local embedding support via llama-cpp-rs will be added later
