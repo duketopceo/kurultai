@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// A single knowledge atom — the unit of indexed information.
-/// Analogous to Cerebras's embedding row: doc + embedding + metadata.
+///
+/// Stored in SQL for speed; agents receive [`crate::brain::AgentAtomView`] via MCP,
+/// not raw rows. Keep fields stable for post-train export ([#33]).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeAtom {
     /// Unique ID (hash of source + source_id + content)

@@ -48,6 +48,22 @@ Agent ─write──► remember ──► distilled KnowledgeAtom ──► SQL
 
 MCP is an agent-ready API: structured tools instead of dumping files into context. See `src/mcp/` for the contract (#7).
 
+## Design doctrine: speed + token budget
+
+**North star:** SQL agent-optimized brain with pristine structured atoms — not a markdown dump, not full-file RAG.
+
+| Principle | What it means |
+|-----------|----------------|
+| **Index-time heavy** | Embed, distill, dedupe when ingesting — not when the agent asks |
+| **Read-time light** | `search`/`cite` return `AgentAtomView` excerpts (~400 chars), never full `content` by default |
+| **Write-time minimal** | `remember` accepts summary + tags only — no raw chat blobs |
+| **Structuring rules** | Fixed schema (`title`, `summary`, `question`, `resolution`, `tags`, provenance) — stable for NN export |
+| **Bleeding-edge speed** | FTS + vector in SQLite, content-hash skip re-embed, query cache (Phase 2+) |
+
+If we nail **structured SQL + MCP views + structuring rules**, that is enough — we do not need agents reading vaults or SQL directly.
+
+Tracked in work order [#27](https://github.com/duketopceo/kurultai/issues/27) and [#37](https://github.com/duketopceo/kurultai/issues/37).
+
 ## Who we build for (in order)
 
 We ship **developer → solo → team → company**. Each layer builds on the last without rework ([#25](https://github.com/duketopceo/kurultai/issues/25)).
