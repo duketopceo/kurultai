@@ -37,6 +37,13 @@ pub trait Store: Send + Sync {
 
     /// Total atom count.
     async fn count(&self) -> Result<u64>;
+
+    /// Lookup by source + source_id (cite path).
+    async fn get_by_source_id(
+        &self,
+        source: &str,
+        source_id: &str,
+    ) -> Result<Option<KnowledgeAtom>>;
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -352,6 +359,27 @@ impl Store for SqliteVecStore {
             .query_row("SELECT COUNT(*) FROM knowledge_atoms", [], |row| row.get(0))
             .map_err(|e| KurultaiError::Store(format!("count failed: {e}")))?;
         Ok(count as u64)
+    }
+
+    async fn get_by_source_id(
+        &self,
+        source: &str,
+        source_id: &str,
+    ) -> Result<Option<KnowledgeAtom>> {
+        let conn = self.lock()?;
+        conn.query_row(
+            r#"
+            SELECT id, source, source_id, title, summary, content,
+                   question, resolution, tags_json,
+                   source_updated_at, indexed_at, metadata_json
+            FROM knowledge_atoms WHERE source = ?1 AND source_id = ?2
+            LIMIT 1
+            "#,
+            params![source, source_id],
+            row_to_atom,
+        )
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("get_by_source_id: {e}")))
     }
 }
 

@@ -1,4 +1,4 @@
-//! Agent interface — MCP exposes two operations on the knowledge brain.
+//! Agent interface — MCP exposes read/write operations on the knowledge brain.
 //!
 //! **Read** (minimal tokens out): agents pull only what they need to reason.
 //! **Write** (minimal tokens in): agents push distilled facts, not raw chat dumps.
@@ -6,17 +6,21 @@
 //! The brain itself is SQLite + vectors — not markdown. Markdown folders are
 //! one ingest source among many.
 //!
-//! Planned MCP tools (Phase 3, #7):
+//! MCP tools (Phase 1 #11):
 //!
 //! | Tool | Op | Returns / accepts |
 //! |------|----|-------------------|
-//! | `search` | read | Ranked atom excerpts + scores (not full vault) |
-//! | `cite` | read | Single atom: title, excerpt, `source_uri` |
-//! | `ask` | read | Synthesized answer + citation list |
-//! | `remember` | write | Distilled atom: decision, resolution, tags |
-//!
-//! HTTP daemon mirrors the same contract for non-MCP agents.
+//! | `search` | read | Ranked `AgentAtomView` excerpts |
+//! | `cite` | read | Single citation slice |
+//! | `ask` | read | Thin retrieval answer (full synthesis #7) |
+//! | `remember` | write | Distilled atom: title, summary, tags |
 
+pub mod brain;
+pub mod init;
 pub mod interface;
+pub mod server;
 
+pub use brain::BrainService;
+pub use init::{ensure_default_config, wire_agent, AgentTarget};
 pub use interface::{AgentRead, AgentWrite};
+pub use server::run_stdio;
