@@ -70,10 +70,7 @@ pub fn fuse_rrf_ids(lists: &[(Vec<(String, f64)>, &'static str)], k: f64) -> Vec
 }
 
 /// Fuse ranked atom lists (test helper) via id fusion.
-pub fn fuse_rrf(
-    lists: &[(Vec<(KnowledgeAtom, f64)>, &'static str)],
-    k: f64,
-) -> Vec<SearchResult> {
+pub fn fuse_rrf(lists: &[(Vec<(KnowledgeAtom, f64)>, &'static str)], k: f64) -> Vec<SearchResult> {
     let id_lists: Vec<(Vec<(String, f64)>, &'static str)> = lists
         .iter()
         .map(|(list, method)| {

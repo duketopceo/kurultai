@@ -42,9 +42,7 @@ impl Reranker for NullReranker {
         false
     }
     async fn rerank(&self, _query: &str, _candidates: &[(String, String)]) -> Result<Vec<String>> {
-        Err(KurultaiError::Query(
-            "NullReranker: rerank disabled".into(),
-        ))
+        Err(KurultaiError::Query("NullReranker: rerank disabled".into()))
     }
 }
 
@@ -177,10 +175,8 @@ pub fn apply_rerank_order(
     order: &[String],
 ) -> Vec<crate::types::SearchResult> {
     use std::collections::HashMap;
-    let mut by_id: HashMap<String, crate::types::SearchResult> = results
-        .drain(..)
-        .map(|r| (r.atom.id.clone(), r))
-        .collect();
+    let mut by_id: HashMap<String, crate::types::SearchResult> =
+        results.drain(..).map(|r| (r.atom.id.clone(), r)).collect();
     let mut out = Vec::with_capacity(by_id.len());
     for id in order {
         if let Some(r) = by_id.remove(id) {

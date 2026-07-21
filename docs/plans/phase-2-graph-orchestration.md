@@ -2,7 +2,7 @@
 
 **Tracking:** [#6](https://github.com/duketopceo/kurultai/issues/6) Search & Retrieval · [#7](https://github.com/duketopceo/kurultai/issues/7) Synthesis  
 **Source:** Graph-engineering framing (Codez / industry discourse, 2026) — parked for Kurultai, not a product pivot.  
-**Status:** Design note only. Does not block Phase 2 planning.
+**Status:** Design note — retrieval diamond shipped in #6 implementation (RRF path). Still guides #7 synthesis.
 
 ---
 
@@ -56,5 +56,5 @@ Aligns with existing doctrine ([#37](https://github.com/duketopceo/kurultai/issu
 
 ## When to deepen
 
-- `/ce-plan` for Phase 2 (#6) — cite this note under assumptions / architecture.  
+- Implementation plan: [2026-07-21-001-feat-search-retrieval-rrf-plan.md](2026-07-21-001-feat-search-retrieval-rrf-plan.md) (`/ce-plan` for #6).  
 - Only promote “knowledge graph” storage if multi-hop entity edges become a product requirement (not for fusion alone).

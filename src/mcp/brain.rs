@@ -239,10 +239,7 @@ mod tests {
     #[tokio::test]
     async fn fts_only_marks_matched_by_fts() {
         let brain = brain_with_fixture().await;
-        let hits = brain
-            .search("KNOWN_PHRASE_KURULTAI_42", 5)
-            .await
-            .unwrap();
+        let hits = brain.search("KNOWN_PHRASE_KURULTAI_42", 5).await.unwrap();
         assert!(!hits.is_empty());
         assert!(hits[0].matched_by.iter().any(|m| m == "fts"));
         assert!(!hits[0].matched_by.iter().any(|m| m == "vector"));

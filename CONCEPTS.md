@@ -27,3 +27,11 @@ On incremental index, if an atom’s `content_hash` is unchanged and a vector al
 ## Graph orchestration (diamond)
 
 Cut non-data “and then” waits: fan-out independent nodes with typed I/O, fan-in only at merge barriers. Loops stay inside nodes; SQL is the shared state. See [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md).
+
+## RRF (Reciprocal Rank Fusion)
+
+Hybrid ranking that combines ordered lists without mixing incomparable raw scores. Contribution per list: `1 / (k + rank)` with `k=60` and 1-based ranks; sums merge duplicate ids. Implemented in `src/query/`.
+
+## NullReranker
+
+`Reranker` with `is_live() == false` when `runtime.reranker_model` or API key is missing. Search keeps RRF order; no network call.

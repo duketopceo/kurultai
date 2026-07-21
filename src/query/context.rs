@@ -29,20 +29,14 @@ pub async fn expand_markdown_context(
         parts.push(hit_excerpt(&result.atom));
 
         if idx > 0 {
-            if let Some(prev) = store
-                .get_by_chunk_meta(&source, &rel_path, idx - 1)
-                .await?
-            {
+            if let Some(prev) = store.get_by_chunk_meta(&source, &rel_path, idx - 1).await? {
                 if !top_ids.contains(&prev.id) {
                     parts.push(format!("…prev: {}", neighbor_snippet(&prev)));
                 }
             }
         }
 
-        if let Some(next) = store
-            .get_by_chunk_meta(&source, &rel_path, idx + 1)
-            .await?
-        {
+        if let Some(next) = store.get_by_chunk_meta(&source, &rel_path, idx + 1).await? {
             if !top_ids.contains(&next.id) {
                 parts.push(format!("…next: {}", neighbor_snippet(&next)));
             }
@@ -103,11 +97,7 @@ mod tests {
     #[test]
     fn merge_hit_first_under_cap() {
         let merged = merge_budgeted(
-            &[
-                "HIT".into(),
-                "…prev: PREVIOUS".into(),
-                "…next: NEXT".into(),
-            ],
+            &["HIT".into(), "…prev: PREVIOUS".into(), "…next: NEXT".into()],
             20,
         );
         assert!(merged.starts_with("HIT"));

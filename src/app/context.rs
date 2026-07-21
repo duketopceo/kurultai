@@ -109,7 +109,11 @@ fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>
 }
 
 fn build_reranker(config: &Config) -> Arc<dyn Reranker> {
-    let Some(model) = config.reranker_model.as_ref().filter(|m| !m.trim().is_empty()) else {
+    let Some(model) = config
+        .reranker_model
+        .as_ref()
+        .filter(|m| !m.trim().is_empty())
+    else {
         return Arc::new(NullReranker::new());
     };
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
