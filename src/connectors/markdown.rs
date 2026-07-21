@@ -4,7 +4,6 @@ use crate::security::validate_readable_path;
 use crate::types::{KnowledgeAtom, SourceConfig};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -337,8 +336,8 @@ fn make_atom(
         Some(h) if !h.is_empty() => format!("{rel_path}#{h}"),
         _ => rel_path.to_string(),
     };
-    let hash = sha256_hex(content);
-    let id = sha256_hex(&format!("{source}\0{source_id}\0{hash}"));
+    let hash = crate::hashutil::sha256_hex(content);
+    let id = crate::hashutil::atom_id_from_hash(source, &source_id, &hash);
     let summary: String = content.chars().take(280).collect();
 
     KnowledgeAtom {
@@ -375,19 +374,6 @@ fn parse_tags(raw: Option<&str>) -> Vec<String> {
         .map(|t| t.trim().trim_matches('"').trim_matches('\'').to_string())
         .filter(|t| !t.is_empty())
         .collect()
-}
-
-fn sha256_hex(s: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(s.as_bytes());
-    let bytes = hasher.finalize();
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for &b in &bytes {
-        out.push(HEX[(b >> 4) as usize] as char);
-        out.push(HEX[(b & 0xf) as usize] as char);
-    }
-    out
 }
 
 #[cfg(test)]

@@ -1,10 +1,10 @@
 pub mod migrations;
 
 use crate::error::{KurultaiError, Result};
+use crate::hashutil::sha256_hex;
 use crate::types::KnowledgeAtom;
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -101,7 +101,7 @@ impl SqliteVecStore {
             .map_err(|e| KurultaiError::Store(format!("tags serialize: {e}")))?;
         let metadata_json = serde_json::to_string(&atom.metadata)
             .map_err(|e| KurultaiError::Store(format!("metadata serialize: {e}")))?;
-        let content_hash = content_hash(&atom.content);
+        let content_hash = sha256_hex(&atom.content);
 
         conn.execute(
             r#"
@@ -367,19 +367,7 @@ impl Store for SqliteVecStore {
         source_id: &str,
     ) -> Result<Option<KnowledgeAtom>> {
         let conn = self.lock()?;
-        conn.query_row(
-            r#"
-            SELECT id, source, source_id, title, summary, content,
-                   question, resolution, tags_json,
-                   source_updated_at, indexed_at, metadata_json
-            FROM knowledge_atoms WHERE source = ?1 AND source_id = ?2
-            LIMIT 1
-            "#,
-            params![source, source_id],
-            row_to_atom,
-        )
-        .optional()
-        .map_err(|e| KurultaiError::Store(format!("get_by_source_id: {e}")))
+        load_atom_by_source_id(&conn, source, source_id)
     }
 }
 
@@ -396,22 +384,6 @@ fn register_sqlite_vec() {
         }
         tracing::debug!("sqlite-vec extension registered");
     });
-}
-
-fn content_hash(content: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(content.as_bytes());
-    hex_encode(&hasher.finalize())
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for &b in bytes {
-        out.push(HEX[(b >> 4) as usize] as char);
-        out.push(HEX[(b & 0xf) as usize] as char);
-    }
-    out
 }
 
 fn embedding_norm(v: &[f32]) -> f32 {
@@ -447,6 +419,26 @@ fn load_atom_by_id(conn: &Connection, id: &str) -> Result<Option<KnowledgeAtom>>
     )
     .optional()
     .map_err(|e| KurultaiError::Store(format!("load_atom_by_id: {e}")))
+}
+
+fn load_atom_by_source_id(
+    conn: &Connection,
+    source: &str,
+    source_id: &str,
+) -> Result<Option<KnowledgeAtom>> {
+    conn.query_row(
+        r#"
+        SELECT id, source, source_id, title, summary, content,
+               question, resolution, tags_json,
+               source_updated_at, indexed_at, metadata_json
+        FROM knowledge_atoms WHERE source = ?1 AND source_id = ?2
+        LIMIT 1
+        "#,
+        params![source, source_id],
+        row_to_atom,
+    )
+    .optional()
+    .map_err(|e| KurultaiError::Store(format!("load_atom_by_source_id: {e}")))
 }
 
 fn load_atom_by_rowid(conn: &Connection, rowid: i64) -> Result<Option<KnowledgeAtom>> {

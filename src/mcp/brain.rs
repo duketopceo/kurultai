@@ -3,11 +3,11 @@
 use crate::brain::{AgentAtomView, DEFAULT_EXCERPT_CAP};
 use crate::embed::Embedder;
 use crate::error::{KurultaiError, Result};
+use crate::hashutil::atom_id;
 use crate::mcp::interface::{AgentRead, AgentWrite};
 use crate::store::Store;
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
 use chrono::Utc;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -32,13 +32,44 @@ impl BrainService {
     }
 }
 
+fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Citation {
+    let view = AgentAtomView::from_atom(atom, score, DEFAULT_EXCERPT_CAP);
+    Citation {
+        source: view.source,
+        source_id: view.source_id,
+        title: view.title,
+        url: if include_url {
+            atom.metadata.get("source_uri").cloned()
+        } else {
+            None
+        },
+        excerpt: view.excerpt,
+    }
+}
+
 #[async_trait::async_trait]
 impl AgentRead for BrainService {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let limit = limit.clamp(1, 50);
         let mut by_id: HashMap<String, SearchResult> = HashMap::new();
 
-        let fts = self.store.fts_search(query, limit).await?;
+        // FTS is local; embedding may hit the network — overlap them when live.
+        let fts_fut = self.store.fts_search(query, limit);
+        let embed_fut = async {
+            if !self.embedder.is_live() {
+                return None;
+            }
+            match self.embedder.embed(query).await {
+                Ok(emb) => Some(emb),
+                Err(err) => {
+                    tracing::warn!(error = %err, "semantic search skipped; using FTS only");
+                    None
+                }
+            }
+        };
+        let (fts_res, emb_opt) = tokio::join!(fts_fut, embed_fut);
+        let fts = fts_res?;
+
         for (rank, (atom, score)) in fts.into_iter().enumerate() {
             by_id.insert(
                 atom.id.clone(),
@@ -51,25 +82,23 @@ impl AgentRead for BrainService {
             );
         }
 
-        if self.embedder.is_live() {
-            if let Ok(emb) = self.embedder.embed(query).await {
-                let vec_hits = self.store.vector_search(&emb, limit).await?;
-                for (rank, (atom, score)) in vec_hits.into_iter().enumerate() {
-                    by_id
-                        .entry(atom.id.clone())
-                        .and_modify(|existing| {
-                            existing.score = existing.score.max(score);
-                            if !existing.matched_by.iter().any(|m| m == "vector") {
-                                existing.matched_by.push("vector".into());
-                            }
-                        })
-                        .or_insert(SearchResult {
-                            atom,
-                            score,
-                            rank,
-                            matched_by: vec!["vector".into()],
-                        });
-                }
+        if let Some(emb) = emb_opt {
+            let vec_hits = self.store.vector_search(&emb, limit).await?;
+            for (rank, (atom, score)) in vec_hits.into_iter().enumerate() {
+                by_id
+                    .entry(atom.id.clone())
+                    .and_modify(|existing| {
+                        existing.score = existing.score.max(score);
+                        if !existing.matched_by.iter().any(|m| m == "vector") {
+                            existing.matched_by.push("vector".into());
+                        }
+                    })
+                    .or_insert(SearchResult {
+                        atom,
+                        score,
+                        rank,
+                        matched_by: vec!["vector".into()],
+                    });
             }
         }
 
@@ -90,14 +119,7 @@ impl AgentRead for BrainService {
         let Some(atom) = self.store.get_by_source_id(source, source_id).await? else {
             return Ok(None);
         };
-        let view = AgentAtomView::from_atom(&atom, 1.0, DEFAULT_EXCERPT_CAP);
-        Ok(Some(Citation {
-            source: view.source,
-            source_id: view.source_id,
-            title: view.title,
-            url: atom.metadata.get("source_uri").cloned(),
-            excerpt: view.excerpt,
-        }))
+        Ok(Some(citation_from_atom(&atom, 1.0, true)))
     }
 
     async fn ask(&self, question: &str) -> Result<Answer> {
@@ -105,16 +127,7 @@ impl AgentRead for BrainService {
         let hits = self.search(question, 5).await?;
         let citations: Vec<Citation> = hits
             .iter()
-            .map(|r| {
-                let view = AgentAtomView::from_atom(&r.atom, r.score, DEFAULT_EXCERPT_CAP);
-                Citation {
-                    source: view.source,
-                    source_id: view.source_id,
-                    title: view.title,
-                    url: None,
-                    excerpt: view.excerpt,
-                }
-            })
+            .map(|r| citation_from_atom(&r.atom, r.score, false))
             .collect();
         let sources_used: Vec<String> = citations.iter().map(|c| c.source.clone()).collect();
         let answer = if citations.is_empty() {
@@ -158,6 +171,10 @@ impl AgentWrite for BrainService {
             ));
         }
 
+        // Clamp write payload — agents must distill, not dump chat.
+        let title: String = title.chars().take(200).collect();
+        let summary: String = summary.chars().take(4_000).collect();
+
         let mut meta = HashMap::new();
         for (k, v) in metadata {
             meta.insert((*k).to_string(), (*v).to_string());
@@ -165,15 +182,14 @@ impl AgentWrite for BrainService {
 
         let source = "agent";
         let source_id = format!("remember/{}", Utc::now().timestamp_millis());
-        let content = summary.to_string();
-        let hash = sha256_hex(&content);
-        let id = sha256_hex(&format!("{source}\0{source_id}\0{hash}"));
+        let content = summary.clone();
+        let id = atom_id(source, &source_id, &content);
 
         let mut atom = KnowledgeAtom {
             id: id.clone(),
             source: source.into(),
             source_id,
-            title: title.to_string(),
+            title,
             summary: summary.chars().take(280).collect(),
             content,
             question: None,
@@ -195,19 +211,6 @@ impl AgentWrite for BrainService {
         self.store.upsert(&atom).await?;
         Ok(id)
     }
-}
-
-fn sha256_hex(s: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(s.as_bytes());
-    let bytes = hasher.finalize();
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for &b in &bytes {
-        out.push(HEX[(b >> 4) as usize] as char);
-        out.push(HEX[(b & 0xf) as usize] as char);
-    }
-    out
 }
 
 #[cfg(test)]
@@ -280,10 +283,9 @@ mod tests {
             .await
             .unwrap();
         assert!(!id.is_empty());
-        let cite = brain.cite("agent", "remember/0").await.unwrap();
-        // source_id includes timestamp — search instead
         let hits = brain.search("FTS-first boot", 5).await.unwrap();
-        assert!(hits.iter().any(|h| h.atom.source == "agent"));
-        let _ = cite;
+        assert!(hits
+            .iter()
+            .any(|h| h.atom.source == "agent" && h.atom.id == id));
     }
 }

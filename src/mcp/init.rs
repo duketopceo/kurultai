@@ -1,24 +1,35 @@
 //! Wire Kurultai into agent MCP configs (`kurultai init --agent cursor`).
 
+use crate::config::default_config_toml;
 use crate::error::{KurultaiError, Result};
 use serde_json::{json, Value};
 use std::fs;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::process::Command;
+use std::str::FromStr;
 
 /// Supported agent targets for MCP auto-wiring.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentTarget {
     Cursor,
 }
 
 impl AgentTarget {
     pub fn parse(s: &str) -> Result<Self> {
+        s.parse().map_err(|e: String| KurultaiError::config(e))
+    }
+}
+
+impl FromStr for AgentTarget {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
             "cursor" => Ok(Self::Cursor),
-            other => Err(KurultaiError::config(format!(
+            other => Err(format!(
                 "unsupported agent '{other}' — Phase 1 supports: cursor"
-            ))),
+            )),
         }
     }
 }
@@ -44,11 +55,10 @@ fn wire_cursor() -> Result<PathBuf> {
         "args": ["mcp"],
     });
 
-    let mut root: Value = if path.exists() {
-        let raw = fs::read_to_string(&path)?;
-        serde_json::from_str(&raw).unwrap_or_else(|_| json!({ "mcpServers": {} }))
-    } else {
-        json!({ "mcpServers": {} })
+    let mut root: Value = match fs::read_to_string(&path) {
+        Ok(raw) => serde_json::from_str(&raw).unwrap_or_else(|_| json!({ "mcpServers": {} })),
+        Err(e) if e.kind() == ErrorKind::NotFound => json!({ "mcpServers": {} }),
+        Err(e) => return Err(e.into()),
     };
 
     if root.get("mcpServers").is_none() {
@@ -79,22 +89,21 @@ fn resolve_kurultai_bin() -> Result<String> {
     Ok("kurultai".into())
 }
 
-/// Ensure a default config.toml exists matching the Rust `Config` shape.
+/// Ensure a default config.toml exists matching the Rust `FileConfig` shape.
 pub fn ensure_default_config() -> Result<PathBuf> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
     let path = crate::config::config_path()?;
-    if path.exists() {
-        return Ok(path);
-    }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let minimal = r#"environment = "dev"
-storage_path = "~/.local/share/kurultai/dev/store.db"
-embed_model = "openai/text-embedding-3-large"
-embed_dim = 3072
-poll_interval_secs = 300
-sources = []
-"#;
-    fs::write(&path, minimal)?;
-    Ok(path)
+    match OpenOptions::new().write(true).create_new(true).open(&path) {
+        Ok(mut file) => {
+            file.write_all(default_config_toml().as_bytes())?;
+            Ok(path)
+        }
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => Ok(path),
+        Err(e) => Err(e.into()),
+    }
 }

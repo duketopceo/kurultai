@@ -8,11 +8,19 @@ use crate::mcp::brain::BrainService;
 use crate::mcp::interface::{AgentRead, AgentWrite};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::sync::OnceLock;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
 const SERVER_NAME: &str = "kurultai";
 const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Reject pathological single-line payloads (agents should not dump megabytes).
+const MAX_STDIN_LINE: usize = 1_048_576;
+
+const TOOL_SEARCH: &str = "search";
+const TOOL_CITE: &str = "cite";
+const TOOL_REMEMBER: &str = "remember";
+const TOOL_ASK: &str = "ask";
 
 /// Run the MCP server until stdin closes.
 pub async fn run_stdio(brain: BrainService) -> Result<()> {
@@ -29,6 +37,10 @@ pub async fn run_stdio(brain: BrainService) -> Result<()> {
             .map_err(|e| KurultaiError::Other(anyhow::anyhow!("mcp stdin: {e}")))?;
         if n == 0 {
             break;
+        }
+        if line.len() > MAX_STDIN_LINE {
+            tracing::warn!(len = line.len(), "mcp stdin line exceeds cap; dropping");
+            continue;
         }
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -52,6 +64,7 @@ pub async fn run_stdio(brain: BrainService) -> Result<()> {
             continue;
         }
 
+        let mut error_code = -32000;
         let result = match method {
             "initialize" => Ok(json!({
                 "protocolVersion": PROTOCOL_VERSION,
@@ -67,9 +80,12 @@ pub async fn run_stdio(brain: BrainService) -> Result<()> {
                 let params = msg.get("params").cloned().unwrap_or(json!({}));
                 call_tool(&brain, params).await
             }
-            _ => Err(KurultaiError::Other(anyhow::anyhow!(
-                "method not found: {method}"
-            ))),
+            _ => {
+                error_code = -32601;
+                Err(KurultaiError::Other(anyhow::anyhow!(
+                    "method not found: {method}"
+                )))
+            }
         };
 
         let response = match result {
@@ -82,7 +98,7 @@ pub async fn run_stdio(brain: BrainService) -> Result<()> {
                 "jsonrpc": "2.0",
                 "id": id,
                 "error": {
-                    "code": -32000,
+                    "code": error_code,
                     "message": e.to_string(),
                 }
             }),
@@ -107,61 +123,65 @@ pub async fn run_stdio(brain: BrainService) -> Result<()> {
     Ok(())
 }
 
-fn tool_defs() -> Vec<Value> {
-    vec![
-        json!({
-            "name": "search",
-            "description": "Search the Kurultai knowledge brain. Returns token-capped excerpts, not full documents.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "query": { "type": "string" },
-                    "limit": { "type": "integer", "default": 10 }
-                },
-                "required": ["query"]
-            }
-        }),
-        json!({
-            "name": "cite",
-            "description": "Fetch one citation-sized excerpt by source + source_id.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "source": { "type": "string" },
-                    "source_id": { "type": "string" }
-                },
-                "required": ["source", "source_id"]
-            }
-        }),
-        json!({
-            "name": "remember",
-            "description": "Store a distilled fact (title + summary + tags). Do not dump raw chat.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "title": { "type": "string" },
-                    "summary": { "type": "string" },
-                    "tags": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "default": []
-                    }
-                },
-                "required": ["title", "summary"]
-            }
-        }),
-        json!({
-            "name": "ask",
-            "description": "Thin retrieval answer with citations (full synthesis is Phase 3).",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "question": { "type": "string" }
-                },
-                "required": ["question"]
-            }
-        }),
-    ]
+fn tool_defs() -> &'static [Value] {
+    static DEFS: OnceLock<Vec<Value>> = OnceLock::new();
+    DEFS.get_or_init(|| {
+        vec![
+            json!({
+                "name": TOOL_SEARCH,
+                "description": "Search the Kurultai knowledge brain. Returns token-capped excerpts, not full documents.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "limit": { "type": "integer", "default": 10 }
+                    },
+                    "required": ["query"]
+                }
+            }),
+            json!({
+                "name": TOOL_CITE,
+                "description": "Fetch one citation-sized excerpt by source + source_id.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "source": { "type": "string" },
+                        "source_id": { "type": "string" }
+                    },
+                    "required": ["source", "source_id"]
+                }
+            }),
+            json!({
+                "name": TOOL_REMEMBER,
+                "description": "Store a distilled fact (title + summary + tags). Do not dump raw chat.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string" },
+                        "summary": { "type": "string" },
+                        "tags": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "default": []
+                        }
+                    },
+                    "required": ["title", "summary"]
+                }
+            }),
+            json!({
+                "name": TOOL_ASK,
+                "description": "Thin retrieval answer with citations (full synthesis is Phase 3).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "question": { "type": "string" }
+                    },
+                    "required": ["question"]
+                }
+            }),
+        ]
+    })
+    .as_slice()
 }
 
 #[derive(Debug, Deserialize)]
@@ -171,75 +191,70 @@ struct ToolCallParams {
     arguments: Value,
 }
 
+#[derive(Debug, Deserialize)]
+struct SearchArgs {
+    query: String,
+    #[serde(default = "default_limit")]
+    limit: usize,
+}
+
+fn default_limit() -> usize {
+    10
+}
+
+#[derive(Debug, Deserialize)]
+struct CiteArgs {
+    source: String,
+    source_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RememberArgs {
+    title: String,
+    summary: String,
+    #[serde(default)]
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AskArgs {
+    question: String,
+}
+
 async fn call_tool(brain: &BrainService, params: Value) -> Result<Value> {
     let call: ToolCallParams = serde_json::from_value(params)
         .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad tools/call params: {e}")))?;
 
     let text = match call.name.as_str() {
-        "search" => {
-            let query = call
-                .arguments
-                .get("query")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let limit = call
-                .arguments
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(10) as usize;
-            let views = brain.search_views(query, limit).await?;
-            serde_json::to_string_pretty(&views)
+        TOOL_SEARCH => {
+            let args: SearchArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad search args: {e}")))?;
+            let views = brain.search_views(&args.query, args.limit).await?;
+            serde_json::to_string(&views)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
         }
-        "cite" => {
-            let source = call
-                .arguments
-                .get("source")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let source_id = call
-                .arguments
-                .get("source_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            match brain.cite(source, source_id).await? {
-                Some(c) => serde_json::to_string_pretty(&c)
+        TOOL_CITE => {
+            let args: CiteArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad cite args: {e}")))?;
+            match brain.cite(&args.source, &args.source_id).await? {
+                Some(c) => serde_json::to_string(&c)
                     .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?,
-                None => format!("No atom for {source}/{source_id}"),
+                None => format!("No atom for {}/{}", args.source, args.source_id),
             }
         }
-        "remember" => {
-            let title = call
-                .arguments
-                .get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let summary = call
-                .arguments
-                .get("summary")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let tags: Vec<String> = call
-                .arguments
-                .get("tags")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|t| t.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let id = brain.remember(title, summary, &tags, &[]).await?;
+        TOOL_REMEMBER => {
+            let args: RememberArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad remember args: {e}")))?;
+            let id = brain
+                .remember(&args.title, &args.summary, &args.tags, &[])
+                .await?;
             format!("remembered atom id={id}")
         }
-        "ask" => {
-            let question = call
-                .arguments
-                .get("question")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let answer = brain.ask(question).await?;
-            serde_json::to_string_pretty(&answer)
+        TOOL_ASK => {
+            let args: AskArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad ask args: {e}")))?;
+            let answer = brain.ask(&args.question).await?;
+            serde_json::to_string(&answer)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
         }
         other => {
