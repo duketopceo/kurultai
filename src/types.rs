@@ -75,7 +75,7 @@ pub struct SourceConfig {
     pub extra: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SourceKind {
     AppFlowy,
     /// Local `.md` directory (Obsidian vault, git wiki, any markdown tree).

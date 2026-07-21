@@ -4,6 +4,22 @@ mod loader;
 pub use file::FileConfig;
 pub use loader::{config_path, load_config, load_config_from, load_config_with_env};
 
+/// Canonical on-disk default matching [`FileConfig`] section shape.
+pub fn default_config_toml() -> &'static str {
+    r#"environment = "dev"
+
+[storage]
+path = "~/.local/share/kurultai/dev/store.db"
+
+[embed]
+model = "openai/text-embedding-3-large"
+dimension = 3072
+
+[runtime]
+poll_interval_secs = 300
+"#
+}
+
 use crate::error::{KurultaiError, Result};
 use crate::types::{Config, SourceKind};
 use std::path::{Path, PathBuf};

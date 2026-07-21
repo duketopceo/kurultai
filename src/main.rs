@@ -3,7 +3,9 @@ use kurultai::app::App;
 use kurultai::environment::Environment;
 use kurultai::error::Result;
 use kurultai::logging;
+use kurultai::mcp::{ensure_default_config, wire_agent, AgentRead, AgentTarget, BrainService};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(
@@ -30,6 +32,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Write default config and wire MCP into an agent
+    Init {
+        /// Agent to wire: cursor
+        #[arg(long, default_value = "cursor")]
+        agent: AgentTarget,
+    },
     /// Index all configured sources
     Index {
         /// Full re-index instead of incremental
@@ -51,6 +59,8 @@ enum Commands {
     },
     /// List configured sources and status
     Status,
+    /// Run MCP server on stdio (for Cursor / Claude)
+    Mcp,
     /// Start the daemon (polls sources, serves queries)
     Daemon {
         /// Port for the HTTP server
@@ -65,14 +75,23 @@ async fn main() -> Result<()> {
     let env = Environment::resolve(cli.env.as_deref())?;
     logging::init_logging(cli.log.as_deref(), env)?;
 
-    let app = if let Some(ref path) = cli.config {
-        App::bootstrap_from(path, cli.env.as_deref()).await?
-    } else {
-        App::bootstrap(cli.env.as_deref()).await?
-    };
-
     match cli.command {
+        Commands::Init { agent } => {
+            let config_path = ensure_default_config()?;
+            let mcp_path = wire_agent(agent)?;
+            println!("Config: {}", config_path.display());
+            println!("MCP wired: {}", mcp_path.display());
+            println!("Restart Cursor to load the kurultai MCP server.");
+        }
+        Commands::Mcp => {
+            let app = bootstrap_app(&cli).await?;
+            let brain = BrainService::new(Arc::clone(&app.store), Arc::clone(&app.embedder));
+            // MCP must not spam logs to stdout — stderr only via tracing.
+            tracing::info!("mcp stdio server starting");
+            kurultai::mcp::run_stdio(brain).await?;
+        }
         Commands::Index { full } => {
+            let app = bootstrap_app(&cli).await?;
             tracing::info!(full, "starting index");
             let stats = app.pipeline.index_all(&app.connectors, full).await?;
             for s in &stats {
@@ -87,27 +106,35 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Commands::Ask { question } => {
+        Commands::Ask { ref question } => {
+            let app = bootstrap_app(&cli).await?;
             tracing::info!(question = %question, "ask requested");
-            println!("Q: {}", question);
-            println!("A: Not implemented yet. See issue #7.");
+            let brain = BrainService::new(Arc::clone(&app.store), Arc::clone(&app.embedder));
+            let answer = brain.ask(question).await?;
+            println!("Q: {}", answer.question);
+            println!("A: {}", answer.answer);
+            for c in &answer.citations {
+                println!("  cite: {} / {} — {}", c.source, c.source_id, c.title);
+            }
         }
-        Commands::Search { query, limit } => {
+        Commands::Search { ref query, limit } => {
+            let app = bootstrap_app(&cli).await?;
             tracing::info!(query = %query, limit, "search requested");
-            let results = app
-                .store
-                .fts_search(&query, limit)
-                .await
-                .map_err(|e| kurultai::KurultaiError::Store(e.to_string()))?;
-            if results.is_empty() {
+            let brain = BrainService::new(Arc::clone(&app.store), Arc::clone(&app.embedder));
+            let views = brain.search_views(query, limit).await?;
+            if views.is_empty() {
                 println!("No results.");
             } else {
-                for (atom, score) in results {
-                    println!("  [{:.3}] {} — {}", score, atom.source, atom.title);
+                for v in views {
+                    println!(
+                        "  [{:.3}] {} — {}\n    {}",
+                        v.score, v.source, v.title, v.excerpt
+                    );
                 }
             }
         }
         Commands::Status => {
+            let app = bootstrap_app(&cli).await?;
             let atom_count = app.atom_count().await?;
             println!("Kurultai status");
             println!("  Environment: {}", app.environment);
@@ -145,9 +172,10 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Daemon { port } => {
+            let app = bootstrap_app(&cli).await?;
             tracing::info!(port, "daemon starting (stub)");
             println!(
-                "Daemon on port {} — HTTP/MCP not implemented yet. See issues #7, #11.",
+                "Daemon on port {} — HTTP not implemented yet. Use `kurultai mcp` for agents (#11).",
                 port
             );
             loop {
@@ -161,4 +189,12 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+async fn bootstrap_app(cli: &Cli) -> Result<App> {
+    if let Some(ref path) = cli.config {
+        App::bootstrap_from(path, cli.env.as_deref()).await
+    } else {
+        App::bootstrap(cli.env.as_deref()).await
+    }
 }

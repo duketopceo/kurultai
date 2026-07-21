@@ -14,8 +14,10 @@ pub fn init_logging(verbosity: Option<&str>, env: Environment) -> Result<()> {
     let env_filter = EnvFilter::try_new(&filter)
         .map_err(|e| KurultaiError::config(format!("invalid log filter '{filter}': {e}")))?;
 
+    // Always log to stderr — stdout is reserved for CLI results and MCP JSON-RPC.
     fmt()
         .with_env_filter(env_filter)
+        .with_writer(std::io::stderr)
         .with_target(true)
         .with_thread_ids(false)
         .with_file(true)
