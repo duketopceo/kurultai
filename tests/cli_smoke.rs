@@ -6,7 +6,11 @@ use std::fs;
 use std::path::PathBuf;
 
 fn bin() -> Command {
-    Command::cargo_bin("kurultai").expect("kurultai binary")
+    let mut cmd = Command::cargo_bin("kurultai").expect("kurultai binary");
+    // Force FTS-only — ambient API keys must not hit OpenRouter or trip dim mismatch.
+    cmd.env_remove("OPENROUTER_API_KEY");
+    cmd.env_remove("KURULTAI_API_KEY");
+    cmd
 }
 
 fn fixture_config(tmp: &tempfile::TempDir) -> PathBuf {
