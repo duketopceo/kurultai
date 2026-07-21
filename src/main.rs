@@ -113,11 +113,15 @@ async fn main() -> Result<()> {
             println!("  Environment: {}", app.environment);
             println!("  Storage: {}", app.config.storage_path);
             println!("  Schema:  v{}", app.schema_version());
-            println!(
-                "  Embedder: {} ({}-dim)",
-                app.embedder.name(),
-                app.embedder.dim()
-            );
+            if app.embedder.is_live() {
+                println!(
+                    "  Embedder: {} ({}-dim)",
+                    app.embedder.name(),
+                    app.embedder.dim()
+                );
+            } else {
+                println!("  Embedder: none (FTS-only — set OPENROUTER_API_KEY for vectors)");
+            }
             println!("  Atoms:   {}", atom_count);
 
             if app.connectors.is_empty() {

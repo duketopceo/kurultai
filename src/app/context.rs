@@ -1,6 +1,6 @@
 use crate::config::{ensure_storage_parent, expand_path, load_config_with_env};
 use crate::connectors::ConnectorRegistry;
-use crate::embed::{Embedder, OpenRouterEmbedder};
+use crate::embed::{Embedder, NullEmbedder, OpenRouterEmbedder};
 use crate::environment::Environment;
 use crate::error::{KurultaiError, Result};
 use crate::pipeline::IndexPipeline;
@@ -84,20 +84,21 @@ fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
         .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));
 
-    if api_key.is_none() {
-        tracing::warn!(
-            env = %env,
-            "no OPENROUTER_API_KEY or KURULTAI_API_KEY set — embedder will return zero vectors until a key is set"
-        );
+    match api_key {
+        Some(key) => {
+            let embedder: Arc<dyn Embedder> = Arc::new(OpenRouterEmbedder::new(
+                key.expose().to_string(),
+                config.embed_model.clone(),
+                config.embed_dim,
+            ));
+            Ok(embedder)
+        }
+        None => {
+            tracing::warn!(
+                env = %env,
+                "no OPENROUTER_API_KEY or KURULTAI_API_KEY — FTS-only mode (NullEmbedder)"
+            );
+            Ok(Arc::new(NullEmbedder::new(config.embed_dim)))
+        }
     }
-
-    let key = api_key.map(|k| k.expose().to_string()).unwrap_or_default();
-
-    let embedder: Arc<dyn Embedder> = Arc::new(OpenRouterEmbedder::new(
-        key,
-        config.embed_model.clone(),
-        config.embed_dim,
-    ));
-
-    Ok(embedder)
 }
