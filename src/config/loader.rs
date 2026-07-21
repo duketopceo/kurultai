@@ -151,3 +151,70 @@ fn parse_source_kind(kind: &str) -> SourceKind {
         other => SourceKind::Custom(other.to_string()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::default_config_toml;
+    use std::io::Write;
+
+    #[test]
+    fn loads_default_config_toml_shape() {
+        let dir = tempfile_dir("cfg-valid");
+        let path = dir.join("config.toml");
+        std::fs::write(&path, default_config_toml()).unwrap();
+        let cfg = load_config_from(&path).unwrap();
+        assert_eq!(cfg.embed_dim, 3072);
+        assert!(cfg.sources.is_empty());
+        assert!(cfg.storage_path.contains("kurultai"));
+    }
+
+    #[test]
+    fn loads_markdown_source_map() {
+        let dir = tempfile_dir("cfg-src");
+        let path = dir.join("config.toml");
+        let toml = r#"
+environment = "dev"
+[storage]
+path = "/tmp/kurultai-loader-test.db"
+[embed]
+model = "openai/text-embedding-3-large"
+dimension = 4
+[sources.notes]
+kind = "markdown"
+enabled = true
+root_path = "/tmp/notes"
+"#;
+        std::fs::write(&path, toml).unwrap();
+        let cfg = load_config_from(&path).unwrap();
+        assert_eq!(cfg.sources.len(), 1);
+        assert_eq!(cfg.sources[0].name, "notes");
+        assert_eq!(cfg.sources[0].kind, SourceKind::Markdown);
+        assert_eq!(
+            cfg.sources[0].extra.get("root_path").map(String::as_str),
+            Some("/tmp/notes")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_toml() {
+        let dir = tempfile_dir("cfg-bad");
+        let path = dir.join("config.toml");
+        let mut f = std::fs::File::create(&path).unwrap();
+        writeln!(f, "[[[not valid").unwrap();
+        assert!(load_config_from(&path).is_err());
+    }
+
+    fn tempfile_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "kurultai-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+}

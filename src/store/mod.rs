@@ -44,6 +44,9 @@ pub trait Store: Send + Sync {
         source: &str,
         source_id: &str,
     ) -> Result<Option<KnowledgeAtom>>;
+
+    /// True when atom `id` already has `content_hash` and a stored vector (hash-skip re-embed).
+    async fn has_fresh_embedding(&self, id: &str, content_hash: &str) -> Result<bool>;
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -102,6 +105,15 @@ impl SqliteVecStore {
         let metadata_json = serde_json::to_string(&atom.metadata)
             .map_err(|e| KurultaiError::Store(format!("metadata serialize: {e}")))?;
         let content_hash = sha256_hex(&atom.content);
+        let prior_hash: Option<String> = conn
+            .query_row(
+                "SELECT content_hash FROM knowledge_atoms WHERE id = ?1",
+                [&atom.id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("prior hash lookup: {e}")))?;
+        let hash_unchanged = prior_hash.as_deref() == Some(content_hash.as_str());
 
         conn.execute(
             r#"
@@ -159,27 +171,34 @@ impl SqliteVecStore {
         )
         .map_err(|e| KurultaiError::Store(format!("fts insert failed: {e}")))?;
 
-        // Vector: only write non-zero embeddings of the expected dimension.
-        conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
-            .map_err(|e| KurultaiError::Store(format!("vec delete failed: {e}")))?;
-
-        if let Some(ref emb) = atom.embedding {
-            if emb.len() != embed_dim {
-                return Err(KurultaiError::Store(format!(
-                    "embedding dim {} != store embed_dim {embed_dim} for atom {}",
-                    emb.len(),
-                    atom.id
-                )));
+        // Vector: write when a new embedding is provided; preserve existing when
+        // content_hash is unchanged and caller skipped re-embed (hash-skip).
+        match &atom.embedding {
+            Some(emb) => {
+                conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
+                    .map_err(|e| KurultaiError::Store(format!("vec delete failed: {e}")))?;
+                if emb.len() != embed_dim {
+                    return Err(KurultaiError::Store(format!(
+                        "embedding dim {} != store embed_dim {embed_dim} for atom {}",
+                        emb.len(),
+                        atom.id
+                    )));
+                }
+                if embedding_norm(emb) >= MIN_EMBEDDING_NORM {
+                    conn.execute(
+                        "INSERT INTO atoms_vec(rowid, embedding) VALUES (?1, ?2)",
+                        params![rowid, emb.as_bytes()],
+                    )
+                    .map_err(|e| KurultaiError::Store(format!("vec insert failed: {e}")))?;
+                } else {
+                    tracing::debug!(id = %atom.id, "skipping near-zero embedding for vec index");
+                }
             }
-            if embedding_norm(emb) >= MIN_EMBEDDING_NORM {
-                conn.execute(
-                    "INSERT INTO atoms_vec(rowid, embedding) VALUES (?1, ?2)",
-                    params![rowid, emb.as_bytes()],
-                )
-                .map_err(|e| KurultaiError::Store(format!("vec insert failed: {e}")))?;
-            } else {
-                tracing::debug!(id = %atom.id, "skipping near-zero embedding for vec index");
+            None if !hash_unchanged => {
+                conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
+                    .map_err(|e| KurultaiError::Store(format!("vec delete failed: {e}")))?;
             }
+            None => {}
         }
 
         Ok(())
@@ -368,6 +387,25 @@ impl Store for SqliteVecStore {
     ) -> Result<Option<KnowledgeAtom>> {
         let conn = self.lock()?;
         load_atom_by_source_id(&conn, source, source_id)
+    }
+
+    async fn has_fresh_embedding(&self, id: &str, content_hash: &str) -> Result<bool> {
+        let conn = self.lock()?;
+        let found: Option<i64> = conn
+            .query_row(
+                r#"
+                SELECT 1
+                FROM knowledge_atoms a
+                JOIN atoms_vec v ON v.rowid = a.rowid
+                WHERE a.id = ?1 AND a.content_hash = ?2
+                LIMIT 1
+                "#,
+                params![id, content_hash],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("has_fresh_embedding: {e}")))?;
+        Ok(found.is_some())
     }
 }
 
@@ -603,6 +641,30 @@ mod tests {
             .unwrap();
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].0.id, "near");
+    }
+
+    #[tokio::test]
+    async fn hash_skip_preserves_vector_when_embedding_omitted() {
+        let store = temp_store(4);
+        let atom = sample_atom(
+            "keep",
+            "Keep",
+            "stable content",
+            Some(vec![0.5, 0.5, 0.5, 0.5]),
+        );
+        store.upsert(&atom).await.unwrap();
+        let hash = sha256_hex(&atom.content);
+        assert!(store.has_fresh_embedding("keep", &hash).await.unwrap());
+
+        // Re-upsert same content without embedding — vec must remain searchable.
+        let mut again = atom.clone();
+        again.embedding = None;
+        again.title = "Keep (retitled)".into();
+        store.upsert(&again).await.unwrap();
+        assert!(store.has_fresh_embedding("keep", &hash).await.unwrap());
+        let hits = store.vector_search(&[0.5, 0.5, 0.5, 0.5], 1).await.unwrap();
+        assert_eq!(hits[0].0.id, "keep");
+        assert_eq!(hits[0].0.title, "Keep (retitled)");
     }
 
     #[tokio::test]

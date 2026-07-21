@@ -55,53 +55,8 @@ pub async fn run_stdio(brain: BrainService) -> Result<()> {
             }
         };
 
-        // Notifications have no id — ignore after handling initialized.
-        let id = msg.get("id").cloned();
-        let method = msg.get("method").and_then(|m| m.as_str()).unwrap_or("");
-
-        if id.is_none() {
-            tracing::debug!(method, "mcp notification");
+        let Some(response) = handle_message(&brain, msg).await? else {
             continue;
-        }
-
-        let mut error_code = -32000;
-        let result = match method {
-            "initialize" => Ok(json!({
-                "protocolVersion": PROTOCOL_VERSION,
-                "capabilities": { "tools": {} },
-                "serverInfo": {
-                    "name": SERVER_NAME,
-                    "version": SERVER_VERSION,
-                }
-            })),
-            "ping" => Ok(json!({})),
-            "tools/list" => Ok(json!({ "tools": tool_defs() })),
-            "tools/call" => {
-                let params = msg.get("params").cloned().unwrap_or(json!({}));
-                call_tool(&brain, params).await
-            }
-            _ => {
-                error_code = -32601;
-                Err(KurultaiError::Other(anyhow::anyhow!(
-                    "method not found: {method}"
-                )))
-            }
-        };
-
-        let response = match result {
-            Ok(value) => json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "result": value,
-            }),
-            Err(e) => json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "error": {
-                    "code": error_code,
-                    "message": e.to_string(),
-                }
-            }),
         };
 
         let out = serde_json::to_string(&response)
@@ -121,6 +76,57 @@ pub async fn run_stdio(brain: BrainService) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Handle one JSON-RPC message. Returns `None` for notifications (no response).
+pub async fn handle_message(brain: &BrainService, msg: Value) -> Result<Option<Value>> {
+    let id = msg.get("id").cloned();
+    let method = msg.get("method").and_then(|m| m.as_str()).unwrap_or("");
+
+    if id.is_none() {
+        tracing::debug!(method, "mcp notification");
+        return Ok(None);
+    }
+
+    let mut error_code = -32000;
+    let result = match method {
+        "initialize" => Ok(json!({
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": { "tools": {} },
+            "serverInfo": {
+                "name": SERVER_NAME,
+                "version": SERVER_VERSION,
+            }
+        })),
+        "ping" => Ok(json!({})),
+        "tools/list" => Ok(json!({ "tools": tool_defs() })),
+        "tools/call" => {
+            let params = msg.get("params").cloned().unwrap_or(json!({}));
+            call_tool(brain, params).await
+        }
+        _ => {
+            error_code = -32601;
+            Err(KurultaiError::Other(anyhow::anyhow!(
+                "method not found: {method}"
+            )))
+        }
+    };
+
+    Ok(Some(match result {
+        Ok(value) => json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": value,
+        }),
+        Err(e) => json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": {
+                "code": error_code,
+                "message": e.to_string(),
+            }
+        }),
+    }))
 }
 
 fn tool_defs() -> &'static [Value] {
@@ -268,4 +274,106 @@ async fn call_tool(brain: &BrainService, params: Value) -> Result<Value> {
         "content": [{ "type": "text", "text": text }],
         "isError": false
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::connectors::markdown::MarkdownConnector;
+    use crate::connectors::Connector;
+    use crate::embed::{Embedder, NullEmbedder};
+    use crate::pipeline::IndexPipeline;
+    use crate::store::{SqliteVecStore, Store};
+    use crate::types::{SourceConfig, SourceKind};
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    async fn brain_with_fixture() -> BrainService {
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
+        let db_dir = std::env::temp_dir().join(format!(
+            "kurultai-mcp-rpc-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let store = Arc::new(SqliteVecStore::open(db_dir.join("store.db"), 4).unwrap());
+        let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+        let pipeline =
+            IndexPipeline::new(Arc::clone(&store) as Arc<dyn Store>, Arc::clone(&embedder));
+        let mut connector = MarkdownConnector::new();
+        let mut extra = HashMap::new();
+        extra.insert("root_path".into(), fixture.to_string_lossy().into_owned());
+        connector
+            .init(&SourceConfig {
+                name: "notes".into(),
+                kind: SourceKind::Markdown,
+                enabled: true,
+                poll_interval_secs: 60,
+                extra,
+            })
+            .await
+            .unwrap();
+        pipeline
+            .index_connector("notes", &connector, true)
+            .await
+            .unwrap();
+        BrainService::new(store, embedder)
+    }
+
+    #[test]
+    fn tool_defs_expose_phase1_tools() {
+        let names: Vec<&str> = tool_defs()
+            .iter()
+            .filter_map(|t| t.get("name").and_then(|n| n.as_str()))
+            .collect();
+        assert!(names.contains(&"search"));
+        assert!(names.contains(&"cite"));
+        assert!(names.contains(&"remember"));
+        assert!(names.contains(&"ask"));
+    }
+
+    #[tokio::test]
+    async fn tools_list_and_search_roundtrip() {
+        let brain = brain_with_fixture().await;
+
+        let list = handle_message(
+            &brain,
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+        )
+        .await
+        .unwrap()
+        .expect("response");
+        assert!(list.get("result").is_some());
+        assert!(list["result"]["tools"].as_array().unwrap().len() >= 3);
+
+        let search = handle_message(
+            &brain,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "search",
+                    "arguments": { "query": "KNOWN_PHRASE_KURULTAI_42", "limit": 3 }
+                }
+            }),
+        )
+        .await
+        .unwrap()
+        .expect("response");
+        let text = search["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("KNOWN_PHRASE_KURULTAI_42") || text.contains("notes"));
+        assert!(!text.contains(&"x".repeat(500)));
+    }
+
+    #[tokio::test]
+    async fn unknown_method_returns_jsonrpc_code() {
+        let brain = brain_with_fixture().await;
+        let resp = handle_message(&brain, json!({"jsonrpc":"2.0","id":9,"method":"nope"}))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(resp["error"]["code"], -32601);
+    }
 }

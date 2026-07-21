@@ -94,3 +94,70 @@ pub fn source_config<'a>(config: &'a Config, name: &str) -> Result<&'a SourceCon
         .find(|s| s.name == name)
         .ok_or_else(|| KurultaiError::config(format!("unknown source: {name}")))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::environment::Environment;
+    use crate::types::Config;
+    use std::collections::HashMap;
+
+    #[tokio::test]
+    async fn from_config_registers_enabled_markdown_only() {
+        let config = Config {
+            environment: Environment::Dev,
+            sources: vec![
+                SourceConfig {
+                    name: "notes".into(),
+                    kind: SourceKind::Markdown,
+                    enabled: true,
+                    poll_interval_secs: 60,
+                    extra: HashMap::from([(
+                        "root_path".into(),
+                        env!("CARGO_MANIFEST_DIR").to_string() + "/tests/fixtures/vault",
+                    )]),
+                },
+                SourceConfig {
+                    name: "disabled".into(),
+                    kind: SourceKind::Markdown,
+                    enabled: false,
+                    poll_interval_secs: 60,
+                    extra: HashMap::from([("root_path".into(), "/tmp".into())]),
+                },
+            ],
+            storage_path: "/tmp/kurultai-test.db".into(),
+            embed_model: "openai/text-embedding-3-large".into(),
+            embed_dim: 4,
+            reranker_model: None,
+            poll_interval_secs: 300,
+        };
+
+        let registry = ConnectorRegistry::from_config(&config).await.unwrap();
+        assert_eq!(registry.len(), 1);
+        assert!(registry.get("notes").is_some());
+        assert!(registry.get("disabled").is_none());
+    }
+
+    #[tokio::test]
+    async fn from_config_rejects_unimplemented_kinds() {
+        let config = Config {
+            environment: Environment::Dev,
+            sources: vec![SourceConfig {
+                name: "gh".into(),
+                kind: SourceKind::GitHub,
+                enabled: true,
+                poll_interval_secs: 60,
+                extra: HashMap::new(),
+            }],
+            storage_path: "/tmp/kurultai-test.db".into(),
+            embed_model: "m".into(),
+            embed_dim: 4,
+            reranker_model: None,
+            poll_interval_secs: 300,
+        };
+        match ConnectorRegistry::from_config(&config).await {
+            Ok(_) => panic!("expected unimplemented connector error"),
+            Err(err) => assert!(err.to_string().contains("not implemented")),
+        }
+    }
+}
