@@ -205,7 +205,7 @@ Upstream repos (depend / inspire / integrate): **[#40](https://github.com/duketo
 ## Roadmap checklist
 
 - [x] Framework foundation ([#18](https://github.com/duketopceo/kurultai/issues/18) / PR [#19](https://github.com/duketopceo/kurultai/pull/19))
-- [ ] Storage ([#1](https://github.com/duketopceo/kurultai/issues/1))
+- [x] Storage ([#1](https://github.com/duketopceo/kurultai/issues/1)) — SqliteVecStore FTS + vec0
 - [ ] Embeddings ([#2](https://github.com/duketopceo/kurultai/issues/2))
 - [ ] Markdown / filesystem connector ([#31](https://github.com/duketopceo/kurultai/issues/31), was #3)
 - [ ] AppFlowy connector ([#4](https://github.com/duketopceo/kurultai/issues/4))
