@@ -11,17 +11,18 @@ pub fn candidate_limit(final_limit: usize) -> usize {
     final_limit.saturating_mul(4).clamp(20, 100)
 }
 
-/// Fuse ranked atom lists with RRF (`k=60`, 1-based ranks).
-///
-/// Each list is already ordered best-first. Duplicate ids sum contributions and
-/// merge `matched_by`. Ties break by `id` ascending.
-pub fn fuse_rrf(
-    lists: &[(Vec<(KnowledgeAtom, f64)>, &'static str)],
-    k: f64,
-) -> Vec<SearchResult> {
+/// Fused id with RRF score and provenance methods.
+#[derive(Debug, Clone)]
+pub struct FusedId {
+    pub id: String,
+    pub score: f64,
+    pub matched_by: Vec<String>,
+}
+
+/// Fuse ranked id lists with RRF (`k=60`, 1-based ranks).
+pub fn fuse_rrf_ids(lists: &[(Vec<(String, f64)>, &'static str)], k: f64) -> Vec<FusedId> {
     #[derive(Default)]
     struct Acc {
-        atom: Option<KnowledgeAtom>,
         score: f64,
         matched_by: Vec<String>,
     }
@@ -29,13 +30,10 @@ pub fn fuse_rrf(
     let mut by_id: HashMap<String, Acc> = HashMap::new();
 
     for (list, method) in lists {
-        for (i, (atom, _raw_score)) in list.iter().enumerate() {
+        for (i, (id, _raw_score)) in list.iter().enumerate() {
             let rank = (i + 1) as f64;
             let contrib = 1.0 / (k + rank);
-            let entry = by_id.entry(atom.id.clone()).or_default();
-            if entry.atom.is_none() {
-                entry.atom = Some(atom.clone());
-            }
+            let entry = by_id.entry(id.clone()).or_default();
             entry.score += contrib;
             let method_s = (*method).to_string();
             if !entry.matched_by.iter().any(|m| m == &method_s) {
@@ -44,16 +42,20 @@ pub fn fuse_rrf(
         }
     }
 
-    let mut results: Vec<SearchResult> = by_id
-        .into_values()
-        .filter_map(|acc| {
-            let atom = acc.atom?;
-            Some(SearchResult {
-                atom,
+    let mut results: Vec<FusedId> = by_id
+        .into_iter()
+        .map(|(id, mut acc)| {
+            acc.matched_by.sort();
+            if acc.matched_by.iter().any(|m| m == "fts")
+                && acc.matched_by.iter().any(|m| m == "vector")
+            {
+                acc.matched_by = vec!["fts".into(), "vector".into()];
+            }
+            FusedId {
+                id,
                 score: acc.score,
-                rank: 0,
                 matched_by: acc.matched_by,
-            })
+            }
         })
         .collect();
 
@@ -61,19 +63,49 @@ pub fn fuse_rrf(
         b.score
             .partial_cmp(&a.score)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.atom.id.cmp(&b.atom.id))
+            .then_with(|| a.id.cmp(&b.id))
     });
 
-    for (i, r) in results.iter_mut().enumerate() {
-        r.rank = i;
-        // Stable matched_by order: fts before vector when both present.
-        r.matched_by.sort();
-        if r.matched_by.iter().any(|m| m == "fts") && r.matched_by.iter().any(|m| m == "vector") {
-            r.matched_by = vec!["fts".into(), "vector".into()];
+    results
+}
+
+/// Fuse ranked atom lists (test helper) via id fusion.
+pub fn fuse_rrf(
+    lists: &[(Vec<(KnowledgeAtom, f64)>, &'static str)],
+    k: f64,
+) -> Vec<SearchResult> {
+    let id_lists: Vec<(Vec<(String, f64)>, &'static str)> = lists
+        .iter()
+        .map(|(list, method)| {
+            (
+                list.iter()
+                    .map(|(a, s)| (a.id.clone(), *s))
+                    .collect::<Vec<_>>(),
+                *method,
+            )
+        })
+        .collect();
+
+    let mut atoms: HashMap<String, KnowledgeAtom> = HashMap::new();
+    for (list, _) in lists {
+        for (atom, _) in list {
+            atoms.entry(atom.id.clone()).or_insert_with(|| atom.clone());
         }
     }
 
-    results
+    fuse_rrf_ids(&id_lists, k)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(rank, fused)| {
+            let atom = atoms.remove(&fused.id)?;
+            Some(SearchResult {
+                atom,
+                score: fused.score,
+                rank,
+                matched_by: fused.matched_by,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -128,7 +160,6 @@ mod tests {
     fn rrf_tie_breaks_by_id() {
         let a = atom("aaa", "A");
         let b = atom("bbb", "B");
-        // Each alone at rank 1 in its list → equal RRF; id order wins.
         let fused = fuse_rrf(
             &[(vec![(a, 1.0)], "fts"), (vec![(b, 1.0)], "vector")],
             RRF_K,
@@ -145,5 +176,15 @@ mod tests {
         assert_eq!(fused[0].atom.id, "1");
         assert_eq!(fused[1].atom.id, "2");
         assert_eq!(fused[0].matched_by, vec!["fts"]);
+    }
+
+    #[test]
+    fn fuse_rrf_ids_orders_by_score() {
+        let fused = fuse_rrf_ids(
+            &[(vec![("a".into(), 1.0), ("b".into(), 0.5)], "fts")],
+            RRF_K,
+        );
+        assert_eq!(fused[0].id, "a");
+        assert_eq!(fused[1].id, "b");
     }
 }

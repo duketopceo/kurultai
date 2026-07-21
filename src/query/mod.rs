@@ -4,7 +4,7 @@ mod hybrid;
 mod rrf;
 
 pub use hybrid::hybrid_search;
-pub use rrf::{candidate_limit, fuse_rrf, RRF_K};
+pub use rrf::{candidate_limit, fuse_rrf, fuse_rrf_ids, FusedId, RRF_K};
 
 use crate::embed::Embedder;
 use crate::error::Result;

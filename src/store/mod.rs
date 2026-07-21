@@ -32,6 +32,19 @@ pub trait Store: Send + Sync {
     /// Full-text search over atom content.
     async fn fts_search(&self, query: &str, limit: usize) -> Result<Vec<(KnowledgeAtom, f64)>>;
 
+    /// FTS ranks as `(id, score)` without hydrating full atoms.
+    async fn fts_search_ids(&self, query: &str, limit: usize) -> Result<Vec<(String, f64)>>;
+
+    /// Vector ranks as `(id, score)` without hydrating full atoms.
+    async fn vector_search_ids(
+        &self,
+        query_embed: &[f32],
+        limit: usize,
+    ) -> Result<Vec<(String, f64)>>;
+
+    /// Batch load atoms by id (order not guaranteed; missing ids omitted).
+    async fn get_many(&self, ids: &[String]) -> Result<Vec<KnowledgeAtom>>;
+
     /// Delete atoms for a given source (for re-index).
     async fn delete_source(&self, source: &str) -> Result<()>;
 
@@ -241,53 +254,16 @@ impl Store for SqliteVecStore {
         query_embed: &[f32],
         limit: usize,
     ) -> Result<Vec<(KnowledgeAtom, f64)>> {
-        if limit == 0 {
-            return Ok(vec![]);
-        }
-        if query_embed.len() != self.embed_dim {
-            return Err(KurultaiError::Store(format!(
-                "query embed dim {} != store embed_dim {}",
-                query_embed.len(),
-                self.embed_dim
-            )));
-        }
-        if embedding_norm(query_embed) < MIN_EMBEDDING_NORM {
-            return Ok(vec![]);
-        }
-
-        let conn = self.lock()?;
-        let mut stmt = conn
-            .prepare(
-                r#"
-                SELECT a.rowid, v.distance
-                FROM atoms_vec v
-                JOIN knowledge_atoms a ON a.rowid = v.rowid
-                WHERE v.embedding MATCH ?1 AND k = ?2
-                ORDER BY v.distance
-                "#,
-            )
-            .map_err(|e| KurultaiError::Store(format!("vector_search prepare: {e}")))?;
-
-        let rows = stmt
-            .query_map(params![query_embed.as_bytes(), limit as i64], |r| {
-                Ok((r.get::<_, i64>(0)?, r.get::<_, f64>(1)?))
-            })
-            .map_err(|e| KurultaiError::Store(format!("vector_search query: {e}")))?;
-
-        let mut out = Vec::new();
-        for row in rows {
-            let (rowid, distance) =
-                row.map_err(|e| KurultaiError::Store(format!("vector_search row: {e}")))?;
-            if let Some(atom) = load_atom_by_rowid(&conn, rowid)? {
-                // Lower L2 distance → higher score
-                let score = 1.0 / (1.0 + distance);
-                out.push((atom, score));
-            }
-        }
-        Ok(out)
+        let ids = self.vector_search_ids(query_embed, limit).await?;
+        hydrate_ranked(self, ids).await
     }
 
     async fn fts_search(&self, query: &str, limit: usize) -> Result<Vec<(KnowledgeAtom, f64)>> {
+        let ids = self.fts_search_ids(query, limit).await?;
+        hydrate_ranked(self, ids).await
+    }
+
+    async fn fts_search_ids(&self, query: &str, limit: usize) -> Result<Vec<(String, f64)>> {
         if limit == 0 || query.trim().is_empty() {
             return Ok(vec![]);
         }
@@ -309,22 +285,81 @@ impl Store for SqliteVecStore {
                 LIMIT ?2
                 "#,
             )
-            .map_err(|e| KurultaiError::Store(format!("fts_search prepare: {e}")))?;
+            .map_err(|e| KurultaiError::Store(format!("fts_search_ids prepare: {e}")))?;
 
         let rows = stmt
             .query_map(params![fts_query, limit as i64], |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
             })
-            .map_err(|e| KurultaiError::Store(format!("fts_search query: {e}")))?;
+            .map_err(|e| KurultaiError::Store(format!("fts_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
             let (id, bm25_score) =
-                row.map_err(|e| KurultaiError::Store(format!("fts_search row: {e}")))?;
-            if let Some(atom) = load_atom_by_id(&conn, &id)? {
-                // bm25() is more negative when more relevant — invert for display score
-                let score = 1.0 / (1.0 + bm25_score.abs());
-                out.push((atom, score));
+                row.map_err(|e| KurultaiError::Store(format!("fts_search_ids row: {e}")))?;
+            let score = 1.0 / (1.0 + bm25_score.abs());
+            out.push((id, score));
+        }
+        Ok(out)
+    }
+
+    async fn vector_search_ids(
+        &self,
+        query_embed: &[f32],
+        limit: usize,
+    ) -> Result<Vec<(String, f64)>> {
+        if limit == 0 {
+            return Ok(vec![]);
+        }
+        if query_embed.len() != self.embed_dim {
+            return Err(KurultaiError::Store(format!(
+                "query embed dim {} != store embed_dim {}",
+                query_embed.len(),
+                self.embed_dim
+            )));
+        }
+        if embedding_norm(query_embed) < MIN_EMBEDDING_NORM {
+            return Ok(vec![]);
+        }
+
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT a.id, v.distance
+                FROM atoms_vec v
+                JOIN knowledge_atoms a ON a.rowid = v.rowid
+                WHERE v.embedding MATCH ?1 AND k = ?2
+                ORDER BY v.distance
+                "#,
+            )
+            .map_err(|e| KurultaiError::Store(format!("vector_search_ids prepare: {e}")))?;
+
+        let rows = stmt
+            .query_map(params![query_embed.as_bytes(), limit as i64], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
+            })
+            .map_err(|e| KurultaiError::Store(format!("vector_search_ids query: {e}")))?;
+
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, distance) =
+                row.map_err(|e| KurultaiError::Store(format!("vector_search_ids row: {e}")))?;
+            let score = 1.0 / (1.0 + distance);
+            out.push((id, score));
+        }
+        Ok(out)
+    }
+
+    async fn get_many(&self, ids: &[String]) -> Result<Vec<KnowledgeAtom>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let conn = self.lock()?;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(atom) = load_atom_by_id(&conn, id)? {
+                out.push(atom);
             }
         }
         Ok(out)
@@ -409,6 +444,24 @@ impl Store for SqliteVecStore {
     }
 }
 
+/// Hydrate ranked `(id, score)` pairs into atoms, skipping missing ids.
+async fn hydrate_ranked(
+    store: &SqliteVecStore,
+    ranked: Vec<(String, f64)>,
+) -> Result<Vec<(KnowledgeAtom, f64)>> {
+    if ranked.is_empty() {
+        return Ok(vec![]);
+    }
+    let ids: Vec<String> = ranked.iter().map(|(id, _)| id.clone()).collect();
+    let atoms = store.get_many(&ids).await?;
+    let by_id: HashMap<String, KnowledgeAtom> =
+        atoms.into_iter().map(|a| (a.id.clone(), a)).collect();
+    Ok(ranked
+        .into_iter()
+        .filter_map(|(id, score)| by_id.get(&id).cloned().map(|atom| (atom, score)))
+        .collect())
+}
+
 /// Register sqlite-vec once per process (safe to call repeatedly).
 fn register_sqlite_vec() {
     use std::sync::Once;
@@ -477,21 +530,6 @@ fn load_atom_by_source_id(
     )
     .optional()
     .map_err(|e| KurultaiError::Store(format!("load_atom_by_source_id: {e}")))
-}
-
-fn load_atom_by_rowid(conn: &Connection, rowid: i64) -> Result<Option<KnowledgeAtom>> {
-    conn.query_row(
-        r#"
-        SELECT id, source, source_id, title, summary, content,
-               question, resolution, tags_json,
-               source_updated_at, indexed_at, metadata_json
-        FROM knowledge_atoms WHERE rowid = ?1
-        "#,
-        [rowid],
-        row_to_atom,
-    )
-    .optional()
-    .map_err(|e| KurultaiError::Store(format!("load_atom_by_rowid: {e}")))
 }
 
 fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
@@ -611,6 +649,32 @@ mod tests {
         let hits = store.fts_search("database migration", 10).await.unwrap();
         assert!(!hits.is_empty(), "expected FTS hit");
         assert_eq!(hits[0].0.id, "a1");
+    }
+
+    #[tokio::test]
+    async fn fts_search_ids_then_get_many() {
+        let store = temp_store(4);
+        store
+            .upsert(&sample_atom(
+                "a1",
+                "Migration Guide",
+                "how to run database migration scripts",
+                None,
+            ))
+            .await
+            .unwrap();
+        let ranks = store
+            .fts_search_ids("database migration", 10)
+            .await
+            .unwrap();
+        assert_eq!(ranks[0].0, "a1");
+        let atoms = store
+            .get_many(&ranks.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>())
+            .await
+            .unwrap();
+        assert_eq!(atoms[0].title, "Migration Guide");
+        let missing = store.get_many(&["no-such-id".into()]).await.unwrap();
+        assert!(missing.is_empty());
     }
 
     #[tokio::test]
