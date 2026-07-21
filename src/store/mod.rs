@@ -668,6 +668,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn changed_content_without_embedding_drops_stale_vector() {
+        let store = temp_store(4);
+        let atom = sample_atom("stale", "Stale", "old body", Some(vec![0.7, 0.1, 0.1, 0.1]));
+        store.upsert(&atom).await.unwrap();
+        assert!(store
+            .has_fresh_embedding("stale", &sha256_hex("old body"))
+            .await
+            .unwrap());
+
+        let mut changed = atom;
+        changed.content = "new body".into();
+        changed.embedding = None;
+        store.upsert(&changed).await.unwrap();
+
+        assert!(!store
+            .has_fresh_embedding("stale", &sha256_hex("old body"))
+            .await
+            .unwrap());
+        assert!(!store
+            .has_fresh_embedding("stale", &sha256_hex("new body"))
+            .await
+            .unwrap());
+        let hits = store.vector_search(&[0.7, 0.1, 0.1, 0.1], 5).await.unwrap();
+        assert!(hits.is_empty(), "stale vector must be removed");
+    }
+
+    #[tokio::test]
     async fn zero_vector_not_indexed_in_vec() {
         let store = temp_store(4);
         store

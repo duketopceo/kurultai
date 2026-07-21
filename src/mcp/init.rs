@@ -56,19 +56,37 @@ fn wire_cursor() -> Result<PathBuf> {
     });
 
     let mut root: Value = match fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str(&raw).unwrap_or_else(|_| json!({ "mcpServers": {} })),
+        Ok(raw) => serde_json::from_str(&raw).map_err(|e| {
+            KurultaiError::config(format!(
+                "existing {} is not valid JSON ({e}); fix or move it before re-running init — refusing to overwrite other MCP servers",
+                path.display()
+            ))
+        })?,
         Err(e) if e.kind() == ErrorKind::NotFound => json!({ "mcpServers": {} }),
         Err(e) => return Err(e.into()),
     };
 
-    if root.get("mcpServers").is_none() {
-        root["mcpServers"] = json!({});
+    match root.get_mut("mcpServers") {
+        Some(servers) if servers.is_object() => {
+            servers["kurultai"] = entry;
+        }
+        Some(_) => {
+            return Err(KurultaiError::config(format!(
+                "{}: mcpServers must be a JSON object",
+                path.display()
+            )));
+        }
+        None => {
+            root["mcpServers"] = json!({ "kurultai": entry });
+        }
     }
-    root["mcpServers"]["kurultai"] = entry;
 
     let pretty = serde_json::to_string_pretty(&root)
         .map_err(|e| KurultaiError::Other(anyhow::anyhow!("encode mcp.json: {e}")))?;
-    fs::write(&path, pretty)?;
+    // Atomic-ish replace: write temp beside target then rename.
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, pretty)?;
+    fs::rename(&tmp, &path)?;
     Ok(path)
 }
 

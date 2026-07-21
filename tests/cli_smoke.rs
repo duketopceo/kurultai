@@ -86,5 +86,11 @@ fn invalid_config_errors_clearly() {
     bin()
         .args(["--config", cfg.to_str().unwrap(), "status"])
         .assert()
-        .failure();
+        .failure()
+        .stderr(
+            predicate::str::contains("TOML")
+                .or(predicate::str::contains("parse"))
+                .or(predicate::str::contains("config"))
+                .or(predicate::str::contains("Error")),
+        );
 }

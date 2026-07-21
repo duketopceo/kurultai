@@ -9,7 +9,10 @@ use crate::store::Store;
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
 use chrono::Utc;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+
+static REMEMBER_SEQ: AtomicU64 = AtomicU64::new(1);
 
 /// MCP-facing brain bound to the app store + embedder.
 pub struct BrainService {
@@ -181,7 +184,11 @@ impl AgentWrite for BrainService {
         }
 
         let source = "agent";
-        let source_id = format!("remember/{}", Utc::now().timestamp_millis());
+        let source_id = format!(
+            "remember/{}_{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or(0),
+            REMEMBER_SEQ.fetch_add(1, Ordering::Relaxed)
+        );
         let content = summary.clone();
         let id = atom_id(source, &source_id, &content);
 
@@ -284,8 +291,19 @@ mod tests {
             .unwrap();
         assert!(!id.is_empty());
         let hits = brain.search("FTS-first boot", 5).await.unwrap();
-        assert!(hits
+        let hit = hits
             .iter()
-            .any(|h| h.atom.source == "agent" && h.atom.id == id));
+            .find(|h| h.atom.source == "agent" && h.atom.id == id)
+            .expect("remembered atom searchable");
+        assert_eq!(hit.atom.title, "Decision");
+        assert!(hit.atom.tags.iter().any(|t| t == "architecture"));
+        assert_eq!(
+            hit.atom.metadata.get("via").map(String::as_str),
+            Some("test")
+        );
+        assert!(hit.atom.source_id.starts_with("remember/"));
+
+        let err = brain.remember(" ", "ok", &[], &[]).await.unwrap_err();
+        assert!(err.to_string().contains("non-empty"));
     }
 }
