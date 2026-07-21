@@ -209,8 +209,8 @@ Upstream repos (depend / inspire / integrate): **[#40](https://github.com/duketo
 - [x] Embeddings ([#2](https://github.com/duketopceo/kurultai/issues/2)) — OpenRouter + NullEmbedder FTS-first
 - [x] Markdown / filesystem connector ([#31](https://github.com/duketopceo/kurultai/issues/31), was #3)
 - [ ] AppFlowy connector ([#4](https://github.com/duketopceo/kurultai/issues/4))
-- [ ] CLI wired ([#5](https://github.com/duketopceo/kurultai/issues/5))
-- [ ] MCP + installer ([#11](https://github.com/duketopceo/kurultai/issues/11))
+- [x] CLI wired ([#5](https://github.com/duketopceo/kurultai/issues/5)) — index/status/search via brain views
+- [x] MCP + installer ([#11](https://github.com/duketopceo/kurultai/issues/11)) — stdio `search`/`cite`/`remember` + `init --agent cursor`
 - [ ] Search & retrieval ([#6](https://github.com/duketopceo/kurultai/issues/6))
 - [ ] Synthesis & interface ([#7](https://github.com/duketopceo/kurultai/issues/7))
 - [ ] Expansion connectors ([#8](https://github.com/duketopceo/kurultai/issues/8), [#21](https://github.com/duketopceo/kurultai/issues/21))
