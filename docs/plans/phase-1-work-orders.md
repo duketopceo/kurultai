@@ -1,5 +1,6 @@
 # CE Plan: Phase 1 Work Orders
 
+**Tracking:** [#42](https://github.com/duketopceo/kurultai/issues/42)  
 **Audience:** Developer (CLI + MCP)  
 **Master plan:** [#27](https://github.com/duketopceo/kurultai/issues/27)  
 **Doctrine:** [#37](https://github.com/duketopceo/kurultai/issues/37) — SQL brain, `AgentAtomView`, token budget  
