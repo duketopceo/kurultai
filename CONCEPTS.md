@@ -23,3 +23,7 @@ One SQL row of structured knowledge: title, summary, content, tags, provenance (
 ## hash-skip
 
 On incremental index, if an atom’s `content_hash` is unchanged and a vector already exists, skip `embed_batch` and let upsert preserve the existing `atoms_vec` row.
+
+## Graph orchestration (diamond)
+
+Cut non-data “and then” waits: fan-out independent nodes with typed I/O, fan-in only at merge barriers. Loops stay inside nodes; SQL is the shared state. See [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md).
