@@ -19,6 +19,8 @@ How we use external repos while building Kurultai. Tracked in [#40](https://gith
 
 ## Phase 1 — Foundation
 
+**Status:** ✅ Complete ([phase-1-complete.md](plans/phase-1-complete.md)). Phase 2 starts at [#6](https://github.com/duketopceo/kurultai/issues/6).
+
 ### [#1 Storage: SqliteVecStore](https://github.com/duketopceo/kurultai/issues/1)
 
 **Build:** SQLite tables for `KnowledgeAtom`, FTS5 mirror, `vec0` virtual table, migrations, content-hash dedupe skip.

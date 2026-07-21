@@ -1,5 +1,6 @@
 # CE Plan: Phase 1 Work Orders
 
+**Status:** ✅ Complete — wrap-up [phase-1-complete.md](phase-1-complete.md)  
 **Tracking:** [#42](https://github.com/duketopceo/kurultai/issues/42)  
 **Audience:** Developer (CLI + MCP)  
 **Master plan:** [#27](https://github.com/duketopceo/kurultai/issues/27)  
@@ -38,18 +39,22 @@ markdown folder → KnowledgeAtom → SQLite (FTS + vec) → CLI search → MCP 
 
 ---
 
-## Current state (code)
+## Final state (code) — Phase 1 complete
 
-| Component | Status | Gap |
-|-----------|--------|-----|
-| `App` / CLI shell | ✅ Wired | Index/search call stubs that no-op |
-| `SqliteVecStore` | 🚧 Open + migrate + count/delete | `upsert` / `vector_search` / `fts_search` stubs |
-| Migrations v1 | ✅ `knowledge_atoms` table | No FTS5, no `vec0`, no `content_hash`, no `store_meta` |
-| `OpenRouterEmbedder` | 🚧 Returns zero vectors | Real HTTP + zero-vector guard |
-| `MarkdownConnector` | 🚧 `init` only | `full_sync` / `poll` empty |
-| `IndexPipeline` | ✅ Orchestration | Works once store/embed/connector real |
-| MCP | 🚧 Traits only | No stdio server |
-| `AgentAtomView` | ✅ `src/brain/` | Unused until MCP/CLI formats results |
+| Component | Status | Notes |
+|-----------|--------|-------|
+| `App` / CLI | ✅ | `init` / `index` / `status` / `search` / `ask` / `mcp` |
+| `SqliteVecStore` | ✅ | FTS5 + `vec0`, upsert/search, zero-vector guard |
+| Migrations | ✅ | v2: `content_hash`, `store_meta`, FTS + vec |
+| Embeddings | ✅ | OpenRouter + `NullEmbedder` (FTS-first, no key) |
+| `MarkdownConnector` | ✅ | Walk + hash + atoms; fixture vault |
+| `IndexPipeline` | ✅ | Hash-skip re-embed when content unchanged |
+| MCP stdio | ✅ | `search` / `cite` / `remember` + Cursor `init` |
+| `AgentAtomView` | ✅ | CLI + MCP return capped excerpts |
+
+**Residual:** AppFlowy stub (#4 deferred). RRF / full `ask` → Phase 2 (#6 / #7).
+
+See [phase-1-complete.md](phase-1-complete.md).
 
 ---
 
@@ -256,14 +261,16 @@ CI already has fmt/clippy/test/audit/macOS — keep green every PR.
 
 ## Definition of done (checklist)
 
-- [ ] #1 merged — FTS + vec upsert/search
-- [ ] #2 merged — OpenRouter + null/FTS-first path
-- [ ] #31 merged — fixture vault indexes
-- [ ] #5 verified — `index` / `status` / `search` honest
-- [ ] #11 Phase-1 slice — MCP `search`/`cite`/`remember` + Cursor init
-- [ ] #23 Phase-1 store/connector tests in CI
-- [ ] #4 started or explicitly deferred with comment on #27
-- [ ] README roadmap checkboxes updated for closed items
+- [x] #1 merged — FTS + vec upsert/search ([#44](https://github.com/duketopceo/kurultai/pull/44))
+- [x] #2 merged — OpenRouter + null/FTS-first path ([#45](https://github.com/duketopceo/kurultai/pull/45))
+- [x] #31 merged — fixture vault indexes ([#45](https://github.com/duketopceo/kurultai/pull/45))
+- [x] #5 verified — `index` / `status` / `search` honest ([#46](https://github.com/duketopceo/kurultai/pull/46))
+- [x] #11 Phase-1 slice — MCP `search`/`cite`/`remember` + Cursor init ([#46](https://github.com/duketopceo/kurultai/pull/46))
+- [x] #23 Phase-1 store/connector/CLI/MCP tests in CI ([#46](https://github.com/duketopceo/kurultai/pull/46); #23 stays open for later gates)
+- [x] #4 started or explicitly deferred with comment on #27 — **deferred non-blocking**
+- [x] README roadmap checkboxes updated for closed items
+
+**Wrap-up:** [phase-1-complete.md](phase-1-complete.md)
 
 ---
 
@@ -271,9 +278,9 @@ CI already has fmt/clippy/test/audit/macOS — keep green every PR.
 
 | Risk | Mitigation |
 |------|------------|
-| sqlite-vec load fails on CI | Feature-detect; FTS-only CI job + macOS vec smoke |
+| sqlite-vec load fails on CI | Pin `=0.1.6`; FTS-only path without vec write |
 | 3072-dim blobs large for solo vaults | Batch upsert; hash-skip; document disk use |
-| #11 scope creep (Docker, multi-agent) | Hard slice: stdio + Cursor first |
+| #11 scope creep (Docker, multi-agent) | Hard slice: stdio + Cursor first — held |
 | Zero-vector pollution | Guard at store upsert; NullEmbedder skips vec write |
 | AppFlowy auth blocks timeline | Non-blocking; markdown is exit path |
 
@@ -281,16 +288,11 @@ CI already has fmt/clippy/test/audit/macOS — keep green every PR.
 
 ## PR strategy (surgical)
 
-| PR | Branch pattern | Contains |
-|----|----------------|----------|
-| P1a | `cursor/store-sqlite-vec-1c5e` | #1 + store tests |
-| P1b | `cursor/embed-openrouter-1c5e` | #2 + null embedder |
-| P1c | `cursor/markdown-ingest-1c5e` | #31 + fixture |
-| P1d | `cursor/cli-e2e-1c5e` | #5 polish + e2e test |
-| P1e | `cursor/mcp-stdio-1c5e` | #11 slice |
-| P1f | `cursor/appflowy-connector-1c5e` | #4 (optional) |
-
-One work order per PR unless #2+#31 both tiny after #1.
+| PR | Branch pattern | Contains | Outcome |
+|----|----------------|----------|---------|
+| P1a | `cursor/store-sqlite-vec-1c5e` | #1 + store tests | ✅ #44 |
+| P1b/c | `cursor/markdown-embed-1c5e` | #2 + #31 + fixture | ✅ #45 |
+| P1e | `cursor/mcp-stdio-1c5e` | #5 + #11 + hash-skip + tests | ✅ #46 |
 
 ---
 
@@ -307,10 +309,4 @@ One work order per PR unless #2+#31 both tiny after #1.
 
 ## Immediate next action
 
-Start **P1a (#1 Storage)** on `cursor/store-sqlite-vec-1c5e`:
-
-1. Add `sqlite-vec` dependency  
-2. Migration v2: FTS5 + vec0 + `content_hash` + `store_meta`  
-3. Implement `upsert` / `fts_search` / `vector_search`  
-4. Integration tests in tempdir  
-5. Open PR against `main`
+**Phase 1 complete.** Next: `/ce-plan` for **[#6 Search & Retrieval](https://github.com/duketopceo/kurultai/issues/6)** using [phase-2-graph-orchestration.md](phase-2-graph-orchestration.md).
