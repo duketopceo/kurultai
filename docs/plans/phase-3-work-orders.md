@@ -62,6 +62,7 @@ flowchart TD
 
 ## Definition of done (WO1 only)
 
-- [ ] Plan units U1–U5 complete
-- [ ] `cargo test --locked` green without OpenRouter
-- [ ] README links Phase 3 work orders
+- [x] Plan units U1–U5 complete
+- [x] `cargo test --locked` green without OpenRouter
+- [x] README links Phase 3 work orders
+- [x] PR [#54](https://github.com/duketopceo/kurultai/pull/54) CI green
