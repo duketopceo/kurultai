@@ -5,7 +5,9 @@ use crate::embed::Embedder;
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::atom_id;
 use crate::mcp::interface::{AgentRead, AgentWrite};
-use crate::query::{compose_answer, expand_markdown_context, hybrid_search, Synthesizer};
+use crate::query::{
+    citation_from_atom, compose_answer, expand_markdown_context, hybrid_search, Synthesizer,
+};
 use crate::rerank::Reranker;
 use crate::store::Store;
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
@@ -46,21 +48,6 @@ impl BrainService {
             .into_iter()
             .map(|r| AgentAtomView::from_atom(&r.atom, r.score, DEFAULT_EXCERPT_CAP))
             .collect())
-    }
-}
-
-fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Citation {
-    let view = AgentAtomView::from_atom(atom, score, DEFAULT_EXCERPT_CAP);
-    Citation {
-        source: view.source,
-        source_id: view.source_id,
-        title: view.title,
-        url: if include_url {
-            atom.metadata.get("source_uri").cloned()
-        } else {
-            None
-        },
-        excerpt: view.excerpt,
     }
 }
 

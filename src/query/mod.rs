@@ -103,7 +103,8 @@ pub async fn compose_answer(
     })
 }
 
-fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Citation {
+/// Build a capped citation from an atom (MCP/CLI boundary).
+pub fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Citation {
     let view = AgentAtomView::from_atom(atom, score, DEFAULT_EXCERPT_CAP);
     Citation {
         source: view.source,
