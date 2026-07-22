@@ -6,6 +6,7 @@ pub mod embed;
 pub mod environment;
 pub mod error;
 pub mod hashutil;
+pub mod http;
 pub mod logging;
 pub mod mcp;
 pub mod pipeline;

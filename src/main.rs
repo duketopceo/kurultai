@@ -61,11 +61,14 @@ enum Commands {
     Status,
     /// Run MCP server on stdio (for Cursor / Claude)
     Mcp,
-    /// Start the daemon (polls sources, serves queries)
+    /// Start the daemon (HTTP query API; optional source polling later)
     Daemon {
         /// Port for the HTTP server
         #[arg(long, default_value = "8421")]
         port: u16,
+        /// Bind address (default loopback)
+        #[arg(long, default_value = "127.0.0.1")]
+        bind: String,
     },
 }
 
@@ -188,20 +191,29 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Daemon { port } => {
+        Commands::Daemon { port, ref bind } => {
             let app = bootstrap_app(&cli).await?;
-            tracing::info!(port, "daemon starting (stub)");
-            println!(
-                "Daemon on port {} — HTTP not implemented yet. Use `kurultai mcp` for agents (#11).",
-                port
+            let brain = BrainService::new(
+                Arc::clone(&app.store),
+                Arc::clone(&app.embedder),
+                Arc::clone(&app.reranker),
             );
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(
-                    app.config.poll_interval_secs,
-                ))
-                .await;
-                tracing::debug!("daemon poll tick");
+            let host: std::net::IpAddr = bind.parse().map_err(|e| {
+                kurultai::KurultaiError::config(format!("invalid --bind {bind}: {e}"))
+            })?;
+            if !host.is_loopback() {
+                tracing::warn!(%host, "binding off loopback — HTTP has no auth in this release");
             }
+            let addr = std::net::SocketAddr::new(host, port);
+            tracing::info!(%addr, "daemon starting");
+            println!("Kurultai HTTP daemon listening on http://{addr}");
+            println!("  GET  /health");
+            println!("  GET  /v1/search?q=…&limit=10");
+            println!("  POST /v1/search  {{\"query\",\"limit\"}}");
+            println!("  GET  /v1/cite?source=…&source_id=…");
+            println!("  POST /v1/ask     {{\"question\"}}");
+            println!("  POST /v1/remember {{\"title\",\"summary\",\"tags\"}}");
+            kurultai::http::serve(Arc::new(brain), addr).await?;
         }
     }
 

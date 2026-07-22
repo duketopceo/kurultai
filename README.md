@@ -117,8 +117,10 @@ kurultai ask "what deployments are we running?"
 # MCP stdio (Cursor / agents)
 kurultai mcp
 
-# Daemon stub (HTTP later — #7)
+# HTTP daemon (localhost by default — #7 WO2)
 kurultai daemon --port 8421
+# curl http://127.0.0.1:8421/health
+# curl 'http://127.0.0.1:8421/v1/search?q=deployments&limit=5'
 ```
 
 ## Configuration
@@ -198,7 +200,8 @@ Audience strategy: **[#25 — Developer → Solo → Team → Company](https://g
 Upstream repos (depend / inspire / integrate): **[#40](https://github.com/duketopceo/kurultai/issues/40)** · [docs/upstream-inspiration.md](docs/upstream-inspiration.md)  
 Phase 1 CE plan: [docs/plans/phase-1-work-orders.md](docs/plans/phase-1-work-orders.md) · **complete:** [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md)  
 Phase 2 search plan: [docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md](docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md) (#6)  
-Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)
+Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)  
+Phase 3 work orders: [docs/plans/phase-3-work-orders.md](docs/plans/phase-3-work-orders.md) (#7) · [HTTP daemon](docs/plans/2026-07-22-002-feat-phase3-http-daemon-plan.md)
 
 | Phase | Audience unlocked | Milestone | Work order (in sequence) | Upstream (pull / inspire) |
 |-------|-------------------|-----------|--------------------------|---------------------------|

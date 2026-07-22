@@ -51,6 +51,8 @@ notify = "6"
 
 # Glob for file discovery
 glob = "0.3"
+axum = { version = "0.8", features = ["json", "tokio"] }
+tower = { version = "0.5", features = ["util"] }
 
 [dev-dependencies]
 assert_cmd = "2"
