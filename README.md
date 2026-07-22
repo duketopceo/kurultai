@@ -46,7 +46,7 @@ Agent ──read──► search/cite/ask ──► SQLite brain ──► ranke
 Agent ─write──► remember ──► distilled KnowledgeAtom ──► SQLite brain
 ```
 
-MCP is an agent-ready API: structured tools instead of dumping files into context. See `src/mcp/` (#11 Phase 1 slice; full synthesis #7).
+MCP is an agent-ready API: structured tools instead of dumping files into context. See `src/mcp/` (`search`/`cite`/`ask`/`remember`; planner/daemon still #7).
 
 ## Design doctrine: speed + token budget
 
@@ -94,7 +94,7 @@ Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthes
 | **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key | ✅ |
 | **Vector Store** | SQLite + FTS5 + sqlite-vec (`=0.1.6`) | ✅ |
 | **Search** | FTS ∥ vector → **RRF (k=60)** → optional OpenRouter rerank → capped views | ✅ (#6) · distillation deferred (#12) |
-| **Synthesis** | Planner → Executor → Answer with citations | 📋 Planned (#7) |
+| **Synthesis** | Ask over hybrid retrieval + citations; planner/daemon later | 🚧 WO1 in progress (#7) |
 | **Interface** | CLI + MCP stdio (`search`/`cite`/`remember`); HTTP daemon later | ✅ CLI+MCP · 📋 daemon |
 
 ## Quick Start
@@ -109,7 +109,7 @@ kurultai init --agent cursor
 # Index your sources (FTS-only without OPENROUTER_API_KEY)
 kurultai index --full
 
-# Search / status / thin ask
+# Search / status / ask (extractive without API key; set runtime.synthesis_model for LLM)
 kurultai search "database migration" --limit 10
 kurultai status
 kurultai ask "what deployments are we running?"
@@ -198,7 +198,8 @@ Audience strategy: **[#25 — Developer → Solo → Team → Company](https://g
 Upstream repos (depend / inspire / integrate): **[#40](https://github.com/duketopceo/kurultai/issues/40)** · [docs/upstream-inspiration.md](docs/upstream-inspiration.md)  
 Phase 1 CE plan: [docs/plans/phase-1-work-orders.md](docs/plans/phase-1-work-orders.md) · **complete:** [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md)  
 Phase 2 search plan: [docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md](docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md) (#6)  
-Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)
+Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)  
+Phase 3 work orders: [docs/plans/phase-3-work-orders.md](docs/plans/phase-3-work-orders.md) (#7) · [ask synthesis](docs/plans/2026-07-22-001-feat-phase3-ask-synthesis-plan.md)
 
 | Phase | Audience unlocked | Milestone | Work order (in sequence) | Upstream (pull / inspire) |
 |-------|-------------------|-----------|--------------------------|---------------------------|
@@ -222,7 +223,7 @@ Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase
 - [x] MCP + installer ([#11](https://github.com/duketopceo/kurultai/issues/11)) — stdio `search`/`cite`/`remember` + `init --agent cursor`
 - [x] **Phase 1 exit** — wrap-up: [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md)
 - [x] Search & retrieval ([#6](https://github.com/duketopceo/kurultai/issues/6)) — RRF diamond + optional rerank; distillation deferred (#12)
-- [ ] Synthesis & interface ([#7](https://github.com/duketopceo/kurultai/issues/7))
+- [ ] Synthesis & interface ([#7](https://github.com/duketopceo/kurultai/issues/7)) — WO1 ask synthesis in progress
 - [ ] Expansion connectors ([#8](https://github.com/duketopceo/kurultai/issues/8), [#21](https://github.com/duketopceo/kurultai/issues/21))
 - [ ] Production readiness ([#9](https://github.com/duketopceo/kurultai/issues/9), [#20](https://github.com/duketopceo/kurultai/issues/20))
 - [ ] Open source launch ([#10](https://github.com/duketopceo/kurultai/issues/10), [#22](https://github.com/duketopceo/kurultai/issues/22))

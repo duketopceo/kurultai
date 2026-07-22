@@ -75,6 +75,7 @@ fn default_config(env: Environment) -> Result<Config> {
         embed_model: "openai/text-embedding-3-large".into(),
         embed_dim: 3072,
         reranker_model: None,
+        synthesis_model: None,
         poll_interval_secs: 300,
     })
 }
@@ -124,6 +125,7 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
             .unwrap_or_else(|| "openai/text-embedding-3-large".into()),
         embed_dim: file.embed.dimension.unwrap_or(3072),
         reranker_model: file.runtime.reranker_model,
+        synthesis_model: file.runtime.synthesis_model,
         poll_interval_secs: file.runtime.poll_interval_secs.unwrap_or(300),
     })
 }

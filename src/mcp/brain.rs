@@ -5,7 +5,7 @@ use crate::embed::Embedder;
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::atom_id;
 use crate::mcp::interface::{AgentRead, AgentWrite};
-use crate::query::{expand_markdown_context, hybrid_search};
+use crate::query::{compose_answer, expand_markdown_context, hybrid_search, Synthesizer};
 use crate::rerank::Reranker;
 use crate::store::Store;
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
@@ -21,6 +21,7 @@ pub struct BrainService {
     store: Arc<dyn Store>,
     embedder: Arc<dyn Embedder>,
     reranker: Arc<dyn Reranker>,
+    synthesizer: Arc<dyn Synthesizer>,
 }
 
 impl BrainService {
@@ -28,11 +29,13 @@ impl BrainService {
         store: Arc<dyn Store>,
         embedder: Arc<dyn Embedder>,
         reranker: Arc<dyn Reranker>,
+        synthesizer: Arc<dyn Synthesizer>,
     ) -> Self {
         Self {
             store,
             embedder,
             reranker,
+            synthesizer,
         }
     }
 
@@ -77,36 +80,8 @@ impl AgentRead for BrainService {
     }
 
     async fn ask(&self, question: &str) -> Result<Answer> {
-        // Phase 1: thin FTS synthesis stub — full planner is #7.
         let hits = self.search(question, 5).await?;
-        let citations: Vec<Citation> = hits
-            .iter()
-            .map(|r| citation_from_atom(&r.atom, r.score, false))
-            .collect();
-        let sources_used: Vec<String> = citations.iter().map(|c| c.source.clone()).collect();
-        let answer = if citations.is_empty() {
-            "No indexed atoms matched. Run `kurultai index` first.".into()
-        } else {
-            format!(
-                "Top matches (synthesis deferred to #7):\n{}",
-                citations
-                    .iter()
-                    .take(3)
-                    .map(|c| format!(
-                        "- {} ({}/{}): {}",
-                        c.title, c.source, c.source_id, c.excerpt
-                    ))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        };
-        Ok(Answer {
-            question: question.into(),
-            answer,
-            citations,
-            sources_used,
-            confidence: if hits.is_empty() { 0.0 } else { 0.4 },
-        })
+        compose_answer(question, &hits, &self.synthesizer).await
     }
 }
 
@@ -213,7 +188,12 @@ mod tests {
             .await
             .unwrap();
 
-        BrainService::new(store, embedder, Arc::new(NullReranker::new()))
+        BrainService::new(
+            store,
+            embedder,
+            Arc::new(NullReranker::new()),
+            Arc::new(crate::query::NullSynthesizer::new()),
+        )
     }
 
     #[tokio::test]
@@ -273,5 +253,80 @@ mod tests {
 
         let err = brain.remember(" ", "ok", &[], &[]).await.unwrap_err();
         assert!(err.to_string().contains("non-empty"));
+    }
+
+    #[tokio::test]
+    async fn ask_extractive_with_citations() {
+        let brain = brain_with_fixture().await;
+        let answer = brain.ask("KNOWN_PHRASE_KURULTAI_42").await.unwrap();
+        assert!(!answer.citations.is_empty());
+        assert!(!answer.answer.contains("deferred to #7"));
+        assert!(answer.answer.contains("Based on indexed atoms") || !answer.answer.is_empty());
+        assert!((answer.confidence - 0.45).abs() < 1e-9);
+        for c in &answer.citations {
+            assert!(c.excerpt.chars().count() <= DEFAULT_EXCERPT_CAP);
+        }
+    }
+
+    #[tokio::test]
+    async fn ask_no_hits_zero_confidence() {
+        let brain = brain_with_fixture().await;
+        let answer = brain.ask("ZZZ_NO_MATCH_TOKEN_XYZ").await.unwrap();
+        assert!(answer.citations.is_empty());
+        assert_eq!(answer.confidence, 0.0);
+        assert!(answer.answer.contains("index"));
+    }
+
+    struct FailSynthesizer;
+
+    #[async_trait::async_trait]
+    impl crate::query::Synthesizer for FailSynthesizer {
+        fn name(&self) -> &str {
+            "fail"
+        }
+        async fn synthesize(&self, _question: &str, _hits: &[SearchResult]) -> Result<String> {
+            Err(KurultaiError::Query("forced synth fail".into()))
+        }
+    }
+
+    #[tokio::test]
+    async fn ask_live_synth_fail_falls_back_extractive() {
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
+        let db_dir = std::env::temp_dir().join(format!(
+            "kurultai-mcp-fail-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let store = Arc::new(SqliteVecStore::open(db_dir.join("store.db"), 4).unwrap());
+        let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+        let pipeline =
+            IndexPipeline::new(Arc::clone(&store) as Arc<dyn Store>, Arc::clone(&embedder));
+        let mut connector = MarkdownConnector::new();
+        let mut extra = HashMap::new();
+        extra.insert("root_path".into(), fixture.to_string_lossy().into_owned());
+        connector
+            .init(&SourceConfig {
+                name: "notes".into(),
+                kind: SourceKind::Markdown,
+                enabled: true,
+                poll_interval_secs: 60,
+                extra,
+            })
+            .await
+            .unwrap();
+        pipeline
+            .index_connector("notes", &connector, true)
+            .await
+            .unwrap();
+        let brain = BrainService::new(
+            store,
+            embedder,
+            Arc::new(NullReranker::new()),
+            Arc::new(FailSynthesizer),
+        );
+        let answer = brain.ask("KNOWN_PHRASE_KURULTAI_42").await.unwrap();
+        assert!(!answer.citations.is_empty());
+        assert!(answer.answer.contains("Based on indexed atoms"));
+        assert!((answer.confidence - 0.45).abs() < 1e-9);
     }
 }

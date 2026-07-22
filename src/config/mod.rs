@@ -17,6 +17,8 @@ dimension = 3072
 
 [runtime]
 poll_interval_secs = 300
+# Optional OpenRouter chat model for `kurultai ask` / MCP ask (omit = extractive).
+# synthesis_model = "openai/gpt-4o-mini"
 "#
 }
 
@@ -104,6 +106,7 @@ mod tests {
             embed_model: "model".into(),
             embed_dim: 3072,
             reranker_model: None,
+            synthesis_model: None,
             poll_interval_secs: 300,
         };
         assert!(validate(&config).is_err());

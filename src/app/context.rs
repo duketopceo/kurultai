@@ -4,6 +4,7 @@ use crate::embed::{Embedder, NullEmbedder, OpenRouterEmbedder};
 use crate::environment::Environment;
 use crate::error::{KurultaiError, Result};
 use crate::pipeline::IndexPipeline;
+use crate::query::{NullSynthesizer, OpenRouterSynthesizer, Synthesizer};
 use crate::rerank::{NullReranker, OpenRouterReranker, Reranker};
 use crate::security::api_key_from_env_optional;
 use crate::store::{migrations, SqliteVecStore, Store};
@@ -18,6 +19,7 @@ pub struct App {
     pub store: Arc<dyn Store>,
     pub embedder: Arc<dyn Embedder>,
     pub reranker: Arc<dyn Reranker>,
+    pub synthesizer: Arc<dyn Synthesizer>,
     pub connectors: ConnectorRegistry,
     pub pipeline: IndexPipeline,
 }
@@ -49,6 +51,7 @@ impl App {
 
         let embedder = build_embedder(&config, environment)?;
         let reranker = build_reranker(&config);
+        let synthesizer = build_synthesizer(&config);
         let connectors = ConnectorRegistry::from_config(&config).await?;
         let pipeline = IndexPipeline::new(Arc::clone(&store), Arc::clone(&embedder));
 
@@ -57,6 +60,7 @@ impl App {
             sources = connectors.len(),
             embedder = embedder.name(),
             reranker = reranker.name(),
+            synthesizer = synthesizer.name(),
             dim = embedder.dim(),
             "app initialized"
         );
@@ -67,6 +71,7 @@ impl App {
             store,
             embedder,
             reranker,
+            synthesizer,
             connectors,
             pipeline,
         })
@@ -126,6 +131,28 @@ fn build_reranker(config: &Config) -> Arc<dyn Reranker> {
         None => {
             tracing::warn!("reranker_model set but no API key — rerank disabled");
             Arc::new(NullReranker::new())
+        }
+    }
+}
+
+fn build_synthesizer(config: &Config) -> Arc<dyn Synthesizer> {
+    let Some(model) = config
+        .synthesis_model
+        .as_ref()
+        .filter(|m| !m.trim().is_empty())
+    else {
+        return Arc::new(NullSynthesizer::new());
+    };
+    let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
+        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));
+    match api_key {
+        Some(key) => Arc::new(OpenRouterSynthesizer::new(
+            key.expose().to_string(),
+            model.clone(),
+        )),
+        None => {
+            tracing::warn!("synthesis_model set but no API key — extractive ask only");
+            Arc::new(NullSynthesizer::new())
         }
     }
 }

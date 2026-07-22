@@ -52,7 +52,8 @@ fn status_shows_environment_and_sources() {
         .success()
         .stdout(predicate::str::contains("Kurultai status"))
         .stdout(predicate::str::contains("notes"))
-        .stdout(predicate::str::contains("Reranker: none"));
+        .stdout(predicate::str::contains("Reranker: none"))
+        .stdout(predicate::str::contains("Synthesizer: extractive"));
 }
 
 #[test]
@@ -77,6 +78,30 @@ fn index_and_search_fixture_phrase() {
         .assert()
         .success()
         .stdout(predicate::str::contains("notes"));
+}
+
+#[test]
+fn index_and_ask_fixture_phrase() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = fixture_config(&tmp);
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "index", "--full"])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "ask",
+            "KNOWN_PHRASE_KURULTAI_42",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Q:"))
+        .stdout(predicate::str::contains("A:"))
+        .stdout(predicate::str::contains("cite:"))
+        .stdout(predicate::str::contains("Based on indexed atoms"));
 }
 
 #[test]

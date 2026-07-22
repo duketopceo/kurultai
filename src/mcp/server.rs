@@ -1,7 +1,7 @@
 //! Minimal MCP stdio JSON-RPC server (Phase 1 #11 slice).
 //!
 //! Speaks newline-delimited JSON-RPC 2.0 over stdin/stdout.
-//! Tools: `search`, `cite`, `remember` (ask is available but thin).
+//! Tools: `search`, `cite`, `remember`, `ask`.
 
 use crate::error::{KurultaiError, Result};
 use crate::mcp::brain::BrainService;
@@ -267,7 +267,7 @@ fn tool_defs() -> &'static [Value] {
             }),
             json!({
                 "name": TOOL_ASK,
-                "description": "Thin retrieval answer with citations (full synthesis is Phase 3).",
+                "description": "Synthesize an answer from retrieved atoms with citations.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -413,6 +413,7 @@ mod tests {
             store,
             embedder,
             Arc::new(crate::rerank::NullReranker::new()),
+            Arc::new(crate::query::NullSynthesizer::new()),
         )
     }
 

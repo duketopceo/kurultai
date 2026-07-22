@@ -97,5 +97,6 @@ pub struct Config {
     pub embed_model: String,
     pub embed_dim: usize,
     pub reranker_model: Option<String>,
+    pub synthesis_model: Option<String>,
     pub poll_interval_secs: u64,
 }

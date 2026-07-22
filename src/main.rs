@@ -89,6 +89,7 @@ async fn main() -> Result<()> {
                 Arc::clone(&app.store),
                 Arc::clone(&app.embedder),
                 Arc::clone(&app.reranker),
+                Arc::clone(&app.synthesizer),
             );
             // MCP must not spam logs to stdout — stderr only via tracing.
             tracing::info!("mcp stdio server starting");
@@ -117,6 +118,7 @@ async fn main() -> Result<()> {
                 Arc::clone(&app.store),
                 Arc::clone(&app.embedder),
                 Arc::clone(&app.reranker),
+                Arc::clone(&app.synthesizer),
             );
             let answer = brain.ask(question).await?;
             println!("Q: {}", answer.question);
@@ -132,6 +134,7 @@ async fn main() -> Result<()> {
                 Arc::clone(&app.store),
                 Arc::clone(&app.embedder),
                 Arc::clone(&app.reranker),
+                Arc::clone(&app.synthesizer),
             );
             let views = brain.search_views(query, limit).await?;
             if views.is_empty() {
@@ -165,6 +168,11 @@ async fn main() -> Result<()> {
                 println!("  Reranker: {}", app.reranker.name());
             } else {
                 println!("  Reranker: none (set runtime.reranker_model + API key)");
+            }
+            if app.synthesizer.is_live() {
+                println!("  Synthesizer: {}", app.synthesizer.name());
+            } else {
+                println!("  Synthesizer: extractive (set runtime.synthesis_model + API key)");
             }
             println!("  Atoms:   {}", atom_count);
 

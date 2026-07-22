@@ -129,6 +129,7 @@ mod tests {
             embed_model: "openai/text-embedding-3-large".into(),
             embed_dim: 4,
             reranker_model: None,
+            synthesis_model: None,
             poll_interval_secs: 300,
         };
 
@@ -153,6 +154,7 @@ mod tests {
             embed_model: "m".into(),
             embed_dim: 4,
             reranker_model: None,
+            synthesis_model: None,
             poll_interval_secs: 300,
         };
         match ConnectorRegistry::from_config(&config).await {

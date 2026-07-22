@@ -12,7 +12,7 @@
 //! |------|----|-------------------|
 //! | `search` | read | RRF-ranked `AgentAtomView` excerpts (optional rerank) |
 //! | `cite` | read | Single citation slice |
-//! | `ask` | read | Thin retrieval answer (full synthesis #7) |
+//! | `ask` | read | Synthesize answer from retrieved atoms + citations |
 //! | `remember` | write | Distilled atom: title, summary, tags |
 
 pub mod brain;

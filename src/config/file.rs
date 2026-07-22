@@ -57,6 +57,7 @@ impl Default for FileEmbedConfig {
 pub struct FileRuntimeConfig {
     pub poll_interval_secs: Option<u64>,
     pub reranker_model: Option<String>,
+    pub synthesis_model: Option<String>,
 }
 
 fn default_true() -> bool {
