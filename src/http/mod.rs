@@ -103,9 +103,9 @@ struct CiteQuery {
 async fn cite_get(
     State(brain): State<Arc<BrainService>>,
     Query(params): Query<CiteQuery>,
-) -> ApiResult<impl IntoResponse> {
+) -> ApiResult<Json<crate::types::Citation>> {
     match brain.cite(&params.source, &params.source_id).await? {
-        Some(c) => Ok((StatusCode::OK, Json(c)).into_response()),
+        Some(c) => Ok(Json(c)),
         None => Err(ApiError {
             status: StatusCode::NOT_FOUND,
             message: format!("No atom for {}/{}", params.source, params.source_id),
