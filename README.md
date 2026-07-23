@@ -10,6 +10,9 @@
                     ╰──────────────────────────╯
 ```
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
+
 # Kurultai
 
 **Assemble what you know, from wherever it lives.**
@@ -238,6 +241,12 @@ Per-work-order context for external repos we **depend on**, **port patterns from
 ## Quality
 
 CI runs on every PR: `cargo fmt`, `clippy -D warnings`, `cargo test --locked`, `cargo audit`, and a macOS smoke build. Coverage and stricter gates expand by milestone ([#23](https://github.com/duketopceo/kurultai/issues/23)).
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on development setup, coding standards, and the pull request process.
+
+For security vulnerabilities, please see [SECURITY.md](SECURITY.md) for responsible disclosure guidelines.
 
 ## License
 

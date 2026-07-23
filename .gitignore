@@ -17,6 +17,9 @@ target/
 config.toml
 .env
 
+# Internal framework files
+.github/PROMPT_FRAMEWORK.md
+
 # Data
 *.db
 *.db-journal
