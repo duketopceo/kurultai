@@ -149,6 +149,22 @@ Override via CLI or env: `kurultai --env staging status` or `KURULTAI_ENV=prod k
 
 Track full deployment plan in [#27](https://github.com/duketopceo/kurultai/issues/27).
 
+## Post-train export contract
+
+Hot SQLite atoms keep these fields stable for a future cold tier / labeling export:
+
+| Field | Purpose |
+|-------|---------|
+| `id` | Content-addressed stable ID |
+| `source` / `source_id` / `source_uri` | Provenance join keys |
+| `title` / `content` / `summary` | Text corpus |
+| `tags` | Durable labels |
+| `provenance` | Free-form / JSON provenance |
+| `source_updated_at` / `indexed_at` | Temporal ordering |
+| `content_hash` | Change detection |
+| `metadata` | Source-specific extras |
+| `embedding` (optional) | Vector when keyed |
+
 ## Connectors
 
 - **Markdown** — Index any directory of `.md` files (`root_path`). Works with Obsidian vaults, git wikis, plain folders — no desktop app integration
