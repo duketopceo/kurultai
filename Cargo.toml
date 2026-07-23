@@ -7,6 +7,9 @@ authors = ["Luke Kimball <duketopceo@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/duketopceo/kurultai"
 
+[dev-dependencies]
+tempfile = "3"
+
 [dependencies]
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -46,3 +49,6 @@ notify = "6"
 
 # Glob for file discovery
 glob = "0.3"
+
+# Recursive directory walking
+walkdir = "2"

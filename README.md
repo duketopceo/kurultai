@@ -141,7 +141,7 @@ Override via CLI or env: `kurultai --env staging status` or `KURULTAI_ENV=prod k
 | **Audience** | Developer | Team | Enterprise |
 | **Storage** | `~/.local/share/kurultai/dev/store.db` | `.../staging/store.db` | `.../store.db` |
 | **Logging** | `kurultai=debug` | `info,warn` | `warn,error` |
-| **API keys** | Optional (zero-vector fallback) | Required for index | Required + audit |
+| **API keys** | Optional (FTS-only; no zero-vector fake embeds) | Required for index | Required + audit |
 | **CI branch** | PR / feature branches | `staging` branch | `main` branch |
 | **Phase** | 1–3 | 4–5 | 5–6 |
 

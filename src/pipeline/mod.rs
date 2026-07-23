@@ -1,5 +1,5 @@
 use crate::connectors::ConnectorRegistry;
-use crate::embed::Embedder;
+use crate::embed::{EmbedMode, Embedder};
 use crate::error::{KurultaiError, Result};
 use crate::store::Store;
 use std::sync::Arc;
@@ -73,16 +73,36 @@ impl IndexPipeline {
                 .map_err(|e| KurultaiError::Store(format!("delete_source failed: {e}")))?;
         }
 
-        // Embedding pass — batch when embedder supports it.
-        let mut enriched = atoms;
-        for atom in &mut enriched {
-            if atom.embedding.is_none() {
-                let text = format!("{}\n{}", atom.title, atom.content);
-                let embedding = self.embedder.embed(&text).await.map_err(|e| {
-                    KurultaiError::Embed(format!("embed failed for {}: {e}", atom.id))
-                })?;
-                atom.embedding = Some(embedding);
+        let mut enriched: Vec<crate::types::KnowledgeAtom> = Vec::with_capacity(atoms.len());
+        let mut seen_source_ids: Vec<String> = Vec::with_capacity(atoms.len());
+
+        for mut atom in atoms {
+            seen_source_ids.push(atom.source_id.clone());
+
+            if self
+                .store
+                .content_hash_unchanged(&atom.id, &atom.content_hash)
+                .await
+                .map_err(|e| KurultaiError::Store(format!("content_hash check failed: {e}")))?
+            {
+                tracing::trace!(id = %atom.id, "content hash unchanged; skip");
+                continue;
             }
+
+            if self.embedder.mode() == EmbedMode::Full && atom.embedding.is_none() {
+                let text = format!("{}\n{}", atom.title, atom.content);
+                match self.embedder.embed(&text).await {
+                    Ok(embedding) => {
+                        atom.embedding = Some(embedding);
+                    }
+                    Err(e) => {
+                        tracing::warn!(id = %atom.id, error = %e, "embed failed; indexing without embedding");
+                        // FTS-only degrade for this atom.
+                    }
+                }
+            }
+
+            enriched.push(atom);
         }
 
         if !enriched.is_empty() {
@@ -90,6 +110,14 @@ impl IndexPipeline {
                 .upsert_batch(&enriched)
                 .await
                 .map_err(|e| KurultaiError::Store(format!("upsert_batch failed: {e}")))?;
+        }
+
+        if !full && !seen_source_ids.is_empty() {
+            let keep: Vec<&str> = seen_source_ids.iter().map(String::as_str).collect();
+            self.store
+                .delete_source_ids_not_in(source_name, &keep)
+                .await
+                .map_err(|e| KurultaiError::Store(format!("orphan cleanup failed: {e}")))?;
         }
 
         let duration_ms = started.elapsed().as_millis();

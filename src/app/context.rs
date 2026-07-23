@@ -4,6 +4,7 @@ use crate::embed::{Embedder, OpenRouterEmbedder};
 use crate::environment::Environment;
 use crate::error::{KurultaiError, Result};
 use crate::pipeline::IndexPipeline;
+use crate::query::{HybridQueryEngine, QueryEngine};
 use crate::security::api_key_from_env_optional;
 use crate::store::{migrations, SqliteVecStore, Store};
 use crate::types::Config;
@@ -18,6 +19,7 @@ pub struct App {
     pub embedder: Arc<dyn Embedder>,
     pub connectors: ConnectorRegistry,
     pub pipeline: IndexPipeline,
+    pub query_engine: Arc<dyn QueryEngine>,
 }
 
 impl App {
@@ -39,17 +41,26 @@ impl App {
         ensure_storage_parent(&storage_path)?;
 
         tracing::debug!(storage = %storage_path.display(), "initializing store");
-        let store: Arc<dyn Store> = Arc::new(SqliteVecStore::open(storage_path)?);
+        let store: Arc<dyn Store> = Arc::new(SqliteVecStore::open(
+            storage_path,
+            &config.embed_model,
+            config.embed_dim,
+        )?);
 
         let embedder = build_embedder(&config, environment)?;
         let connectors = ConnectorRegistry::from_config(&config).await?;
         let pipeline = IndexPipeline::new(Arc::clone(&store), Arc::clone(&embedder));
+        let query_engine: Arc<dyn QueryEngine> = Arc::new(HybridQueryEngine::new(
+            Arc::clone(&store),
+            Arc::clone(&embedder),
+        ));
 
         tracing::info!(
             env = %environment,
             sources = connectors.len(),
             embedder = embedder.name(),
             dim = embedder.dim(),
+            mode = ?embedder.mode(),
             "app initialized"
         );
 
@@ -60,6 +71,7 @@ impl App {
             embedder,
             connectors,
             pipeline,
+            query_engine,
         })
     }
 
@@ -80,14 +92,21 @@ fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
         .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));
 
-    if api_key.is_none() {
-        tracing::warn!(
-            env = %env,
-            "no OPENROUTER_API_KEY or KURULTAI_API_KEY set — embedder will return zero vectors until a key is set"
-        );
-    }
-
-    let key = api_key.map(|k| k.expose().to_string()).unwrap_or_default();
+    let key = match api_key {
+        Some(k) => k.expose().to_string(),
+        None if env.requires_embed_api_key() => {
+            return Err(KurultaiError::security(
+                "OPENROUTER_API_KEY or KURULTAI_API_KEY is required in staging/production",
+            ))
+        }
+        None => {
+            tracing::warn!(
+                env = %env,
+                "no OPENROUTER_API_KEY or KURULTAI_API_KEY set — running in FTS-only mode"
+            );
+            String::new()
+        }
+    };
 
     let embedder: Arc<dyn Embedder> = Arc::new(OpenRouterEmbedder::new(
         key,

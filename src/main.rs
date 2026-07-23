@@ -57,6 +57,8 @@ enum Commands {
         #[arg(long, default_value = "8421")]
         port: u16,
     },
+    /// Run the MCP stdio server
+    Mcp,
 }
 
 #[tokio::main]
@@ -95,28 +97,39 @@ async fn main() -> Result<()> {
         Commands::Search { query, limit } => {
             tracing::info!(query = %query, limit, "search requested");
             let results = app
-                .store
-                .fts_search(&query, limit)
+                .query_engine
+                .search(&query, limit)
                 .await
-                .map_err(|e| kurultai::KurultaiError::Store(e.to_string()))?;
+                .map_err(|e| kurultai::KurultaiError::Query(e.to_string()))?;
             if results.is_empty() {
-                println!("No results (FTS not implemented yet — see issue #6).");
+                println!("No results.");
             } else {
-                for (atom, score) in results {
-                    println!("  [{:.3}] {} — {}", score, atom.source, atom.title);
+                for result in results {
+                    println!(
+                        "  [{:.3}] {} — {} ({})",
+                        result.score,
+                        result.atom.source,
+                        result.atom.title,
+                        result.matched_by.join(",")
+                    );
                 }
             }
         }
         Commands::Status => {
             let atom_count = app.atom_count().await?;
+            let mode = match app.embedder.mode() {
+                kurultai::embed::EmbedMode::Full => "full",
+                kurultai::embed::EmbedMode::FtsOnly => "fts-only",
+            };
             println!("Kurultai status");
             println!("  Environment: {}", app.environment);
             println!("  Storage: {}", app.config.storage_path);
             println!("  Schema:  v{}", app.schema_version());
             println!(
-                "  Embedder: {} ({}-dim)",
+                "  Embedder: {} ({}-dim, {})",
                 app.embedder.name(),
-                app.embedder.dim()
+                app.embedder.dim(),
+                mode
             );
             println!("  Atoms:   {}", atom_count);
 
@@ -153,6 +166,10 @@ async fn main() -> Result<()> {
                 .await;
                 tracing::debug!("daemon poll tick");
             }
+        }
+        Commands::Mcp => {
+            tracing::info!("mcp stdio server starting");
+            kurultai::mcp::run(app.query_engine).await?;
         }
     }
 

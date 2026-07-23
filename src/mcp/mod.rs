@@ -18,5 +18,7 @@
 //! HTTP daemon mirrors the same contract for non-MCP agents.
 
 pub mod interface;
+pub mod stdio;
 
 pub use interface::{AgentRead, AgentWrite};
+pub use stdio::run;

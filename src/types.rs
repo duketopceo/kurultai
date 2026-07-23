@@ -33,6 +33,12 @@ pub struct KnowledgeAtom {
     pub embedding: Option<Vec<f32>>,
     /// Arbitrary source-specific metadata
     pub metadata: HashMap<String, String>,
+    /// Content hash for cheap change detection
+    pub content_hash: String,
+    /// Canonical URI for the source (e.g. file://path)
+    pub source_uri: Option<String>,
+    /// Provenance / lineage (e.g. connector version, timestamp)
+    pub provenance: Option<String>,
 }
 
 /// A search result returned by the query pipeline.
