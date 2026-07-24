@@ -1,5 +1,7 @@
 pub mod appflowy;
+pub mod dayflow;
 pub mod markdown;
+pub mod pond;
 pub mod registry;
 
 pub use registry::ConnectorRegistry;

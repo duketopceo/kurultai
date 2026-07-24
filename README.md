@@ -92,7 +92,7 @@ Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthes
 
 | Layer | Technology | Status |
 |-------|-----------|--------|
-| **Connectors** | Trait-based; **markdown** live; AppFlowy stub; agents/GitHub/Dayflow later | ✅ Markdown · 🚧 others |
+| **Connectors** | Trait-based; **markdown**, **Dayflow**, **Pond** live; AppFlowy/GitHub later | ✅ Markdown · Dayflow · Pond |
 | **Distillation** | LLM extractors (question, summary, resolution, tags) per source | 📋 Planned (#7 / #12) |
 | **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key | ✅ |
 | **Vector Store** | SQLite + FTS5 + sqlite-vec (`=0.1.6`) | ✅ |
@@ -177,10 +177,10 @@ Track full deployment plan in [#27](https://github.com/duketopceo/kurultai/issue
 ## Connectors
 
 - **Markdown** — Index any directory of `.md` files (`root_path`). Works with Obsidian vaults, git wikis, plain folders — no desktop app integration
-- **AppFlowy** — Index pages, databases, and AI chats via REST API or MCP
-- **Agents** — Index Cursor, Codex, Claude Code conversation history (Phase 3)
-- **Dayflow** — Mac activity journal (Phase 4)
-- **GitHub** — Index code repositories via file system + CodeGraph
+- **Pond** — Index agent sessions via `pond sql` (`kind = "pond"`; optional `pond_bin`, `limit`)
+- **Dayflow** — Mac activity journal from `chunks.sqlite` (`kind = "dayflow"`; optional `db_path`)
+- **AppFlowy** — Index pages, databases, and AI chats via REST API or MCP (deferred #4)
+- **GitHub** — Index code repositories via file system + CodeGraph (later)
 
 Each connector implements the `Connector` trait:
 
@@ -208,7 +208,7 @@ Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase
 | **1** Foundation | Developer | [Phase 1](https://github.com/duketopceo/kurultai/milestone/1) | ✅ [#18](https://github.com/duketopceo/kurultai/issues/18) framework → [#1](https://github.com/duketopceo/kurultai/issues/1) storage → [#2](https://github.com/duketopceo/kurultai/issues/2) embed → [#31](https://github.com/duketopceo/kurultai/issues/31)/[#4](https://github.com/duketopceo/kurultai/issues/4) connectors → [#5](https://github.com/duketopceo/kurultai/issues/5) CLI → [#11](https://github.com/duketopceo/kurultai/issues/11) MCP/install | [sqlite-vec](https://github.com/asg017/sqlite-vec), [layer0](https://github.com/amajorai/layer0), [kb-mcp](https://github.com/alphabet-h/kb-mcp), [mdvault](https://github.com/sderosiaux/mdvault), [Stratum](https://github.com/DakodaStemen/Stratum), [smithery](https://github.com/smithery-ai/cli) |
 | **2** Search | Developer | [Phase 2](https://github.com/duketopceo/kurultai/milestone/2) | ✅ [#6](https://github.com/duketopceo/kurultai/issues/6) RRF diamond + optional rerank (distillation deferred) | [kb-mcp](https://github.com/alphabet-h/kb-mcp), [Stratum](https://github.com/DakodaStemen/Stratum), [sqmd](https://github.com/itkoren/sqmd), [Cerebras KB](https://mer.vin/2026/07/how-cerebras-built-a-15k-query-day-internal-knowledge-base/) |
 | **3** Synthesis | Developer ✓ | [Phase 3](https://github.com/duketopceo/kurultai/milestone/3) | [#7](https://github.com/duketopceo/kurultai/issues/7) synthesis + MCP + daemon + agent capture | [gbrain](https://github.com/imphillip/gbrain-openclaw), [agent-knowledge](https://github.com/keshrath/agent-knowledge), [recall](https://github.com/pratikgajjar/recall), [atomic](https://github.com/yun-lim/atomic) |
-| **4** Expansion | Solo ✓ | [Phase 4](https://github.com/duketopceo/kurultai/milestone/4) | [#8](https://github.com/duketopceo/kurultai/issues/8) GitHub/Pond → [#21](https://github.com/duketopceo/kurultai/issues/21) Dayflow | [cocoindex](https://github.com/cocoindex-io/cocoindex), [codebase-graph](https://github.com/Phoenixrr2113/codebase-graph), [Dayflow](https://github.com/JerryZLiu/Dayflow) |
+| **4** Expansion | Solo ✓ | [Phase 4](https://github.com/duketopceo/kurultai/milestone/4) | 🚧 [#21](https://github.com/duketopceo/kurultai/issues/21) Dayflow + [#8](https://github.com/duketopceo/kurultai/issues/8) Pond slice (Composio/GitHub/plugins later) | [cocoindex](https://github.com/cocoindex-io/cocoindex), [codebase-graph](https://github.com/Phoenixrr2113/codebase-graph), [Dayflow](https://github.com/JerryZLiu/Dayflow) |
 | **5** Production | Team | [Phase 5](https://github.com/duketopceo/kurultai/milestone/5) | [#9](https://github.com/duketopceo/kurultai/issues/9) perf + shared daemon → [#20](https://github.com/duketopceo/kurultai/issues/20) self-hosted CI | [layer0](https://github.com/amajorai/layer0), [engram-mcp](https://github.com/edg-l/engram-mcp) |
 | **6** Launch | Company | [Phase 6](https://github.com/duketopceo/kurultai/milestone/6) | [#10](https://github.com/duketopceo/kurultai/issues/10) release → [#22](https://github.com/duketopceo/kurultai/issues/22) yurt art | — |
 
