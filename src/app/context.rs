@@ -7,6 +7,7 @@ use crate::pipeline::IndexPipeline;
 use crate::rerank::{NullReranker, OpenRouterReranker, Reranker};
 use crate::security::api_key_from_env_optional;
 use crate::store::{migrations, SqliteVecStore, Store};
+use crate::synthesize::{synthesizer_from_env, Synthesizer};
 use crate::types::Config;
 use std::path::Path;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ pub struct App {
     pub store: Arc<dyn Store>,
     pub embedder: Arc<dyn Embedder>,
     pub reranker: Arc<dyn Reranker>,
+    pub synthesizer: Arc<dyn Synthesizer>,
     pub connectors: ConnectorRegistry,
     pub pipeline: IndexPipeline,
 }
@@ -49,6 +51,7 @@ impl App {
 
         let embedder = build_embedder(&config, environment)?;
         let reranker = build_reranker(&config);
+        let synthesizer = synthesizer_from_env(None);
         let connectors = ConnectorRegistry::from_config(&config).await?;
         let pipeline = IndexPipeline::new(Arc::clone(&store), Arc::clone(&embedder));
 
@@ -57,6 +60,7 @@ impl App {
             sources = connectors.len(),
             embedder = embedder.name(),
             reranker = reranker.name(),
+            synthesizer = synthesizer.name(),
             dim = embedder.dim(),
             "app initialized"
         );
@@ -67,6 +71,7 @@ impl App {
             store,
             embedder,
             reranker,
+            synthesizer,
             connectors,
             pipeline,
         })

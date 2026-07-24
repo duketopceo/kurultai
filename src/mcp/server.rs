@@ -1,7 +1,7 @@
-//! Minimal MCP stdio JSON-RPC server (Phase 1 #11 slice).
+//! Minimal MCP stdio JSON-RPC server (Phase 1 #11 + Phase 3 #7).
 //!
 //! Speaks newline-delimited JSON-RPC 2.0 over stdin/stdout.
-//! Tools: `search`, `cite`, `remember` (ask is available but thin).
+//! Tools: `search`, `cite`, `remember`, `ask`, `who_knows`.
 
 use crate::error::{KurultaiError, Result};
 use crate::mcp::brain::BrainService;
@@ -21,6 +21,7 @@ const TOOL_SEARCH: &str = "search";
 const TOOL_CITE: &str = "cite";
 const TOOL_REMEMBER: &str = "remember";
 const TOOL_ASK: &str = "ask";
+const TOOL_WHO_KNOWS: &str = "who_knows";
 
 enum StdinFrame {
     Eof,
@@ -267,13 +268,25 @@ fn tool_defs() -> &'static [Value] {
             }),
             json!({
                 "name": TOOL_ASK,
-                "description": "Thin retrieval answer with citations (full synthesis is Phase 3).",
+                "description": "Synthesize an answer with citations and confidence from the indexed brain.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "question": { "type": "string" }
                     },
                     "required": ["question"]
+                }
+            }),
+            json!({
+                "name": TOOL_WHO_KNOWS,
+                "description": "Discover which sources know about a topic (source aggregates, not full synthesis).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "topic": { "type": "string" },
+                        "limit": { "type": "integer", "default": 10 }
+                    },
+                    "required": ["topic"]
                 }
             }),
         ]
@@ -318,6 +331,13 @@ struct AskArgs {
     question: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct WhoKnowsArgs {
+    topic: String,
+    #[serde(default = "default_limit")]
+    limit: usize,
+}
+
 async fn call_tool(brain: &BrainService, params: Value) -> Result<Value> {
     let call: ToolCallParams = serde_json::from_value(params)
         .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad tools/call params: {e}")))?;
@@ -352,6 +372,13 @@ async fn call_tool(brain: &BrainService, params: Value) -> Result<Value> {
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad ask args: {e}")))?;
             let answer = brain.ask(&args.question).await?;
             serde_json::to_string(&answer)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
+        }
+        TOOL_WHO_KNOWS => {
+            let args: WhoKnowsArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad who_knows args: {e}")))?;
+            let entries = brain.who_knows(&args.topic, args.limit).await?;
+            serde_json::to_string(&entries)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
         }
         other => {
@@ -413,6 +440,7 @@ mod tests {
             store,
             embedder,
             Arc::new(crate::rerank::NullReranker::new()),
+            Arc::new(crate::synthesize::ExtractiveSynthesizer::new()),
         )
     }
 
@@ -426,6 +454,7 @@ mod tests {
         assert!(names.contains(&"cite"));
         assert!(names.contains(&"remember"));
         assert!(names.contains(&"ask"));
+        assert!(names.contains(&"who_knows"));
     }
 
     #[tokio::test]
@@ -541,5 +570,48 @@ mod tests {
         let cite_text = cite_hit["result"]["content"][0]["text"].as_str().unwrap();
         assert!(cite_text.contains(&atom.source));
         assert!(!cite_text.contains("No atom"));
+    }
+
+    #[tokio::test]
+    async fn ask_and_who_knows_tool_calls() {
+        let brain = brain_with_fixture().await;
+
+        let ask = handle_message(
+            &brain,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": {
+                    "name": "ask",
+                    "arguments": { "question": "KNOWN_PHRASE_KURULTAI_42" }
+                }
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let ask_text = ask["result"]["content"][0]["text"].as_str().unwrap();
+        let answer: crate::types::Answer = serde_json::from_str(ask_text).unwrap();
+        assert!(answer.confidence > 0.0);
+        assert!(!answer.citations.is_empty());
+
+        let who = handle_message(
+            &brain,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": {
+                    "name": "who_knows",
+                    "arguments": { "topic": "KNOWN_PHRASE_KURULTAI_42", "limit": 5 }
+                }
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let who_text = who["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(who_text.contains("notes"));
     }
 }

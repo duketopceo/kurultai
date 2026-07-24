@@ -8,6 +8,7 @@ use crate::mcp::interface::{AgentRead, AgentWrite};
 use crate::query::{expand_markdown_context, hybrid_search};
 use crate::rerank::Reranker;
 use crate::store::Store;
+use crate::synthesize::{who_knows_from_hits, Synthesizer, WhoKnowsEntry};
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
 use chrono::Utc;
 use std::collections::HashMap;
@@ -21,6 +22,7 @@ pub struct BrainService {
     store: Arc<dyn Store>,
     embedder: Arc<dyn Embedder>,
     reranker: Arc<dyn Reranker>,
+    synthesizer: Arc<dyn Synthesizer>,
 }
 
 impl BrainService {
@@ -28,11 +30,13 @@ impl BrainService {
         store: Arc<dyn Store>,
         embedder: Arc<dyn Embedder>,
         reranker: Arc<dyn Reranker>,
+        synthesizer: Arc<dyn Synthesizer>,
     ) -> Self {
         Self {
             store,
             embedder,
             reranker,
+            synthesizer,
         }
     }
 
@@ -77,36 +81,13 @@ impl AgentRead for BrainService {
     }
 
     async fn ask(&self, question: &str) -> Result<Answer> {
-        // Phase 1: thin FTS synthesis stub — full planner is #7.
-        let hits = self.search(question, 5).await?;
-        let citations: Vec<Citation> = hits
-            .iter()
-            .map(|r| citation_from_atom(&r.atom, r.score, false))
-            .collect();
-        let sources_used: Vec<String> = citations.iter().map(|c| c.source.clone()).collect();
-        let answer = if citations.is_empty() {
-            "No indexed atoms matched. Run `kurultai index` first.".into()
-        } else {
-            format!(
-                "Top matches (synthesis deferred to #7):\n{}",
-                citations
-                    .iter()
-                    .take(3)
-                    .map(|c| format!(
-                        "- {} ({}/{}): {}",
-                        c.title, c.source, c.source_id, c.excerpt
-                    ))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        };
-        Ok(Answer {
-            question: question.into(),
-            answer,
-            citations,
-            sources_used,
-            confidence: if hits.is_empty() { 0.0 } else { 0.4 },
-        })
+        let hits = self.search(question, 8).await?;
+        self.synthesizer.synthesize(question, &hits).await
+    }
+
+    async fn who_knows(&self, topic: &str, limit: usize) -> Result<Vec<WhoKnowsEntry>> {
+        let hits = self.search(topic, limit.max(1)).await?;
+        Ok(who_knows_from_hits(&hits))
     }
 }
 
@@ -180,6 +161,7 @@ mod tests {
     use crate::pipeline::IndexPipeline;
     use crate::rerank::NullReranker;
     use crate::store::SqliteVecStore;
+    use crate::synthesize::ExtractiveSynthesizer;
     use crate::types::{SourceConfig, SourceKind};
     use std::path::PathBuf;
 
@@ -213,7 +195,12 @@ mod tests {
             .await
             .unwrap();
 
-        BrainService::new(store, embedder, Arc::new(NullReranker::new()))
+        BrainService::new(
+            store,
+            embedder,
+            Arc::new(NullReranker::new()),
+            Arc::new(ExtractiveSynthesizer::new()),
+        )
     }
 
     #[tokio::test]
@@ -243,6 +230,32 @@ mod tests {
         assert!(!hits.is_empty());
         assert!(hits[0].matched_by.iter().any(|m| m == "fts"));
         assert!(!hits[0].matched_by.iter().any(|m| m == "vector"));
+    }
+
+    #[tokio::test]
+    async fn ask_extractive_from_fixture() {
+        let brain = brain_with_fixture().await;
+        let answer = brain.ask("KNOWN_PHRASE_KURULTAI_42").await.unwrap();
+        assert!(answer.confidence > 0.0);
+        assert!(!answer.citations.is_empty());
+        assert!(
+            answer.answer.contains("KNOWN_PHRASE_KURULTAI_42")
+                || answer
+                    .citations
+                    .iter()
+                    .any(|c| c.excerpt.contains("KNOWN_PHRASE_KURULTAI_42"))
+        );
+    }
+
+    #[tokio::test]
+    async fn who_knows_returns_markdown_source() {
+        let brain = brain_with_fixture().await;
+        let entries = brain
+            .who_knows("KNOWN_PHRASE_KURULTAI_42", 10)
+            .await
+            .unwrap();
+        assert!(!entries.is_empty());
+        assert!(entries.iter().any(|e| e.source == "notes"));
     }
 
     #[tokio::test]

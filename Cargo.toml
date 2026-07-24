@@ -22,6 +22,11 @@ serde_json = "1"
 # HTTP client (for API calls, embedding endpoints)
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
+# HTTP daemon (local brain API)
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
+
 # SQLite with vector support (pin 0.1.6 — newer alphas fail to compile)
 rusqlite = { version = "0.31", features = ["bundled"] }
 sqlite-vec = "=0.1.6"
