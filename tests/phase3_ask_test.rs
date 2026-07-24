@@ -12,28 +12,35 @@ use kurultai::synthesize::ExtractiveSynthesizer;
 use kurultai::types::{SourceConfig, SourceKind};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-async fn brain_with_fixture() -> BrainService {
+static FIXTURE_SEQ: AtomicU64 = AtomicU64::new(1);
+
+struct FixtureBrain {
+    brain: BrainService,
+    /// Keep the temp DB directory alive for the brain's lifetime.
+    _db_dir: tempfile::TempDir,
+}
+
+async fn brain_with_fixture() -> FixtureBrain {
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
-    let db_dir = std::env::temp_dir().join(format!(
-        "kurultai-phase3-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&db_dir).unwrap();
-    let store = Arc::new(SqliteVecStore::open(db_dir.join("store.db"), 4).unwrap());
+    let db_dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(SqliteVecStore::open(db_dir.path().join("store.db"), 4).unwrap());
     let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
     let pipeline = IndexPipeline::new(Arc::clone(&store) as Arc<dyn Store>, Arc::clone(&embedder));
 
     let mut connector = MarkdownConnector::new();
     let mut extra = HashMap::new();
     extra.insert("root_path".into(), fixture.to_string_lossy().into_owned());
+    // Unique source name avoids any cross-test FTS bleed if paths ever collide.
+    let source_name = format!(
+        "notes-{}",
+        FIXTURE_SEQ.fetch_add(1, Ordering::Relaxed)
+    );
     connector
         .init(&SourceConfig {
-            name: "notes".into(),
+            name: source_name.clone(),
             kind: SourceKind::Markdown,
             enabled: true,
             poll_interval_secs: 60,
@@ -42,22 +49,25 @@ async fn brain_with_fixture() -> BrainService {
         .await
         .unwrap();
     pipeline
-        .index_connector("notes", &connector, true)
+        .index_connector(&source_name, &connector, true)
         .await
         .unwrap();
 
-    BrainService::new(
-        store,
-        embedder,
-        Arc::new(NullReranker::new()),
-        Arc::new(ExtractiveSynthesizer::new()),
-    )
+    FixtureBrain {
+        brain: BrainService::new(
+            store,
+            embedder,
+            Arc::new(NullReranker::new()),
+            Arc::new(ExtractiveSynthesizer::new()),
+        ),
+        _db_dir: db_dir,
+    }
 }
 
 #[tokio::test]
 async fn phase3_ask_extractive_fixture() {
-    let brain = brain_with_fixture().await;
-    let answer = brain.ask("KNOWN_PHRASE_KURULTAI_42").await.unwrap();
+    let fx = brain_with_fixture().await;
+    let answer = fx.brain.ask("KNOWN_PHRASE_KURULTAI_42").await.unwrap();
     assert!(answer.confidence > 0.0);
     assert!(!answer.citations.is_empty());
     assert!(
@@ -88,11 +98,12 @@ async fn phase3_ask_empty_store() {
 
 #[tokio::test]
 async fn phase3_who_knows_fixture() {
-    let brain = brain_with_fixture().await;
-    let entries = brain
+    let fx = brain_with_fixture().await;
+    let entries = fx
+        .brain
         .who_knows("KNOWN_PHRASE_KURULTAI_42", 10)
         .await
         .unwrap();
     assert!(!entries.is_empty());
-    assert!(entries.iter().any(|e| !e.source.is_empty()));
+    assert!(entries.iter().any(|e| e.source.starts_with("notes")));
 }
