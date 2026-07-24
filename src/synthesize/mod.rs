@@ -341,4 +341,54 @@ mod tests {
         assert_eq!(w[0].source, "markdown");
         assert_eq!(w[0].hit_count, 2);
     }
+
+    /// Test-only synthesizer that returns fixed prose while preserving citations.
+    struct FixedSynthesizer {
+        prose: String,
+    }
+
+    impl FixedSynthesizer {
+        fn new(prose: impl Into<String>) -> Self {
+            Self {
+                prose: prose.into(),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Synthesizer for FixedSynthesizer {
+        fn name(&self) -> &str {
+            "fixed"
+        }
+
+        fn is_live(&self) -> bool {
+            false
+        }
+
+        async fn synthesize(&self, question: &str, hits: &[SearchResult]) -> Result<Answer> {
+            if hits.is_empty() {
+                return Ok(empty_answer(question));
+            }
+            let citations = citations_from_hits(hits);
+            Ok(Answer {
+                question: question.into(),
+                answer: format!("{} (hits: {})", self.prose, hits.len()),
+                sources_used: citations.iter().map(|c| c.source.clone()).collect(),
+                citations,
+                confidence: confidence_from_hits(hits),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn fixed_synthesizer_returns_preset_prose_and_citations() {
+        let s = FixedSynthesizer::new("Mock synthesis result");
+        let hits = vec![hit("Deploy", "fixture-ops-runbook checklist", 0.8)];
+        let a = s.synthesize("what is ops?", &hits).await.unwrap();
+        assert!(a.answer.contains("Mock synthesis result"));
+        assert!(a.answer.contains("hits: 1"));
+        assert_eq!(a.citations.len(), 1);
+        assert_eq!(a.citations[0].source, "markdown");
+        assert!(a.confidence > 0.0);
+    }
 }
