@@ -1,3 +1,4 @@
+use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
 use async_trait::async_trait;
 
@@ -15,6 +16,9 @@ pub trait AgentRead: Send + Sync {
 
     /// Synthesized answer with citations (higher token cost — use sparingly).
     async fn ask(&self, question: &str) -> crate::Result<Answer>;
+
+    /// Which sources know about a topic (distinct source aggregates from search).
+    async fn who_knows(&self, topic: &str, limit: usize) -> crate::Result<Vec<WhoKnowsEntry>>;
 }
 
 /// Write path: agents contribute durable knowledge without bloating the index.

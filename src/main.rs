@@ -49,6 +49,14 @@ enum Commands {
         /// The question to answer
         question: String,
     },
+    /// Which sources know about a topic
+    WhoKnows {
+        /// Topic / query
+        topic: String,
+        /// Max search hits to aggregate
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
     /// Search the knowledge base
     Search {
         /// Search query
@@ -61,7 +69,7 @@ enum Commands {
     Status,
     /// Run MCP server on stdio (for Cursor / Claude)
     Mcp,
-    /// Start the daemon (polls sources, serves queries)
+    /// Start the daemon (polls sources, serves HTTP)
     Daemon {
         /// Port for the HTTP server
         #[arg(long, default_value = "8421")]
@@ -85,11 +93,7 @@ async fn main() -> Result<()> {
         }
         Commands::Mcp => {
             let app = bootstrap_app(&cli).await?;
-            let brain = BrainService::new(
-                Arc::clone(&app.store),
-                Arc::clone(&app.embedder),
-                Arc::clone(&app.reranker),
-            );
+            let brain = brain_from_app(&app);
             // MCP must not spam logs to stdout — stderr only via tracing.
             tracing::info!("mcp stdio server starting");
             kurultai::mcp::run_stdio(brain).await?;
@@ -113,26 +117,36 @@ async fn main() -> Result<()> {
         Commands::Ask { ref question } => {
             let app = bootstrap_app(&cli).await?;
             tracing::info!(question = %question, "ask requested");
-            let brain = BrainService::new(
-                Arc::clone(&app.store),
-                Arc::clone(&app.embedder),
-                Arc::clone(&app.reranker),
-            );
+            let brain = brain_from_app(&app);
             let answer = brain.ask(question).await?;
             println!("Q: {}", answer.question);
             println!("A: {}", answer.answer);
+            println!("confidence: {:.2}", answer.confidence);
             for c in &answer.citations {
                 println!("  cite: {} / {} — {}", c.source, c.source_id, c.title);
+            }
+        }
+        Commands::WhoKnows { ref topic, limit } => {
+            let app = bootstrap_app(&cli).await?;
+            let brain = brain_from_app(&app);
+            let entries = brain.who_knows(topic, limit).await?;
+            if entries.is_empty() {
+                println!("No sources matched.");
+            } else {
+                for e in entries {
+                    println!(
+                        "  {} ({} hits) — {}",
+                        e.source,
+                        e.hit_count,
+                        e.sample_titles.join("; ")
+                    );
+                }
             }
         }
         Commands::Search { ref query, limit } => {
             let app = bootstrap_app(&cli).await?;
             tracing::info!(query = %query, limit, "search requested");
-            let brain = BrainService::new(
-                Arc::clone(&app.store),
-                Arc::clone(&app.embedder),
-                Arc::clone(&app.reranker),
-            );
+            let brain = brain_from_app(&app);
             let views = brain.search_views(query, limit).await?;
             if views.is_empty() {
                 println!("No results.");
@@ -166,6 +180,11 @@ async fn main() -> Result<()> {
             } else {
                 println!("  Reranker: none (set runtime.reranker_model + API key)");
             }
+            if app.synthesizer.is_live() {
+                println!("  Synthesizer: {}", app.synthesizer.name());
+            } else {
+                println!("  Synthesizer: extractive (set OPENROUTER_API_KEY for LLM ask)");
+            }
             println!("  Atoms:   {}", atom_count);
 
             if app.connectors.is_empty() {
@@ -190,22 +209,23 @@ async fn main() -> Result<()> {
         }
         Commands::Daemon { port } => {
             let app = bootstrap_app(&cli).await?;
-            tracing::info!(port, "daemon starting (stub)");
-            println!(
-                "Daemon on port {} — HTTP not implemented yet. Use `kurultai mcp` for agents (#11).",
-                port
-            );
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(
-                    app.config.poll_interval_secs,
-                ))
-                .await;
-                tracing::debug!("daemon poll tick");
-            }
+            let brain = brain_from_app(&app);
+            tracing::info!(port, "daemon starting");
+            println!("Daemon listening on http://127.0.0.1:{port} (localhost only; no auth)");
+            kurultai::http::serve(brain, port).await?;
         }
     }
 
     Ok(())
+}
+
+fn brain_from_app(app: &App) -> BrainService {
+    BrainService::new(
+        Arc::clone(&app.store),
+        Arc::clone(&app.embedder),
+        Arc::clone(&app.reranker),
+        Arc::clone(&app.synthesizer),
+    )
 }
 
 async fn bootstrap_app(cli: &Cli) -> Result<App> {

@@ -1,4 +1,4 @@
-//! Query pipeline: hybrid retrieval (Phase 2) and thin ask stub (#7 later).
+//! Query pipeline: hybrid retrieval (Phase 2) and synthesis (Phase 3).
 
 mod context;
 mod hybrid;
@@ -12,10 +12,11 @@ use crate::embed::Embedder;
 use crate::error::Result;
 use crate::rerank::Reranker;
 use crate::store::Store;
+use crate::synthesize::Synthesizer;
 use crate::types::{Answer, SearchResult};
 use std::sync::Arc;
 
-/// Full query pipeline: retrieve → (later) synthesize.
+/// Full query pipeline: retrieve → synthesize.
 #[async_trait::async_trait]
 pub trait QueryEngine: Send + Sync {
     /// Ask a question and get a synthesized answer with citations.
@@ -25,11 +26,12 @@ pub trait QueryEngine: Send + Sync {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>>;
 }
 
-/// Hybrid FTS ∥ vector → RRF → optional rerank engine used by CLI/MCP brain.
+/// Hybrid FTS ∥ vector → RRF → optional rerank → synthesize.
 pub struct HybridQueryEngine {
     store: Arc<dyn Store>,
     embedder: Arc<dyn Embedder>,
     reranker: Arc<dyn Reranker>,
+    synthesizer: Arc<dyn Synthesizer>,
 }
 
 impl HybridQueryEngine {
@@ -37,11 +39,13 @@ impl HybridQueryEngine {
         store: Arc<dyn Store>,
         embedder: Arc<dyn Embedder>,
         reranker: Arc<dyn Reranker>,
+        synthesizer: Arc<dyn Synthesizer>,
     ) -> Self {
         Self {
             store,
             embedder,
             reranker,
+            synthesizer,
         }
     }
 }
@@ -49,32 +53,8 @@ impl HybridQueryEngine {
 #[async_trait::async_trait]
 impl QueryEngine for HybridQueryEngine {
     async fn ask(&self, question: &str) -> Result<Answer> {
-        let hits = self.search(question, 5).await?;
-        let answer = if hits.is_empty() {
-            "No indexed atoms matched. Run `kurultai index` first.".into()
-        } else {
-            format!(
-                "Top matches (synthesis deferred to #7):\n{}",
-                hits.iter()
-                    .take(3)
-                    .map(|r| format!(
-                        "- {} ({}/{}): {}",
-                        r.atom.title,
-                        r.atom.source,
-                        r.atom.source_id,
-                        r.atom.summary.chars().take(120).collect::<String>()
-                    ))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        };
-        Ok(Answer {
-            question: question.into(),
-            answer,
-            citations: vec![],
-            sources_used: hits.iter().map(|h| h.atom.source.clone()).collect(),
-            confidence: if hits.is_empty() { 0.0 } else { 0.4 },
-        })
+        let hits = self.search(question, 8).await?;
+        self.synthesizer.synthesize(question, &hits).await
     }
 
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {

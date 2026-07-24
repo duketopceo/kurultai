@@ -519,16 +519,26 @@ fn sanitize_fts_query(query: &str) -> String {
     query
         .split_whitespace()
         .filter(|t| t.chars().any(|c| c.is_alphanumeric()))
-        .map(|t| {
+        .filter_map(|t| {
             let cleaned: String = t
                 .chars()
                 .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
                 .collect();
-            format!("\"{cleaned}\"")
+            if STOPWORDS.contains(&cleaned.to_ascii_lowercase().as_str()) {
+                return None;
+            }
+            Some(format!("\"{cleaned}\""))
         })
         .collect::<Vec<_>>()
         .join(" ")
 }
+
+const STOPWORDS: &[&str] = &[
+    "a", "an", "and", "are", "as", "at", "be", "been", "by", "for", "from", "has", "have", "he",
+    "in", "is", "it", "its", "of", "on", "or", "that", "the", "to", "was", "what", "with", "who",
+    "how", "why", "where", "when", "does", "do", "did", "can", "could", "would", "should", "will",
+    "shall", "this", "these", "those", "i", "you", "we", "they",
+];
 
 fn load_atom_by_id(conn: &Connection, id: &str) -> Result<Option<KnowledgeAtom>> {
     conn.query_row(

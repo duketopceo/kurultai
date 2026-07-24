@@ -6,6 +6,7 @@ pub mod embed;
 pub mod environment;
 pub mod error;
 pub mod hashutil;
+pub mod http;
 pub mod logging;
 pub mod mcp;
 pub mod pipeline;
@@ -13,6 +14,7 @@ pub mod query;
 pub mod rerank;
 pub mod security;
 pub mod store;
+pub mod synthesize;
 pub mod types;
 
 pub use environment::Environment;

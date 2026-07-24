@@ -95,3 +95,47 @@ fn invalid_config_errors_clearly() {
                 .or(predicate::str::contains("Error")),
         );
 }
+
+#[test]
+fn cli_ask_extractive_fixture() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = fixture_config(&tmp);
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "index", "--full"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("notes"));
+
+    bin()
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "ask",
+            "what is KNOWN_PHRASE_KURULTAI_42",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("KNOWN_PHRASE_KURULTAI_42"));
+}
+
+#[test]
+fn cli_who_knows_fixture() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = fixture_config(&tmp);
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "index", "--full"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("notes"));
+
+    bin()
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "who-knows",
+            "KNOWN_PHRASE_KURULTAI_42",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("notes"));
+}

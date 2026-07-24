@@ -6,13 +6,14 @@
 //! The brain itself is SQLite + vectors — not markdown. Markdown folders are
 //! one ingest source among many.
 //!
-//! MCP tools (Phase 1 #11 + Phase 2 #6 search):
+//! MCP tools (Phase 1–3):
 //!
 //! | Tool | Op | Returns / accepts |
 //! |------|----|-------------------|
 //! | `search` | read | RRF-ranked `AgentAtomView` excerpts (optional rerank) |
 //! | `cite` | read | Single citation slice |
-//! | `ask` | read | Thin retrieval answer (full synthesis #7) |
+//! | `ask` | read | Synthesized answer + citations + confidence |
+//! | `who_knows` | read | Distinct sources matching a topic |
 //! | `remember` | write | Distilled atom: title, summary, tags |
 
 pub mod brain;
