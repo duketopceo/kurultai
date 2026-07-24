@@ -199,7 +199,7 @@ pub trait Connector: Send + Sync {
 Master plan: **[#27 — Work Order: Master phase plan](https://github.com/duketopceo/kurultai/issues/27)**  
 Audience strategy: **[#25 — Developer → Solo → Team → Company](https://github.com/duketopceo/kurultai/issues/25)**  
 Upstream repos (depend / inspire / integrate): **[#40](https://github.com/duketopceo/kurultai/issues/40)** · [docs/upstream-inspiration.md](docs/upstream-inspiration.md)  
-Phase 1 CE plan: [docs/plans/phase-1-work-orders.md](docs/plans/phase-1-work-orders.md) · **complete:** [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md)  
+Phase 1 CE plan: [docs/plans/phase-1-work-orders.md](docs/plans/phase-1-work-orders.md) · **complete:** [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md) · **closeout:** [docs/plans/phase-1-closeout.md](docs/plans/phase-1-closeout.md)  
 Phase 2 search plan: [docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md](docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md) (#6)  
 Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)
 
@@ -220,10 +220,10 @@ Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase
 - [x] Storage ([#1](https://github.com/duketopceo/kurultai/issues/1)) — SqliteVecStore FTS + vec0
 - [x] Embeddings ([#2](https://github.com/duketopceo/kurultai/issues/2)) — OpenRouter + NullEmbedder FTS-first
 - [x] Markdown / filesystem connector ([#31](https://github.com/duketopceo/kurultai/issues/31), was #3)
-- [ ] AppFlowy connector ([#4](https://github.com/duketopceo/kurultai/issues/4)) — deferred non-blocking
 - [x] CLI wired ([#5](https://github.com/duketopceo/kurultai/issues/5)) — index/status/search via brain views
 - [x] MCP + installer ([#11](https://github.com/duketopceo/kurultai/issues/11)) — stdio `search`/`cite`/`remember` + `init --agent cursor`
-- [x] **Phase 1 exit** — wrap-up: [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md)
+- [x] **Phase 1 exit** — wrap-up: [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md) · closeout: [docs/plans/phase-1-closeout.md](docs/plans/phase-1-closeout.md)
+- [ ] AppFlowy connector ([#4](https://github.com/duketopceo/kurultai/issues/4)) — **deferred** (not Phase 1 exit; Expansion)
 - [x] Search & retrieval ([#6](https://github.com/duketopceo/kurultai/issues/6)) — RRF diamond + optional rerank; distillation deferred (#12)
 - [ ] Synthesis & interface ([#7](https://github.com/duketopceo/kurultai/issues/7))
 - [ ] Expansion connectors ([#8](https://github.com/duketopceo/kurultai/issues/8), [#21](https://github.com/duketopceo/kurultai/issues/21))

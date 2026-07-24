@@ -1,7 +1,7 @@
 # Phase 1 complete — wrap-up
 
-**Status:** ✅ Shipped on `main` (2026-07-21)  
-**Plan:** [phase-1-work-orders.md](phase-1-work-orders.md) · Tracking [#42](https://github.com/duketopceo/kurultai/issues/42)  
+**Status:** ✅ Shipped on `main` (2026-07-21) · **Tracker closeout:** [phase-1-closeout.md](phase-1-closeout.md)  
+**Plan:** [phase-1-work-orders.md](phase-1-work-orders.md) · Tracking [#42](https://github.com/duketopceo/kurultai/issues/42) (close via closeout script)  
 **Exit loop:**
 
 ```
@@ -76,18 +76,15 @@ Learning doc: [fts-first-null-embedder-no-zero-vectors.md](../solutions/architec
 
 | Item | Owner |
 |------|--------|
-| Hash-skip ignores embed model / title-in-embed text | #6 / polish |
+| Hash-skip ignores embed model / title-in-embed text | polish |
 | Serial MCP stdio (one slow tool blocks) | Later MCP |
-| Search hydrates full atoms then truncates | #6 projection |
-| RRF + rerank | **#6** |
-| Full `ask` synthesis | **#7** |
-| AppFlowy real connector | **#4** |
-| Close completed GitHub issues (#5 #25 #29 #40 #42) | Human — agent token lacks `closeIssue` |
+| AppFlowy real connector | **#4** (moved off Phase 1 exit → Expansion) |
+| Schema post-train fields | **#33** (Phase 3+) |
+| Testing gates (ongoing) | **#23** (cross-cutting; not Milestone 1) |
+| Close/move GitHub trackers | Maintainer: [phase-1-closeout.md](phase-1-closeout.md) / `scripts/phase-1-closeout.sh` |
 
 ---
 
-## Next: Phase 2
+## Next
 
-1. `/ce-plan` for [#6](https://github.com/duketopceo/kurultai/issues/6) Search & Retrieval  
-2. Cite [phase-2-graph-orchestration.md](phase-2-graph-orchestration.md) — diamond FTS ∥ vector → fuse  
-3. Out of Phase 2 scope unless product-forced: multi-agent fleets, second graph DB, Docker installer
+Phase 2 search (**#6**) already merged (#51). Finish hygiene above, then Phase 3 (#7) drafts #54/#55 and testing #53.
