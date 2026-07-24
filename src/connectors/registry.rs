@@ -1,5 +1,7 @@
 use crate::connectors::appflowy::AppFlowyConnector;
+use crate::connectors::dayflow::DayflowConnector;
 use crate::connectors::markdown::MarkdownConnector;
+use crate::connectors::pond::PondConnector;
 use crate::connectors::Connector;
 use crate::error::{KurultaiError, Result};
 use crate::types::{Config, SourceConfig, SourceKind};
@@ -73,7 +75,9 @@ fn build_connector(kind: &SourceKind) -> Result<Box<dyn Connector>> {
     let connector: Box<dyn Connector> = match kind {
         SourceKind::AppFlowy => Box::new(AppFlowyConnector::new()),
         SourceKind::Markdown => Box::new(MarkdownConnector::new()),
-        SourceKind::Pond | SourceKind::TechTracker | SourceKind::GitHub => {
+        SourceKind::Dayflow => Box::new(DayflowConnector::new()),
+        SourceKind::Pond => Box::new(PondConnector::new()),
+        SourceKind::TechTracker | SourceKind::GitHub => {
             return Err(KurultaiError::connector(
                 format!("{kind:?}"),
                 "connector not implemented yet",

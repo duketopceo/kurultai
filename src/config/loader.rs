@@ -146,6 +146,7 @@ fn parse_source_kind(kind: &str) -> SourceKind {
             SourceKind::Markdown
         }
         "pond" => SourceKind::Pond,
+        "dayflow" => SourceKind::Dayflow,
         "tech_tracker" | "techtracker" => SourceKind::TechTracker,
         "github" => SourceKind::GitHub,
         other => SourceKind::Custom(other.to_string()),

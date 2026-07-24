@@ -81,6 +81,8 @@ pub enum SourceKind {
     /// Local `.md` directory (Obsidian vault, git wiki, any markdown tree).
     Markdown,
     Pond,
+    /// Dayflow Mac activity journal (`chunks.sqlite` timeline cards).
+    Dayflow,
     TechTracker,
     GitHub,
     Custom(String),
