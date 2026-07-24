@@ -179,7 +179,7 @@ Track full deployment plan in [#27](https://github.com/duketopceo/kurultai/issue
 
 - **Markdown** — Index any directory of `.md` files (`root_path`). Works with Obsidian vaults, git wikis, plain folders — no desktop app integration
 - **AppFlowy** — Index pages, databases, and AI chats via REST API or MCP
-- **Agents** — Index Cursor, Codex, Claude Code conversation history (Phase 3)
+- **Agents** — Index Cursor, Codex, Claude Code conversation history (Phase 4+)
 - **Dayflow** — Mac activity journal (Phase 4)
 - **GitHub** — Index code repositories via file system + CodeGraph
 
