@@ -34,10 +34,7 @@ async fn brain_with_fixture() -> FixtureBrain {
     let mut extra = HashMap::new();
     extra.insert("root_path".into(), fixture.to_string_lossy().into_owned());
     // Unique source name avoids any cross-test FTS bleed if paths ever collide.
-    let source_name = format!(
-        "notes-{}",
-        FIXTURE_SEQ.fetch_add(1, Ordering::Relaxed)
-    );
+    let source_name = format!("notes-{}", FIXTURE_SEQ.fetch_add(1, Ordering::Relaxed));
     connector
         .init(&SourceConfig {
             name: source_name.clone(),
