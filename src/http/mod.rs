@@ -46,6 +46,7 @@ fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/api/status", get(api_status))
         .route("/api/search", get(search_get).post(search_post))
+        .route("/api/open", get(api_open))
         .route("/ui", get(ui_dashboard))
         .route("/ui/", get(ui_dashboard))
         .route("/search", get(search_get).post(search_post))
@@ -376,8 +377,15 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
         </section>
 
         <!-- Search / Browser -->
-        <section class="search-box">
-            <input type="text" id="brain-search" class="search-input" placeholder="Query the local brain (FTS + Vector search)...">
+        <section style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px;">
+            <div class="search-box" style="margin-bottom: 0;">
+                <input type="text" id="brain-search" class="search-input" placeholder="Query the local brain (FTS + Vector search)...">
+            </div>
+            <div class="glass-panel" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; border-radius: 9999px; font-family: var(--font-mono); font-size: 0.85rem;">
+                <span style="color: var(--text-muted);">Connection Threshold</span>
+                <input type="range" id="threshold-slider" min="0.0" max="1.0" step="0.05" value="0.0" style="flex: 1; margin: 0 20px; accent-color: var(--primary); cursor: pointer;">
+                <span id="threshold-val" style="color: var(--primary); min-width: 32px; text-align: right;">0.00</span>
+            </div>
         </section>
 
         <section class="db-layout">
@@ -410,9 +418,12 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
             const inspector = document.getElementById("atom-inspector");
             const searchInput = document.getElementById("brain-search");
             const graphContainer = document.getElementById("3d-synapse-graph");
+            const slider = document.getElementById("threshold-slider");
+            const sliderVal = document.getElementById("threshold-val");
 
             let currentAtoms = [];
             let activeAtom = null;
+            let currentThreshold = 0.0;
 
             async function loadDashboard() {
                 // 1. Fetch Status Info
@@ -448,6 +459,7 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                         resolution: r.atom.resolution || "",
                         tags: r.atom.tags || [],
                         source_updated_at: r.atom.source_updated_at || "",
+                        file_path: r.file_path || r.atom.file_path || r.atom.metadata?.file_path || "",
                         score: r.score
                     }));
 
@@ -506,7 +518,10 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                     <div class="detail-layout">
                         <div class="detail-row">
                             <div class="detail-label">Source Context</div>
-                            <div class="detail-val" style="font-family: var(--font-mono);">${escapeHtml(atom.source)} / ${escapeHtml(atom.source_id)}</div>
+                            <div class="detail-val" style="font-family: var(--font-mono); display: flex; justify-content: space-between; align-items: center;">
+                                <span>${escapeHtml(atom.source)} / ${escapeHtml(atom.source_id)}</span>
+                                ${atom.file_path ? `<button onclick="openFileInEditor('${escapeHtml(atom.file_path)}')" style="padding: 4px 12px; font-size: 0.75rem; border-radius: 9999px; background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; font-family: var(--font-mono);">Open File</button>` : ""}
+                            </div>
                         </div>
                         <div class="detail-row">
                             <div class="detail-label">Content Excerpt</div>
@@ -525,6 +540,14 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                 `;
             }
 
+            window.openFileInEditor = async function(filePath) {
+                try {
+                    await fetch("/api/open?file=" + encodeURIComponent(filePath));
+                } catch (e) {
+                    console.error("Failed to trigger file open API:", e);
+                }
+            };
+
             function escapeHtml(text) {
                 if (!text) return "";
                 return text
@@ -542,6 +565,13 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                 searchTimeout = setTimeout(() => {
                     triggerSearch(e.target.value.trim());
                 }, 300);
+            });
+
+            // Threshold Range Change Listener
+            slider.addEventListener("input", (e) => {
+                currentThreshold = parseFloat(e.target.value);
+                sliderVal.textContent = currentThreshold.toFixed(2);
+                update3DGraph(currentAtoms);
             });
 
             // 3D Graph Instance Handler
@@ -564,10 +594,17 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                     for (let j = i + 1; j < nodes.length; j++) {
                         const sharesSource = nodes[i].source_id === nodes[j].source_id;
                         const sharesTag = nodes[i].tags.some(t => nodes[j].tags.includes(t));
-                        if (sharesSource || sharesTag) {
+                        
+                        let score = 0.0;
+                        if (sharesSource && sharesTag) score = 1.0;
+                        else if (sharesSource) score = 0.8;
+                        else if (sharesTag) score = 0.5;
+
+                        if (score >= currentThreshold) {
                             links.push({
                                 source: nodes[i].id,
-                                target: nodes[j].id
+                                target: nodes[j].id,
+                                score: score
                             });
                         }
                     }
@@ -732,6 +769,20 @@ async fn who_knows_post(
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn api_open(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    if let Some(file) = params.get("file") {
+        let path = std::path::Path::new(file);
+        if path.exists() {
+            let _ = std::process::Command::new("open")
+                .arg(path)
+                .status();
+        }
+    }
+    StatusCode::OK
 }
 
 #[cfg(test)]
