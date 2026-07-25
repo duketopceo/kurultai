@@ -35,8 +35,7 @@ zerocopy = "0.7"
 # Content hashing for incremental index skip
 sha2 = "0.10"
 
-# Embeddings - via OpenRouter/API initially
-# Local embedding support via llama-cpp-rs will be added later
+# Embeddings: OpenRouter by default; optional ONNX via feature `local-embed`
 
 # Logging
 tracing = "0.1"
@@ -59,8 +58,13 @@ glob = "0.3"
 
 # Unix open flags (O_NOFOLLOW) for connector path safety
 libc = "0.2"
+fastembed = { version = "5", optional = true }
 
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
+
+[features]
+# Opt-in local ONNX embeddings (fastembed). Default builds stay FTS/cloud-only for CI.
+local-embed = ["dep:fastembed"]

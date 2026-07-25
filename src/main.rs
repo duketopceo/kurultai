@@ -182,7 +182,9 @@ async fn main() -> Result<()> {
                     app.embedder.dim()
                 );
             } else {
-                println!("  Embedder: none (FTS-only — set OPENROUTER_API_KEY for vectors)");
+                println!(
+                    "  Embedder: none (FTS-only — set OPENROUTER_API_KEY or embed.backend=local)"
+                );
             }
             if app.reranker.is_live() {
                 println!("  Reranker: {}", app.reranker.name());

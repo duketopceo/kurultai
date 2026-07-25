@@ -2,6 +2,11 @@ use crate::error::{KurultaiError, Result};
 use serde::Deserialize;
 use std::time::Duration;
 
+#[cfg(feature = "local-embed")]
+mod local;
+#[cfg(feature = "local-embed")]
+pub use local::LocalEmbedder;
+
 /// Generates embeddings for text via an API or local model.
 #[async_trait::async_trait]
 pub trait Embedder: Send + Sync {
@@ -20,6 +25,13 @@ pub trait Embedder: Send + Sync {
 const OPENROUTER_URL: &str = "https://openrouter.ai/api/v1/embeddings";
 const BATCH_SIZE: usize = 32;
 const MAX_RETRIES: u32 = 3;
+
+pub(crate) fn reject_empty_embed_texts(texts: &[&str]) -> Result<()> {
+    if texts.iter().any(|t| t.trim().is_empty()) {
+        return Err(KurultaiError::Embed("empty text cannot be embedded".into()));
+    }
+    Ok(())
+}
 
 /// Uses OpenRouter API for embeddings (fast, no local GPU).
 pub struct OpenRouterEmbedder {
@@ -47,11 +59,7 @@ impl OpenRouterEmbedder {
         if texts.is_empty() {
             return Ok(vec![]);
         }
-        for t in texts {
-            if t.trim().is_empty() {
-                return Err(KurultaiError::Embed("empty text cannot be embedded".into()));
-            }
-        }
+        reject_empty_embed_texts(texts)?;
 
         let body = serde_json::json!({
             "model": self.model,
@@ -231,5 +239,24 @@ mod tests {
             OpenRouterEmbedder::new("test-key".into(), "openai/text-embedding-3-large".into(), 4);
         let err = e.embed("   ").await.unwrap_err().to_string();
         assert!(err.contains("empty"), "{err}");
+    }
+
+    #[test]
+    fn validate_accepts_local_backend_rejects_unknown() {
+        let mut cfg = crate::types::Config {
+            environment: crate::environment::Environment::Dev,
+            sources: vec![],
+            storage_path: "/tmp/x".into(),
+            embed_model: "AllMiniLML6V2".into(),
+            embed_dim: 384,
+            embed_backend: Some("local".into()),
+            reranker_model: None,
+            poll_interval_secs: 300,
+            nightly_full_sync_hour: None,
+            inactivity_threshold_hours: None,
+        };
+        assert!(crate::config::validate(&cfg).is_ok());
+        cfg.embed_backend = Some("cloud".into());
+        assert!(crate::config::validate(&cfg).is_err());
     }
 }

@@ -181,6 +181,9 @@ pub struct Config {
     pub storage_path: String,
     pub embed_model: String,
     pub embed_dim: usize,
+    /// When `Some("local")`, use on-device embeddings (requires `--features local-embed`).
+    #[serde(default)]
+    pub embed_backend: Option<String>,
     pub reranker_model: Option<String>,
     pub poll_interval_secs: u64,
     /// Local hour (0–23) for nightly full reindex; `None` disables (#73).

@@ -103,6 +103,7 @@ fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>
             ));
             Ok(embedder)
         }
+        None if wants_local_embed(config) => build_local_embedder(config),
         None => {
             tracing::warn!(
                 env = %env,
@@ -110,6 +111,91 @@ fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>
             );
             Ok(Arc::new(NullEmbedder::new(config.embed_dim)))
         }
+    }
+}
+
+fn wants_local_embed(config: &Config) -> bool {
+    config
+        .embed_backend
+        .as_deref()
+        .is_some_and(|b| b.eq_ignore_ascii_case("local"))
+}
+
+#[cfg(feature = "local-embed")]
+fn resolve_local_model(config: &Config) -> &str {
+    if config.embed_model.starts_with("openai/") || config.embed_model.contains("text-embedding") {
+        "AllMiniLML6V2"
+    } else {
+        config.embed_model.as_str()
+    }
+}
+
+fn build_local_embedder(config: &Config) -> Result<Arc<dyn Embedder>> {
+    #[cfg(feature = "local-embed")]
+    {
+        let model = resolve_local_model(config);
+        tracing::info!(model, dim = config.embed_dim, "using local ONNX embedder");
+        let local = crate::embed::LocalEmbedder::try_new(model, config.embed_dim)?;
+        Ok(Arc::new(local))
+    }
+    #[cfg(not(feature = "local-embed"))]
+    {
+        let _ = config;
+        Err(KurultaiError::config(
+            "embed.backend = \"local\" requires building with --features local-embed",
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Config;
+
+    fn sample_config(backend: Option<&str>) -> Config {
+        Config {
+            environment: Environment::Dev,
+            sources: vec![],
+            storage_path: "/tmp/kurultai-embed-test.db".into(),
+            embed_model: "AllMiniLML6V2".into(),
+            embed_dim: 384,
+            embed_backend: backend.map(str::to_string),
+            reranker_model: None,
+            poll_interval_secs: 300,
+            nightly_full_sync_hour: None,
+            inactivity_threshold_hours: None,
+        }
+    }
+
+    #[test]
+    fn wants_local_only_when_backend_local() {
+        assert!(!wants_local_embed(&sample_config(None)));
+        assert!(wants_local_embed(&sample_config(Some("local"))));
+        assert!(wants_local_embed(&sample_config(Some("LOCAL"))));
+        assert!(!wants_local_embed(&sample_config(Some("openrouter"))));
+    }
+
+    #[test]
+    fn local_backend_without_feature_errors() {
+        #[cfg(not(feature = "local-embed"))]
+        {
+            let res = build_local_embedder(&sample_config(Some("local")));
+            let err = match res {
+                Ok(_) => panic!("expected error without local-embed feature"),
+                Err(e) => e,
+            };
+            assert!(err.to_string().contains("local-embed"), "got {err}");
+        }
+    }
+
+    #[test]
+    fn null_when_no_key_and_no_local() {
+        // Clear ambient keys for this assertion path by using Null path only when
+        // build_embedder sees no key — we assert the selection helpers instead.
+        let cfg = sample_config(None);
+        assert!(!wants_local_embed(&cfg));
+        let e = NullEmbedder::new(cfg.embed_dim);
+        assert!(!e.is_live());
     }
 }
 

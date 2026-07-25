@@ -71,7 +71,7 @@ Knowledge lives in many places. Kurultai indexes it into one queryable brain so 
 | Layer | What ships |
 |-------|------------|
 | **Connectors** | Markdown · Dayflow · Pond · GitHub (local checkout). AppFlowy deferred ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
-| **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key |
+| **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key; opt-in **local ONNX** (`embed.backend = "local"`, `--features local-embed`) |
 | **Store** | SQLite + FTS5 + sqlite-vec |
 | **Search** | FTS ∥ vector → RRF → optional rerank |
 | **Synthesis** | Extractive / optional LLM `ask` with citations |
@@ -107,6 +107,10 @@ root_path = "/Users/you/src/your-repo"
 [embed]
 model = "openai/text-embedding-3-large"
 dimension = 3072
+# Offline vectors (requires `cargo install --path . --features local-embed`):
+# backend = "local"
+# model = "AllMiniLML6V2"
+# dimension = 384   # must match model; use a fresh storage.path when switching dims
 
 [runtime]
 poll_interval_secs = 300
@@ -145,7 +149,7 @@ Ship **developer → solo → team → company** ([#25](https://github.com/duket
 |-------|--------|
 | 1–3 Foundation / search / synthesis | ✅ |
 | 4 Expansion (Dayflow · Pond · GitHub FS) | ✅ |
-| 5 Production (daemon poll + watch) | 🚧 local embeddings / ARC / ops follow |
+| 5 Production (daemon poll + watch) | 🚧 local embeddings (opt-in ONNX) / ARC / ops follow |
 | 6 Launch (release packaging, yurt art) | 📋 [#10](https://github.com/duketopceo/kurultai/issues/10) |
 
 Upstream notes: [docs/upstream-inspiration.md](docs/upstream-inspiration.md).
