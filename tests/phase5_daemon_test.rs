@@ -46,9 +46,6 @@ async fn phase5_poll_once_makes_fixture_searchable() {
         Arc::new(NullReranker::new()),
         Arc::new(ExtractiveSynthesizer::new()),
     );
-    let hits = brain
-        .search("KNOWN_PHRASE_KURULTAI_42", 10)
-        .await
-        .unwrap();
+    let hits = brain.search("KNOWN_PHRASE_KURULTAI_42", 10).await.unwrap();
     assert!(!hits.is_empty(), "expected FTS hits after daemon poll_once");
 }
