@@ -238,18 +238,11 @@ impl Connector for DayflowConnector {
 mod tests {
     use super::*;
     use crate::types::SourceKind;
-    use std::fs;
 
     fn fixture_db() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "kurultai-dayflow-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("chunks.sqlite");
+        // Exclusive temp dir per call; forget so the path survives the test.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chunks.sqlite");
         let conn = Connection::open(&path).unwrap();
         conn.execute_batch(
             "CREATE TABLE timeline_cards (
@@ -277,6 +270,7 @@ mod tests {
                'Debugged Rust CI pipeline with fixture phrase KNOWN_DAYFLOW_CARD_42');",
         )
         .unwrap();
+        std::mem::forget(dir);
         path
     }
 
