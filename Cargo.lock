@@ -928,6 +928,7 @@ dependencies = [
  "clap",
  "dirs",
  "glob",
+ "libc",
  "notify",
  "predicates",
  "reqwest",

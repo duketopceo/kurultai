@@ -11,10 +11,11 @@ use crate::types::{KnowledgeAtom, SourceConfig};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 const MAX_CHUNK_WORDS: usize = 400;
 const DEFAULT_MAX_FILE_BYTES: u64 = 256 * 1024;
@@ -87,6 +88,8 @@ impl GitHubConnector {
 
     async fn sync_atoms(&self, since: Option<SystemTime>) -> Result<Vec<KnowledgeAtom>> {
         let scan_start = SystemTime::now();
+        // Coarse FS mtimes (1s) can round edits to at/before scan_start; overlap re-scan.
+        let since = since.map(|t| t.checked_sub(Duration::from_secs(2)).unwrap_or(t));
         let source_name = self.source_name.clone();
         let root = self
             .root_path
@@ -157,11 +160,11 @@ fn collect_atoms(
     max_file_bytes: u64,
     since: Option<SystemTime>,
 ) -> Result<Vec<KnowledgeAtom>> {
-    let mut atoms = Vec::new();
+    let mut by_source_id: HashMap<String, KnowledgeAtom> = HashMap::new();
     walk_code_files(&root, &extensions, &mut |path| {
-        let meta = fs::metadata(path).map_err(|e| {
-            KurultaiError::connector("github", format!("stat {}: {e}", path.display()))
-        })?;
+        let Some((mut file, meta)) = open_regular_nofollow(path)? else {
+            return Ok(());
+        };
         let len = meta.len();
         if len > max_file_bytes {
             tracing::debug!(
@@ -179,7 +182,8 @@ fn collect_atoms(
             }
         }
 
-        let bytes = fs::read(path).map_err(|e| {
+        let mut bytes = Vec::with_capacity(len as usize);
+        file.read_to_end(&mut bytes).map_err(|e| {
             KurultaiError::connector("github", format!("read {}: {e}", path.display()))
         })?;
         let text = match String::from_utf8(bytes) {
@@ -201,11 +205,58 @@ fn collect_atoms(
             .map(|d| DateTime::from_timestamp(d.as_secs() as i64, 0).unwrap_or_else(Utc::now))
             .unwrap_or_else(Utc::now);
 
-        atoms.extend(file_to_atoms(&source_name, &rel, &text, updated));
+        for atom in file_to_atoms(&source_name, &rel, &text, updated) {
+            by_source_id.insert(atom.source_id.clone(), atom);
+        }
         Ok(())
     })?;
 
-    Ok(atoms)
+    Ok(by_source_id.into_values().collect())
+}
+
+/// Open a regular file without following symlinks. Returns `Ok(None)` to skip.
+fn open_regular_nofollow(path: &Path) -> Result<Option<(File, std::fs::Metadata)>> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let file = match fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+        {
+            Ok(f) => f,
+            Err(e) if e.raw_os_error() == Some(libc::ELOOP) => {
+                tracing::debug!(path = %path.display(), "github: skip symlink");
+                return Ok(None);
+            }
+            Err(e) => {
+                return Err(KurultaiError::connector(
+                    "github",
+                    format!("open {}: {e}", path.display()),
+                ));
+            }
+        };
+        let meta = file.metadata().map_err(|e| {
+            KurultaiError::connector("github", format!("fstat {}: {e}", path.display()))
+        })?;
+        if !meta.is_file() {
+            return Ok(None);
+        }
+        Ok(Some((file, meta)))
+    }
+    #[cfg(not(unix))]
+    {
+        let meta = fs::symlink_metadata(path).map_err(|e| {
+            KurultaiError::connector("github", format!("lstat {}: {e}", path.display()))
+        })?;
+        if meta.file_type().is_symlink() || !meta.is_file() {
+            return Ok(None);
+        }
+        let file = File::open(path).map_err(|e| {
+            KurultaiError::connector("github", format!("open {}: {e}", path.display()))
+        })?;
+        Ok(Some((file, meta)))
+    }
 }
 
 fn should_skip_dir(name: &str) -> bool {
@@ -408,16 +459,14 @@ mod tests {
         assert!(err.to_string().contains("root_path"));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn skips_symlinks() {
+        use std::os::unix::fs::symlink;
         let dir = fixture_repo();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::symlink;
-            let target = dir.path().join("src/lib.rs");
-            let link = dir.path().join("evil.rs");
-            symlink(&target, &link).unwrap();
-        }
+        let target = dir.path().join("src/lib.rs");
+        let link = dir.path().join("evil.rs");
+        symlink(&target, &link).unwrap();
         let mut c = GitHubConnector::new();
         c.init(&SourceConfig {
             name: "pace".into(),
@@ -432,7 +481,14 @@ mod tests {
         .await
         .unwrap();
         let atoms = c.full_sync().await.unwrap();
-        assert!(!atoms.iter().any(|a| a.source_id == "evil.rs"));
+        assert!(
+            !atoms.iter().any(|a| {
+                a.metadata.get("rel_path").is_some_and(|p| p == "evil.rs")
+                    || a.source_id == "evil.rs"
+                    || a.source_id.starts_with("evil.rs#")
+            }),
+            "symlink evil.rs must not produce atoms"
+        );
     }
 
     #[tokio::test]
@@ -453,7 +509,10 @@ mod tests {
         .unwrap();
         let first = c.full_sync().await.unwrap();
         assert!(!first.is_empty());
-        let second = c.poll().await.unwrap();
-        assert!(second.is_empty());
+        // Coarse-mtime overlap re-emits until watermark is ≥2s past file mtimes.
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _advance = c.poll().await.unwrap();
+        let quiet = c.poll().await.unwrap();
+        assert!(quiet.is_empty());
     }
 }
