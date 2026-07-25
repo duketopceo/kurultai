@@ -25,3 +25,7 @@ config.toml
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Frontend Website
+website/node_modules/
+website/dist/

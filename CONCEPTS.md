@@ -1,37 +1,43 @@
-# Kurultai concepts
+# Concepts
 
-Domain vocabulary for agents and humans. Keep entries short; link to `docs/solutions/` for deep learnings.
+Shared domain vocabulary for this project — entities, named processes, and status concepts with project-specific meaning. Seeded with core domain vocabulary, then accretes as ce-compound and ce-compound-refresh process learnings; direct edits are fine. Glossary only, not a spec or catch-all.
 
-## AgentAtomView
+## Retrieval
 
-Token-capped read model returned by MCP/CLI search and cite. Excerpts (~400 chars by default), never full atom `content` unless explicitly requested. See `src/brain/`.
+### AgentAtomView
 
-## FTS-first
+Token-capped read model returned by search and cite. Short excerpts by default, never full atom content unless explicitly requested.
 
-Index and search must work without an embedding API key. Full-text (FTS5) is the default path; vectors are optional when a live embedder is configured.
+### FTS-first
+
+Index and search must work without an embedding API key. Full-text search is the default path; vectors are optional enrichment when a live embedder is configured.
 
 See: [docs/solutions/architecture-patterns/fts-first-null-embedder-no-zero-vectors.md](docs/solutions/architecture-patterns/fts-first-null-embedder-no-zero-vectors.md)
 
-## NullEmbedder
+### NullEmbedder
 
-`Embedder` implementation with `is_live() == false`. Used when no API key is set. Pipeline skips embedding; store must not receive stub/zero vectors.
+Embedder that is not live. Used when no API key is set. Pipeline skips embedding; the store must not receive stub or zero vectors.
 
-## KnowledgeAtom
+### NullReranker
 
-One SQL row of structured knowledge: title, summary, content, tags, provenance (`source`, `source_id`), optional embedding. Markdown files are one ingest source, not the system of record.
+Reranker that is not live when rerank config or API key is missing. Search keeps RRF order; no network call.
 
-## hash-skip
+### RRF (Reciprocal Rank Fusion)
 
-On incremental index, if an atom’s `content_hash` is unchanged and a vector already exists, skip `embed_batch` and let upsert preserve the existing `atoms_vec` row.
+Hybrid ranking that combines ordered lists without mixing incomparable raw scores. Each list contributes a reciprocal rank term; duplicate ids sum their contributions.
 
-## Graph orchestration (diamond)
+### hash-skip
 
-Cut non-data “and then” waits: fan-out independent nodes with typed I/O, fan-in only at merge barriers. Loops stay inside nodes; SQL is the shared state. See [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md).
+On incremental index, if an atom’s content hash is unchanged and a vector already exists, skip re-embedding and preserve the existing vector row on upsert.
 
-## RRF (Reciprocal Rank Fusion)
+## Knowledge
 
-Hybrid ranking that combines ordered lists without mixing incomparable raw scores. Contribution per list: `1 / (k + rank)` with `k=60` and 1-based ranks; sums merge duplicate ids. Implemented in `src/query/`.
+### KnowledgeAtom
 
-## NullReranker
+One structured knowledge unit: title, summary, content, tags, provenance (source and source id), optional embedding. Markdown files are one ingest source, not the system of record.
 
-`Reranker` with `is_live() == false` when `runtime.reranker_model` or API key is missing. Search keeps RRF order; no network call.
+## Orchestration
+
+### Graph orchestration (diamond)
+
+Cut non-data “and then” waits: fan-out independent nodes with typed I/O, fan-in only at merge barriers. Loops stay inside nodes; the database is the shared state.

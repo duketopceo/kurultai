@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kurultai — Brain Synapse & Ingested Data View</title>
+    <meta name="description" content="Explore the active working data, SQLite-vec tables, and vector space of the Kurultai brain.">
+    <link rel="stylesheet" href="index.css">
+    <script src="https://unpkg.com/3d-force-graph"></script>
+    <style>
+        .brain-header {
+            margin-top: 40px;
+            margin-bottom: 40px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+        
+        .stat-card {
+            padding: 24px;
+            text-align: center;
+        }
+        
+        .stat-val {
+            font-size: 2.2rem;
+            font-weight: 800;
+            background: var(--grad-glow);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-top: 8px;
+        }
+
+        .db-layout {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 32px;
+            align-items: start;
+        }
+
+        .atoms-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+
+        .atom-item {
+            padding: 16px 20px;
+            cursor: pointer;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            transition: var(--transition-smooth);
+        }
+
+        .atom-item:hover, .atom-item.active {
+            border-color: var(--primary);
+            background: rgba(56, 189, 248, 0.05);
+        }
+
+        .atom-item h4 {
+            font-size: 1.05rem;
+            margin-bottom: 6px;
+        }
+
+        .atom-meta {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .atom-details {
+            min-height: 500px;
+            padding: 32px;
+        }
+
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 20px;
+            margin-bottom: 24px;
+        }
+
+        .detail-title {
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+
+        .detail-row {
+            margin-bottom: 20px;
+        }
+
+        .detail-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .detail-val {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            white-space: pre-wrap;
+        }
+
+        .tag-pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: rgba(168, 85, 247, 0.1);
+            border: 1px solid rgba(168, 85, 247, 0.2);
+            color: var(--secondary);
+            font-size: 0.8rem;
+            margin-right: 6px;
+            font-family: var(--font-mono);
+        }
+
+        .search-box {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .search-input {
+            flex: 1;
+            background: rgba(17, 24, 39, 0.8);
+            border: 1px solid var(--border-color);
+            padding: 14px 20px;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 1rem;
+            outline: none;
+            transition: var(--transition-smooth);
+        }
+
+        .search-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.15);
+        }
+
+        .vector-space-section {
+            margin-top: 80px;
+            margin-bottom: 80px;
+        }
+
+        #vector-space-canvas {
+            width: 100%;
+            height: 350px;
+            background: rgba(3, 7, 18, 0.6);
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+        }
+
+        @media (max-width: 992px) {
+            .db-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="neural-canvas"></canvas>
+
+    <!-- Header Navigation -->
+    <header>
+        <div class="container nav-wrapper">
+            <a href="index.html" class="logo">
+                <svg height="24" width="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 6px; color: var(--primary);"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/><line x1="12" y1="12" x2="5" y2="5"/></svg>
+                kurultai
+            </a>
+            <nav class="nav-links">
+                <a href="index.html">Showcase</a>
+                <a href="#stats">Brain Stats</a>
+                <a href="#data">Atom Explorer</a>
+                <a href="#vectors">Vector Mapping</a>
+            </nav>
+            <a href="https://github.com/duketopceo/kurultai" class="btn-github" target="_blank">GitHub</a>
+        </div>
+    </header>
+
+    <!-- Brain Header -->
+    <section class="container brain-header">
+        <span class="badge">Working Memory Explorer</span>
+        <h1 style="font-size: 3rem; margin-bottom: 12px;">Active Brain Data</h1>
+        <p>Real-time view of ingested code blocks, note segments, database schemas, and embedding coordinates.</p>
+    </section>
+
+    <!-- Database Stats -->
+    <section id="stats" class="container">
+        <div class="stats-grid">
+            <div class="stat-card glass-panel">
+                <div class="detail-label">Database Path</div>
+                <div class="stat-val" style="font-size: 1.1rem; line-height: 1.8; margin-top: 16px; font-family: var(--font-mono); color: var(--primary);">~/.local/.../dev/store.db</div>
+            </div>
+            <div class="stat-card glass-panel">
+                <div class="detail-label">Total Atoms</div>
+                <div class="stat-val">12</div>
+            </div>
+            <div class="stat-card glass-panel">
+                <div class="detail-label">Dimensions</div>
+                <div class="stat-val">3072</div>
+            </div>
+            <div class="stat-card glass-panel">
+                <div class="detail-label">Schema Version</div>
+                <div class="stat-val">v2</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Atom Browser -->
+    <section id="data" class="container" style="margin-bottom: 80px;">
+        <div class="search-box">
+            <input type="text" id="brain-search" class="search-input" placeholder="Search FTS / Vector space (e.g. 'postgres', 'lente', 'revenue')...">
+        </div>
+
+        <div class="db-layout">
+            <!-- Left Pane: Atoms List -->
+            <div class="atoms-list" id="atoms-list-container">
+                <!-- Javascript will populate -->
+            </div>
+
+            <!-- Right Pane: Atom Detail Inspector -->
+            <div class="atom-details glass-panel" id="atom-inspector">
+                <div style="text-align: center; color: var(--text-muted); padding-top: 100px;">
+                    <p>Select an atom from the list to inspect its database structure</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Vector Space Visualization -->
+    <section id="vectors" class="container vector-space-section">
+        <div class="section-header" style="margin-bottom: 32px;">
+            <h2>3D Synaptic Network</h2>
+            <p>Interactive 3D force-directed node-link graph mapping vector coordinates and call graphs. Nodes represent indexed atoms; pulsing particles represent electron transmission.</p>
+        </div>
+        <div id="3d-synapse-graph" class="glass-panel" style="width: 100%; height: 500px; border-radius: 16px; border: 1px solid var(--border-color); overflow: hidden;"></div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container footer-wrapper">
+            <p>© 2026 Kurultai. MIT Licensed.</p>
+            <div class="footer-links">
+                <a href="https://github.com/duketopceo/kurultai" target="_blank">GitHub</a>
+                <a href="index.html">Showcase</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Inject data into JS for interactivity -->
+    <script>
+        const brainAtoms = [
+            {
+                id: "d4e21b7a2d83ab9a",
+                source: "test-vault",
+                source_id: "agent_guidelines.md",
+                title: "Agent Guidelines — Core Mottos",
+                summary: "Directives detailing core mottos for agent development, emphasizing Festina lente, Divide et impera, and Memento mori.",
+                content: "# Agent Guidelines\n\nPhilosophical and operational directives for building AI agents.\n\n## Core Mottos\n- **Festina lente**: Make haste slowly. Move intentionally, write robust tests, and avoid hasty hacks.\n- **Divide et impera**: Divide and conquer. Break complex tasks down into isolated, testable modules.\n- **Memento mori**: Remember that code rots. Keep dependencies up to date.",
+                question: "What are the core mottos for building AI agents?",
+                resolution: "Focus on intentional speed, modularity, and dependency maintenance.",
+                tags: ["philosophy", "standards", "mct"],
+                source_updated_at: "2026-07-25T15:30:00Z",
+                indexed_at: "2026-07-25T15:30:36Z",
+                coordinates: { x: 0.15, y: -0.4 }
+            },
+            {
+                id: "c8e12a45d7f8ab21",
+                source: "test-vault",
+                source_id: "agent_guidelines.md",
+                title: "Agent Guidelines — Key Actions",
+                summary: "Outlines coding guidelines, including CODE_STANDARDS compliance, 100% security path test coverage, and complexity thresholds.",
+                content: "## Key Actions\n1. Follow CODE_STANDARDS.md.\n2. Ensure 100% test coverage on security critical paths.\n3. Keep cyclomatic complexity under 10.",
+                question: "What standard rules must developers verify when modifying functions?",
+                resolution: "Follow standards, enforce coverage, keep complexity low.",
+                tags: ["rules", "standards", "testing"],
+                source_updated_at: "2026-07-25T15:30:00Z",
+                indexed_at: "2026-07-25T15:30:36Z",
+                coordinates: { x: 0.12, y: -0.42 }
+            },
+            {
+                id: "e5f2a14589dbe71c",
+                source: "test-vault",
+                source_id: "database_migration.md",
+                title: "Database Migration Guide",
+                summary: "Summary of procedures for executing postgres/sqlite database migrations.",
+                content: "# Database Migration Guide\n\nInstructions for running postgres/sqlite migrations.",
+                question: "How do we run migrations on the database?",
+                resolution: "Backup, apply upgrades using Alembic/schema, and run verification scripts.",
+                tags: ["database", "deployment", "postgres"],
+                source_updated_at: "2026-07-25T15:30:00Z",
+                indexed_at: "2026-07-25T15:30:36Z",
+                coordinates: { x: -0.6, y: 0.2 }
+            },
+            {
+                id: "a9b1c78df34ea601",
+                source: "test-vault",
+                source_id: "database_migration.md",
+                title: "Database Migration — Step 1: Backup database",
+                summary: "Pre-migration guidelines indicating the importance of backing up database tables prior to upgrading.",
+                content: "## Step 1: Backup database\nAlways run a backup before migration.\n`pg_dump -U postgres dbname > backup.sql`",
+                question: "What is the preflight step before database migrations?",
+                resolution: "Backup database via pg_dump command.",
+                tags: ["database", "postgres", "backup"],
+                source_updated_at: "2026-07-25T15:30:00Z",
+                indexed_at: "2026-07-25T15:30:36Z",
+                coordinates: { x: -0.62, y: 0.25 }
+            },
+            {
+                id: "b7e12f6a7d90bc3c",
+                source: "test-vault",
+                source_id: "database_migration.md",
+                title: "Database Migration — Step 2: Apply migrations",
+                summary: "Instruction on executing head upgrades using Alembic migrations tool.",
+                content: "## Step 2: Apply migrations\nRun Alembic upgrade command:\n`alembic upgrade head`",
+                question: "How are migrations executed in production?",
+                resolution: "Run alembic upgrade head command.",
+                tags: ["database", "deployment", "alembic"],
+                source_updated_at: "2026-07-25T15:30:00Z",
+                indexed_at: "2026-07-25T15:30:36Z",
+                coordinates: { x: -0.58, y: 0.18 }
+            },
+            {
+                id: "f8b9d012e34fa56b",
+                source: "test-vault",
+                source_id: "numbers_report.md",
+                title: "Numbers Report 2026",
+                summary: "Statistical and financial overview metrics for the year 2026.",
+                content: "# Numbers Report 2026\n\nThis is the annual stats and metrics report for the year 2026.",
+                question: "What does the 2026 stats report contain?",
+                resolution: "Financial parameters and inventory counts.",
+                tags: ["finance", "stats", "2026"],
+                source_updated_at: "2026-07-25T15:30:00Z",
+                indexed_at: "2026-07-25T15:30:36Z",
+                coordinates: { x: 0.7, y: 0.5 }
+            },
+            {
+                id: "1a2b3c4d5e6f7a8b",
+                source: "test-vault",
+                source_id: "numbers_report.md",
+                title: "Numbers Report — Financial Figures",
+                summary: "Key financial metrics detailing total revenue, net profits, growth rates, and active users.",
+                content: "## Financial Figures\n- Total Revenue: 1543200 USD\n- Net Profit: 345000 USD\n- Growth Rate: 12 percent\n- Active Users: 87654",
+                question: "What is the net profit and active user count for 2026?",
+                resolution: "Net Profit: 345,000 USD, Active Users: 87,654.",
+                tags: ["finance", "stats", "revenue"],
+                source_updated_at: "2026-07-25T15:30:00Z",
+                indexed_at: "2026-07-25T15:30:36Z",
+                coordinates: { x: 0.72, y: 0.48 }
+            },
+            {
+                id: "8c7b6a5e4d3c2b1a",
+                source: "test-vault",
+                source_id: "lorem_ipsum.md",
+                title: "Lorem Ipsum Dolor Sit Amet",
+                summary: "Standard placeholder text referencing Latin terms used to verify formatting.",
+                content: "# Lorem Ipsum Dolor Sit Amet\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+                question: "What is the standard lorem ipsum text?",
+                resolution: "Standard typesetting placeholder content.",
+                tags: ["lorem", "latin", "mock"],
+                source_updated_at: "2026-07-25T15:30:00Z",
+                indexed_at: "2026-07-25T15:30:36Z",
+                coordinates: { x: -0.1, y: -0.1 }
+            }
+        ];
+    </script>
+    <script src="brain.js" defer></script>
+
+</body>
+</html>
