@@ -356,6 +356,12 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
             <span class="badge">Local Daemon UI</span>
         </header>
 
+        <!-- Mode Toggle -->
+        <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 24px; font-family: var(--font-mono); font-size: 0.85rem; gap: 12px;">
+            <span style="color: var(--text-muted);">View Mode:</span>
+            <button id="view-mode-btn" class="glass-panel" style="padding: 8px 16px; border-radius: 9999px; border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; font-family: var(--font-mono); background: rgba(255,255,255,0.04); transition: var(--transition-smooth);">Executive View</button>
+        </div>
+
         <!-- Stats -->
         <section class="stats-grid">
             <div class="stat-card glass-panel">
@@ -363,15 +369,15 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                 <div id="stat-status" class="stat-val" style="font-size: 1.5rem; margin-top: 16px;">Online</div>
             </div>
             <div class="stat-card glass-panel">
-                <div class="detail-label">Indexed Atoms</div>
+                <div id="label-atoms" class="detail-label">Stored Memories</div>
                 <div id="stat-atoms" class="stat-val">0</div>
             </div>
             <div class="stat-card glass-panel">
-                <div class="detail-label">Active Sources</div>
+                <div id="label-sources" class="detail-label">Data Sources</div>
                 <div id="stat-sources" class="stat-val">0</div>
             </div>
             <div class="stat-card glass-panel">
-                <div class="detail-label">Environment</div>
+                <div id="label-env" class="detail-label">Server Mode</div>
                 <div id="stat-env" class="stat-val" style="font-size: 1.5rem; margin-top: 16px; text-transform: uppercase;">dev</div>
             </div>
         </section>
@@ -420,10 +426,28 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
             const graphContainer = document.getElementById("3d-synapse-graph");
             const slider = document.getElementById("threshold-slider");
             const sliderVal = document.getElementById("threshold-val");
+            const viewModeBtn = document.getElementById("view-mode-btn");
 
             let currentAtoms = [];
             let activeAtom = null;
             let currentThreshold = 0.0;
+            let isTechnical = false;
+
+            viewModeBtn.addEventListener("click", () => {
+                isTechnical = !isTechnical;
+                viewModeBtn.textContent = isTechnical ? "Technical View" : "Executive View";
+                viewModeBtn.style.borderColor = isTechnical ? "var(--primary)" : "var(--border-color)";
+                viewModeBtn.style.background = isTechnical ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)";
+                updateDashboardMode();
+            });
+
+            function updateDashboardMode() {
+                document.getElementById("label-atoms").textContent = isTechnical ? "Indexed Atoms" : "Stored Memories";
+                document.getElementById("label-sources").textContent = isTechnical ? "Active Sources" : "Data Sources";
+                document.getElementById("label-env").textContent = isTechnical ? "Environment" : "Server Mode";
+                renderAtomsList(currentAtoms);
+                inspectAtom(activeAtom);
+            }
 
             async function loadDashboard() {
                 // 1. Fetch Status Info
@@ -512,26 +536,26 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                             <h3 class="detail-title">${escapeHtml(atom.title)}</h3>
                             <div style="margin-top: 8px;">${tagPills}</div>
                         </div>
-                        <div class="detail-label" style="text-align: right;">ID: ${escapeHtml(atom.id)}</div>
+                        ${isTechnical ? `<div class="detail-label" style="text-align: right;">ID: ${escapeHtml(atom.id)}</div>` : ""}
                     </div>
                     
                     <div class="detail-layout">
                         <div class="detail-row">
-                            <div class="detail-label">Source Context</div>
+                            <div class="detail-label">${isTechnical ? "Source Context" : "Memory Origin"}</div>
                             <div class="detail-val" style="font-family: var(--font-mono); display: flex; justify-content: space-between; align-items: center;">
                                 <span>${escapeHtml(atom.source)} / ${escapeHtml(atom.source_id)}</span>
-                                ${atom.file_path ? `<button onclick="openFileInEditor('${escapeHtml(atom.file_path)}')" style="padding: 4px 12px; font-size: 0.75rem; border-radius: 9999px; background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; font-family: var(--font-mono);">Open File</button>` : ""}
+                                ${isTechnical && atom.file_path ? `<button onclick="openFileInEditor('${escapeHtml(atom.file_path)}')" style="padding: 4px 12px; font-size: 0.75rem; border-radius: 9999px; background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; font-family: var(--font-mono);">Open File</button>` : ""}
                             </div>
                         </div>
                         <div class="detail-row">
-                            <div class="detail-label">Content Excerpt</div>
+                            <div class="detail-label">Excerpt / Content</div>
                             <div class="detail-val">${escapeHtml(atom.content)}</div>
                         </div>
                         <div class="detail-row">
-                            <div class="detail-label">Distilled Summary</div>
+                            <div class="detail-label">Summary</div>
                             <div class="detail-val">${escapeHtml(atom.summary)}</div>
                         </div>
-                        ${atom.question ? `
+                        ${isTechnical && atom.question ? `
                         <div class="detail-row">
                             <div class="detail-label">Routing Query Mapping</div>
                             <div class="detail-val"><strong>Q:</strong> ${escapeHtml(atom.question)}<br/><strong>A:</strong> ${escapeHtml(atom.resolution)}</div>
@@ -777,9 +801,7 @@ async fn api_open(
     if let Some(file) = params.get("file") {
         let path = std::path::Path::new(file);
         if path.exists() {
-            let _ = std::process::Command::new("open")
-                .arg(path)
-                .status();
+            let _ = std::process::Command::new("open").arg(path).status();
         }
     }
     StatusCode::OK
