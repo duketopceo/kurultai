@@ -1,0 +1,46 @@
+# Kurultai solo / day-one production template (Phase 4 stack)
+# Copy to ~/.config/kurultai/config.toml and edit paths.
+# AppFlowy is deferred (#4) — not enabled here.
+
+environment = "prod"
+
+[storage]
+# Optional — defaults to ~/.local/share/kurultai/store.db for prod
+# path = "~/.local/share/kurultai/store.db"
+
+[embed]
+model = "openai/text-embedding-3-large"
+dimension = 3072
+
+[runtime]
+poll_interval_secs = 300
+# Optional OpenRouter chat model for post-RRF rerank (needs API key)
+# reranker_model = "openai/gpt-4o-mini"
+
+# --- Sources (enable what you have) ---
+
+[sources.notes]
+enabled = true
+kind = "markdown"
+root_path = "/path/to/your/notes"   # any .md folder; Obsidian app not required
+poll_interval_secs = 60
+
+[sources.dayflow]
+enabled = false
+kind = "dayflow"
+# Optional — omit to use ~/Library/Application Support/Dayflow/chunks.sqlite (macOS)
+# db_path = "/Users/you/Library/Application Support/Dayflow/chunks.sqlite"
+poll_interval_secs = 300
+
+[sources.pond]
+enabled = false
+kind = "pond"
+# pond_bin = "pond"   # optional; defaults to PATH
+# limit = "500"
+poll_interval_secs = 300
+
+[sources.code]
+enabled = false
+kind = "github"
+root_path = "/path/to/your/repo"   # local checkout; no GitHub API
+poll_interval_secs = 120

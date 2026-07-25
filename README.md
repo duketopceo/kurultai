@@ -93,14 +93,16 @@ Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthes
 | Layer | Technology | Status |
 |-------|-----------|--------|
 | **Connectors** | Trait-based; **markdown**, **Dayflow**, **Pond**, **GitHub** (local checkout) live; AppFlowy/Composio later | ✅ Markdown · Dayflow · Pond · GitHub FS |
-| **Distillation** | LLM extractors (question, summary, resolution, tags) per source | 📋 Planned (#7 / #12) |
+| **Distillation** | LLM extractors (question, summary, resolution, tags) per source | 📋 Deferred (#12) |
 | **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key | ✅ |
 | **Vector Store** | SQLite + FTS5 + sqlite-vec (`=0.1.6`) | ✅ |
 | **Search** | FTS ∥ vector → **RRF (k=60)** → optional OpenRouter rerank → capped views | ✅ (#6) · distillation deferred (#12) |
-| **Synthesis** | Planner → Executor → Answer with citations | 📋 Planned (#7) |
-| **Interface** | CLI + MCP stdio (`search`/`cite`/`remember`); HTTP daemon later | ✅ CLI+MCP · 📋 daemon |
+| **Synthesis** | Extractive / optional LLM answer with citations | ✅ (#7) |
+| **Interface** | CLI + MCP stdio (`search`/`cite`/`ask`/`who_knows`/`remember`) + HTTP daemon (poll + notify watch) | ✅ CLI+MCP+daemon |
 
 ## Quick Start
+
+**Day-one production (Phase 4 solo stack):** [docs/production-day-one.md](docs/production-day-one.md) · example config: [examples/config.solo.toml](examples/config.solo.toml)
 
 ```bash
 # Build
@@ -108,6 +110,9 @@ cargo build --release
 
 # Wire config + Cursor MCP
 kurultai init --agent cursor
+
+# Copy solo template and edit paths / enable sources
+cp examples/config.solo.toml ~/.config/kurultai/config.toml
 
 # Index your sources (FTS-only without OPENROUTER_API_KEY)
 kurultai index --full
@@ -129,37 +134,49 @@ kurultai daemon --port 8421
 
 ## Configuration
 
-Create `~/.config/kurultai/config.toml`:
+Create `~/.config/kurultai/config.toml` (or copy [examples/config.solo.toml](examples/config.solo.toml)):
 
 ```toml
-environment = "dev"   # dev | staging | prod
-
-[sources]
-[sources.appflowy]
-enabled = true
-kind = "appflowy"
-poll_interval_secs = 300
+environment = "prod"   # dev | staging | prod
 
 [sources.notes]
 enabled = true
 kind = "markdown"
-root_path = "/Users/you/Documents/Obsidian/Vault"  # any .md folder — Obsidian app not required
+root_path = "/path/to/your/notes"  # any .md folder — Obsidian app not required
 poll_interval_secs = 60
+
+[sources.dayflow]
+enabled = false
+kind = "dayflow"
+# db_path optional — defaults to macOS Dayflow chunks.sqlite
+poll_interval_secs = 300
+
+[sources.pond]
+enabled = false
+kind = "pond"
+poll_interval_secs = 300
+
+[sources.code]
+enabled = false
+kind = "github"
+root_path = "/path/to/your/repo"  # local checkout; no GitHub API
+poll_interval_secs = 120
 
 [storage]
 # Optional — defaults per environment (see below)
-# path = "~/.local/share/kurultai/dev/store.db"
+# path = "~/.local/share/kurultai/store.db"
 
 [embed]
 model = "openai/text-embedding-3-large"
 dimension = 3072
 
 [runtime]
+poll_interval_secs = 300
 # Optional — OpenRouter chat model for post-RRF rerank (needs API key)
 # reranker_model = "openai/gpt-4o-mini"
 ```
 
-Override via CLI or env: `kurultai --env staging status` or `KURULTAI_ENV=prod kurultai daemon`.
+AppFlowy remains deferred ([#4](https://github.com/duketopceo/kurultai/issues/4)). Override via CLI or env: `kurultai --env staging status` or `KURULTAI_ENV=prod kurultai daemon`.
 
 ## Environments (dev · staging · prod)
 
@@ -209,6 +226,7 @@ Phase 2 **complete:** [docs/plans/phase-2-complete.md](docs/plans/phase-2-comple
 Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)  
 Phase 3 synthesis plan: [docs/plans/2026-07-23-001-feat-phase-3-synthesis-interface-plan.md](docs/plans/2026-07-23-001-feat-phase-3-synthesis-interface-plan.md) (#7 / #60)  
 Phase 4 **complete:** [docs/plans/phase-4-complete.md](docs/plans/phase-4-complete.md) · [closeout](docs/plans/phase-4-closeout.md)  
+Phase 4 day-one production: [docs/production-day-one.md](docs/production-day-one.md) · [plan](docs/plans/2026-07-25-005-chore-phase4-production-day-one-plan.md) · [examples/config.solo.toml](examples/config.solo.toml)  
 Phase 5 daemon poll plan: [docs/plans/2026-07-25-003-feat-phase-5-daemon-poll-plan.md](docs/plans/2026-07-25-003-feat-phase-5-daemon-poll-plan.md) (#9)  
 Phase 5 notify watch plan: [docs/plans/2026-07-25-004-feat-phase-5-notify-watch-plan.md](docs/plans/2026-07-25-004-feat-phase-5-notify-watch-plan.md) (Milestone 5)
 
@@ -218,7 +236,7 @@ Phase 5 notify watch plan: [docs/plans/2026-07-25-004-feat-phase-5-notify-watch-
 | **2** Search | Developer | [Phase 2](https://github.com/duketopceo/kurultai/milestone/2) | ✅ [#6](https://github.com/duketopceo/kurultai/issues/6) RRF + testing gates (#23) — [complete](docs/plans/phase-2-complete.md) | [kb-mcp](https://github.com/alphabet-h/kb-mcp), [Stratum](https://github.com/DakodaStemen/Stratum), [sqmd](https://github.com/itkoren/sqmd), [Cerebras KB](https://mer.vin/2026/07/how-cerebras-built-a-15k-query-day-internal-knowledge-base/) |
 | **3** Synthesis | Developer ✓ | [Phase 3](https://github.com/duketopceo/kurultai/milestone/3) | ✅ [#7](https://github.com/duketopceo/kurultai/issues/7)/[#60](https://github.com/duketopceo/kurultai/pull/60) synthesis + `who_knows` + HTTP (privacy/#12/#34 deferred) | [gbrain](https://github.com/imphillip/gbrain-openclaw), [agent-knowledge](https://github.com/keshrath/agent-knowledge), [recall](https://github.com/pratikgajjar/recall), [atomic](https://github.com/yun-lim/atomic) |
 | **4** Expansion | Solo ✓ | [Phase 4](https://github.com/duketopceo/kurultai/milestone/4) | ✅ [#8](https://github.com/duketopceo/kurultai/issues/8)/[#62](https://github.com/duketopceo/kurultai/pull/62)/[#63](https://github.com/duketopceo/kurultai/pull/63) Dayflow + Pond + GitHub FS — [complete](docs/plans/phase-4-complete.md); Composio/plugins deferred | [cocoindex](https://github.com/cocoindex-io/cocoindex), [codebase-graph](https://github.com/Phoenixrr2113/codebase-graph), [Dayflow](https://github.com/JerryZLiu/Dayflow) |
-| **5** Production | Team | [Phase 5](https://github.com/duketopceo/kurultai/milestone/5) | 🚧 daemon poll ([#65](https://github.com/duketopceo/kurultai/pull/65)) → notify watch ([plan](docs/plans/2026-07-25-004-feat-phase-5-notify-watch-plan.md)) → llama.cpp later → [#20](https://github.com/duketopceo/kurultai/issues/20) self-hosted CI | [layer0](https://github.com/amajorai/layer0), [engram-mcp](https://github.com/edg-l/engram-mcp) |
+| **5** Production | Team | [Phase 5](https://github.com/duketopceo/kurultai/milestone/5) | ✅ daemon poll ([#65](https://github.com/duketopceo/kurultai/pull/65)) + notify watch ([#66](https://github.com/duketopceo/kurultai/pull/66)) · 🚧 llama.cpp later · [#20](https://github.com/duketopceo/kurultai/issues/20) self-hosted CI | [layer0](https://github.com/amajorai/layer0), [engram-mcp](https://github.com/edg-l/engram-mcp) |
 | **6** Launch | Company | [Phase 6](https://github.com/duketopceo/kurultai/milestone/6) | [#10](https://github.com/duketopceo/kurultai/issues/10) release → [#22](https://github.com/duketopceo/kurultai/issues/22) yurt art | — |
 
 **Cross-cutting (every phase):** [#37](https://github.com/duketopceo/kurultai/issues/37) speed + token doctrine · [#40](https://github.com/duketopceo/kurultai/issues/40) upstream matrix · [#23](https://github.com/duketopceo/kurultai/issues/23) testing & CI gates — coverage rises 50% → 60% → 75% → 80%.
@@ -236,7 +254,8 @@ Phase 5 notify watch plan: [docs/plans/2026-07-25-004-feat-phase-5-notify-watch-
 - [x] Search & retrieval ([#6](https://github.com/duketopceo/kurultai/issues/6)) — RRF + testing gates; [phase-2-complete.md](docs/plans/phase-2-complete.md); distillation deferred (#12)
 - [x] Synthesis & interface ([#7](https://github.com/duketopceo/kurultai/issues/7) / [#60](https://github.com/duketopceo/kurultai/pull/60)) — ask + who_knows + HTTP; privacy/#12/#34 deferred
 - [x] Expansion connectors ([#8](https://github.com/duketopceo/kurultai/issues/8) / [#62](https://github.com/duketopceo/kurultai/pull/62) / [#63](https://github.com/duketopceo/kurultai/pull/63)) — Dayflow + Pond + GitHub FS; [phase-4-complete.md](docs/plans/phase-4-complete.md); Composio/plugins/#4 deferred
-- [ ] Production readiness ([#9](https://github.com/duketopceo/kurultai/issues/9), [#20](https://github.com/duketopceo/kurultai/issues/20))
+- [x] Daemon poll + notify watch ([#9](https://github.com/duketopceo/kurultai/issues/9) / [#65](https://github.com/duketopceo/kurultai/pull/65) / [#66](https://github.com/duketopceo/kurultai/pull/66)) — day-one: [docs/production-day-one.md](docs/production-day-one.md)
+- [ ] Production remainder (local embeddings / ARC [#20](https://github.com/duketopceo/kurultai/issues/20) / envs [#29](https://github.com/duketopceo/kurultai/issues/29))
 - [ ] Open source launch ([#10](https://github.com/duketopceo/kurultai/issues/10), [#22](https://github.com/duketopceo/kurultai/issues/22))
 
 ## Upstream inspiration

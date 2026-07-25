@@ -206,6 +206,28 @@ root_path = "/tmp/notes"
         assert!(load_config_from(&path).is_err());
     }
 
+    #[test]
+    fn loads_examples_config_solo_toml() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/config.solo.toml");
+        let cfg = load_config_from(&path).expect("examples/config.solo.toml should parse");
+        assert_eq!(cfg.environment, Environment::Prod);
+        assert_eq!(cfg.sources.len(), 4);
+
+        let kinds: Vec<_> = cfg.sources.iter().map(|s| s.kind.clone()).collect();
+        assert!(kinds.contains(&SourceKind::Markdown));
+        assert!(kinds.contains(&SourceKind::Dayflow));
+        assert!(kinds.contains(&SourceKind::Pond));
+        assert!(kinds.contains(&SourceKind::GitHub));
+
+        let notes = cfg.sources.iter().find(|s| s.name == "notes").unwrap();
+        assert!(notes.enabled);
+        assert!(!notes.extra.get("root_path").unwrap().is_empty());
+
+        let code = cfg.sources.iter().find(|s| s.name == "code").unwrap();
+        assert!(!code.enabled);
+        assert!(!code.extra.get("root_path").unwrap().is_empty());
+    }
+
     fn tempfile_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "kurultai-{tag}-{}-{}",
