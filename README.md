@@ -43,7 +43,7 @@ Tagged binary releases: workflow is ready (`.github/workflows/release.yml`); **n
 export KURULTAI_ENV=dev
 export RUST_LOG=kurultai=debug
 
-kurultai init --agent cursor
+kurultai init --agent all      # cursor + claude + codex (or: cursor | claude | codex)
 # edit ~/.config/kurultai/config.toml — keep environment = "dev"
 
 kurultai index --full          # FTS-first without OPENROUTER_API_KEY
@@ -51,7 +51,7 @@ kurultai status
 kurultai search "database migration" --limit 10
 kurultai ask "what deployments are we running?"
 
-kurultai mcp                   # Cursor / agents (stdio)
+kurultai mcp                   # Cursor / Claude Code / Codex (stdio)
 kurultai daemon --port 8421    # HTTP + poll + watch · UI at /ui · /api/status
 ```
 
@@ -123,6 +123,17 @@ Overrides: `KURULTAI_ENV=dev`, `kurultai --env staging status`. API keys via env
 |---|-------|--------|
 | **Read** | `search`, `cite`, `ask`, `who_knows` | Excerpts + citations |
 | **Write** | `remember` | Summary / tags only |
+
+Same stdio server (`kurultai mcp`) for every client — `init` only writes the host config:
+
+| `--agent` | Config written |
+|-----------|----------------|
+| `cursor` (default) | `~/.cursor/mcp.json` |
+| `claude` | `~/.claude.json` (Claude Code user scope) |
+| `codex` | `~/.codex/config.toml` |
+| `all` | all three |
+
+Restart the agent after `init` so tools reload.
 
 ```
 Agent ──read──► search/cite/ask ──► SQLite brain ──► ranked excerpts

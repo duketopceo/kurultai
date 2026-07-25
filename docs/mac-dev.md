@@ -29,11 +29,19 @@ export RUST_LOG=kurultai=debug
 ## Wire + index
 
 ```bash
-kurultai init --agent cursor
+# Wire MCP into Cursor, Claude Code, and/or Codex (same tools; different configs)
+kurultai init --agent all          # or: cursor | claude | codex
 # edit ~/.config/kurultai/config.toml — keep environment = "dev"
+# Restart the agent(s) so MCP tools reload
 kurultai index --full
 kurultai status
 ```
+
+| Agent | Config path |
+|-------|-------------|
+| Cursor | `~/.cursor/mcp.json` |
+| Claude Code | `~/.claude.json` |
+| Codex | `~/.codex/config.toml` |
 
 | Source | `kind` | Notes |
 |--------|--------|--------|
