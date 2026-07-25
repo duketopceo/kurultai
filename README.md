@@ -165,7 +165,7 @@ dimension = 3072
 # reranker_model = "openai/gpt-4o-mini"
 ```
 
-Override via CLI or env: `kurultai --env staging status`, `KURULTAI_ENV=prod kurultai daemon`, `KURULTAI_EMBED_BACKEND=local`, `KURULTAI_LOCAL_EMBED_URL=...`.
+Override via CLI or env: `kurultai --env staging status`, `KURULTAI_ENV=prod kurultai daemon`, `KURULTAI_EMBED_BACKEND=local`, `KURULTAI_LOCAL_EMBED_URL=...`. Local auth (optional) uses `KURULTAI_LOCAL_EMBED_API_KEY` only — cloud `OPENROUTER_API_KEY` / `KURULTAI_API_KEY` are never forwarded to the local URL. `backend = "local"` also swaps the default cloud model/dim (`text-embedding-3-large` / 3072 → `nomic-embed-text` / 768) unless you set them explicitly.
 
 ## Environments (dev · staging · prod)
 

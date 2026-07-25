@@ -1,7 +1,7 @@
 use crate::config::{ensure_storage_parent, expand_path, load_config_with_env};
 use crate::connectors::ConnectorRegistry;
 use crate::embed::{
-    resolve_local_model, EmbedBackend, Embedder, HttpEmbedder, NullEmbedder,
+    resolve_local_dim, resolve_local_model, EmbedBackend, Embedder, HttpEmbedder, NullEmbedder,
     DEFAULT_LOCAL_EMBED_URL,
 };
 use crate::environment::Environment;
@@ -98,6 +98,9 @@ pub(crate) fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dy
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
         .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"))
         .map(|k| k.expose().to_string());
+    // Local auth is separate so cloud keys are never forwarded to a local/remote TEI URL.
+    let local_api_key =
+        api_key_from_env_optional("KURULTAI_LOCAL_EMBED_API_KEY").map(|k| k.expose().to_string());
 
     let backend_raw = std::env::var("KURULTAI_EMBED_BACKEND")
         .ok()
@@ -115,7 +118,14 @@ pub(crate) fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dy
             }
         });
 
-    select_embedder(config, env, &backend_raw, api_key.as_deref(), &local_url)
+    select_embedder(
+        config,
+        env,
+        &backend_raw,
+        api_key.as_deref(),
+        local_api_key.as_deref(),
+        &local_url,
+    )
 }
 
 pub(crate) fn select_embedder(
@@ -123,6 +133,7 @@ pub(crate) fn select_embedder(
     env: Environment,
     backend_raw: &str,
     api_key: Option<&str>,
+    local_api_key: Option<&str>,
     local_url: &str,
 ) -> Result<Arc<dyn Embedder>> {
     let backend = EmbedBackend::parse(backend_raw)?;
@@ -146,18 +157,19 @@ pub(crate) fn select_embedder(
         }
         EmbedBackend::Local => {
             let model = resolve_local_model(&config.embed_model);
+            let dim = resolve_local_dim(config.embed_dim);
             tracing::info!(
                 env = %env,
                 url = %local_url,
                 model = %model,
-                dim = config.embed_dim,
+                dim,
                 "embed.backend=local — OpenAI-compatible HTTP embedder"
             );
             Ok(Arc::new(HttpEmbedder::local(
                 local_url.to_string(),
-                api_key.map(str::to_string),
+                local_api_key.map(str::to_string),
                 model,
-                config.embed_dim,
+                dim,
             )))
         }
         EmbedBackend::Auto => match api_key {
@@ -225,6 +237,7 @@ mod tests {
             Environment::Dev,
             "auto",
             None,
+            None,
             DEFAULT_LOCAL_EMBED_URL,
         )
         .unwrap();
@@ -239,6 +252,7 @@ mod tests {
             Environment::Dev,
             "openrouter",
             None,
+            None,
             DEFAULT_LOCAL_EMBED_URL,
         );
         assert!(result.is_err());
@@ -252,6 +266,7 @@ mod tests {
             &sample_config("local"),
             Environment::Dev,
             "local",
+            Some("sk-cloud-must-not-forward"),
             None,
             DEFAULT_LOCAL_EMBED_URL,
         )
@@ -262,12 +277,29 @@ mod tests {
     }
 
     #[test]
+    fn local_swaps_cloud_default_dim() {
+        let mut cfg = sample_config("local");
+        cfg.embed_dim = 3072;
+        let e = select_embedder(
+            &cfg,
+            Environment::Dev,
+            "local",
+            None,
+            None,
+            DEFAULT_LOCAL_EMBED_URL,
+        )
+        .unwrap();
+        assert_eq!(e.dim(), 768);
+    }
+
+    #[test]
     fn auto_with_key_is_openrouter_model() {
         let e = select_embedder(
             &sample_config("auto"),
             Environment::Dev,
             "auto",
             Some("sk-test"),
+            None,
             DEFAULT_LOCAL_EMBED_URL,
         )
         .unwrap();

@@ -28,6 +28,7 @@ pub enum EmbedBackend {
 }
 
 impl EmbedBackend {
+    /// Parse `embed.backend` / `KURULTAI_EMBED_BACKEND` (`auto|openrouter|local|null`).
     pub fn parse(raw: &str) -> Result<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
             "auto" | "" => Ok(Self::Auto),
@@ -41,10 +42,16 @@ impl EmbedBackend {
     }
 }
 
+/// OpenRouter embeddings endpoint.
 pub const OPENROUTER_EMBED_URL: &str = "https://openrouter.ai/api/v1/embeddings";
+/// Default Ollama-compatible local embeddings URL.
 pub const DEFAULT_LOCAL_EMBED_URL: &str = "http://127.0.0.1:11434/v1/embeddings";
+/// Default local model when config still has the cloud default name.
 pub const DEFAULT_LOCAL_EMBED_MODEL: &str = "nomic-embed-text";
+/// Default local embedding dimension (nomic-embed-text).
+pub const DEFAULT_LOCAL_EMBED_DIM: usize = 768;
 const DEFAULT_CLOUD_EMBED_MODEL: &str = "openai/text-embedding-3-large";
+const DEFAULT_CLOUD_EMBED_DIM: usize = 3072;
 const BATCH_SIZE: usize = 32;
 const MAX_RETRIES: u32 = 3;
 
@@ -59,6 +66,7 @@ pub struct HttpEmbedder {
 }
 
 impl HttpEmbedder {
+    /// Cloud OpenRouter embedder (Bearer auth required).
     pub fn openrouter(api_key: String, model: String, dimension: usize) -> Self {
         Self::new(
             "openrouter".into(),
@@ -69,10 +77,12 @@ impl HttpEmbedder {
         )
     }
 
+    /// Local OpenAI-compatible embedder. `api_key` is optional and must not be a cloud key.
     pub fn local(url: String, api_key: Option<String>, model: String, dimension: usize) -> Self {
         Self::new("local".into(), url, api_key, model, dimension)
     }
 
+    /// Construct an HTTP embedder with an explicit label and endpoint URL.
     pub fn new(
         label: String,
         url: String,
@@ -266,6 +276,15 @@ pub fn resolve_local_model(configured: &str) -> String {
     }
 }
 
+/// Resolve local embedding dimension when config still has the cloud default (3072).
+pub fn resolve_local_dim(configured: usize) -> usize {
+    if configured == 0 || configured == DEFAULT_CLOUD_EMBED_DIM {
+        DEFAULT_LOCAL_EMBED_DIM
+    } else {
+        configured
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct EmbeddingsResponse {
     data: Vec<EmbeddingData>,
@@ -337,6 +356,16 @@ mod tests {
             DEFAULT_LOCAL_EMBED_MODEL
         );
         assert_eq!(resolve_local_model("my-model"), "my-model");
+    }
+
+    #[test]
+    fn resolve_local_dim_swaps_cloud_default() {
+        assert_eq!(
+            resolve_local_dim(DEFAULT_CLOUD_EMBED_DIM),
+            DEFAULT_LOCAL_EMBED_DIM
+        );
+        assert_eq!(resolve_local_dim(0), DEFAULT_LOCAL_EMBED_DIM);
+        assert_eq!(resolve_local_dim(384), 384);
     }
 
     #[test]
