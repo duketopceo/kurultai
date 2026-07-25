@@ -90,61 +90,532 @@ async fn ui_dashboard() -> impl IntoResponse {
     )
 }
 
-const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
+const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Kurultai · local brain</title>
-  <style>
-    :root { font-family: ui-sans-serif, system-ui, sans-serif; color: #e8e6e3; background: #12141a; }
-    body { max-width: 52rem; margin: 2rem auto; padding: 0 1rem; }
-    h1 { font-weight: 600; letter-spacing: -0.02em; }
-    .card { background: #1c1f28; border: 1px solid #2a2f3a; border-radius: 12px; padding: 1rem 1.25rem; margin: 1rem 0; }
-    input, button { font: inherit; padding: 0.5rem 0.75rem; border-radius: 8px; border: 1px solid #3a4150; background: #0f1116; color: inherit; }
-    button { cursor: pointer; background: #3d5afe; border-color: #3d5afe; }
-    pre { white-space: pre-wrap; word-break: break-word; font-size: 0.85rem; }
-    .muted { color: #9aa3b2; font-size: 0.9rem; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kurultai — Brain Synapse & Ingested Data View</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Share+Tech+Mono&display=swap">
+    <script src="https://unpkg.com/3d-force-graph"></script>
+    <style>
+        :root {
+            --bg-dark: #090d16;
+            --bg-card: rgba(24, 27, 37, 0.60);
+            --border-color: rgba(16, 185, 129, 0.12);
+            --border-glow: rgba(56, 189, 248, 0.2);
+            --text-primary: #dfe2ef;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --primary: #5eead4;
+            --secondary: #a78bfa;
+            --font-heading: 'Space Grotesk', sans-serif;
+            --font-body: 'Inter', sans-serif;
+            --font-mono: 'Share Tech Mono', monospace;
+            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            line-height: 1.6;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .glass-panel {
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h1, h2, h3, h4 {
+            font-family: var(--font-heading);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            color: var(--primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            background: rgba(94, 234, 212, 0.1);
+            border: 1px solid rgba(94, 234, 212, 0.2);
+            color: var(--primary);
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .stat-card {
+            padding: 24px;
+            text-align: center;
+        }
+
+        .stat-val {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--primary);
+            font-family: var(--font-mono);
+            margin-top: 8px;
+        }
+
+        .db-layout {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 32px;
+            align-items: start;
+        }
+
+        .atoms-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-height: 600px;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+
+        .atom-item {
+            padding: 16px 20px;
+            cursor: pointer;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            transition: var(--transition-smooth);
+        }
+
+        .atom-item:hover, .atom-item.active {
+            border-color: var(--primary);
+            background: rgba(94, 234, 212, 0.05);
+        }
+
+        .atom-item h4 {
+            font-size: 1.05rem;
+            margin-bottom: 6px;
+        }
+
+        .atom-meta {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+        }
+
+        .atom-details {
+            min-height: 500px;
+            padding: 32px;
+        }
+
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 20px;
+            margin-bottom: 24px;
+        }
+
+        .detail-title {
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+
+        .detail-row {
+            margin-bottom: 20px;
+        }
+
+        .detail-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            font-weight: 600;
+            font-family: var(--font-mono);
+        }
+
+        .detail-val {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            white-space: pre-wrap;
+        }
+
+        .tag-pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: rgba(168, 85, 247, 0.1);
+            border: 1px solid rgba(168, 85, 247, 0.2);
+            color: var(--secondary);
+            font-size: 0.8rem;
+            margin-right: 6px;
+            font-family: var(--font-mono);
+        }
+
+        .search-box {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .search-input {
+            flex: 1;
+            background: rgba(17, 24, 39, 0.8);
+            border: 1px solid var(--border-color);
+            padding: 14px 20px;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 1rem;
+            outline: none;
+            transition: var(--transition-smooth);
+        }
+
+        .search-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 15px rgba(94, 234, 212, 0.15);
+        }
+
+        .vector-space-section {
+            margin-top: 80px;
+            margin-bottom: 40px;
+        }
+
+        #3d-synapse-graph {
+            width: 100%;
+            height: 500px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            background-color: #030712;
+        }
+
+        @media (max-width: 992px) {
+            .db-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
-  <h1>Kurultai</h1>
-  <p class="muted">Local dev dashboard (#76) — localhost only, no auth.</p>
-  <div class="card">
-    <strong>Status</strong>
-    <pre id="status">loading…</pre>
-  </div>
-  <div class="card">
-    <strong>Search</strong>
-    <form id="f" style="display:flex; gap:0.5rem; margin-top:0.5rem;">
-      <input id="q" name="q" placeholder="query" style="flex:1" />
-      <button type="submit">Search</button>
-    </form>
-    <pre id="results" class="muted">results appear here</pre>
-  </div>
-  <script>
-    async function refreshStatus() {
-      try {
-        const r = await fetch('/api/status');
-        const j = await r.json();
-        document.getElementById('status').textContent = JSON.stringify(j, null, 2);
-      } catch (e) {
-        document.getElementById('status').textContent = String(e);
-      }
-    }
-    document.getElementById('f').addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      const q = document.getElementById('q').value;
-      const r = await fetch('/api/search?q=' + encodeURIComponent(q) + '&limit=5');
-      const j = await r.json();
-      document.getElementById('results').textContent = JSON.stringify(j, null, 2);
-    });
-    refreshStatus();
-    setInterval(refreshStatus, 5000);
-  </script>
+
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <a href="#" class="logo">
+                <svg height="24" width="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary);"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/><line x1="12" y1="12" x2="5" y2="5"/></svg>
+                kurultai
+            </a>
+            <span class="badge">Local Daemon UI</span>
+        </header>
+
+        <!-- Stats -->
+        <section class="stats-grid">
+            <div class="stat-card glass-panel">
+                <div class="detail-label">Daemon Status</div>
+                <div id="stat-status" class="stat-val" style="font-size: 1.5rem; margin-top: 16px;">Online</div>
+            </div>
+            <div class="stat-card glass-panel">
+                <div class="detail-label">Indexed Atoms</div>
+                <div id="stat-atoms" class="stat-val">0</div>
+            </div>
+            <div class="stat-card glass-panel">
+                <div class="detail-label">Active Sources</div>
+                <div id="stat-sources" class="stat-val">0</div>
+            </div>
+            <div class="stat-card glass-panel">
+                <div class="detail-label">Environment</div>
+                <div id="stat-env" class="stat-val" style="font-size: 1.5rem; margin-top: 16px; text-transform: uppercase;">dev</div>
+            </div>
+        </section>
+
+        <!-- Search / Browser -->
+        <section class="search-box">
+            <input type="text" id="brain-search" class="search-input" placeholder="Query the local brain (FTS + Vector search)...">
+        </section>
+
+        <section class="db-layout">
+            <!-- Left Pane: Atoms -->
+            <div class="atoms-list" id="atoms-list-container">
+                <div style="text-align: center; color: var(--text-muted); padding: 20px;">Fetching local store...</div>
+            </div>
+
+            <!-- Right Pane: Inspector -->
+            <div class="atom-details glass-panel" id="atom-inspector">
+                <div style="text-align: center; color: var(--text-muted); padding-top: 100px;">
+                    <p>Select an atom to inspect its vector-spaced contents</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3D Synapse Graph -->
+        <section class="vector-space-section">
+            <div style="margin-bottom: 24px;">
+                <h2>3D Synaptic Network Map</h2>
+                <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 4px;">Dynamic force-directed WebGL space representing semantic vectors and code relations.</p>
+            </div>
+            <div id="3d-synapse-graph"></div>
+        </section>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const listContainer = document.getElementById("atoms-list-container");
+            const inspector = document.getElementById("atom-inspector");
+            const searchInput = document.getElementById("brain-search");
+            const graphContainer = document.getElementById("3d-synapse-graph");
+
+            let currentAtoms = [];
+            let activeAtom = null;
+
+            async function loadDashboard() {
+                // 1. Fetch Status Info
+                try {
+                    const statusRes = await fetch("/api/status");
+                    const statusData = await statusRes.json();
+                    document.getElementById("stat-atoms").textContent = statusData.atoms || 0;
+                    document.getElementById("stat-env").textContent = statusData.scheduler?.env || "dev";
+                    
+                    const sourcesCount = statusData.scheduler?.last_sync_duration_ms !== undefined ? 1 : 0;
+                    document.getElementById("stat-sources").textContent = sourcesCount;
+                } catch (e) {
+                    console.error("Failed to load status details:", e);
+                }
+
+                // 2. Fetch Initial Search (all atoms)
+                await triggerSearch("");
+            }
+
+            async function triggerSearch(query) {
+                try {
+                    const searchRes = await fetch("/api/search?q=" + encodeURIComponent(query) + "&limit=25");
+                    const results = await searchRes.json();
+                    
+                    currentAtoms = results.map(r => ({
+                        id: r.atom.id || r.title_hash || Math.random().toString(36).substr(2, 9),
+                        title: r.atom.title || r.title,
+                        source: r.atom.source || r.source,
+                        source_id: r.atom.source_id || r.source_id,
+                        summary: r.atom.summary || r.excerpt,
+                        content: r.atom.content || r.excerpt,
+                        question: r.atom.question || "",
+                        resolution: r.atom.resolution || "",
+                        tags: r.atom.tags || [],
+                        source_updated_at: r.atom.source_updated_at || "",
+                        score: r.score
+                    }));
+
+                    renderAtomsList(currentAtoms);
+                    if (currentAtoms.length > 0 && !activeAtom) {
+                        activeAtom = currentAtoms[0];
+                        inspectAtom(activeAtom);
+                    }
+                    update3DGraph(currentAtoms);
+                } catch (e) {
+                    console.error("Failed search query execution:", e);
+                    listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Failed to fetch active atoms from server.</div>`;
+                }
+            }
+
+            function renderAtomsList(atoms) {
+                listContainer.innerHTML = "";
+                if (atoms.length === 0) {
+                    listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">No matching records found.</div>`;
+                    return;
+                }
+
+                atoms.forEach(atom => {
+                    const div = document.createElement("div");
+                    div.className = `atom-item ${activeAtom && activeAtom.id === atom.id ? "active" : ""}`;
+                    div.innerHTML = `
+                        <h4>${escapeHtml(atom.title)}</h4>
+                        <div class="atom-meta">
+                            <span>${escapeHtml(atom.source)}/${escapeHtml(atom.source_id)}</span>
+                            <span>Score: ${atom.score !== undefined ? atom.score.toFixed(3) : "N/A"}</span>
+                        </div>
+                    `;
+                    div.addEventListener("click", () => {
+                        activeAtom = atom;
+                        document.querySelectorAll(".atom-item").forEach(el => el.classList.remove("active"));
+                        div.classList.add("active");
+                        inspectAtom(atom);
+                    });
+                    listContainer.appendChild(div);
+                });
+            }
+
+            function inspectAtom(atom) {
+                if (!atom) return;
+                const tagPills = atom.tags.map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("");
+                
+                inspector.innerHTML = `
+                    <div class="detail-header">
+                        <div>
+                            <h3 class="detail-title">${escapeHtml(atom.title)}</h3>
+                            <div style="margin-top: 8px;">${tagPills}</div>
+                        </div>
+                        <div class="detail-label" style="text-align: right;">ID: ${escapeHtml(atom.id)}</div>
+                    </div>
+                    
+                    <div class="detail-layout">
+                        <div class="detail-row">
+                            <div class="detail-label">Source Context</div>
+                            <div class="detail-val" style="font-family: var(--font-mono);">${escapeHtml(atom.source)} / ${escapeHtml(atom.source_id)}</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">Content Excerpt</div>
+                            <div class="detail-val">${escapeHtml(atom.content)}</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">Distilled Summary</div>
+                            <div class="detail-val">${escapeHtml(atom.summary)}</div>
+                        </div>
+                        ${atom.question ? `
+                        <div class="detail-row">
+                            <div class="detail-label">Routing Query Mapping</div>
+                            <div class="detail-val"><strong>Q:</strong> ${escapeHtml(atom.question)}<br/><strong>A:</strong> ${escapeHtml(atom.resolution)}</div>
+                        </div>` : ""}
+                    </div>
+                `;
+            }
+
+            function escapeHtml(text) {
+                if (!text) return "";
+                return text
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            }
+
+            // Real-Time Search Handler
+            let searchTimeout = null;
+            searchInput.addEventListener("input", (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    triggerSearch(e.target.value.trim());
+                }, 300);
+            });
+
+            // 3D Graph Instance Handler
+            let Graph = null;
+            function update3DGraph(atoms) {
+                if (!graphContainer || typeof ForceGraph3D === 'undefined') return;
+
+                const nodes = atoms.map(atom => ({
+                    id: atom.id,
+                    title: atom.title,
+                    source: atom.source,
+                    source_id: atom.source_id,
+                    tags: atom.tags,
+                    color: atom.source_id.includes('guidelines') ? '#a78bfa' : (atom.source_id.includes('migration') ? '#3b82f6' : '#5eead4'),
+                    val: 5
+                }));
+
+                const links = [];
+                for (let i = 0; i < nodes.length; i++) {
+                    for (let j = i + 1; j < nodes.length; j++) {
+                        const sharesSource = nodes[i].source_id === nodes[j].source_id;
+                        const sharesTag = nodes[i].tags.some(t => nodes[j].tags.includes(t));
+                        if (sharesSource || sharesTag) {
+                            links.push({
+                                source: nodes[i].id,
+                                target: nodes[j].id
+                            });
+                        }
+                    }
+                }
+
+                if (!Graph) {
+                    Graph = ForceGraph3D()(graphContainer)
+                        .graphData({ nodes, links })
+                        .backgroundColor('#090d16')
+                        .nodeColor(node => node.color)
+                        .nodeLabel(node => `
+                            <div style="background: rgba(17, 24, 39, 0.9); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-primary);">
+                                <strong style="color: var(--primary); font-size: 0.9rem;">${node.title}</strong><br/>
+                                <span style="color: var(--text-muted);">Source: ${node.source}/${node.source_id}</span><br/>
+                                <span style="color: var(--secondary);">Tags: ${node.tags.join(', ')}</span>
+                            </div>
+                        `)
+                        .nodeRelSize(3)
+                        .linkColor(() => 'rgba(255, 255, 255, 0.06)')
+                        .linkWidth(0.5)
+                        .linkDirectionalParticles(2)
+                        .linkDirectionalParticleSpeed(0.005)
+                        .linkDirectionalParticleWidth(1.2)
+                        .linkDirectionalParticleColor(() => '#5eead4')
+                        .onNodeClick(node => {
+                            const atom = currentAtoms.find(a => a.id === node.id);
+                            if (atom) {
+                                activeAtom = atom;
+                                renderAtomsList(currentAtoms);
+                                inspectAtom(atom);
+                            }
+                        });
+                        
+                    Graph.width(graphContainer.clientWidth);
+                    Graph.height(500);
+                    window.addEventListener("resize", () => Graph.width(graphContainer.clientWidth));
+                } else {
+                    Graph.graphData({ nodes, links });
+                }
+            }
+
+            // Boot Dashboard
+            loadDashboard();
+        });
+    </script>
 </body>
 </html>
-"#;
+"##;
 
 fn default_limit() -> usize {
     10
