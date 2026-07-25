@@ -5,10 +5,10 @@ related:
   - docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md
 ---
 
+# Query Result Citations
+
 > **Shipped contract (v1 batch #75):** `Citation` fields are `source`, `source_id`, `title`, `url`, `excerpt`, optional `file_path`, `section`, `title_hash`, `excerpt_start`, `excerpt_end`.  
 > `GET /api/search?q=` returns `Vec<SearchResult>` (atom + score + rank), not a wrapped `{ query, results }` envelope.
-
-# ISSUE: Query Result Citations
 
 **Labels:** feature, UX, priority-medium
 **Tracking:** #7 (Phase 2) | Related: #37 (Doctrine)
