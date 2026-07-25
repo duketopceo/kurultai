@@ -241,12 +241,12 @@ mod tests {
     use std::fs;
 
     fn fixture_db() -> PathBuf {
+        // Unique path per call (nanos can collide under parallel macOS tests).
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "kurultai-dayflow-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            "kurultai-dayflow-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
         ));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("chunks.sqlite");
