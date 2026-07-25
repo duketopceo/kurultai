@@ -191,11 +191,17 @@ mod tests {
         ));
         let connectors = Arc::new(registry);
 
-        let handle = tokio::spawn(poll_loop(pipeline, connectors, Duration::from_secs(3600)));
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        let handle = tokio::spawn(poll_loop(pipeline, connectors, Duration::from_secs(1)));
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(
+            polls.load(Ordering::SeqCst),
+            1,
+            "expected exactly one immediate poll before interval elapses"
+        );
+        tokio::time::sleep(Duration::from_millis(1200)).await;
         assert!(
-            polls.load(Ordering::SeqCst) >= 1,
-            "expected immediate first poll before interval sleep"
+            polls.load(Ordering::SeqCst) >= 2,
+            "expected a second poll after the 1s interval"
         );
         handle.abort();
         let _ = handle.await;
@@ -233,8 +239,11 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         let url = format!("http://127.0.0.1:{port}/health");
-        let body: serde_json::Value = reqwest::get(&url).await.unwrap().json().await.unwrap();
-        assert_eq!(body["ok"], true);
+        for _ in 0..2 {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            let body: serde_json::Value = reqwest::get(&url).await.unwrap().json().await.unwrap();
+            assert_eq!(body["ok"], true);
+        }
 
         handle.abort();
         let _ = handle.await;

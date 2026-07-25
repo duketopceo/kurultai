@@ -238,18 +238,11 @@ impl Connector for DayflowConnector {
 mod tests {
     use super::*;
     use crate::types::SourceKind;
-    use std::fs;
 
     fn fixture_db() -> PathBuf {
-        // Unique path per call (nanos can collide under parallel macOS tests).
-        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let dir = std::env::temp_dir().join(format!(
-            "kurultai-dayflow-{}-{}",
-            std::process::id(),
-            SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("chunks.sqlite");
+        // Exclusive temp dir per call; forget so the path survives the test.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("chunks.sqlite");
         let conn = Connection::open(&path).unwrap();
         conn.execute_batch(
             "CREATE TABLE timeline_cards (
@@ -277,6 +270,7 @@ mod tests {
                'Debugged Rust CI pipeline with fixture phrase KNOWN_DAYFLOW_CARD_42');",
         )
         .unwrap();
+        std::mem::forget(dir);
         path
     }
 
