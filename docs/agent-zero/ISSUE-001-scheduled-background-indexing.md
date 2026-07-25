@@ -7,7 +7,8 @@ related:
 
 > **Shipped contract (v1 batch #73):** config uses `[runtime] nightly_full_sync_hour` and `inactivity_threshold_hours` (not `[brain]`).  
 > `GET /api/status` returns `{ ok, service, atoms, scheduler }` where `scheduler` has  
-> `last_incremental_unix`, `last_full_unix`, `last_activity_unix`, `poll_enabled`, `watch_enabled`, `nightly_full_sync_hour`.  
+> `last_incremental_unix`, `last_full_unix`, `last_client_activity_unix`, `poll_enabled`, `watch_enabled`, `nightly_full_sync_hour`.  
+> Idle skip keys off client query/ask activity (not indexing alone).  
 > Per-source `next_scheduled` / dashboard graph are deferred.
 
 # ISSUE: Scheduled Background Indexing

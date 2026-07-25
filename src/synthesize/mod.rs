@@ -247,13 +247,26 @@ fn citations_from_hits(hits: &[SearchResult]) -> Vec<Citation> {
         .collect()
 }
 
-/// Ordered unique source_ids for multi-hop / citation chain display (#74).
+/// Ordered unique source_ids: primary hits first, then multi_hop inserts (#74).
+/// Not a graph edge walk — use for provenance, not path reconstruction.
 pub fn graph_chain_from_hits(hits: &[SearchResult]) -> Vec<String> {
     let mut out = Vec::new();
-    for r in hits.iter().take(MAX_HITS) {
-        if !out.iter().any(|s| s == &r.atom.source_id) {
-            out.push(r.atom.source_id.clone());
+    let push_unique = |out: &mut Vec<String>, sid: &str| {
+        if !out.iter().any(|s| s == sid) {
+            out.push(sid.to_string());
         }
+    };
+    for r in hits.iter().take(MAX_HITS) {
+        if r.matched_by.iter().any(|m| m == "multi_hop") {
+            continue;
+        }
+        push_unique(&mut out, &r.atom.source_id);
+    }
+    for r in hits.iter().take(MAX_HITS) {
+        if !r.matched_by.iter().any(|m| m == "multi_hop") {
+            continue;
+        }
+        push_unique(&mut out, &r.atom.source_id);
     }
     out
 }
@@ -350,6 +363,27 @@ mod tests {
         assert_eq!(w.len(), 1);
         assert_eq!(w[0].source, "markdown");
         assert_eq!(w[0].hit_count, 2);
+    }
+
+    #[test]
+    fn graph_chain_lists_primary_then_multi_hop() {
+        let mut primary = hit("Seed", "primary doc", 0.9);
+        primary.matched_by = vec!["fts".into()];
+        let mut unrelated = hit("Noise", "unrelated primary", 0.85);
+        unrelated.matched_by = vec!["vector".into()];
+        let mut hop = hit("Related", "tag hop insert", 0.7);
+        hop.matched_by = vec!["multi_hop".into()];
+        // Score order would put Noise before Related; chain must still be
+        // primaries then hops, not raw score order as a fake path.
+        let chain = graph_chain_from_hits(&[primary, unrelated, hop]);
+        assert_eq!(
+            chain,
+            vec![
+                "Seed.md".to_string(),
+                "Noise.md".to_string(),
+                "Related.md".to_string()
+            ]
+        );
     }
 
     /// Test-only synthesizer that returns fixed prose while preserving citations.

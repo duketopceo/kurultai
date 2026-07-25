@@ -115,11 +115,11 @@ impl Citation {
 }
 
 fn short_title_hash(title: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut h = DefaultHasher::new();
-    title.hash(&mut h);
-    format!("{:016x}", h.finish())
+    // Stable across compiler releases (unlike DefaultHasher).
+    crate::hashutil::sha256_hex(title)
+        .chars()
+        .take(16)
+        .collect()
 }
 
 fn section_from_title(title: &str) -> Option<String> {
@@ -139,8 +139,10 @@ fn excerpt_range_in_content(content: &str, excerpt: &str) -> (Option<usize>, Opt
     if excerpt.is_empty() {
         return (None, None);
     }
-    if let Some(start) = content.find(excerpt) {
-        return (Some(start), Some(start + excerpt.len()));
+    if let Some(byte_start) = content.find(excerpt) {
+        let char_start = content[..byte_start].chars().count();
+        let char_len = excerpt.chars().count();
+        return (Some(char_start), Some(char_start + char_len));
     }
     // summary-based excerpts may not be substrings of content
     (None, None)
@@ -184,7 +186,37 @@ pub struct Config {
     /// Local hour (0–23) for nightly full reindex; `None` disables (#73).
     #[serde(default)]
     pub nightly_full_sync_hour: Option<u8>,
-    /// Skip incremental poll when no index activity for this many hours (#73).
+    /// Skip incremental poll when no client queries for this many hours (#73).
     #[serde(default)]
     pub inactivity_threshold_hours: Option<u64>,
+}
+
+#[cfg(test)]
+mod citation_tests {
+    use super::*;
+
+    #[test]
+    fn title_hash_is_stable_sha256_prefix() {
+        let h = short_title_hash("Deploy Guide");
+        assert_eq!(h.len(), 16);
+        assert_eq!(h, &crate::hashutil::sha256_hex("Deploy Guide")[..16]);
+        assert_eq!(h, short_title_hash("Deploy Guide"));
+    }
+
+    #[test]
+    fn excerpt_range_uses_char_offsets_for_multibyte() {
+        let content = "abécaféxy";
+        let excerpt = "café";
+        let (start, end) = excerpt_range_in_content(content, excerpt);
+        assert_eq!(start, Some(3));
+        assert_eq!(end, Some(7));
+        // Byte index of café would be 4 (é is 2 bytes), not 3.
+        assert_ne!(content.find(excerpt), start);
+    }
+
+    #[test]
+    fn excerpt_range_empty_or_missing() {
+        assert_eq!(excerpt_range_in_content("abc", ""), (None, None));
+        assert_eq!(excerpt_range_in_content("abc", "zzz"), (None, None));
+    }
 }

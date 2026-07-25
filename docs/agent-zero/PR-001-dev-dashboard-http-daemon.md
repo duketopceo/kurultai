@@ -43,21 +43,19 @@ Currently, kurultai is CLI-only for developers:
 ### Architecture
 
 **HTTP Daemon on port 8421:**
-```
+
+```text
 ┌─────────────────────────────────────────────────┐
-│ Kurultai HTTP Daemon (Phase 3)                  │
+│ Kurultai HTTP Daemon (v1 #76 slice)             │
 ├─────────────────────────────────────────────────┤
 │ TCP: 8421                                       │
-│ Proto: HTTP/1.1 + WebSocket                     │
-│ Auth: None (local dev) / Basic (team)           │
-│ Routes:                                         │
-│   GET  /api/status        - system health        │
-│   GET  /api/knowledge     - atoms + sources      │
-│   GET  /api/search        - search history       │
-│   GET  /api/health        - liveness probe       │
-│   WS   /ws/events         - live activity stream │
-│   GET  /ui/*              - dashboard HTML       │
-│   POST /api/reindex       - trigger background   │
+│ Proto: HTTP/1.1 (WebSocket deferred)            │
+│ Auth: None (local dev)                          │
+│ Routes (shipped):                               │
+│   GET  /health            - liveness            │
+│   GET  /api/status        - atoms + scheduler   │
+│   GET  /api/search        - search              │
+│   GET  /ui                - dashboard HTML      │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -214,6 +212,7 @@ Currently, kurultai is CLI-only for developers:
 ## Testing
 
 **Manual Tests:**
+
 ```bash
 # 1. Start HTTP daemon
 ./target/debug/kurultai daemon --port 8421
@@ -221,17 +220,14 @@ Currently, kurultai is CLI-only for developers:
 # 2. Test status endpoint
 curl http://localhost:8421/api/status
 
-# 3. Trigger an index
-curl -X POST http://localhost:8421/api/reindex --data '{"source": "notes"}'
-
-# 4. Watch WebSocket events (use browser console or ws-cli)
-ws-cli ws://localhost:8421/ws/events
+# 3. Open dashboard
+open http://127.0.0.1:8421/ui
 ```
 
 **Integration Tests:**
-- [ ] Test all API endpoints with valid/invalid input
-- [ ] Test WebSocket event streaming under load
+- [ ] Test `/api/status` and `/api/search` with valid/invalid input
 - [ ] Test daemon restart and recovery
+- [ ] WebSocket event streaming — deferred beyond v1 #76
 
 ---
 

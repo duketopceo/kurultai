@@ -110,6 +110,8 @@ dimension = 3072
 
 [runtime]
 poll_interval_secs = 300
+# nightly_full_sync_hour = 3            # local hour 0–23; omit to disable
+# inactivity_threshold_hours = 6        # skip incremental poll after this many hours without client queries
 # reranker_model = "openai/gpt-4o-mini"   # needs API key
 ```
 

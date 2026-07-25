@@ -60,14 +60,27 @@ async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "ok": true, "service": "kurultai" }))
 }
 
-async fn api_status(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let atoms = state.brain.atom_count().await.unwrap_or(0);
-    Json(serde_json::json!({
-        "ok": true,
-        "service": "kurultai",
-        "atoms": atoms,
-        "scheduler": state.status.snapshot(),
-    }))
+async fn api_status(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    match state.brain.atom_count().await {
+        Ok(atoms) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "service": "kurultai",
+            "atoms": atoms,
+            "scheduler": state.status.snapshot(),
+        }))),
+        Err(e) => Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "ok": false,
+                "service": "kurultai",
+                "atoms": null,
+                "error": e.to_string(),
+                "scheduler": state.status.snapshot(),
+            })),
+        )),
+    }
 }
 
 async fn ui_dashboard() -> impl IntoResponse {
@@ -160,6 +173,7 @@ async fn search_post(
     State(state): State<AppState>,
     Json(body): Json<SearchBody>,
 ) -> Result<Json<Vec<SearchResult>>, (StatusCode, String)> {
+    state.status.touch_client_activity();
     state
         .brain
         .search(&body.query, body.limit)
@@ -172,6 +186,7 @@ async fn search_get(
     State(state): State<AppState>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, (StatusCode, String)> {
+    state.status.touch_client_activity();
     state
         .brain
         .search(&query.q, query.limit)
@@ -189,6 +204,7 @@ async fn ask_post(
     State(state): State<AppState>,
     Json(body): Json<AskBody>,
 ) -> Result<Json<Answer>, (StatusCode, String)> {
+    state.status.touch_client_activity();
     state
         .brain
         .ask(&body.question)
@@ -201,6 +217,7 @@ async fn ask_get(
     State(state): State<AppState>,
     Query(query): Query<AskQuery>,
 ) -> Result<Json<Answer>, (StatusCode, String)> {
+    state.status.touch_client_activity();
     state
         .brain
         .ask(&query.question)

@@ -36,16 +36,31 @@ fn install_script_help_exits_zero() {
 #[test]
 fn install_script_dry_run_does_not_require_cargo_install() {
     let path = install_sh();
-    // Dry-run must succeed even without performing cargo install.
-    // Logs go to stderr so stdout stays free for path captures (resolve_src).
+    let home = tempfile::tempdir().expect("temp HOME");
+    let xdg = tempfile::tempdir().expect("temp XDG");
+    // Plain --dry-run (with init enabled) must not write config/MCP state.
     Command::new("bash")
         .arg(&path)
         .arg("--dry-run")
-        .arg("--no-init")
+        .env("HOME", home.path())
+        .env("XDG_CONFIG_HOME", xdg.path())
         .assert()
         .success()
         .stderr(predicate::str::contains("DRY-RUN"))
         .stderr(predicate::str::contains("personal install"));
+
+    let kurultai_cfg = xdg.path().join("kurultai");
+    assert!(
+        !kurultai_cfg.exists(),
+        "dry-run must not create {}",
+        kurultai_cfg.display()
+    );
+    let home_cfg = home.path().join(".config").join("kurultai");
+    assert!(
+        !home_cfg.exists(),
+        "dry-run must not create {}",
+        home_cfg.display()
+    );
 }
 
 #[test]

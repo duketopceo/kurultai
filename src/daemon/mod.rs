@@ -40,13 +40,18 @@ pub struct DaemonOptions {
 pub struct DaemonStatus {
     pub last_incremental_unix: std::sync::atomic::AtomicU64,
     pub last_full_unix: std::sync::atomic::AtomicU64,
-    pub last_activity_unix: std::sync::atomic::AtomicU64,
+    /// Last client query/ask (idle threshold); not updated by indexing alone.
+    pub last_client_activity_unix: std::sync::atomic::AtomicU64,
     pub poll_enabled: std::sync::atomic::AtomicBool,
     pub watch_enabled: std::sync::atomic::AtomicBool,
     pub nightly_hour: std::sync::atomic::AtomicU8,
 }
 
 impl DaemonStatus {
+    fn now_unix() -> u64 {
+        chrono::Utc::now().timestamp().max(0) as u64
+    }
+
     /// JSON snapshot for `/api/status` (`scheduler` object).
     pub fn snapshot(&self) -> serde_json::Value {
         use std::sync::atomic::Ordering;
@@ -59,34 +64,32 @@ impl DaemonStatus {
         serde_json::json!({
             "last_incremental_unix": self.last_incremental_unix.load(Ordering::Relaxed),
             "last_full_unix": self.last_full_unix.load(Ordering::Relaxed),
-            "last_activity_unix": self.last_activity_unix.load(Ordering::Relaxed),
+            "last_client_activity_unix": self.last_client_activity_unix.load(Ordering::Relaxed),
             "poll_enabled": self.poll_enabled.load(Ordering::Relaxed),
             "watch_enabled": self.watch_enabled.load(Ordering::Relaxed),
             "nightly_full_sync_hour": nightly,
         })
     }
 
-    /// Record wall-clock activity (used by idle threshold).
-    pub fn touch_activity(&self) {
+    /// Record client query/ask activity (drives idle threshold).
+    pub fn touch_client_activity(&self) {
         use std::sync::atomic::Ordering;
-        let now = chrono::Utc::now().timestamp().max(0) as u64;
-        self.last_activity_unix.store(now, Ordering::Relaxed);
+        self.last_client_activity_unix
+            .store(Self::now_unix(), Ordering::Relaxed);
     }
 
-    /// Record a completed incremental index cycle.
+    /// Record a completed incremental index cycle (does not refresh client activity).
     pub fn mark_incremental(&self) {
         use std::sync::atomic::Ordering;
-        let now = chrono::Utc::now().timestamp().max(0) as u64;
-        self.last_incremental_unix.store(now, Ordering::Relaxed);
-        self.last_activity_unix.store(now, Ordering::Relaxed);
+        self.last_incremental_unix
+            .store(Self::now_unix(), Ordering::Relaxed);
     }
 
-    /// Record a completed full (nightly) index cycle.
+    /// Record a completed full (nightly) index cycle (does not refresh client activity).
     pub fn mark_full(&self) {
         use std::sync::atomic::Ordering;
-        let now = chrono::Utc::now().timestamp().max(0) as u64;
-        self.last_full_unix.store(now, Ordering::Relaxed);
-        self.last_activity_unix.store(now, Ordering::Relaxed);
+        self.last_full_unix
+            .store(Self::now_unix(), Ordering::Relaxed);
     }
 }
 
@@ -179,7 +182,7 @@ pub async fn run(
             opts.nightly_full_sync_hour.unwrap_or(255),
             Ordering::Relaxed,
         );
-        status.touch_activity();
+        status.touch_client_activity();
     }
 
     if opts.poll {
@@ -252,8 +255,6 @@ async fn run_poll_cycle(
     full: bool,
 ) {
     let _guard = flight.lock().await;
-    // Always touch activity so failed cycles do not wedge idle_skip forever.
-    status.touch_activity();
     match if full {
         pipeline.index_all(connectors, true).await.map(|s| s.len())
     } else {
@@ -282,7 +283,7 @@ fn idle_skip(status: &DaemonStatus, inactivity_threshold_hours: Option<u64>) -> 
         return false;
     };
     use std::sync::atomic::Ordering;
-    let last = status.last_activity_unix.load(Ordering::Relaxed);
+    let last = status.last_client_activity_unix.load(Ordering::Relaxed);
     if last == 0 {
         return false;
     }
@@ -477,6 +478,32 @@ mod tests {
     use std::fs;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
+
+    #[test]
+    fn idle_skip_tracks_client_activity_not_index_marks() {
+        let status = DaemonStatus::default();
+        assert!(!idle_skip(&status, Some(1)));
+
+        status.mark_incremental();
+        status.mark_full();
+        // Indexing alone must not create a client-activity timestamp.
+        assert_eq!(
+            status
+                .last_client_activity_unix
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+        assert!(!idle_skip(&status, Some(1)));
+
+        let past = chrono::Utc::now().timestamp().max(0) as u64 - 7200;
+        status
+            .last_client_activity_unix
+            .store(past, std::sync::atomic::Ordering::Relaxed);
+        assert!(idle_skip(&status, Some(1)));
+
+        status.touch_client_activity();
+        assert!(!idle_skip(&status, Some(1)));
+    }
 
     #[tokio::test]
     async fn poll_once_indexes_markdown_fixture() {

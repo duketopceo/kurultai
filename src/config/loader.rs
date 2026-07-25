@@ -127,17 +127,15 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
         embed_dim: file.embed.dimension.unwrap_or(3072),
         reranker_model: file.runtime.reranker_model,
         poll_interval_secs: file.runtime.poll_interval_secs.unwrap_or(300),
-        nightly_full_sync_hour: file.runtime.nightly_full_sync_hour.and_then(|h| {
-            if h <= 23 {
-                Some(h)
-            } else {
-                tracing::warn!(
-                    hour = h,
-                    "nightly_full_sync_hour out of range (0-23); disabling"
-                );
-                None
+        nightly_full_sync_hour: match file.runtime.nightly_full_sync_hour {
+            None => None,
+            Some(h) if h <= 23 => Some(h),
+            Some(h) => {
+                return Err(KurultaiError::config(format!(
+                    "nightly_full_sync_hour out of range (0-23), got {h}"
+                )));
             }
-        }),
+        },
         inactivity_threshold_hours: file.runtime.inactivity_threshold_hours,
     })
 }
@@ -218,6 +216,47 @@ root_path = "/tmp/notes"
         let mut f = std::fs::File::create(&path).unwrap();
         writeln!(f, "[[[not valid").unwrap();
         assert!(load_config_from(&path).is_err());
+    }
+
+    #[test]
+    fn rejects_nightly_hour_above_23() {
+        let dir = tempfile_dir("cfg-hour");
+        let path = dir.join("config.toml");
+        let toml = r#"
+environment = "dev"
+[storage]
+path = "/tmp/kurultai-hour-test.db"
+[embed]
+model = "openai/text-embedding-3-large"
+dimension = 4
+[runtime]
+nightly_full_sync_hour = 24
+"#;
+        std::fs::write(&path, toml).unwrap();
+        let err = load_config_from(&path).unwrap_err();
+        assert!(
+            err.to_string().contains("nightly_full_sync_hour"),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_nightly_hour() {
+        let dir = tempfile_dir("cfg-hour-ok");
+        let path = dir.join("config.toml");
+        let toml = r#"
+environment = "dev"
+[storage]
+path = "/tmp/kurultai-hour-ok.db"
+[embed]
+model = "openai/text-embedding-3-large"
+dimension = 4
+[runtime]
+nightly_full_sync_hour = 3
+"#;
+        std::fs::write(&path, toml).unwrap();
+        let cfg = load_config_from(&path).unwrap();
+        assert_eq!(cfg.nightly_full_sync_hour, Some(3));
     }
 
     fn tempfile_dir(tag: &str) -> PathBuf {

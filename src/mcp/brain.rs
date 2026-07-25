@@ -18,6 +18,7 @@ use std::sync::Arc;
 static REMEMBER_SEQ: AtomicU64 = AtomicU64::new(1);
 
 /// MCP-facing brain bound to the app store + embedder.
+#[derive(Clone)]
 pub struct BrainService {
     store: Arc<dyn Store>,
     embedder: Arc<dyn Embedder>,
@@ -59,14 +60,31 @@ async fn multi_hop_expand(
     }
 
     let mut by_id: HashMap<String, SearchResult> = HashMap::new();
+    let primary_ids: std::collections::HashSet<String> =
+        primary.iter().map(|r| r.atom.id.clone()).collect();
     for r in primary {
         by_id.insert(r.atom.id.clone(), r);
     }
 
-    // Bounded second-hop searches (sequential: BrainService is not cloned into tasks).
-    for tag in tags.into_iter().take(4) {
-        let hop = brain.search(&tag, 4).await.unwrap_or_default();
-        for r in hop {
+    // Bounded second-hop searches — concurrent fan-out (≤4).
+    let tags: Vec<String> = tags.into_iter().take(4).collect();
+    let mut set = tokio::task::JoinSet::new();
+    for tag in tags {
+        let brain = brain.clone();
+        set.spawn(async move { brain.search(&tag, 4).await.unwrap_or_default() });
+    }
+    while let Some(joined) = set.join_next().await {
+        let hop = match joined {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        for mut r in hop {
+            if primary_ids.contains(&r.atom.id) {
+                continue;
+            }
+            if !r.matched_by.iter().any(|m| m == "multi_hop") {
+                r.matched_by.push("multi_hop".into());
+            }
             by_id.entry(r.atom.id.clone()).or_insert(r);
         }
     }

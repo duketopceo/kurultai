@@ -56,32 +56,22 @@ Currently, kurultai returns search results with **excerpts but no citations**:
 ```
 
 ```json
-// New AgentAtomView with citations
+// Shipped Citation (from Citation::from_atom) — v1 batch #75
 {
-  "id": "atom_abc123",
+  "source": "markdown",
+  "source_id": "ops/deploy.md",
   "title": "Deploy Guide — Database migration",
+  "url": null,
   "excerpt": "Always run the database migration scripts before cutting traffic.",
-  "snippet": "[ops/deploy.md > Deploy Guide > Database migration]",
-  "citations": [
-    {
-      "source_id": "notes",
-      "source_kind": "markdown",
-      "file_path": "ops/deploy.md",
-      "title": "Deploy Guide",
-      "section": "Database migration",
-      "title_hash": "sha256(deploy.md first 100 chars)",
-      "excerpt_start": 42,
-      "excerpt_end": 120,
-      "full_text": "Always run the database migration scripts before cutting traffic."
-    }
-  ],
-  "rank": 1,
-  "metadata": {
-    "indexed_at": "2026-07-25T20:42:21Z",
-    "version": "1.0"
-  }
+  "file_path": "ops/deploy.md",
+  "section": "Database migration",
+  "title_hash": "3a5f…",
+  "excerpt_start": 42,
+  "excerpt_end": 120
 }
 ```
+
+Fields **not** shipped in v1: `source_kind`, `full_text`, `start_char`/`end_char` (use `excerpt_start`/`excerpt_end`).
 
 ### CLI Search Output
 
@@ -120,38 +110,29 @@ $ kurultai search "database migration" --limit 2
 
 ### HTTP API Response
 
+`GET /api/search?q=database%20migration&limit=10` returns a JSON array of `SearchResult` (not a `{ query, results }` envelope):
+
 ```json
-// GET /api/search?query="database migration"
-{
-  "query": "database migration",
-  "results": [
-    {
-      "id": "evt_abc123",
-      "timestamp": "2026-07-25T20:42:31Z",
-      "results": [
-        {
-          "id": "atom_abc123",
-          "source_id": "notes",
-          "file_path": "ops/deploy.md",
-          "title": "Deploy Guide — Database migration",
-          "section": "Database migration",
-          "excerpt": "Always run the database migration scripts before cutting traffic.",
-          "citations": [
-            {
-              "file_path": "ops/deploy.md",
-              "title_hash": "3a5f...",
-              "start_char": 42,
-              "end_char": 120
-            }
-          ],
-          "rank": 1,
-          "latency_ms": 16
-        }
-      ]
-    }
-  ]
-}
+[
+  {
+    "atom": {
+      "id": "atom_abc123",
+      "source": "markdown",
+      "source_id": "ops/deploy.md",
+      "title": "Deploy Guide — Database migration",
+      "content": "…",
+      "summary": "…",
+      "tags": [],
+      "metadata": {}
+    },
+    "score": 0.82,
+    "rank": 1,
+    "matched_by": ["fts", "vector"]
+  }
+]
 ```
+
+Use `POST /cite` or `Answer.citations` from `/ask` for the full `Citation` object shape above.
 
 ### Integration with Perplexity Brain
 
