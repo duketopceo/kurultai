@@ -25,3 +25,7 @@ config.toml
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Coverage (local / CI artifacts)
+lcov.info
+coverage-html/
