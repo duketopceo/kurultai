@@ -1,5 +1,6 @@
 pub mod appflowy;
 pub mod dayflow;
+pub mod github;
 pub mod markdown;
 pub mod pond;
 pub mod registry;

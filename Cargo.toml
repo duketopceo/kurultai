@@ -57,6 +57,9 @@ notify = "6"
 # Glob for file discovery
 glob = "0.3"
 
+# Unix open flags (O_NOFOLLOW) for connector path safety
+libc = "0.2"
+
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"

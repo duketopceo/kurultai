@@ -83,3 +83,43 @@ async fn phase4_dayflow_index_searchable() {
     assert!(!hits.is_empty());
     assert!(hits.iter().any(|h| h.atom.source == "activity"));
 }
+
+#[tokio::test]
+async fn phase4_github_index_searchable() {
+    use kurultai::connectors::github::GitHubConnector;
+
+    let store_dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(SqliteVecStore::open(store_dir.path().join("store.db"), 4).unwrap());
+    let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+    let pipeline = IndexPipeline::new(Arc::clone(&store) as Arc<dyn Store>, Arc::clone(&embedder));
+
+    let root = format!("{}/tests/fixtures/code_repo", env!("CARGO_MANIFEST_DIR"));
+    let mut connector = GitHubConnector::new();
+    connector
+        .init(&SourceConfig {
+            name: "pace".into(),
+            kind: SourceKind::GitHub,
+            enabled: true,
+            poll_interval_secs: 60,
+            extra: HashMap::from([("root_path".into(), root)]),
+        })
+        .await
+        .unwrap();
+    pipeline
+        .index_connector("pace", &connector, true)
+        .await
+        .unwrap();
+
+    let brain = BrainService::new(
+        store,
+        embedder,
+        Arc::new(NullReranker::new()),
+        Arc::new(ExtractiveSynthesizer::new()),
+    );
+    let hits = brain.search("KNOWN_GITHUB_PHRASE_42", 5).await.unwrap();
+    assert!(!hits.is_empty());
+    assert!(hits.iter().any(|h| h.atom.source == "pace"));
+    assert!(!hits
+        .iter()
+        .any(|h| h.atom.content.contains("SHOULD_NOT_INDEX_NODE_MODULES")));
+}
