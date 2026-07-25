@@ -46,6 +46,10 @@ gh api -X PATCH repos/duketopceo/kurultai/milestones/4 -f state=closed
 ## Done when
 
 1. Phase 4 connectors on `main` (#62, #63)  
-2. #8 closed; Milestone 4 closable  
-3. `phase-4-complete.md` on `main`  
-4. README Phase 4 ✅  
+2. Verification on the closeout landing commit (record results):  
+   - `cargo test --locked`  
+   - `cargo clippy --all-targets -- -D warnings`  
+   - required files exist: `docs/plans/phase-4-complete.md`, `docs/plans/phase-4-closeout.md`, `scripts/phase-4-closeout.sh`  
+   - README contains a Markdown link to `phase-4-complete.md`  
+3. `./scripts/phase-4-closeout.sh` succeeds (#8 closed)  
+4. Milestone 4 closable  

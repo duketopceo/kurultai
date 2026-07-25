@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 # Phase 4 tracker closeout — run as a maintainer with issue write access.
-# Run from a checkout after the closeout PR is on main.
+# Run after the closeout PR is on main of the canonical repo.
 # Usage: ./scripts/phase-4-closeout.sh
 set -euo pipefail
 
 REPO="${GITHUB_REPOSITORY:-duketopceo/kurultai}"
 CLOSE_COMMENT='Phase 4 solo exit shipped: Dayflow+Pond (#62), GitHub FS (#63). Deferred (not exit): Composio meta-connector; plugins (#14); CodeGraph/tree-sitter; AppFlowy (#4); OpenRouter batch/fallback embed; TechTracker composite; #23 Phase 4 coverage≥60%/cargo-deny — see docs/plans/phase-4-complete.md.'
+
+main_file_exists() {
+  local path="$1"
+  gh api "repos/${REPO}/contents/${path}?ref=main" --jq .sha >/dev/null 2>&1
+}
+
+main_file_text() {
+  local path="$1"
+  gh api "repos/${REPO}/contents/${path}?ref=main" --jq .content | tr -d '\n' | base64 -d
+}
 
 echo "Preflight: PRs #62/#63 merged into main on $REPO…"
 for pr in 62 63; do
@@ -19,21 +29,22 @@ for pr in 62 63; do
   fi
 done
 
-echo "Preflight: closeout docs present on origin/main…"
-git fetch origin main --quiet
+echo "Preflight: closeout docs on canonical $REPO@main…"
 for path in \
   docs/plans/phase-4-complete.md \
   docs/plans/phase-4-closeout.md \
   scripts/phase-4-closeout.sh \
   README.md
 do
-  if ! git cat-file -e "origin/main:$path" 2>/dev/null; then
-    echo "Abort: $path missing on origin/main (merge the Phase 4 closeout PR first)." >&2
+  if ! main_file_exists "$path"; then
+    echo "Abort: $path missing on $REPO@main (merge the Phase 4 closeout PR first)." >&2
     exit 1
   fi
 done
-if ! git show "origin/main:README.md" | grep -q 'phase-4-complete'; then
-  echo "Abort: README.md on origin/main does not link phase-4-complete." >&2
+
+readme="$(main_file_text README.md)"
+if ! echo "$readme" | grep -Eq '\]\([^)]*phase-4-complete\.md\)'; then
+  echo "Abort: README.md on $REPO@main has no Markdown link targeting phase-4-complete.md." >&2
   exit 1
 fi
 
