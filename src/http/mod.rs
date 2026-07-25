@@ -96,20 +96,20 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kurultai — Brain Synapse & Ingested Data View</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Share+Tech+Mono&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&family=Share+Tech+Mono&family=Inter:wght@300;400;500;600;700&display=swap">
     <script src="https://unpkg.com/3d-force-graph"></script>
     <style>
         :root {
-            --bg-dark: #090d16;
-            --bg-card: rgba(24, 27, 37, 0.60);
-            --border-color: rgba(16, 185, 129, 0.12);
-            --border-glow: rgba(56, 189, 248, 0.2);
-            --text-primary: #dfe2ef;
-            --text-secondary: #9ca3af;
-            --text-muted: #6b7280;
-            --primary: #5eead4;
-            --secondary: #a78bfa;
-            --font-heading: 'Space Grotesk', sans-serif;
+            --bg-dark: #000000;
+            --bg-card: #080808;
+            --border-color: #222222;
+            --border-glow: #ffffff;
+            --text-primary: #ffffff;
+            --text-secondary: #cccccc;
+            --text-muted: #888888;
+            --primary: #ffffff;
+            --secondary: #888888;
+            --font-heading: 'Syncopate', sans-serif;
             --font-body: 'Inter', sans-serif;
             --font-mono: 'Share Tech Mono', monospace;
             --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -139,7 +139,7 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
             backdrop-filter: blur(16px);
             border: 1px solid var(--border-color);
             border-radius: 12px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
         }
 
         header {
@@ -168,10 +168,10 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
 
         .badge {
             display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            background: rgba(94, 234, 212, 0.1);
-            border: 1px solid rgba(94, 234, 212, 0.2);
+            padding: 6px 14px;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             color: var(--primary);
             font-family: var(--font-mono);
             font-size: 0.8rem;
@@ -227,7 +227,7 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
 
         .atom-item:hover, .atom-item.active {
             border-color: var(--primary);
-            background: rgba(94, 234, 212, 0.05);
+            background: rgba(255, 255, 255, 0.05);
         }
 
         .atom-item h4 {
@@ -279,7 +279,7 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
         .detail-val {
             font-size: 0.95rem;
             color: var(--text-secondary);
-            background: rgba(0, 0, 0, 0.2);
+            background: rgba(0, 0, 0, 0.4);
             padding: 12px 16px;
             border-radius: 8px;
             border: 1px solid var(--border-color);
@@ -288,11 +288,11 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
 
         .tag-pill {
             display: inline-block;
-            padding: 4px 10px;
-            border-radius: 6px;
-            background: rgba(168, 85, 247, 0.1);
-            border: 1px solid rgba(168, 85, 247, 0.2);
-            color: var(--secondary);
+            padding: 4px 12px;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: var(--text-secondary);
             font-size: 0.8rem;
             margin-right: 6px;
             font-family: var(--font-mono);
@@ -308,8 +308,8 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
             flex: 1;
             background: rgba(17, 24, 39, 0.8);
             border: 1px solid var(--border-color);
-            padding: 14px 20px;
-            border-radius: 8px;
+            padding: 14px 28px;
+            border-radius: 9999px;
             color: var(--text-primary);
             font-family: var(--font-body);
             font-size: 1rem;
@@ -319,7 +319,7 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
 
         .search-input:focus {
             border-color: var(--primary);
-            box-shadow: 0 0 15px rgba(94, 234, 212, 0.15);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.15);
         }
 
         .vector-space-section {
@@ -555,7 +555,7 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                     source: atom.source,
                     source_id: atom.source_id,
                     tags: atom.tags,
-                    color: atom.source_id.includes('guidelines') ? '#a78bfa' : (atom.source_id.includes('migration') ? '#3b82f6' : '#5eead4'),
+                    color: atom.source_id.includes('guidelines') ? '#ffffff' : (atom.source_id.includes('migration') ? '#888888' : '#333333'),
                     val: 5
                 }));
 
@@ -576,7 +576,7 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                 if (!Graph) {
                     Graph = ForceGraph3D()(graphContainer)
                         .graphData({ nodes, links })
-                        .backgroundColor('#090d16')
+                        .backgroundColor('#000000')
                         .nodeColor(node => node.color)
                         .nodeLabel(node => `
                             <div style="background: rgba(17, 24, 39, 0.9); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-primary);">
@@ -586,12 +586,12 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                             </div>
                         `)
                         .nodeRelSize(3)
-                        .linkColor(() => 'rgba(255, 255, 255, 0.06)')
+                        .linkColor(() => 'rgba(255, 255, 255, 0.04)')
                         .linkWidth(0.5)
                         .linkDirectionalParticles(2)
                         .linkDirectionalParticleSpeed(0.005)
                         .linkDirectionalParticleWidth(1.2)
-                        .linkDirectionalParticleColor(() => '#5eead4')
+                        .linkDirectionalParticleColor(() => '#ffffff')
                         .onNodeClick(node => {
                             const atom = currentAtoms.find(a => a.id === node.id);
                             if (atom) {

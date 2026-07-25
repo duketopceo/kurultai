@@ -1,29 +1,29 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&family=Share+Tech+Mono&family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-    /* Color Palette (Neurons, Electrons & Tech) */
-    --bg-dark: #030712;
-    --bg-card: rgba(17, 24, 39, 0.65);
-    --border-color: rgba(255, 255, 255, 0.08);
-    --border-glow: rgba(56, 189, 248, 0.2);
+    /* High Contrast Monochrome Palette */
+    --bg-dark: #000000;
+    --bg-card: #080808;
+    --border-color: #222222;
+    --border-glow: #ffffff;
     
-    --text-primary: #f3f4f6;
-    --text-secondary: #9ca3af;
-    --text-muted: #6b7280;
+    --text-primary: #ffffff;
+    --text-secondary: #cccccc;
+    --text-muted: #888888;
     
-    --primary: #38bdf8;          /* Cyber/Electron Cyan */
-    --primary-glow: rgba(56, 189, 248, 0.15);
-    --secondary: #c084fc;        /* Synaptic/Neuron Violet */
-    --secondary-glow: rgba(168, 85, 247, 0.15);
-    --accent: #10b981;           /* Tech/Mint Green */
+    --primary: #ffffff;
+    --primary-glow: rgba(255, 255, 255, 0.15);
+    --secondary: #888888;
+    --secondary-glow: rgba(136, 136, 136, 0.15);
+    --accent: #ffffff;
     
     /* Gradients */
-    --grad-hero: radial-gradient(circle at 50% -20%, rgba(168, 85, 247, 0.15) 0%, rgba(56, 189, 248, 0.06) 60%, rgba(3, 7, 18, 0) 100%);
-    --grad-text: linear-gradient(135deg, #ffffff 0%, #e2e8f0 50%, #94a3b8 100%);
-    --grad-glow: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    --grad-hero: radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.08) 0%, rgba(0, 0, 0, 0) 100%);
+    --grad-text: linear-gradient(135deg, #ffffff 0%, #dddddd 100%);
+    --grad-glow: linear-gradient(135deg, #ffffff 0%, #888888 100%);
     
     /* Fonts */
-    --font-heading: 'Space Grotesk', sans-serif;
+    --font-heading: 'Syncopate', sans-serif;
     --font-body: 'Inter', sans-serif;
     --font-mono: 'Share Tech Mono', monospace;
     
@@ -235,20 +235,20 @@ header {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: var(--grad-glow);
-    color: #ffffff;
+    background: #ffffff;
+    color: #000000;
     padding: 14px 28px;
-    border-radius: 8px;
+    border-radius: 9999px;
     font-size: 1rem;
     font-weight: 600;
     text-decoration: none;
-    box-shadow: 0 4px 20px rgba(56, 189, 248, 0.2);
+    box-shadow: 0 4px 20px rgba(255, 255, 255, 0.15);
     transition: var(--transition-smooth);
 }
 
 .btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 30px rgba(56, 189, 248, 0.4);
+    box-shadow: 0 8px 30px rgba(255, 255, 255, 0.35);
 }
 
 .btn-secondary {
@@ -259,7 +259,7 @@ header {
     border: 1px solid var(--border-color);
     color: var(--text-primary);
     padding: 14px 28px;
-    border-radius: 8px;
+    border-radius: 9999px;
     font-size: 1rem;
     font-weight: 600;
     text-decoration: none;
