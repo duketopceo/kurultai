@@ -47,7 +47,7 @@ Second Phase 5 product slice: real-time (debounced) re-index of local FS-backed 
 | R3 | Watch on by default when at least one watchable root exists; `--no-watch` disables. |
 | R4 | Watch errors / index errors soft-fail: log + continue; do not tear down HTTP. |
 | R5 | Pond stays poll-only; Dayflow optional later (SQLite file watch) — **out of this PR**. |
-| R6 | Tests: event → index; `--no-watch` still serves `/health`; abort cancels watch; debounce/single-flight does not panic under burst. |
+| R6 | Tests: event → index; `--no-watch` health; abort cancels watch; burst soft-indexes without dropping HTTP; watch roots use path validation + `vault_path` fallback. |
 | R7 | README Phase 5 row + plan linked. |
 
 ### Actors / flows

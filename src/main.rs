@@ -69,7 +69,7 @@ enum Commands {
     Status,
     /// Run MCP server on stdio (for Cursor / Claude)
     Mcp,
-    /// Start the daemon (polls sources, serves HTTP)
+    /// Start the daemon (serves HTTP, polls sources, watches filesystem roots)
     Daemon {
         /// Port for the HTTP server
         #[arg(long, default_value = "8421")]

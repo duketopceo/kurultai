@@ -120,8 +120,11 @@ kurultai ask "what deployments are we running?"
 # MCP stdio (Cursor / agents)
 kurultai mcp
 
-# Daemon stub (HTTP later — #7)
+# Daemon: HTTP + incremental poll + notify watch (markdown/github roots)
 kurultai daemon --port 8421
+# kurultai daemon --no-poll          # HTTP only (no interval index)
+# kurultai daemon --no-watch         # disable filesystem watch
+# kurultai daemon --poll-interval 60
 ```
 
 ## Configuration
