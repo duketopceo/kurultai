@@ -50,6 +50,8 @@ pub struct GitHubConnector {
 }
 
 impl GitHubConnector {
+    /// Create a connector with default extensions and file-size limit.
+    /// Call [`Connector::init`] with `root_path` before syncing.
     pub fn new() -> Self {
         Self {
             source_name: "github".into(),
@@ -83,60 +85,27 @@ impl GitHubConnector {
         }
     }
 
-    fn collect_atoms(&self, since: Option<SystemTime>) -> Result<Vec<KnowledgeAtom>> {
+    async fn sync_atoms(&self, since: Option<SystemTime>) -> Result<Vec<KnowledgeAtom>> {
+        let scan_start = SystemTime::now();
+        let source_name = self.source_name.clone();
         let root = self
             .root_path
-            .as_ref()
+            .clone()
             .ok_or_else(|| KurultaiError::connector("github", "not initialized"))?;
+        let extensions = self.extensions.clone();
+        let max_file_bytes = self.max_file_bytes;
 
-        let mut atoms = Vec::new();
-        walk_code_files(root, &self.extensions, &mut |path| {
-            let meta = fs::metadata(path).map_err(|e| {
-                KurultaiError::connector("github", format!("stat {}: {e}", path.display()))
-            })?;
-            let len = meta.len();
-            if len > self.max_file_bytes {
-                tracing::debug!(
-                    path = %path.display(),
-                    len,
-                    max = self.max_file_bytes,
-                    "github: skip oversized file"
-                );
-                return Ok(());
-            }
-            let mtime = meta.modified().ok();
-            if let (Some(since), Some(mtime)) = (since, mtime) {
-                if mtime <= since {
-                    return Ok(());
-                }
-            }
+        let atoms = tokio::task::spawn_blocking(move || {
+            collect_atoms(source_name, root, extensions, max_file_bytes, since)
+        })
+        .await
+        .map_err(|e| KurultaiError::connector("github", format!("spawn_blocking: {e}")))??;
 
-            let bytes = fs::read(path).map_err(|e| {
-                KurultaiError::connector("github", format!("read {}: {e}", path.display()))
-            })?;
-            let text = match String::from_utf8(bytes) {
-                Ok(t) => t,
-                Err(_) => {
-                    tracing::debug!(path = %path.display(), "github: skip non-utf8 file");
-                    return Ok(());
-                }
-            };
-
-            let rel = path
-                .strip_prefix(root)
-                .unwrap_or(path)
-                .to_string_lossy()
-                .replace('\\', "/");
-
-            let updated = mtime
-                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-                .map(|d| DateTime::from_timestamp(d.as_secs() as i64, 0).unwrap_or_else(Utc::now))
-                .unwrap_or_else(Utc::now);
-
-            atoms.extend(file_to_atoms(&self.source_name, &rel, &text, updated));
-            Ok(())
-        })?;
-
+        *self
+            .last_poll
+            .lock()
+            .map_err(|e| KurultaiError::connector("github", format!("lock: {e}")))? =
+            Some(scan_start);
         Ok(atoms)
     }
 }
@@ -173,24 +142,70 @@ impl Connector for GitHubConnector {
             .last_poll
             .lock()
             .map_err(|e| KurultaiError::connector("github", format!("lock: {e}")))?;
-        let atoms = self.collect_atoms(since)?;
-        *self
-            .last_poll
-            .lock()
-            .map_err(|e| KurultaiError::connector("github", format!("lock: {e}")))? =
-            Some(SystemTime::now());
-        Ok(atoms)
+        self.sync_atoms(since).await
     }
 
     async fn full_sync(&self) -> Result<Vec<KnowledgeAtom>> {
-        let atoms = self.collect_atoms(None)?;
-        *self
-            .last_poll
-            .lock()
-            .map_err(|e| KurultaiError::connector("github", format!("lock: {e}")))? =
-            Some(SystemTime::now());
-        Ok(atoms)
+        self.sync_atoms(None).await
     }
+}
+
+fn collect_atoms(
+    source_name: String,
+    root: PathBuf,
+    extensions: HashSet<String>,
+    max_file_bytes: u64,
+    since: Option<SystemTime>,
+) -> Result<Vec<KnowledgeAtom>> {
+    let mut atoms = Vec::new();
+    walk_code_files(&root, &extensions, &mut |path| {
+        let meta = fs::metadata(path).map_err(|e| {
+            KurultaiError::connector("github", format!("stat {}: {e}", path.display()))
+        })?;
+        let len = meta.len();
+        if len > max_file_bytes {
+            tracing::debug!(
+                path = %path.display(),
+                len,
+                max = max_file_bytes,
+                "github: skip oversized file"
+            );
+            return Ok(());
+        }
+        let mtime = meta.modified().ok();
+        if let (Some(since), Some(mtime)) = (since, mtime) {
+            if mtime <= since {
+                return Ok(());
+            }
+        }
+
+        let bytes = fs::read(path).map_err(|e| {
+            KurultaiError::connector("github", format!("read {}: {e}", path.display()))
+        })?;
+        let text = match String::from_utf8(bytes) {
+            Ok(t) => t,
+            Err(_) => {
+                tracing::debug!(path = %path.display(), "github: skip non-utf8 file");
+                return Ok(());
+            }
+        };
+
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        let updated = mtime
+            .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+            .map(|d| DateTime::from_timestamp(d.as_secs() as i64, 0).unwrap_or_else(Utc::now))
+            .unwrap_or_else(Utc::now);
+
+        atoms.extend(file_to_atoms(&source_name, &rel, &text, updated));
+        Ok(())
+    })?;
+
+    Ok(atoms)
 }
 
 fn should_skip_dir(name: &str) -> bool {
@@ -207,8 +222,14 @@ fn walk_code_files(
     })?;
     for entry in entries {
         let entry = entry.map_err(|e| KurultaiError::connector("github", e.to_string()))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| KurultaiError::connector("github", e.to_string()))?;
         let path = entry.path();
-        if path.is_dir() {
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
             let name = path
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -217,10 +238,11 @@ fn walk_code_files(
                 continue;
             }
             walk_code_files(&path, extensions, visit)?;
-        } else if path
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| extensions.contains(&e.to_ascii_lowercase()))
+        } else if file_type.is_file()
+            && path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| extensions.contains(&e.to_ascii_lowercase()))
         {
             visit(&path)?;
         }
@@ -384,6 +406,33 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("root_path"));
+    }
+
+    #[tokio::test]
+    async fn skips_symlinks() {
+        let dir = fixture_repo();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let target = dir.path().join("src/lib.rs");
+            let link = dir.path().join("evil.rs");
+            symlink(&target, &link).unwrap();
+        }
+        let mut c = GitHubConnector::new();
+        c.init(&SourceConfig {
+            name: "pace".into(),
+            kind: SourceKind::GitHub,
+            enabled: true,
+            poll_interval_secs: 60,
+            extra: HashMap::from([(
+                "root_path".into(),
+                dir.path().to_string_lossy().into_owned(),
+            )]),
+        })
+        .await
+        .unwrap();
+        let atoms = c.full_sync().await.unwrap();
+        assert!(!atoms.iter().any(|a| a.source_id == "evil.rs"));
     }
 
     #[tokio::test]
