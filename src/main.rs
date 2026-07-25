@@ -74,6 +74,12 @@ enum Commands {
         /// Port for the HTTP server
         #[arg(long, default_value = "8421")]
         port: u16,
+        /// Disable background incremental indexing
+        #[arg(long)]
+        no_poll: bool,
+        /// Override config `runtime.poll_interval_secs` for the poll loop
+        #[arg(long, value_name = "SECS")]
+        poll_interval: Option<u64>,
     },
 }
 
@@ -207,12 +213,30 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Daemon { port } => {
+        Commands::Daemon {
+            port,
+            no_poll,
+            poll_interval,
+        } => {
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
-            tracing::info!(port, "daemon starting");
+            let interval = poll_interval.unwrap_or(app.config.poll_interval_secs);
+            tracing::info!(port, poll = !no_poll, interval, "daemon starting");
             println!("Daemon listening on http://127.0.0.1:{port} (localhost only; no auth)");
-            kurultai::http::serve(brain, port).await?;
+            if no_poll {
+                println!("Background poll: off");
+            } else {
+                println!("Background poll: every {interval}s (incremental)");
+            }
+            kurultai::daemon::run(
+                brain,
+                app.pipeline,
+                app.connectors,
+                port,
+                !no_poll,
+                interval,
+            )
+            .await?;
         }
     }
 
