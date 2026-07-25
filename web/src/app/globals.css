@@ -1,0 +1,133 @@
+:root {
+  --bg: #0c1117;
+  --panel: #141b24;
+  --text: #e7eef7;
+  --muted: #8b9bb0;
+  --accent: #3d9cfd;
+  --border: #243041;
+  --font: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: radial-gradient(1200px 600px at 10% -10%, #1a2a3d, var(--bg));
+  color: var(--text);
+  font-family: var(--font);
+}
+
+a {
+  color: var(--accent);
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.auth-nav {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.nav-link {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.55rem 0.9rem;
+  cursor: pointer;
+  text-decoration: none;
+  font: inherit;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #041018;
+  font-weight: 600;
+}
+
+.hero,
+.panel,
+.auth-frame {
+  max-width: 720px;
+  margin: 3rem auto;
+  padding: 0 1.25rem;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.lede {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.5rem 1rem;
+}
+
+.meta dt {
+  color: var(--muted);
+}
+
+.meta dd {
+  margin: 0;
+}
+
+.auth-frame {
+  display: flex;
+  justify-content: center;
+}
+
+code {
+  font-size: 0.9em;
+}

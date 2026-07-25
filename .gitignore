@@ -26,6 +26,14 @@ config.toml
 *.db-wal
 *.db-shm
 
-# Frontend Website
+# Frontend Website (marketing)
 website/node_modules/
 website/dist/
+
+# Authenticated web app (Clerk)
+web/node_modules/
+web/.next/
+web/out/
+web/.env
+web/.env.local
+web/.env.*.local
