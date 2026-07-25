@@ -102,30 +102,38 @@ Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthes
 
 ## Quick Start
 
+**Mac / laptop (dev + debug) — one-line install** (npm-style):
+
 ```bash
-# Build
-cargo build --release
+curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.sh | bash
+```
 
-# Wire config + Cursor MCP
+Uses a GitHub Release binary when present; otherwise falls back to `cargo install --git … --locked` (needs Rust). Equivalent direct form:
+
+```bash
+cargo install --git https://github.com/duketopceo/kurultai --locked
+```
+
+Then on Mac (stay in **dev / debug**):
+
+```bash
+export KURULTAI_ENV=dev
+export RUST_LOG=kurultai=debug
+
 kurultai init --agent cursor
+# edit ~/.config/kurultai/config.toml — keep environment = "dev"
+# enable markdown / dayflow / pond / github as you have them
 
-# Index your sources (FTS-only without OPENROUTER_API_KEY)
-kurultai index --full
-
-# Search / status / thin ask
-kurultai search "database migration" --limit 10
+kurultai index --full          # FTS-first without OPENROUTER_API_KEY
 kurultai status
+kurultai search "database migration" --limit 10
 kurultai ask "what deployments are we running?"
 
-# MCP stdio (Cursor / agents)
-kurultai mcp
-
-# Daemon: HTTP + incremental poll + notify watch (markdown/github roots)
-kurultai daemon --port 8421
-# kurultai daemon --no-poll          # HTTP only (no interval index)
-# kurultai daemon --no-watch         # disable filesystem watch
-# kurultai daemon --poll-interval 60
+kurultai mcp                   # Cursor / agents (stdio)
+kurultai daemon --port 8421    # HTTP + poll + notify watch
 ```
+
+Windows: `irm https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.ps1 | iex`
 
 ## Configuration
 
