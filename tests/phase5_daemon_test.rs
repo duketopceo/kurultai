@@ -1,8 +1,7 @@
 //! Phase 5: daemon poll_once indexes without full sync.
 //!
-//! Scheduling / `--no-poll` health / soft-fail HTTP coverage lives in
-//! `src/daemon/mod.rs` unit tests (`poll_loop_runs_immediate_first_cycle`,
-//! `no_poll_still_serves_health`, `soft_fail_poll_keeps_http_health`).
+//! Scheduling / `--no-poll` / soft-fail / notify watch coverage lives in
+//! `src/daemon/mod.rs` unit tests.
 
 use kurultai::connectors::markdown::MarkdownConnector;
 use kurultai::connectors::{Connector, ConnectorRegistry};

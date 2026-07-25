@@ -120,8 +120,11 @@ kurultai ask "what deployments are we running?"
 # MCP stdio (Cursor / agents)
 kurultai mcp
 
-# Daemon stub (HTTP later — #7)
+# Daemon: HTTP + incremental poll + notify watch (markdown/github roots)
 kurultai daemon --port 8421
+# kurultai daemon --no-poll          # HTTP only (no interval index)
+# kurultai daemon --no-watch         # disable filesystem watch
+# kurultai daemon --poll-interval 60
 ```
 
 ## Configuration
@@ -206,7 +209,8 @@ Phase 2 **complete:** [docs/plans/phase-2-complete.md](docs/plans/phase-2-comple
 Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)  
 Phase 3 synthesis plan: [docs/plans/2026-07-23-001-feat-phase-3-synthesis-interface-plan.md](docs/plans/2026-07-23-001-feat-phase-3-synthesis-interface-plan.md) (#7 / #60)  
 Phase 4 **complete:** [docs/plans/phase-4-complete.md](docs/plans/phase-4-complete.md) · [closeout](docs/plans/phase-4-closeout.md)  
-Phase 5 daemon poll plan: [docs/plans/2026-07-25-003-feat-phase-5-daemon-poll-plan.md](docs/plans/2026-07-25-003-feat-phase-5-daemon-poll-plan.md) (#9)
+Phase 5 daemon poll plan: [docs/plans/2026-07-25-003-feat-phase-5-daemon-poll-plan.md](docs/plans/2026-07-25-003-feat-phase-5-daemon-poll-plan.md) (#9)  
+Phase 5 notify watch plan: [docs/plans/2026-07-25-004-feat-phase-5-notify-watch-plan.md](docs/plans/2026-07-25-004-feat-phase-5-notify-watch-plan.md) (Milestone 5)
 
 | Phase | Audience unlocked | Milestone | Work order (in sequence) | Upstream (pull / inspire) |
 |-------|-------------------|-----------|--------------------------|---------------------------|
@@ -214,7 +218,7 @@ Phase 5 daemon poll plan: [docs/plans/2026-07-25-003-feat-phase-5-daemon-poll-pl
 | **2** Search | Developer | [Phase 2](https://github.com/duketopceo/kurultai/milestone/2) | ✅ [#6](https://github.com/duketopceo/kurultai/issues/6) RRF + testing gates (#23) — [complete](docs/plans/phase-2-complete.md) | [kb-mcp](https://github.com/alphabet-h/kb-mcp), [Stratum](https://github.com/DakodaStemen/Stratum), [sqmd](https://github.com/itkoren/sqmd), [Cerebras KB](https://mer.vin/2026/07/how-cerebras-built-a-15k-query-day-internal-knowledge-base/) |
 | **3** Synthesis | Developer ✓ | [Phase 3](https://github.com/duketopceo/kurultai/milestone/3) | ✅ [#7](https://github.com/duketopceo/kurultai/issues/7)/[#60](https://github.com/duketopceo/kurultai/pull/60) synthesis + `who_knows` + HTTP (privacy/#12/#34 deferred) | [gbrain](https://github.com/imphillip/gbrain-openclaw), [agent-knowledge](https://github.com/keshrath/agent-knowledge), [recall](https://github.com/pratikgajjar/recall), [atomic](https://github.com/yun-lim/atomic) |
 | **4** Expansion | Solo ✓ | [Phase 4](https://github.com/duketopceo/kurultai/milestone/4) | ✅ [#8](https://github.com/duketopceo/kurultai/issues/8)/[#62](https://github.com/duketopceo/kurultai/pull/62)/[#63](https://github.com/duketopceo/kurultai/pull/63) Dayflow + Pond + GitHub FS — [complete](docs/plans/phase-4-complete.md); Composio/plugins deferred | [cocoindex](https://github.com/cocoindex-io/cocoindex), [codebase-graph](https://github.com/Phoenixrr2113/codebase-graph), [Dayflow](https://github.com/JerryZLiu/Dayflow) |
-| **5** Production | Team | [Phase 5](https://github.com/duketopceo/kurultai/milestone/5) | 🚧 [#9](https://github.com/duketopceo/kurultai/issues/9) daemon poll loop ([plan](docs/plans/2026-07-25-003-feat-phase-5-daemon-poll-plan.md)) → notify/llama.cpp later → [#20](https://github.com/duketopceo/kurultai/issues/20) self-hosted CI | [layer0](https://github.com/amajorai/layer0), [engram-mcp](https://github.com/edg-l/engram-mcp) |
+| **5** Production | Team | [Phase 5](https://github.com/duketopceo/kurultai/milestone/5) | 🚧 daemon poll ([#65](https://github.com/duketopceo/kurultai/pull/65)) → notify watch ([plan](docs/plans/2026-07-25-004-feat-phase-5-notify-watch-plan.md)) → llama.cpp later → [#20](https://github.com/duketopceo/kurultai/issues/20) self-hosted CI | [layer0](https://github.com/amajorai/layer0), [engram-mcp](https://github.com/edg-l/engram-mcp) |
 | **6** Launch | Company | [Phase 6](https://github.com/duketopceo/kurultai/milestone/6) | [#10](https://github.com/duketopceo/kurultai/issues/10) release → [#22](https://github.com/duketopceo/kurultai/issues/22) yurt art | — |
 
 **Cross-cutting (every phase):** [#37](https://github.com/duketopceo/kurultai/issues/37) speed + token doctrine · [#40](https://github.com/duketopceo/kurultai/issues/40) upstream matrix · [#23](https://github.com/duketopceo/kurultai/issues/23) testing & CI gates — coverage rises 50% → 60% → 75% → 80%.

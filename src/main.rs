@@ -69,7 +69,7 @@ enum Commands {
     Status,
     /// Run MCP server on stdio (for Cursor / Claude)
     Mcp,
-    /// Start the daemon (polls sources, serves HTTP)
+    /// Start the daemon (serves HTTP, polls sources, watches filesystem roots)
     Daemon {
         /// Port for the HTTP server
         #[arg(long, default_value = "8421")]
@@ -80,6 +80,9 @@ enum Commands {
         /// Override config `runtime.poll_interval_secs` for the poll loop
         #[arg(long, value_name = "SECS")]
         poll_interval: Option<u64>,
+        /// Disable notify filesystem watch (markdown/github roots)
+        #[arg(long)]
+        no_watch: bool,
     },
 }
 
@@ -217,26 +220,49 @@ async fn main() -> Result<()> {
             port,
             no_poll,
             poll_interval,
+            no_watch,
         } => {
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
             let interval = kurultai::daemon::normalize_poll_interval_secs(
                 poll_interval.unwrap_or(app.config.poll_interval_secs),
             );
-            tracing::info!(port, poll = !no_poll, interval, "daemon starting");
+            let watch_roots = kurultai::daemon::watch_roots_from_sources(&app.config.sources);
+            tracing::info!(
+                port,
+                poll = !no_poll,
+                interval,
+                watch = !no_watch,
+                watch_roots = watch_roots.len(),
+                "daemon starting"
+            );
             println!("Daemon listening on http://127.0.0.1:{port} (localhost only; no auth)");
             if no_poll {
                 println!("Background poll: off");
             } else {
                 println!("Background poll: every {interval}s (incremental)");
             }
+            if no_watch {
+                println!("Filesystem watch: off");
+            } else if watch_roots.is_empty() {
+                println!("Filesystem watch: no markdown/github roots to watch");
+            } else {
+                println!(
+                    "Filesystem watch: {} root(s) (debounced incremental)",
+                    watch_roots.len()
+                );
+            }
             kurultai::daemon::run(
                 brain,
                 app.pipeline,
                 app.connectors,
-                port,
-                !no_poll,
-                interval,
+                kurultai::daemon::DaemonOptions {
+                    port,
+                    poll: !no_poll,
+                    poll_interval_secs: interval,
+                    watch: !no_watch,
+                    watch_roots,
+                },
             )
             .await?;
         }
