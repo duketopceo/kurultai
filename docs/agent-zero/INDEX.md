@@ -10,7 +10,11 @@
 
 | Draft | GitHub | Priority | Title |
 |-------|--------|----------|-------|
-| ISSUE-004-agent-installer.md | [#72](https://github.com/duketopceo/kurultai/issues/72) | P0 | Agent-level CLI installer (personal) — **in progress:** `scripts/install/install.sh` + plan `docs/plans/2026-07-25-005-feat-v1-personal-installer-plan.md` |
+| ISSUE-004-agent-installer.md | [#72](https://github.com/duketopceo/kurultai/issues/72) | P0 | Agent-level CLI installer (personal) — batch PR plan `docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md` |
+| ISSUE-001… | [#73](https://github.com/duketopceo/kurultai/issues/73) | P0 | Scheduled indexing — nightly/idle/status in batch |
+| ISSUE-003… | [#74](https://github.com/duketopceo/kurultai/issues/74) | P1 | Multi-hop — tag hop + graph_chain in batch |
+| ISSUE-002… | [#75](https://github.com/duketopceo/kurultai/issues/75) | P1 | Citations contract fields in batch |
+| PR-001… | [#76](https://github.com/duketopceo/kurultai/issues/76) | P2 | Dev dashboard `/ui` + `/api/status` in batch |
 | ISSUE-001-scheduled-background-indexing.md | [#73](https://github.com/duketopceo/kurultai/issues/73) | P0 | Scheduled background indexing |
 | ISSUE-003-multi-hop-reasoning.md | [#74](https://github.com/duketopceo/kurultai/issues/74) | P1 | Multi-hop reasoning (graph orchestration) |
 | ISSUE-002-query-result-citations.md | [#75](https://github.com/duketopceo/kurultai/issues/75) | P1 | Complete query result citations contract |

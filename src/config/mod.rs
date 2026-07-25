@@ -17,6 +17,8 @@ dimension = 3072
 
 [runtime]
 poll_interval_secs = 300
+# nightly_full_sync_hour = 2
+# inactivity_threshold_hours = 24
 "#
 }
 
@@ -105,6 +107,8 @@ mod tests {
             embed_dim: 3072,
             reranker_model: None,
             poll_interval_secs: 300,
+            nightly_full_sync_hour: None,
+            inactivity_threshold_hours: None,
         };
         assert!(validate(&config).is_err());
     }

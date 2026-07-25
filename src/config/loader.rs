@@ -76,6 +76,8 @@ fn default_config(env: Environment) -> Result<Config> {
         embed_dim: 3072,
         reranker_model: None,
         poll_interval_secs: 300,
+        nightly_full_sync_hour: None,
+        inactivity_threshold_hours: None,
     })
 }
 
@@ -125,6 +127,8 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
         embed_dim: file.embed.dimension.unwrap_or(3072),
         reranker_model: file.runtime.reranker_model,
         poll_interval_secs: file.runtime.poll_interval_secs.unwrap_or(300),
+        nightly_full_sync_hour: file.runtime.nightly_full_sync_hour.filter(|h| *h <= 23),
+        inactivity_threshold_hours: file.runtime.inactivity_threshold_hours,
     })
 }
 

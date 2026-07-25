@@ -2,12 +2,14 @@
 //!
 //! Bind to localhost only — no auth in this slice.
 
+use crate::daemon;
 use crate::mcp::brain::BrainService;
 use crate::mcp::interface::AgentRead;
 use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
+use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
@@ -40,6 +42,10 @@ pub async fn serve(brain: BrainService, port: u16) -> crate::Result<()> {
 fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/api/status", get(api_status))
+        .route("/api/search", get(search_get).post(search_post))
+        .route("/ui", get(ui_dashboard))
+        .route("/ui/", get(ui_dashboard))
         .route("/search", get(search_get).post(search_post))
         .route("/ask", get(ask_get).post(ask_post))
         .route("/cite", post(cite_post))
@@ -51,6 +57,80 @@ fn router(state: AppState) -> Router {
 async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "ok": true, "service": "kurultai" }))
 }
+
+async fn api_status(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let atoms = state.brain.atom_count().await.unwrap_or(0);
+    let scheduler = daemon::global_daemon_status().map(|s| s.snapshot());
+    Json(serde_json::json!({
+        "ok": true,
+        "service": "kurultai",
+        "atoms": atoms,
+        "scheduler": scheduler,
+    }))
+}
+
+async fn ui_dashboard() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        Html(DASHBOARD_HTML),
+    )
+}
+
+const DASHBOARD_HTML: &str = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Kurultai · local brain</title>
+  <style>
+    :root { font-family: ui-sans-serif, system-ui, sans-serif; color: #e8e6e3; background: #12141a; }
+    body { max-width: 52rem; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-weight: 600; letter-spacing: -0.02em; }
+    .card { background: #1c1f28; border: 1px solid #2a2f3a; border-radius: 12px; padding: 1rem 1.25rem; margin: 1rem 0; }
+    input, button { font: inherit; padding: 0.5rem 0.75rem; border-radius: 8px; border: 1px solid #3a4150; background: #0f1116; color: inherit; }
+    button { cursor: pointer; background: #3d5afe; border-color: #3d5afe; }
+    pre { white-space: pre-wrap; word-break: break-word; font-size: 0.85rem; }
+    .muted { color: #9aa3b2; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Kurultai</h1>
+  <p class="muted">Local dev dashboard (#76) — localhost only, no auth.</p>
+  <div class="card">
+    <strong>Status</strong>
+    <pre id="status">loading…</pre>
+  </div>
+  <div class="card">
+    <strong>Search</strong>
+    <form id="f" style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+      <input id="q" name="q" placeholder="query" style="flex:1" />
+      <button type="submit">Search</button>
+    </form>
+    <pre id="results" class="muted">results appear here</pre>
+  </div>
+  <script>
+    async function refreshStatus() {
+      try {
+        const r = await fetch('/api/status');
+        const j = await r.json();
+        document.getElementById('status').textContent = JSON.stringify(j, null, 2);
+      } catch (e) {
+        document.getElementById('status').textContent = String(e);
+      }
+    }
+    document.getElementById('f').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const q = document.getElementById('q').value;
+      const r = await fetch('/api/search?q=' + encodeURIComponent(q) + '&limit=5');
+      const j = await r.json();
+      document.getElementById('results').textContent = JSON.stringify(j, null, 2);
+    });
+    refreshStatus();
+    setInterval(refreshStatus, 5000);
+  </script>
+</body>
+</html>
+"#;
 
 fn default_limit() -> usize {
     10

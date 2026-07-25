@@ -138,6 +138,8 @@ If excerpts are insufficient, say so briefly. Keep the answer concise.";
             .post(OPENROUTER_CHAT_URL)
             .header("Authorization", format!("Bearer {}", self.api_key.expose()))
             .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://github.com/duketopceo/kurultai")
+            .header("X-Title", "Kurultai")
             .json(&body)
             .send()
             .await
@@ -173,6 +175,7 @@ If excerpts are insufficient, say so briefly. Keep the answer concise.";
             sources_used: citations.iter().map(|c| c.source.clone()).collect(),
             citations,
             confidence: confidence_from_hits(hits),
+            graph_chain: graph_chain_from_hits(hits),
         })
     }
 }
@@ -200,6 +203,7 @@ pub fn empty_answer(question: &str) -> Answer {
         citations: vec![],
         sources_used: vec![],
         confidence: 0.0,
+        graph_chain: vec![],
     }
 }
 
@@ -225,6 +229,7 @@ pub fn extractive_answer(question: &str, hits: &[SearchResult]) -> Answer {
         sources_used: citations.iter().map(|c| c.source.clone()).collect(),
         citations,
         confidence: confidence_from_hits(hits),
+        graph_chain: graph_chain_from_hits(hits),
     }
 }
 
@@ -237,15 +242,20 @@ fn citations_from_hits(hits: &[SearchResult]) -> Vec<Citation> {
             } else {
                 r.atom.content.chars().take(EXCERPT_CAP).collect()
             };
-            Citation {
-                source: r.atom.source.clone(),
-                source_id: r.atom.source_id.clone(),
-                title: r.atom.title.clone(),
-                url: r.atom.metadata.get("source_uri").cloned(),
-                excerpt,
-            }
+            Citation::from_atom(&r.atom, excerpt)
         })
         .collect()
+}
+
+/// Ordered unique source_ids for multi-hop / citation chain display (#74).
+pub fn graph_chain_from_hits(hits: &[SearchResult]) -> Vec<String> {
+    let mut out = Vec::new();
+    for r in hits.iter().take(MAX_HITS) {
+        if !out.iter().any(|s| s == &r.atom.source_id) {
+            out.push(r.atom.source_id.clone());
+        }
+    }
+    out
 }
 
 fn confidence_from_hits(hits: &[SearchResult]) -> f64 {
@@ -376,6 +386,7 @@ mod tests {
                 sources_used: citations.iter().map(|c| c.source.clone()).collect(),
                 citations,
                 confidence: confidence_from_hits(hits),
+                graph_chain: graph_chain_from_hits(hits),
             })
         }
     }

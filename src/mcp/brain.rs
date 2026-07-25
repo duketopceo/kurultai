@@ -25,6 +25,65 @@ pub struct BrainService {
     synthesizer: Arc<dyn Synthesizer>,
 }
 
+/// Second-hop expansion: search shared tags from primary hits, merge unique atoms (#74).
+async fn multi_hop_expand(
+    brain: &BrainService,
+    primary: Vec<SearchResult>,
+    limit: usize,
+) -> Result<Vec<SearchResult>> {
+    if primary.is_empty() {
+        return Ok(primary);
+    }
+    let mut tags: Vec<String> = primary
+        .iter()
+        .flat_map(|r| r.atom.tags.iter().cloned())
+        .filter(|t| t.len() >= 2)
+        .collect();
+    tags.sort();
+    tags.dedup();
+    if tags.is_empty() {
+        // Fall back: use distinctive title tokens as hop queries
+        tags = primary
+            .iter()
+            .flat_map(|r| {
+                r.atom
+                    .title
+                    .split(|c: char| !c.is_alphanumeric())
+                    .filter(|w| w.len() > 3)
+                    .map(|w| w.to_ascii_lowercase())
+            })
+            .take(4)
+            .collect();
+        tags.sort();
+        tags.dedup();
+    }
+
+    let mut by_id: HashMap<String, SearchResult> = HashMap::new();
+    for r in primary {
+        by_id.insert(r.atom.id.clone(), r);
+    }
+
+    for tag in tags.into_iter().take(4) {
+        let hop = brain.search(&tag, 4).await.unwrap_or_default();
+        for r in hop {
+            by_id.entry(r.atom.id.clone()).or_insert(r);
+        }
+    }
+
+    let mut merged: Vec<SearchResult> = by_id.into_values().collect();
+    merged.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    // re-rank indices
+    for (i, r) in merged.iter_mut().enumerate() {
+        r.rank = i + 1;
+    }
+    merged.truncate(limit.max(1));
+    Ok(merged)
+}
+
 impl BrainService {
     pub fn new(
         store: Arc<dyn Store>,
@@ -48,21 +107,20 @@ impl BrainService {
             .map(|r| AgentAtomView::from_atom(&r.atom, r.score, DEFAULT_EXCERPT_CAP))
             .collect())
     }
+
+    /// Total atoms in the store (dashboard / status).
+    pub async fn atom_count(&self) -> Result<u64> {
+        self.store.count().await
+    }
 }
 
 fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Citation {
     let view = AgentAtomView::from_atom(atom, score, DEFAULT_EXCERPT_CAP);
-    Citation {
-        source: view.source,
-        source_id: view.source_id,
-        title: view.title,
-        url: if include_url {
-            atom.metadata.get("source_uri").cloned()
-        } else {
-            None
-        },
-        excerpt: view.excerpt,
+    let mut c = Citation::from_atom(atom, view.excerpt);
+    if !include_url {
+        c.url = None;
     }
+    c
 }
 
 #[async_trait::async_trait]
@@ -81,8 +139,13 @@ impl AgentRead for BrainService {
     }
 
     async fn ask(&self, question: &str) -> Result<Answer> {
-        let hits = self.search(question, 8).await?;
-        self.synthesizer.synthesize(question, &hits).await
+        let primary = self.search(question, 8).await?;
+        let hits = multi_hop_expand(self, primary, 8).await?;
+        let mut answer = self.synthesizer.synthesize(question, &hits).await?;
+        if answer.graph_chain.is_empty() {
+            answer.graph_chain = crate::synthesize::graph_chain_from_hits(&hits);
+        }
+        Ok(answer)
     }
 
     async fn who_knows(&self, topic: &str, limit: usize) -> Result<Vec<WhoKnowsEntry>> {

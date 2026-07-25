@@ -262,6 +262,8 @@ async fn main() -> Result<()> {
                     poll_interval_secs: interval,
                     watch: !no_watch,
                     watch_roots,
+                    nightly_full_sync_hour: app.config.nightly_full_sync_hour,
+                    inactivity_threshold_hours: app.config.inactivity_threshold_hours,
                 },
             )
             .await?;
