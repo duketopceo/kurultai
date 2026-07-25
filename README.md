@@ -159,3 +159,8 @@ MIT
 ## Name
 
 Kurultai (курултай) — a council or assembly. Fitting for a system that gathers knowledge from many sources.
+
+## v1 work orders
+
+Agent Zero drafts and issue map: [`docs/agent-zero/`](docs/agent-zero/).  
+Deep personal install script (checkout tree): `scripts/install/install.sh` (see also top-level `scripts/install.sh`).
