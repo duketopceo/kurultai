@@ -220,7 +220,9 @@ async fn main() -> Result<()> {
         } => {
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
-            let interval = poll_interval.unwrap_or(app.config.poll_interval_secs);
+            let interval = kurultai::daemon::normalize_poll_interval_secs(
+                poll_interval.unwrap_or(app.config.poll_interval_secs),
+            );
             tracing::info!(port, poll = !no_poll, interval, "daemon starting");
             println!("Daemon listening on http://127.0.0.1:{port} (localhost only; no auth)");
             if no_poll {

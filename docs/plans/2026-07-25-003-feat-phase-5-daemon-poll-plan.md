@@ -46,8 +46,8 @@ Phase 5 first slice of [#9](https://github.com/duketopceo/kurultai/issues/9): ma
 | R2 | Poll uses incremental index (`full=false`) across enabled connectors via existing `IndexPipeline::index_all`. |
 | R3 | Interval from `Config.poll_interval_secs` (default already 300); CLI `--poll-interval <secs>` overrides; `--no-poll` disables. |
 | R4 | Poll errors soft-fail: log + continue next tick; do not tear down HTTP. |
-| R5 | First poll may run after a short initial delay (or immediately once); document choice in plan/KTD. |
-| R6 | Tests cover loop scheduling / soft-fail (unit or integration with short interval + temp config). |
+| R5 | **Immediate first poll**, then sleep the configured interval between cycles (hard contract). |
+| R6 | Tests cover: immediate first cycle, `--no-poll` still serves `/health`, connector-error soft-fail while HTTP stays up. |
 | R7 | README Phase 5 row + Quality/daemon blurb updated; plan linked. |
 
 ### Actors / flows
@@ -92,7 +92,7 @@ Phase 5 first slice of [#9](https://github.com/duketopceo/kurultai/issues/9): ma
 | KTD | Decision | Why |
 |-----|----------|-----|
 | KTD1 | `tokio::select!` HTTP serve vs never-ending poll task (or JoinSet) | Clean shutdown when serve ends |
-| KTD2 | Initial poll after first interval **or** immediate first poll — prefer **immediate then sleep** so cold start is fresh | Operator expectation |
+| KTD2 | **Immediate first poll**, then sleep | Cold start freshness; tested |
 | KTD3 | New `src/daemon/mod.rs` owning poll+serve orchestration; `http::serve` stays pure | Surgical, testable |
 | KTD4 | Share `App` pieces via `Arc` for poll task | Avoid cloning heavy state |
 
