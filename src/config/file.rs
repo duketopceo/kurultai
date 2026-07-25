@@ -57,6 +57,10 @@ impl Default for FileEmbedConfig {
 pub struct FileRuntimeConfig {
     pub poll_interval_secs: Option<u64>,
     pub reranker_model: Option<String>,
+    /// Local hour 0–23 for nightly full reindex (#73).
+    pub nightly_full_sync_hour: Option<u8>,
+    /// Skip poll when idle this many hours (#73).
+    pub inactivity_threshold_hours: Option<u64>,
 }
 
 fn default_true() -> bool {

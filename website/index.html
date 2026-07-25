@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kurultai — Synaptic Memory & Code Intelligence Layer for AI Agents</title>
+    <meta name="description" content="A local-first, zero-config code memory index for AI agents (Cursor, Claude). Connects markdown vaults, Git repositories, and agent transcripts into a high-speed synaptic SQLite-vec store.">
+    <link rel="stylesheet" href="index.css">
+    <script src="index.js" defer></script>
+</head>
+<body>
+
+    <!-- Interactive Neural Network Canvas Background -->
+    <canvas id="neural-canvas"></canvas>
+
+    <!-- Header Navigation -->
+    <header>
+        <div class="container nav-wrapper">
+            <a href="#" class="logo">
+                <svg height="24" width="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 6px; color: var(--primary);"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/><line x1="12" y1="12" x2="5" y2="5"/></svg>
+                kurultai
+            </a>
+            <nav class="nav-links">
+                <a href="#features">Synapses</a>
+                <a href="#architecture">Circuit Loop</a>
+                <a href="brain.html">Brain Explorer</a>
+                <a href="#quickstart">Developer Setup</a>
+            </nav>
+            <a href="https://github.com/duketopceo/kurultai" class="btn-github" target="_blank">
+                <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: middle;">
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+                </svg>
+                GitHub
+            </a>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero container">
+        <span class="badge">Synaptic Memory Layer</span>
+        <h1>Where Code Neurons<br>Meet Silicon Speed.</h1>
+        <p>A high-speed local memory layer for AI agents. Indexes notes, transcripts, and code dependencies into a queryable SQLite vector database.</p>
+        
+        <div class="hero-actions">
+            <a href="#quickstart" class="btn-primary">Initialize Brain</a>
+            <a href="https://github.com/duketopceo/kurultai" class="btn-secondary" target="_blank">Repository Source</a>
+        </div>
+
+        <!-- Terminal Window Simulator -->
+        <div class="terminal-window glass-panel">
+            <div class="terminal-header">
+                <div class="terminal-dot dot-red"></div>
+                <div class="terminal-dot dot-yellow"></div>
+                <div class="terminal-dot dot-green"></div>
+                <span class="terminal-title">kurultai daemon --port 8421</span>
+            </div>
+            <div class="terminal-body">
+                <span id="terminal-input" class="terminal-input"></span>
+                <div id="terminal-output" class="terminal-output"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Neural Technology Banner Image Section -->
+    <section class="container">
+        <div class="banner-graphic">
+            <img src="neural_tech_banner.jpg" alt="Neurons, Electrons, and Tech Logic Circuit Illustration">
+        </div>
+    </section>
+
+    <!-- Core Pipeline Architecture Section -->
+    <section id="architecture" class="flow-section">
+        <div class="container">
+            <div class="section-header">
+                <h2>The Neural Circuit Loop</h2>
+                <p>A closed-loop system transferring memory, code structure, and agent actions at the speed of local computing.</p>
+            </div>
+            
+            <div class="flow-container glass-panel">
+                <div class="flow-nodes">
+                    <div class="flow-node node-agent">
+                        <span>Agent (Cursor)</span>
+                    </div>
+                    <div class="flow-arrow">⇄</div>
+                    <div class="flow-node node-kurultai">
+                        <span>Kurultai Brain</span>
+                    </div>
+                    <div class="flow-arrow">⇄</div>
+                    <div class="flow-node node-source">
+                        <span>CodeGraph / DB</span>
+                    </div>
+                </div>
+                <p style="margin-top: 32px; font-size: 0.95rem; text-align: center; max-width: 600px;">
+                    When your coding agent asks <em>"What did we change in the SQL database?"</em>, Kurultai coordinates neural context: querying CodeGraph for symbol diffs, Pond for execution logs, and Markdown for design specs.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <div class="section-header">
+                <h2>High-Voltage Synaptic Architecture</h2>
+                <p>Designed for sub-millisecond local RAG. Built on standard SQLite + FTS5 + sqlite-vec without bloated network pipelines.</p>
+            </div>
+
+            <div class="grid">
+                <!-- Card 1 -->
+                <div class="feature-card glass-panel">
+                    <div class="feature-icon">
+                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/><line x1="12" y1="12" x2="5" y2="5"/></svg>
+                    </div>
+                    <h3>Index-Time Heavy</h3>
+                    <p>Calculates embedding synapses and distills context tags when indexing—not when the agent queries. Optimized RRF (Reciprocal Rank Fusion) fuses FTS and vector results in under 5ms.</p>
+                </div>
+                <!-- Card 2 -->
+                <div class="feature-card glass-panel">
+                    <div class="feature-icon">
+                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    </div>
+                    <h3>Read-Time Light</h3>
+                    <p>Agent requests return dense, token-efficient citation views (~400 characters) containing exact code definitions and section offsets, preventing context window saturation.</p>
+                </div>
+                <!-- Card 3 -->
+                <div class="feature-card glass-panel">
+                    <div class="feature-icon">
+                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="2" ry="2"/><line x1="6" y1="21" x2="6" y2="17"/><line x1="10" y1="21" x2="10" y2="17"/><line x1="14" y1="21" x2="14" y2="17"/><line x1="18" y1="21" x2="18" y2="17"/></svg>
+                    </div>
+                    <h3>Write-Time Minimal</h3>
+                    <p>The <code>remember</code> tool allows agents to write distilled facts and summaries back into the index, keeping records clean, deduplicated, and structured.</p>
+                </div>
+                <!-- Card 4 -->
+                <div class="feature-card glass-panel">
+                    <div class="feature-icon">
+                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    </div>
+                    <h3>Deep Tech Integrations</h3>
+                    <p>Connects natively with Obsidian Vaults, Dayflow timeline logs, Pond agent sessions, local GitHub directories, and CodeGraph symbol trees.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Start Instructions -->
+    <section id="quickstart" class="code-example-section">
+        <div class="container">
+            <div class="section-header">
+                <h2>Launch the Tech Stack</h2>
+                <p>Set up your local code memory daemon and wire it into your agentic workspace.</p>
+            </div>
+
+            <div class="code-container">
+                <div class="code-header">
+                    <span>1. Install and Initialize</span>
+                    <button class="btn-copy" data-target="code-install">Copy Command</button>
+                </div>
+                <div class="code-block">
+                    <code id="code-install">
+# Build local binaries
+cargo build --release
+
+# Wire config + Cursor MCP
+kurultai init --agent cursor
+                    </code>
+                </div>
+                
+                <div class="code-header" style="margin-top: 40px;">
+                    <span>2. Index Sources and Run Daemon</span>
+                    <button class="btn-copy" data-target="code-daemon">Copy Command</button>
+                </div>
+                <div class="code-block">
+                    <code id="code-daemon">
+# Trigger full initial sync
+kurultai index --full
+
+# Start the background watcher and API server
+kurultai daemon --port 8421
+                    </code>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer Call to Action -->
+    <section class="cta">
+        <div class="container">
+            <h2>Wired for Agentic Memory</h2>
+            <p>Connect your repositories and documentation paths into a single synaptic network.</p>
+            <a href="#quickstart" class="btn-primary">Initialize Brain</a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container footer-wrapper">
+            <p>© 2026 Kurultai. MIT Licensed.</p>
+            <div class="footer-links">
+                <a href="https://github.com/duketopceo/kurultai" target="_blank">GitHub</a>
+                <a href="https://openrouter.ai" target="_blank">OpenRouter</a>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>

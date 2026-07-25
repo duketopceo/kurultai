@@ -108,6 +108,8 @@ impl Reranker for OpenRouterReranker {
             .post(OPENROUTER_CHAT_URL)
             .bearer_auth(self.api_key.expose())
             .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://github.com/duketopceo/kurultai")
+            .header("X-Title", "Kurultai")
             .json(&body)
             .send()
             .await

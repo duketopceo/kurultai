@@ -136,6 +136,8 @@ mod tests {
             embed_dim: 4,
             reranker_model: None,
             poll_interval_secs: 300,
+            nightly_full_sync_hour: None,
+            inactivity_threshold_hours: None,
         };
 
         let registry = ConnectorRegistry::from_config(&config).await.unwrap();
@@ -161,6 +163,8 @@ mod tests {
             embed_dim: 4,
             reranker_model: None,
             poll_interval_secs: 300,
+            nightly_full_sync_hour: None,
+            inactivity_threshold_hours: None,
         };
         let registry = ConnectorRegistry::from_config(&config).await.unwrap();
         assert_eq!(registry.len(), 1);
@@ -183,6 +187,8 @@ mod tests {
             embed_dim: 4,
             reranker_model: None,
             poll_interval_secs: 300,
+            nightly_full_sync_hour: None,
+            inactivity_threshold_hours: None,
         };
         match ConnectorRegistry::from_config(&config).await {
             Ok(_) => panic!("expected unimplemented connector error"),

@@ -65,6 +65,8 @@ impl OpenRouterEmbedder {
                 .post(OPENROUTER_URL)
                 .bearer_auth(&self.api_key)
                 .header("Content-Type", "application/json")
+                .header("HTTP-Referer", "https://github.com/duketopceo/kurultai")
+                .header("X-Title", "Kurultai")
                 .json(&body)
                 .send()
                 .await;

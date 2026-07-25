@@ -7,6 +7,7 @@ use crate::mcp::BrainService;
 use crate::pipeline::IndexPipeline;
 use crate::security::validate_readable_path;
 use crate::types::{SourceConfig, SourceKind};
+use chrono::Timelike;
 use notify::{RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -28,6 +29,68 @@ pub struct DaemonOptions {
     pub poll_interval_secs: u64,
     pub watch: bool,
     pub watch_roots: Vec<PathBuf>,
+    /// Local hour 0–23 for nightly full reindex; None disables (#73).
+    pub nightly_full_sync_hour: Option<u8>,
+    /// Skip incremental poll when idle this many hours (#73).
+    pub inactivity_threshold_hours: Option<u64>,
+}
+
+/// Live daemon scheduler state for `/api/status` (#73).
+#[derive(Debug, Default)]
+pub struct DaemonStatus {
+    pub last_incremental_unix: std::sync::atomic::AtomicU64,
+    pub last_full_unix: std::sync::atomic::AtomicU64,
+    /// Last client query/ask (idle threshold); not updated by indexing alone.
+    pub last_client_activity_unix: std::sync::atomic::AtomicU64,
+    pub poll_enabled: std::sync::atomic::AtomicBool,
+    pub watch_enabled: std::sync::atomic::AtomicBool,
+    pub nightly_hour: std::sync::atomic::AtomicU8,
+}
+
+impl DaemonStatus {
+    fn now_unix() -> u64 {
+        chrono::Utc::now().timestamp().max(0) as u64
+    }
+
+    /// JSON snapshot for `/api/status` (`scheduler` object).
+    pub fn snapshot(&self) -> serde_json::Value {
+        use std::sync::atomic::Ordering;
+        let h = self.nightly_hour.load(Ordering::Relaxed);
+        let nightly = if h == 255 {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::from(h)
+        };
+        serde_json::json!({
+            "last_incremental_unix": self.last_incremental_unix.load(Ordering::Relaxed),
+            "last_full_unix": self.last_full_unix.load(Ordering::Relaxed),
+            "last_client_activity_unix": self.last_client_activity_unix.load(Ordering::Relaxed),
+            "poll_enabled": self.poll_enabled.load(Ordering::Relaxed),
+            "watch_enabled": self.watch_enabled.load(Ordering::Relaxed),
+            "nightly_full_sync_hour": nightly,
+        })
+    }
+
+    /// Record client query/ask activity (drives idle threshold).
+    pub fn touch_client_activity(&self) {
+        use std::sync::atomic::Ordering;
+        self.last_client_activity_unix
+            .store(Self::now_unix(), Ordering::Relaxed);
+    }
+
+    /// Record a completed incremental index cycle (does not refresh client activity).
+    pub fn mark_incremental(&self) {
+        use std::sync::atomic::Ordering;
+        self.last_incremental_unix
+            .store(Self::now_unix(), Ordering::Relaxed);
+    }
+
+    /// Record a completed full (nightly) index cycle (does not refresh client activity).
+    pub fn mark_full(&self) {
+        use std::sync::atomic::Ordering;
+        self.last_full_unix
+            .store(Self::now_unix(), Ordering::Relaxed);
+    }
 }
 
 /// Clamp poll interval to at least 1 second (shared by CLI + daemon).
@@ -110,6 +173,18 @@ pub async fn run(
     let flight = Arc::new(Mutex::new(()));
     let mut bg = AbortOnDrop(Vec::new());
 
+    let status = Arc::new(DaemonStatus::default());
+    {
+        use std::sync::atomic::Ordering;
+        status.poll_enabled.store(opts.poll, Ordering::Relaxed);
+        status.watch_enabled.store(opts.watch, Ordering::Relaxed);
+        status.nightly_hour.store(
+            opts.nightly_full_sync_hour.unwrap_or(255),
+            Ordering::Relaxed,
+        );
+        status.touch_client_activity();
+    }
+
     if opts.poll {
         tracing::info!(
             secs = interval.as_secs(),
@@ -118,8 +193,10 @@ pub async fn run(
         let pipeline = Arc::clone(&pipeline);
         let connectors = Arc::clone(&connectors);
         let flight = Arc::clone(&flight);
+        let status = Arc::clone(&status);
+        let idle_hours = opts.inactivity_threshold_hours;
         bg.0.push(tokio::spawn(async move {
-            poll_loop(pipeline, connectors, interval, flight).await;
+            poll_loop(pipeline, connectors, interval, flight, status, idle_hours).await;
         }));
     } else {
         tracing::info!("daemon poll loop disabled (--no-poll)");
@@ -136,16 +213,30 @@ pub async fn run(
             let pipeline = Arc::clone(&pipeline);
             let connectors = Arc::clone(&connectors);
             let flight = Arc::clone(&flight);
+            let status = Arc::clone(&status);
             let watch_roots = opts.watch_roots;
             bg.0.push(tokio::spawn(async move {
-                watch_loop(pipeline, connectors, watch_roots, flight).await;
+                watch_loop(pipeline, connectors, watch_roots, flight, status).await;
             }));
         }
     } else {
         tracing::info!("daemon notify watch disabled (--no-watch)");
     }
 
-    let serve_result = http::serve(brain, opts.port).await;
+    if let Some(hour) = opts.nightly_full_sync_hour {
+        if hour <= 23 {
+            tracing::info!(hour, "daemon nightly full sync enabled");
+            let pipeline = Arc::clone(&pipeline);
+            let connectors = Arc::clone(&connectors);
+            let flight = Arc::clone(&flight);
+            let status = Arc::clone(&status);
+            bg.0.push(tokio::spawn(async move {
+                nightly_full_loop(pipeline, connectors, flight, status, hour).await;
+            }));
+        }
+    }
+
+    let serve_result = http::serve(brain, Arc::clone(&status), opts.port).await;
 
     for handle in bg.0.drain(..) {
         handle.abort();
@@ -159,15 +250,26 @@ async fn run_poll_cycle(
     pipeline: &IndexPipeline,
     connectors: &ConnectorRegistry,
     flight: &Mutex<()>,
+    status: &DaemonStatus,
     label: &'static str,
+    full: bool,
 ) {
     let _guard = flight.lock().await;
-    match poll_once(pipeline, connectors).await {
+    match if full {
+        pipeline.index_all(connectors, true).await.map(|s| s.len())
+    } else {
+        poll_once(pipeline, connectors).await
+    } {
         Ok(n) => {
-            if n > 0 {
-                tracing::info!(connectors = n, label, "index cycle complete");
+            if full {
+                status.mark_full();
             } else {
-                tracing::debug!(label, "index cycle complete (no connectors)");
+                status.mark_incremental();
+            }
+            if n > 0 {
+                tracing::info!(connectors = n, label, full, "index cycle complete");
+            } else {
+                tracing::debug!(label, full, "index cycle complete (no connectors)");
             }
         }
         Err(e) => {
@@ -176,22 +278,71 @@ async fn run_poll_cycle(
     }
 }
 
+fn idle_skip(status: &DaemonStatus, inactivity_threshold_hours: Option<u64>) -> bool {
+    let Some(hours) = inactivity_threshold_hours.filter(|h| *h > 0) else {
+        return false;
+    };
+    use std::sync::atomic::Ordering;
+    let last = status.last_client_activity_unix.load(Ordering::Relaxed);
+    if last == 0 {
+        return false;
+    }
+    let now = chrono::Utc::now().timestamp().max(0) as u64;
+    now.saturating_sub(last) >= hours.saturating_mul(3600)
+}
+
 /// Immediate first poll, then sleep `interval` between cycles. Soft-fails on errors.
 pub(crate) async fn poll_loop(
     pipeline: Arc<IndexPipeline>,
     connectors: Arc<ConnectorRegistry>,
     interval: Duration,
     flight: Arc<Mutex<()>>,
+    status: Arc<DaemonStatus>,
+    inactivity_threshold_hours: Option<u64>,
 ) {
     loop {
-        run_poll_cycle(
-            pipeline.as_ref(),
-            connectors.as_ref(),
-            flight.as_ref(),
-            "daemon poll",
-        )
-        .await;
+        if idle_skip(status.as_ref(), inactivity_threshold_hours) {
+            tracing::debug!("daemon poll skipped (idle threshold)");
+        } else {
+            run_poll_cycle(
+                pipeline.as_ref(),
+                connectors.as_ref(),
+                flight.as_ref(),
+                status.as_ref(),
+                "daemon poll",
+                false,
+            )
+            .await;
+        }
         tokio::time::sleep(interval).await;
+    }
+}
+
+async fn nightly_full_loop(
+    pipeline: Arc<IndexPipeline>,
+    connectors: Arc<ConnectorRegistry>,
+    flight: Arc<Mutex<()>>,
+    status: Arc<DaemonStatus>,
+    hour: u8,
+) {
+    let mut last_run_day = String::new();
+    loop {
+        let now = chrono::Local::now();
+        let day = now.format("%Y-%m-%d").to_string();
+        // Catch up after sleep: run once per local day once the target hour is reached.
+        if now.hour() as u8 >= hour && day != last_run_day {
+            run_poll_cycle(
+                pipeline.as_ref(),
+                connectors.as_ref(),
+                flight.as_ref(),
+                status.as_ref(),
+                "daemon nightly full",
+                true,
+            )
+            .await;
+            last_run_day = day;
+        }
+        tokio::time::sleep(Duration::from_secs(60)).await;
     }
 }
 
@@ -204,6 +355,7 @@ pub(crate) async fn watch_loop(
     connectors: Arc<ConnectorRegistry>,
     roots: Vec<PathBuf>,
     flight: Arc<Mutex<()>>,
+    status: Arc<DaemonStatus>,
 ) {
     loop {
         watch_session(
@@ -211,6 +363,7 @@ pub(crate) async fn watch_loop(
             Arc::clone(&connectors),
             &roots,
             Arc::clone(&flight),
+            Arc::clone(&status),
         )
         .await;
         tracing::warn!(
@@ -226,6 +379,7 @@ async fn watch_session(
     connectors: Arc<ConnectorRegistry>,
     roots: &[PathBuf],
     flight: Arc<Mutex<()>>,
+    status: Arc<DaemonStatus>,
 ) {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let mut watcher = match notify::recommended_watcher(move |res| {
@@ -289,7 +443,9 @@ async fn watch_session(
             pipeline.as_ref(),
             connectors.as_ref(),
             flight.as_ref(),
+            status.as_ref(),
             "daemon watch",
+            false,
         )
         .await;
     }
@@ -322,6 +478,32 @@ mod tests {
     use std::fs;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
+
+    #[test]
+    fn idle_skip_tracks_client_activity_not_index_marks() {
+        let status = DaemonStatus::default();
+        assert!(!idle_skip(&status, Some(1)));
+
+        status.mark_incremental();
+        status.mark_full();
+        // Indexing alone must not create a client-activity timestamp.
+        assert_eq!(
+            status
+                .last_client_activity_unix
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+        assert!(!idle_skip(&status, Some(1)));
+
+        let past = chrono::Utc::now().timestamp().max(0) as u64 - 7200;
+        status
+            .last_client_activity_unix
+            .store(past, std::sync::atomic::Ordering::Relaxed);
+        assert!(idle_skip(&status, Some(1)));
+
+        status.touch_client_activity();
+        assert!(!idle_skip(&status, Some(1)));
+    }
 
     #[tokio::test]
     async fn poll_once_indexes_markdown_fixture() {
@@ -414,6 +596,8 @@ mod tests {
             poll_interval_secs: if poll { 1 } else { 60 },
             watch,
             watch_roots,
+            nightly_full_sync_hour: None,
+            inactivity_threshold_hours: None,
         }
     }
 
@@ -471,6 +655,8 @@ mod tests {
             connectors,
             Duration::from_secs(1),
             flight,
+            Arc::new(DaemonStatus::default()),
+            None,
         ));
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert_eq!(

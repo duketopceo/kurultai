@@ -52,7 +52,7 @@ kurultai search "database migration" --limit 10
 kurultai ask "what deployments are we running?"
 
 kurultai mcp                   # Cursor / agents (stdio)
-kurultai daemon --port 8421    # HTTP + poll + filesystem watch
+kurultai daemon --port 8421    # HTTP + poll + watch · UI at /ui · /api/status
 ```
 
 Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md).
@@ -110,6 +110,8 @@ dimension = 3072
 
 [runtime]
 poll_interval_secs = 300
+# nightly_full_sync_hour = 3            # local hour 0–23; omit to disable
+# inactivity_threshold_hours = 6        # skip incremental poll after this many hours without client queries
 # reranker_model = "openai/gpt-4o-mini"   # needs API key
 ```
 
@@ -159,3 +161,22 @@ MIT
 ## Name
 
 Kurultai (курултай) — a council or assembly. Fitting for a system that gathers knowledge from many sources.
+
+## v1 work orders
+
+Agent Zero drafts and issue map: [`docs/agent-zero/`](docs/agent-zero/).  
+Deep personal install script (checkout tree): `scripts/install/install.sh` (see also top-level `scripts/install.sh`).
+
+## v1 Agent Zero batch ([#72](https://github.com/duketopceo/kurultai/issues/72)–[#76](https://github.com/duketopceo/kurultai/issues/76))
+
+| Issue | Slice |
+|-------|--------|
+| #72 Installer | Top-level `scripts/install.sh` + deep tree installer `scripts/install/install.sh` |
+| #73 Scheduler | Nightly full hour + idle poll skip + `/api/status` times |
+| #74 Multi-hop | Tag/title hop expansion + `Answer.graph_chain` |
+| #75 Citations | `file_path`, `section`, `title_hash`, char range |
+| #76 Dashboard | `GET /ui` + `GET /api/status` (daemon) |
+
+Plan: [`docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md`](docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md). Drafts: [`docs/agent-zero/`](docs/agent-zero/).
+
+With the daemon running: open `http://127.0.0.1:8421/ui`.

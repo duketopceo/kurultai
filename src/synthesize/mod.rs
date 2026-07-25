@@ -138,6 +138,8 @@ If excerpts are insufficient, say so briefly. Keep the answer concise.";
             .post(OPENROUTER_CHAT_URL)
             .header("Authorization", format!("Bearer {}", self.api_key.expose()))
             .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://github.com/duketopceo/kurultai")
+            .header("X-Title", "Kurultai")
             .json(&body)
             .send()
             .await
@@ -173,6 +175,7 @@ If excerpts are insufficient, say so briefly. Keep the answer concise.";
             sources_used: citations.iter().map(|c| c.source.clone()).collect(),
             citations,
             confidence: confidence_from_hits(hits),
+            graph_chain: graph_chain_from_hits(hits),
         })
     }
 }
@@ -200,6 +203,7 @@ pub fn empty_answer(question: &str) -> Answer {
         citations: vec![],
         sources_used: vec![],
         confidence: 0.0,
+        graph_chain: vec![],
     }
 }
 
@@ -225,6 +229,7 @@ pub fn extractive_answer(question: &str, hits: &[SearchResult]) -> Answer {
         sources_used: citations.iter().map(|c| c.source.clone()).collect(),
         citations,
         confidence: confidence_from_hits(hits),
+        graph_chain: graph_chain_from_hits(hits),
     }
 }
 
@@ -237,15 +242,33 @@ fn citations_from_hits(hits: &[SearchResult]) -> Vec<Citation> {
             } else {
                 r.atom.content.chars().take(EXCERPT_CAP).collect()
             };
-            Citation {
-                source: r.atom.source.clone(),
-                source_id: r.atom.source_id.clone(),
-                title: r.atom.title.clone(),
-                url: r.atom.metadata.get("source_uri").cloned(),
-                excerpt,
-            }
+            Citation::from_atom(&r.atom, excerpt)
         })
         .collect()
+}
+
+/// Ordered unique source_ids: primary hits first, then multi_hop inserts (#74).
+/// Not a graph edge walk — use for provenance, not path reconstruction.
+pub fn graph_chain_from_hits(hits: &[SearchResult]) -> Vec<String> {
+    let mut out = Vec::new();
+    let push_unique = |out: &mut Vec<String>, sid: &str| {
+        if !out.iter().any(|s| s == sid) {
+            out.push(sid.to_string());
+        }
+    };
+    for r in hits.iter().take(MAX_HITS) {
+        if r.matched_by.iter().any(|m| m == "multi_hop") {
+            continue;
+        }
+        push_unique(&mut out, &r.atom.source_id);
+    }
+    for r in hits.iter().take(MAX_HITS) {
+        if !r.matched_by.iter().any(|m| m == "multi_hop") {
+            continue;
+        }
+        push_unique(&mut out, &r.atom.source_id);
+    }
+    out
 }
 
 fn confidence_from_hits(hits: &[SearchResult]) -> f64 {
@@ -342,6 +365,27 @@ mod tests {
         assert_eq!(w[0].hit_count, 2);
     }
 
+    #[test]
+    fn graph_chain_lists_primary_then_multi_hop() {
+        let mut primary = hit("Seed", "primary doc", 0.9);
+        primary.matched_by = vec!["fts".into()];
+        let mut unrelated = hit("Noise", "unrelated primary", 0.85);
+        unrelated.matched_by = vec!["vector".into()];
+        let mut hop = hit("Related", "tag hop insert", 0.7);
+        hop.matched_by = vec!["multi_hop".into()];
+        // Score order would put Noise before Related; chain must still be
+        // primaries then hops, not raw score order as a fake path.
+        let chain = graph_chain_from_hits(&[primary, unrelated, hop]);
+        assert_eq!(
+            chain,
+            vec![
+                "Seed.md".to_string(),
+                "Noise.md".to_string(),
+                "Related.md".to_string()
+            ]
+        );
+    }
+
     /// Test-only synthesizer that returns fixed prose while preserving citations.
     struct FixedSynthesizer {
         prose: String,
@@ -376,6 +420,7 @@ mod tests {
                 sources_used: citations.iter().map(|c| c.source.clone()).collect(),
                 citations,
                 confidence: confidence_from_hits(hits),
+                graph_chain: graph_chain_from_hits(hits),
             })
         }
     }
