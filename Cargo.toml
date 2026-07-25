@@ -35,8 +35,8 @@ zerocopy = "0.7"
 # Content hashing for incremental index skip
 sha2 = "0.10"
 
-# Embeddings - via OpenRouter/API initially
-# Local embedding support via llama-cpp-rs will be added later
+# Embeddings — OpenRouter cloud and local OpenAI-compatible HTTP (Ollama/TEI).
+# In-process ONNX / llama.cpp remain Phase 5 follow-ups.
 
 # Logging
 tracing = "0.1"
@@ -64,3 +64,5 @@ libc = "0.2"
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+tokio = { version = "1", features = ["full"] }

@@ -1,6 +1,9 @@
 use crate::config::{ensure_storage_parent, expand_path, load_config_with_env};
 use crate::connectors::ConnectorRegistry;
-use crate::embed::{Embedder, NullEmbedder, OpenRouterEmbedder};
+use crate::embed::{
+    resolve_local_model, EmbedBackend, Embedder, HttpEmbedder, NullEmbedder,
+    DEFAULT_LOCAL_EMBED_URL,
+};
 use crate::environment::Environment;
 use crate::error::{KurultaiError, Result};
 use crate::pipeline::IndexPipeline;
@@ -89,27 +92,88 @@ impl App {
     }
 }
 
-fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>> {
+/// Select embedder from config + env. `KURULTAI_EMBED_BACKEND` overrides file backend.
+pub(crate) fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>> {
     // API keys come from env only — never from config files.
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
-        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));
+        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"))
+        .map(|k| k.expose().to_string());
 
-    match api_key {
-        Some(key) => {
-            let embedder: Arc<dyn Embedder> = Arc::new(OpenRouterEmbedder::new(
-                key.expose().to_string(),
-                config.embed_model.clone(),
-                config.embed_dim,
-            ));
-            Ok(embedder)
-        }
-        None => {
-            tracing::warn!(
-                env = %env,
-                "no OPENROUTER_API_KEY or KURULTAI_API_KEY — FTS-only mode (NullEmbedder)"
-            );
+    let backend_raw = std::env::var("KURULTAI_EMBED_BACKEND")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| config.embed_backend.clone());
+
+    let local_url = std::env::var("KURULTAI_LOCAL_EMBED_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| {
+            if config.local_embed_url.trim().is_empty() {
+                DEFAULT_LOCAL_EMBED_URL.into()
+            } else {
+                config.local_embed_url.clone()
+            }
+        });
+
+    select_embedder(config, env, &backend_raw, api_key.as_deref(), &local_url)
+}
+
+pub(crate) fn select_embedder(
+    config: &Config,
+    env: Environment,
+    backend_raw: &str,
+    api_key: Option<&str>,
+    local_url: &str,
+) -> Result<Arc<dyn Embedder>> {
+    let backend = EmbedBackend::parse(backend_raw)?;
+
+    match backend {
+        EmbedBackend::Null => {
+            tracing::info!(env = %env, "embed.backend=null — FTS-only (NullEmbedder)");
             Ok(Arc::new(NullEmbedder::new(config.embed_dim)))
         }
+        EmbedBackend::OpenRouter => {
+            let Some(key) = api_key else {
+                return Err(KurultaiError::config(
+                    "embed.backend=openrouter requires OPENROUTER_API_KEY or KURULTAI_API_KEY",
+                ));
+            };
+            Ok(Arc::new(HttpEmbedder::openrouter(
+                key.to_string(),
+                config.embed_model.clone(),
+                config.embed_dim,
+            )))
+        }
+        EmbedBackend::Local => {
+            let model = resolve_local_model(&config.embed_model);
+            tracing::info!(
+                env = %env,
+                url = %local_url,
+                model = %model,
+                dim = config.embed_dim,
+                "embed.backend=local — OpenAI-compatible HTTP embedder"
+            );
+            Ok(Arc::new(HttpEmbedder::local(
+                local_url.to_string(),
+                api_key.map(str::to_string),
+                model,
+                config.embed_dim,
+            )))
+        }
+        EmbedBackend::Auto => match api_key {
+            Some(key) => Ok(Arc::new(HttpEmbedder::openrouter(
+                key.to_string(),
+                config.embed_model.clone(),
+                config.embed_dim,
+            ))),
+            None => {
+                tracing::warn!(
+                    env = %env,
+                    "no OPENROUTER_API_KEY or KURULTAI_API_KEY — FTS-only mode (NullEmbedder); set embed.backend=local for Ollama/TEI"
+                );
+                Ok(Arc::new(NullEmbedder::new(config.embed_dim)))
+            }
+        },
     }
 }
 
@@ -132,5 +196,82 @@ fn build_reranker(config: &Config) -> Arc<dyn Reranker> {
             tracing::warn!("reranker_model set but no API key — rerank disabled");
             Arc::new(NullReranker::new())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::embed::DEFAULT_LOCAL_EMBED_URL;
+
+    fn sample_config(backend: &str) -> Config {
+        Config {
+            environment: Environment::Dev,
+            sources: vec![],
+            storage_path: "/tmp/kurultai-embed-test.db".into(),
+            embed_model: "openai/text-embedding-3-large".into(),
+            embed_dim: 768,
+            embed_backend: backend.into(),
+            local_embed_url: DEFAULT_LOCAL_EMBED_URL.into(),
+            reranker_model: None,
+            poll_interval_secs: 300,
+        }
+    }
+
+    #[test]
+    fn auto_without_key_is_null() {
+        let e = select_embedder(
+            &sample_config("auto"),
+            Environment::Dev,
+            "auto",
+            None,
+            DEFAULT_LOCAL_EMBED_URL,
+        )
+        .unwrap();
+        assert!(!e.is_live());
+        assert_eq!(e.name(), "none");
+    }
+
+    #[test]
+    fn openrouter_without_key_errors() {
+        let result = select_embedder(
+            &sample_config("openrouter"),
+            Environment::Dev,
+            "openrouter",
+            None,
+            DEFAULT_LOCAL_EMBED_URL,
+        );
+        assert!(result.is_err());
+        let err = result.err().unwrap().to_string();
+        assert!(err.contains("openrouter"), "{err}");
+    }
+
+    #[test]
+    fn local_is_live_without_cloud_key() {
+        let e = select_embedder(
+            &sample_config("local"),
+            Environment::Dev,
+            "local",
+            None,
+            DEFAULT_LOCAL_EMBED_URL,
+        )
+        .unwrap();
+        assert!(e.is_live());
+        assert_eq!(e.name(), "nomic-embed-text");
+        assert_eq!(e.dim(), 768);
+    }
+
+    #[test]
+    fn auto_with_key_is_openrouter_model() {
+        let e = select_embedder(
+            &sample_config("auto"),
+            Environment::Dev,
+            "auto",
+            Some("sk-test"),
+            DEFAULT_LOCAL_EMBED_URL,
+        )
+        .unwrap();
+        assert!(e.is_live());
+        assert_eq!(e.name(), "openai/text-embedding-3-large");
     }
 }

@@ -134,6 +134,8 @@ mod tests {
             storage_path: "/tmp/kurultai-test.db".into(),
             embed_model: "openai/text-embedding-3-large".into(),
             embed_dim: 4,
+            embed_backend: "auto".into(),
+            local_embed_url: crate::embed::DEFAULT_LOCAL_EMBED_URL.into(),
             reranker_model: None,
             poll_interval_secs: 300,
         };
@@ -159,6 +161,8 @@ mod tests {
             storage_path: "/tmp/kurultai-test.db".into(),
             embed_model: "m".into(),
             embed_dim: 4,
+            embed_backend: "auto".into(),
+            local_embed_url: crate::embed::DEFAULT_LOCAL_EMBED_URL.into(),
             reranker_model: None,
             poll_interval_secs: 300,
         };
@@ -181,6 +185,8 @@ mod tests {
             storage_path: "/tmp/kurultai-test.db".into(),
             embed_model: "m".into(),
             embed_dim: 4,
+            embed_backend: "auto".into(),
+            local_embed_url: crate::embed::DEFAULT_LOCAL_EMBED_URL.into(),
             reranker_model: None,
             poll_interval_secs: 300,
         };

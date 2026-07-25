@@ -74,6 +74,8 @@ fn default_config(env: Environment) -> Result<Config> {
             .into_owned(),
         embed_model: "openai/text-embedding-3-large".into(),
         embed_dim: 3072,
+        embed_backend: "auto".into(),
+        local_embed_url: crate::embed::DEFAULT_LOCAL_EMBED_URL.into(),
         reranker_model: None,
         poll_interval_secs: 300,
     })
@@ -123,6 +125,11 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
             .model
             .unwrap_or_else(|| "openai/text-embedding-3-large".into()),
         embed_dim: file.embed.dimension.unwrap_or(3072),
+        embed_backend: file.embed.backend.unwrap_or_else(|| "auto".into()),
+        local_embed_url: file
+            .embed
+            .local_url
+            .unwrap_or_else(|| crate::embed::DEFAULT_LOCAL_EMBED_URL.into()),
         reranker_model: file.runtime.reranker_model,
         poll_interval_secs: file.runtime.poll_interval_secs.unwrap_or(300),
     })

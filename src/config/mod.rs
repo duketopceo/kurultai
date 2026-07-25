@@ -12,8 +12,10 @@ pub fn default_config_toml() -> &'static str {
 path = "~/.local/share/kurultai/dev/store.db"
 
 [embed]
+backend = "auto"   # auto | openrouter | local | null
 model = "openai/text-embedding-3-large"
 dimension = 3072
+# local_url = "http://127.0.0.1:11434/v1/embeddings"
 
 [runtime]
 poll_interval_secs = 300
@@ -103,6 +105,8 @@ mod tests {
             storage_path: "  ".into(),
             embed_model: "model".into(),
             embed_dim: 3072,
+            embed_backend: "auto".into(),
+            local_embed_url: crate::embed::DEFAULT_LOCAL_EMBED_URL.into(),
             reranker_model: None,
             poll_interval_secs: 300,
         };

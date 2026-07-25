@@ -98,6 +98,20 @@ pub struct Config {
     pub storage_path: String,
     pub embed_model: String,
     pub embed_dim: usize,
+    /// `auto` | `openrouter` | `local` | `null` — see [`crate::embed::EmbedBackend`].
+    #[serde(default = "default_embed_backend")]
+    pub embed_backend: String,
+    /// OpenAI-compatible embeddings URL when `embed_backend = "local"`.
+    #[serde(default = "default_local_embed_url")]
+    pub local_embed_url: String,
     pub reranker_model: Option<String>,
     pub poll_interval_secs: u64,
+}
+
+fn default_embed_backend() -> String {
+    "auto".into()
+}
+
+fn default_local_embed_url() -> String {
+    crate::embed::DEFAULT_LOCAL_EMBED_URL.into()
 }

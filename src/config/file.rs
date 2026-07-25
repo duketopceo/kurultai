@@ -42,6 +42,10 @@ pub struct FileStorageConfig {
 pub struct FileEmbedConfig {
     pub model: Option<String>,
     pub dimension: Option<usize>,
+    /// auto | openrouter | local | null
+    pub backend: Option<String>,
+    /// OpenAI-compatible embeddings URL for backend = "local"
+    pub local_url: Option<String>,
 }
 
 impl Default for FileEmbedConfig {
@@ -49,6 +53,8 @@ impl Default for FileEmbedConfig {
         Self {
             model: Some("openai/text-embedding-3-large".into()),
             dimension: Some(3072),
+            backend: Some("auto".into()),
+            local_url: None,
         }
     }
 }
