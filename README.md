@@ -105,31 +105,32 @@ Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthes
 **Day-one production (Phase 4 solo stack):** [docs/production-day-one.md](docs/production-day-one.md) · example config: [examples/config.solo.toml](examples/config.solo.toml)
 
 ```bash
-# Build
+# Build (or: cargo install --path . --locked)
 cargo build --release
+BIN=./target/release/kurultai   # or just `kurultai` after install
 
 # Wire config + Cursor MCP
-kurultai init --agent cursor
+$BIN init --agent cursor
 
 # Copy solo template and edit paths / enable sources
 cp examples/config.solo.toml ~/.config/kurultai/config.toml
 
 # Index your sources (FTS-only without OPENROUTER_API_KEY)
-kurultai index --full
+$BIN index --full
 
 # Search / status / thin ask
-kurultai search "database migration" --limit 10
-kurultai status
-kurultai ask "what deployments are we running?"
+$BIN search "database migration" --limit 10
+$BIN status
+$BIN ask "what deployments are we running?"
 
 # MCP stdio (Cursor / agents)
-kurultai mcp
+$BIN mcp
 
 # Daemon: HTTP + incremental poll + notify watch (markdown/github roots)
-kurultai daemon --port 8421
-# kurultai daemon --no-poll          # HTTP only (no interval index)
-# kurultai daemon --no-watch         # disable filesystem watch
-# kurultai daemon --poll-interval 60
+$BIN daemon --port 8421
+# $BIN daemon --no-poll          # HTTP only (no interval index)
+# $BIN daemon --no-watch         # disable filesystem watch
+# $BIN daemon --poll-interval 60
 ```
 
 ## Configuration
@@ -163,8 +164,9 @@ root_path = "/path/to/your/repo"  # local checkout; no GitHub API
 poll_interval_secs = 120
 
 [storage]
-# Optional — defaults per environment (see below)
-# path = "~/.local/share/kurultai/store.db"
+# Optional — defaults per environment (see below). Explicit paths are
+# literal (no ~ expansion); use an absolute path if set.
+# path = "/home/you/.local/share/kurultai/store.db"
 
 [embed]
 model = "openai/text-embedding-3-large"
@@ -186,7 +188,7 @@ AppFlowy remains deferred ([#4](https://github.com/duketopceo/kurultai/issues/4)
 | **Audience** | Developer | Team | Enterprise |
 | **Storage** | `~/.local/share/kurultai/dev/store.db` | `.../staging/store.db` | `.../store.db` |
 | **Logging** | `kurultai=debug` | `info,warn` | `warn,error` |
-| **API keys** | Optional (zero-vector fallback) | Required for index | Required + audit |
+| **API keys** | Optional (FTS / NullEmbedder) | Optional for FTS index; required for embeddings / rerank | Same + audit for keyed calls |
 | **CI branch** | PR / feature branches | `staging` branch | `main` branch |
 | **Phase** | 1–3 | 4–5 | 5–6 |
 

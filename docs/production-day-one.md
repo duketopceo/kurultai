@@ -8,16 +8,17 @@ Phase 4 connectors and Phase 5 daemon poll/watch are already on `main`. This is 
 
 ```bash
 cargo build --release
-# optional: cargo install --path . --locked
+# optional (puts `kurultai` on PATH): cargo install --path . --locked
+BIN=./target/release/kurultai   # or just `kurultai` after install
 ```
 
 ## 2. Init (Cursor MCP)
 
 ```bash
-kurultai init --agent cursor
+$BIN init --agent cursor
 ```
 
-Creates `~/.config/kurultai/config.toml` if missing (empty sources) and wires Cursor MCP to `kurultai mcp`.
+Creates `~/.config/kurultai/config.toml` if missing (empty sources) and wires Cursor MCP to `$BIN mcp` (or `kurultai mcp` after install).
 
 ## 3. Configure sources
 
@@ -47,34 +48,34 @@ export KURULTAI_ENV=prod
 ## 4. Index
 
 ```bash
-kurultai index --full
-kurultai status
+$BIN index --full
+$BIN status
 ```
 
 Incremental later:
 
 ```bash
-kurultai index
+$BIN index
 ```
 
 ## 5. Query
 
 ```bash
-kurultai search "database migration" --limit 10
-kurultai ask "what deployments are we running?"
-kurultai who-knows "sqlite"
+$BIN search "database migration" --limit 10
+$BIN ask "what deployments are we running?"
+$BIN who-knows "sqlite"
 ```
 
 ## 6. Agents + daemon
 
 ```bash
 # MCP stdio (Cursor / agents) — usually via init wiring
-kurultai mcp
+$BIN mcp
 
 # HTTP + incremental poll + filesystem watch (markdown/github roots)
-kurultai daemon --port 8421
-# kurultai daemon --no-poll
-# kurultai daemon --no-watch
+$BIN daemon --port 8421
+# $BIN daemon --no-poll
+# $BIN daemon --no-watch
 ```
 
 ## Soft-fail notes

@@ -220,10 +220,20 @@ root_path = "/tmp/notes"
         assert!(kinds.contains(&SourceKind::GitHub));
 
         let notes = cfg.sources.iter().find(|s| s.name == "notes").unwrap();
+        assert_eq!(notes.kind, SourceKind::Markdown);
         assert!(notes.enabled);
         assert!(!notes.extra.get("root_path").unwrap().is_empty());
 
+        let dayflow = cfg.sources.iter().find(|s| s.name == "dayflow").unwrap();
+        assert_eq!(dayflow.kind, SourceKind::Dayflow);
+        assert!(!dayflow.enabled);
+
+        let pond = cfg.sources.iter().find(|s| s.name == "pond").unwrap();
+        assert_eq!(pond.kind, SourceKind::Pond);
+        assert!(!pond.enabled);
+
         let code = cfg.sources.iter().find(|s| s.name == "code").unwrap();
+        assert_eq!(code.kind, SourceKind::GitHub);
         assert!(!code.enabled);
         assert!(!code.extra.get("root_path").unwrap().is_empty());
     }

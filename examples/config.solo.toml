@@ -5,8 +5,10 @@
 environment = "prod"
 
 [storage]
-# Optional — defaults to ~/.local/share/kurultai/store.db for prod
-# path = "~/.local/share/kurultai/store.db"
+# Optional — omit to use the environment default under your home dir
+# (prod → <home>/.local/share/kurultai/store.db). Explicit paths are
+# taken literally (no ~ expansion); use an absolute path if set.
+# path = "/home/you/.local/share/kurultai/store.db"
 
 [embed]
 model = "openai/text-embedding-3-large"
