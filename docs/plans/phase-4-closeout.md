@@ -9,11 +9,13 @@ Agent tokens **cannot** call `closeIssue` (403). A maintainer runs the commands 
 
 ## Close (shipped / umbrella done)
 
+After the closeout PR is on `main`:
+
 ```bash
-gh issue close 8 --repo duketopceo/kurultai --comment "Phase 4 solo exit shipped: Dayflow+Pond (#62), GitHub FS (#63). Deferred: Composio, plugins (#14), CodeGraph, AppFlowy (#4), OpenRouter batch — see docs/plans/phase-4-complete.md."
+./scripts/phase-4-closeout.sh
 ```
 
-One-shot script: `./scripts/phase-4-closeout.sh`
+The script preflights that #62/#63 are merged into `main`, that wrap docs exist on `origin/main`, then closes [#8](https://github.com/duketopceo/kurultai/issues/8) with the full deferred list from [phase-4-complete.md](phase-4-complete.md).
 
 ---
 
