@@ -233,16 +233,20 @@ open http://127.0.0.1:8421/ui
 
 ## Acceptance Criteria
 
+**v1 #76 (HTTP dashboard/status slice)**
+
 1. ✅ HTTP daemon starts on port 8421 without errors
-2. ✅ `/api/status` returns accurate system state
-3. ✅ `/api/knowledge` shows all atoms and sources
-4. ✅ `/api/search` returns search history with citations
-5. ✅ WebSocket pushes live events (index, search, MCP)
-6. ✅ Dashboard HTML loads and renders correctly
-7. ✅ Knowledge Graph visualization shows nodes and edges
-8. ✅ Settings form can enable/disable sources
-9. ✅ All API endpoints have proper error handling
-10. ✅ Daemon can be restarted gracefully
+2. ✅ `/api/status` returns accurate system state (atoms + scheduler)
+3. ✅ `/api/search` returns search results
+4. ✅ Dashboard HTML (`/ui`) loads and renders correctly
+5. ✅ Daemon can be restarted gracefully
+
+**Deferred beyond v1 #76**
+
+6. ⏸️ `/api/knowledge` atom/source browser
+7. ⏸️ WebSocket live events (index, search, MCP)
+8. ⏸️ Knowledge Graph visualization
+9. ⏸️ Settings form to enable/disable sources
 
 ---
 
@@ -250,9 +254,8 @@ open http://127.0.0.1:8421/ui
 
 - **Developer time:** 2-4 hours to build initial dev dashboard
 - **Team adoption:** 50% of team members install Kurultai (from CLI only)
-- **MCP connections:** Auto-discovered and displayed in dashboard
 - **Search performance:** <100ms for API endpoints
-- **WebSocket latency:** <50ms for event pushing
+- **WebSocket latency:** deferred with WebSocket itself
 
 ---
 

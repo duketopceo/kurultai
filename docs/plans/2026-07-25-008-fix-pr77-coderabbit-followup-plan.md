@@ -228,4 +228,3 @@ Manual (optional, non-blocking for this follow-up): `kurultai daemon` → `GET /
 | `src/synthesize/mod.rs` graph_chain | major | U5 |
 | `tests/install_script_test.rs` | minor | U6 |
 | `scripts/install/install.sh` | skip | already fixed |
-)

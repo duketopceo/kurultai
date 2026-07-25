@@ -491,4 +491,202 @@ mod tests {
         let entries: Vec<WhoKnowsEntry> = serde_json::from_slice(&bytes).unwrap();
         assert!(!entries.is_empty());
     }
+
+    /// Store stub: only `count` matters (always Err) for `/api/status` failure path.
+    struct FailCountStore;
+
+    #[async_trait::async_trait]
+    impl Store for FailCountStore {
+        async fn upsert(&self, _atom: &crate::types::KnowledgeAtom) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn upsert_batch(&self, _atoms: &[crate::types::KnowledgeAtom]) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn vector_search(
+            &self,
+            _query_embed: &[f32],
+            _limit: usize,
+        ) -> crate::Result<Vec<(crate::types::KnowledgeAtom, f64)>> {
+            Ok(vec![])
+        }
+        async fn fts_search(
+            &self,
+            _query: &str,
+            _limit: usize,
+        ) -> crate::Result<Vec<(crate::types::KnowledgeAtom, f64)>> {
+            Ok(vec![])
+        }
+        async fn fts_search_ids(
+            &self,
+            _query: &str,
+            _limit: usize,
+        ) -> crate::Result<Vec<(String, f64)>> {
+            Ok(vec![])
+        }
+        async fn vector_search_ids(
+            &self,
+            _query_embed: &[f32],
+            _limit: usize,
+        ) -> crate::Result<Vec<(String, f64)>> {
+            Ok(vec![])
+        }
+        async fn get_many(
+            &self,
+            _ids: &[String],
+        ) -> crate::Result<Vec<crate::types::KnowledgeAtom>> {
+            Ok(vec![])
+        }
+        async fn delete_source(&self, _source: &str) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn count(&self) -> crate::Result<u64> {
+            Err(crate::KurultaiError::Store("count failed".into()))
+        }
+        async fn get_by_source_id(
+            &self,
+            _source: &str,
+            _source_id: &str,
+        ) -> crate::Result<Option<crate::types::KnowledgeAtom>> {
+            Ok(None)
+        }
+        async fn get_by_chunk_meta(
+            &self,
+            _source: &str,
+            _rel_path: &str,
+            _chunk_index: u32,
+        ) -> crate::Result<Option<crate::types::KnowledgeAtom>> {
+            Ok(None)
+        }
+        async fn has_fresh_embedding(&self, _id: &str, _content_hash: &str) -> crate::Result<bool> {
+            Ok(false)
+        }
+    }
+
+    #[tokio::test]
+    async fn api_status_ok_includes_scheduler() {
+        let status = Arc::new(crate::daemon::DaemonStatus::default());
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::clone(&status),
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        assert!(v["atoms"].is_number());
+        assert!(v["scheduler"]["last_client_activity_unix"].is_number());
+    }
+
+    #[tokio::test]
+    async fn api_status_store_failure_is_503() {
+        let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+        let synth: Arc<dyn Synthesizer> = Arc::new(ExtractiveSynthesizer::new());
+        let brain = BrainService::new(
+            Arc::new(FailCountStore),
+            embedder,
+            Arc::new(NullReranker::new()),
+            synth,
+        );
+        let app = router(AppState {
+            brain: Arc::new(brain),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], false);
+        assert!(v["atoms"].is_null());
+        assert!(v["error"].as_str().unwrap_or("").contains("count failed"));
+    }
+
+    #[tokio::test]
+    async fn search_and_ask_refresh_client_activity() {
+        let status = Arc::new(crate::daemon::DaemonStatus::default());
+        assert_eq!(
+            status
+                .last_client_activity_unix
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::clone(&status),
+        });
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/search?q=hello&limit=1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let after_get = status
+            .last_client_activity_unix
+            .load(std::sync::atomic::Ordering::Relaxed);
+        assert!(after_get > 0);
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/search")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"query":"hello","limit":1}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let after_post = status
+            .last_client_activity_unix
+            .load(std::sync::atomic::Ordering::Relaxed);
+        assert!(after_post > 0);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/ask")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"question":"anything?"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(
+            status
+                .last_client_activity_unix
+                .load(std::sync::atomic::Ordering::Relaxed)
+                >= after_post
+        );
+    }
 }
