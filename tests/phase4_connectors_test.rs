@@ -108,15 +108,10 @@ async fn phase4_pond_index_searchable() -> anyhow::Result<()> {
             kind: SourceKind::Pond,
             enabled: true,
             poll_interval_secs: 60,
-            extra: HashMap::from([(
-                "pond_bin".into(),
-                stub.to_string_lossy().into_owned(),
-            )]),
+            extra: HashMap::from([("pond_bin".into(), stub.to_string_lossy().into_owned())]),
         })
         .await?;
-    pipeline
-        .index_connector("chats", &connector, true)
-        .await?;
+    pipeline.index_connector("chats", &connector, true).await?;
 
     let brain = BrainService::new(
         store,
