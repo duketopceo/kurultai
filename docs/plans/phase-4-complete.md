@@ -5,7 +5,7 @@
 **Tracking:** [#8](https://github.com/duketopceo/kurultai/issues/8) (close) · [#21](https://github.com/duketopceo/kurultai/issues/21) (closed via #62)  
 **Exit path:**
 
-```
+```text
 markdown notes ∥ Pond chats ∥ Dayflow activity ∥ local GitHub checkout
   → IndexPipeline → SQLite brain → search / ask
 ```
@@ -51,7 +51,7 @@ markdown notes ∥ Pond chats ∥ Dayflow activity ∥ local GitHub checkout
 | Invariant | Where |
 |-----------|--------|
 | Connectors are read-only source adapters; brain stays SQL | `connectors/*` |
-| Atom `source` = config source **name** | markdown / github / dayflow / pond |
+| Atom `source` = config source **name** | markdown / GitHub / dayflow / pond |
 | MCP never dumps full `content` by default | `AgentAtomView` |
 | Missing optional tooling (pond binary, Dayflow DB) → clear error, no panic | pond / dayflow |
 

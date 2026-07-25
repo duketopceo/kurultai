@@ -102,6 +102,8 @@ Phase 4 first-wave connectors are on `main`. Umbrella [#8](https://github.com/du
 test -x scripts/phase-4-closeout.sh
 test -f docs/plans/phase-4-complete.md
 rg -n 'phase-4-complete' README.md
+cargo test --locked
+cargo clippy --all-targets -- -D warnings
 # Maintainer only:
 # ./scripts/phase-4-closeout.sh
 ```

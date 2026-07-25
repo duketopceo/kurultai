@@ -3,14 +3,14 @@
 **Product Phase 4 solo expansion is shipped** (#62 Dayflow+Pond, #63 GitHub FS).  
 This file is **issue/milestone hygiene** so Milestone 4 can close.
 
-Agent tokens may **cannot** `closeIssue` (403). A maintainer runs the commands below.
+Agent tokens **cannot** call `closeIssue` (403). A maintainer runs the commands below.
 
 ---
 
 ## Close (shipped / umbrella done)
 
 ```bash
-gh issue close 8 --comment "Phase 4 solo exit shipped: Dayflow+Pond (#62), GitHub FS (#63). Deferred: Composio, plugins (#14), CodeGraph, AppFlowy (#4), OpenRouter batch — see docs/plans/phase-4-complete.md."
+gh issue close 8 --repo duketopceo/kurultai --comment "Phase 4 solo exit shipped: Dayflow+Pond (#62), GitHub FS (#63). Deferred: Composio, plugins (#14), CodeGraph, AppFlowy (#4), OpenRouter batch — see docs/plans/phase-4-complete.md."
 ```
 
 One-shot script: `./scripts/phase-4-closeout.sh`

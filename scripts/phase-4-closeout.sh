@@ -5,6 +5,19 @@ set -euo pipefail
 
 REPO="${GITHUB_REPOSITORY:-duketopceo/kurultai}"
 
+echo "Preflight: verify Phase 4 product landed on $REPO…"
+for pr in 62 63; do
+  state="$(gh pr view "$pr" --repo "$REPO" --json state -q .state)"
+  if [[ "$state" != "MERGED" ]]; then
+    echo "Abort: PR #$pr state=$state (expected MERGED)" >&2
+    exit 1
+  fi
+done
+if [[ ! -f docs/plans/phase-4-complete.md ]]; then
+  echo "Abort: docs/plans/phase-4-complete.md missing (run from repo root after merge)." >&2
+  exit 1
+fi
+
 echo "Closing Phase 4 umbrella on $REPO…"
 gh issue close 8 --repo "$REPO" --comment "Phase 4 solo exit shipped: Dayflow+Pond (#62), GitHub FS (#63). Deferred: Composio, plugins (#14), CodeGraph, AppFlowy (#4), OpenRouter batch — see docs/plans/phase-4-complete.md."
 
