@@ -24,6 +24,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+      - name: Test before deploy
+        run: cargo nextest run --locked
       - name: Build release
         run: cargo build --release --locked
         env:
@@ -45,6 +49,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+      - name: Test before deploy
+        run: cargo nextest run --locked
       - name: Build release
         run: cargo build --release --locked
         env:

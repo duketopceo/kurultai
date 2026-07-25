@@ -14,6 +14,8 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -Dwarnings
   CARGO_INCREMENTAL: 0
+  # Phase 4 (#23) line-coverage floor. Raise in later phases (75% → 80%).
+  COVERAGE_MIN: "60"
 
 jobs:
   check:
@@ -46,11 +48,12 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Coverage report (informational, no fail gate)
+      - name: Coverage (≥${{ env.COVERAGE_MIN }}% lines)
         run: |
-          cargo llvm-cov nextest --locked --no-report
-          cargo llvm-cov report --lcov --output-path lcov.info
+          cargo llvm-cov nextest --locked --lcov --output-path lcov.info \
+            --fail-under-lines "${COVERAGE_MIN}"
           cargo llvm-cov report --html --output-dir coverage-html
+          cargo llvm-cov report --summary-only
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
@@ -97,3 +100,20 @@ jobs:
 
       - name: Audit dependencies
         run: cargo audit
+
+  deny:
+    name: Dependency deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          arguments: --all-features

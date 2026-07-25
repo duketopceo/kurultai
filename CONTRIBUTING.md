@@ -59,7 +59,7 @@ cargo audit
 - Unit tests in `src/` alongside implementation
 - Integration tests in `tests/`
 - Use fixtures in `tests/fixtures/` for consistent test data
-- Aim for increasing coverage as per #23
+- Aim for increasing coverage as per #23 (Phase 4 floor: **≥60%** lines — `./scripts/coverage.sh`)
 
 ## Architecture Guidelines
 

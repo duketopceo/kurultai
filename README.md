@@ -249,7 +249,17 @@ Per-work-order context for external repos we **depend on**, **port patterns from
 
 ## Quality
 
-CI runs on every PR: `cargo fmt`, `clippy -D warnings`, `cargo nextest run --locked` (Linux), `cargo llvm-cov` artifact (no coverage % gate yet), `cargo audit`, and a macOS smoke build (`cargo test`). Coverage floors and stricter gates expand by milestone ([#23](https://github.com/duketopceo/kurultai/issues/23)).
+CI on every PR ([`.github/workflows/ci.yml`](.github/workflows/ci.yml), [#23](https://github.com/duketopceo/kurultai/issues/23)):
+
+| Gate | Job |
+|------|-----|
+| `cargo fmt --check` · `clippy -D warnings` · `cargo nextest --locked` · release build | Lint & Test |
+| Line coverage **≥60%** (`cargo llvm-cov` + artifact) | Lint & Test |
+| macOS `cargo test` + release build | macOS smoke |
+| `cargo audit` | Dependency audit |
+| `cargo deny check` (licenses + bans) | Dependency deny |
+
+Local coverage (same floor): `./scripts/coverage.sh` · `COVERAGE_MIN=60`. Deploy workflows ([`deploy.yml`](.github/workflows/deploy.yml)) run nextest before staging/prod artifacts. Later phases raise the floor (75% → 80%).
 
 ## Contributing
 

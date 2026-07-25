@@ -1,6 +1,7 @@
-//! Phase 4: Dayflow fixture index → FTS hit.
+//! Phase 4: Dayflow / Pond / GitHub fixture index → FTS hit.
 
 use kurultai::connectors::dayflow::DayflowConnector;
+use kurultai::connectors::pond::PondConnector;
 use kurultai::connectors::Connector;
 use kurultai::embed::{Embedder, NullEmbedder};
 use kurultai::mcp::interface::AgentRead;
@@ -12,6 +13,7 @@ use kurultai::synthesize::ExtractiveSynthesizer;
 use kurultai::types::{SourceConfig, SourceKind};
 use rusqlite::Connection;
 use std::collections::HashMap;
+use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 
 fn dayflow_fixture_db() -> std::path::PathBuf {
@@ -82,6 +84,43 @@ async fn phase4_dayflow_index_searchable() {
     let hits = brain.search("KNOWN_DAYFLOW_PHRASE_88", 5).await.unwrap();
     assert!(!hits.is_empty());
     assert!(hits.iter().any(|h| h.atom.source == "activity"));
+}
+
+#[tokio::test]
+async fn phase4_pond_index_searchable() {
+    let stub = format!("{}/tests/fixtures/pond_stub.sh", env!("CARGO_MANIFEST_DIR"));
+    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let store_dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(SqliteVecStore::open(store_dir.path().join("store.db"), 4).unwrap());
+    let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+    let pipeline = IndexPipeline::new(Arc::clone(&store) as Arc<dyn Store>, Arc::clone(&embedder));
+
+    let mut connector = PondConnector::new();
+    connector
+        .init(&SourceConfig {
+            name: "chats".into(),
+            kind: SourceKind::Pond,
+            enabled: true,
+            poll_interval_secs: 60,
+            extra: HashMap::from([("pond_bin".into(), stub)]),
+        })
+        .await
+        .unwrap();
+    pipeline
+        .index_connector("chats", &connector, true)
+        .await
+        .unwrap();
+
+    let brain = BrainService::new(
+        store,
+        embedder,
+        Arc::new(NullReranker::new()),
+        Arc::new(ExtractiveSynthesizer::new()),
+    );
+    let hits = brain.search("KNOWN_POND_PHRASE_77", 5).await.unwrap();
+    assert!(!hits.is_empty());
+    assert!(hits.iter().any(|h| h.atom.source == "chats"));
 }
 
 #[tokio::test]
