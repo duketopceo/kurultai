@@ -1,5 +1,6 @@
 use crate::connectors::appflowy::AppFlowyConnector;
 use crate::connectors::dayflow::DayflowConnector;
+use crate::connectors::github::GitHubConnector;
 use crate::connectors::markdown::MarkdownConnector;
 use crate::connectors::pond::PondConnector;
 use crate::connectors::Connector;
@@ -77,7 +78,8 @@ fn build_connector(kind: &SourceKind) -> Result<Box<dyn Connector>> {
         SourceKind::Markdown => Box::new(MarkdownConnector::new()),
         SourceKind::Dayflow => Box::new(DayflowConnector::new()),
         SourceKind::Pond => Box::new(PondConnector::new()),
-        SourceKind::TechTracker | SourceKind::GitHub => {
+        SourceKind::GitHub => Box::new(GitHubConnector::new()),
+        SourceKind::TechTracker => {
             return Err(KurultaiError::connector(
                 format!("{kind:?}"),
                 "connector not implemented yet",
@@ -143,12 +145,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn from_config_registers_github() {
+        let root = env!("CARGO_MANIFEST_DIR").to_string() + "/tests/fixtures/code_repo";
+        let config = Config {
+            environment: Environment::Dev,
+            sources: vec![SourceConfig {
+                name: "code".into(),
+                kind: SourceKind::GitHub,
+                enabled: true,
+                poll_interval_secs: 60,
+                extra: HashMap::from([("root_path".into(), root)]),
+            }],
+            storage_path: "/tmp/kurultai-test.db".into(),
+            embed_model: "m".into(),
+            embed_dim: 4,
+            reranker_model: None,
+            poll_interval_secs: 300,
+        };
+        let registry = ConnectorRegistry::from_config(&config).await.unwrap();
+        assert_eq!(registry.len(), 1);
+        assert!(registry.get("code").is_some());
+    }
+
+    #[tokio::test]
     async fn from_config_rejects_unimplemented_kinds() {
         let config = Config {
             environment: Environment::Dev,
             sources: vec![SourceConfig {
-                name: "gh".into(),
-                kind: SourceKind::GitHub,
+                name: "tt".into(),
+                kind: SourceKind::TechTracker,
                 enabled: true,
                 poll_interval_secs: 60,
                 extra: HashMap::new(),

@@ -92,7 +92,7 @@ Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthes
 
 | Layer | Technology | Status |
 |-------|-----------|--------|
-| **Connectors** | Trait-based; **markdown**, **Dayflow**, **Pond** live; AppFlowy/GitHub later | ✅ Markdown · Dayflow · Pond |
+| **Connectors** | Trait-based; **markdown**, **Dayflow**, **Pond**, **GitHub** (local checkout) live; AppFlowy/Composio later | ✅ Markdown · Dayflow · Pond · GitHub FS |
 | **Distillation** | LLM extractors (question, summary, resolution, tags) per source | 📋 Planned (#7 / #12) |
 | **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key | ✅ |
 | **Vector Store** | SQLite + FTS5 + sqlite-vec (`=0.1.6`) | ✅ |
@@ -180,7 +180,7 @@ Track full deployment plan in [#27](https://github.com/duketopceo/kurultai/issue
 - **Pond** — Index agent sessions via `pond sql` (`kind = "pond"`; optional `pond_bin`, `limit`)
 - **Dayflow** — Mac activity journal from `chunks.sqlite` (`kind = "dayflow"`; optional `db_path`)
 - **AppFlowy** — Index pages, databases, and AI chats via REST API or MCP (deferred #4)
-- **GitHub** — Index code repositories via file system + CodeGraph (later)
+- **GitHub** — Index local checkouts (`kind = "github"`, `root_path`); CodeGraph/API later
 
 Each connector implements the `Connector` trait:
 
@@ -211,7 +211,7 @@ Phase 3 synthesis plan: [docs/plans/2026-07-23-001-feat-phase-3-synthesis-interf
 | **1** Foundation | Developer | [Phase 1](https://github.com/duketopceo/kurultai/milestone/1) | ✅ [#18](https://github.com/duketopceo/kurultai/issues/18) framework → [#1](https://github.com/duketopceo/kurultai/issues/1) storage → [#2](https://github.com/duketopceo/kurultai/issues/2) embed → [#31](https://github.com/duketopceo/kurultai/issues/31)/[#4](https://github.com/duketopceo/kurultai/issues/4) connectors → [#5](https://github.com/duketopceo/kurultai/issues/5) CLI → [#11](https://github.com/duketopceo/kurultai/issues/11) MCP/install | [sqlite-vec](https://github.com/asg017/sqlite-vec), [layer0](https://github.com/amajorai/layer0), [kb-mcp](https://github.com/alphabet-h/kb-mcp), [mdvault](https://github.com/sderosiaux/mdvault), [Stratum](https://github.com/DakodaStemen/Stratum), [smithery](https://github.com/smithery-ai/cli) |
 | **2** Search | Developer | [Phase 2](https://github.com/duketopceo/kurultai/milestone/2) | ✅ [#6](https://github.com/duketopceo/kurultai/issues/6) RRF + testing gates (#23) — [complete](docs/plans/phase-2-complete.md) | [kb-mcp](https://github.com/alphabet-h/kb-mcp), [Stratum](https://github.com/DakodaStemen/Stratum), [sqmd](https://github.com/itkoren/sqmd), [Cerebras KB](https://mer.vin/2026/07/how-cerebras-built-a-15k-query-day-internal-knowledge-base/) |
 | **3** Synthesis | Developer ✓ | [Phase 3](https://github.com/duketopceo/kurultai/milestone/3) | ✅ [#7](https://github.com/duketopceo/kurultai/issues/7)/[#60](https://github.com/duketopceo/kurultai/pull/60) synthesis + `who_knows` + HTTP (privacy/#12/#34 deferred) | [gbrain](https://github.com/imphillip/gbrain-openclaw), [agent-knowledge](https://github.com/keshrath/agent-knowledge), [recall](https://github.com/pratikgajjar/recall), [atomic](https://github.com/yun-lim/atomic) |
-| **4** Expansion | Solo ✓ | [Phase 4](https://github.com/duketopceo/kurultai/milestone/4) | 🚧 [#21](https://github.com/duketopceo/kurultai/issues/21)/[#62](https://github.com/duketopceo/kurultai/pull/62) Dayflow + Pond slice (Composio/GitHub/plugins later) | [cocoindex](https://github.com/cocoindex-io/cocoindex), [codebase-graph](https://github.com/Phoenixrr2113/codebase-graph), [Dayflow](https://github.com/JerryZLiu/Dayflow) |
+| **4** Expansion | Solo ✓ | [Phase 4](https://github.com/duketopceo/kurultai/milestone/4) | 🚧 [#21](https://github.com/duketopceo/kurultai/issues/21)/[#62](https://github.com/duketopceo/kurultai/pull/62) Dayflow + Pond · GitHub FS ([plan](docs/plans/2026-07-25-001-feat-phase-4-github-connector-plan.md)); Composio/plugins later | [cocoindex](https://github.com/cocoindex-io/cocoindex), [codebase-graph](https://github.com/Phoenixrr2113/codebase-graph), [Dayflow](https://github.com/JerryZLiu/Dayflow) |
 | **5** Production | Team | [Phase 5](https://github.com/duketopceo/kurultai/milestone/5) | [#9](https://github.com/duketopceo/kurultai/issues/9) perf + shared daemon → [#20](https://github.com/duketopceo/kurultai/issues/20) self-hosted CI | [layer0](https://github.com/amajorai/layer0), [engram-mcp](https://github.com/edg-l/engram-mcp) |
 | **6** Launch | Company | [Phase 6](https://github.com/duketopceo/kurultai/milestone/6) | [#10](https://github.com/duketopceo/kurultai/issues/10) release → [#22](https://github.com/duketopceo/kurultai/issues/22) yurt art | — |
 
@@ -229,7 +229,7 @@ Phase 3 synthesis plan: [docs/plans/2026-07-23-001-feat-phase-3-synthesis-interf
 - [ ] AppFlowy connector ([#4](https://github.com/duketopceo/kurultai/issues/4)) — **deferred** (not Phase 1 exit; Expansion)
 - [x] Search & retrieval ([#6](https://github.com/duketopceo/kurultai/issues/6)) — RRF + testing gates; [phase-2-complete.md](docs/plans/phase-2-complete.md); distillation deferred (#12)
 - [x] Synthesis & interface ([#7](https://github.com/duketopceo/kurultai/issues/7) / [#60](https://github.com/duketopceo/kurultai/pull/60)) — ask + who_knows + HTTP; privacy/#12/#34 deferred
-- [ ] Expansion connectors ([#8](https://github.com/duketopceo/kurultai/issues/8), [#21](https://github.com/duketopceo/kurultai/issues/21)) — Dayflow + Pond slice in [#62](https://github.com/duketopceo/kurultai/pull/62); more remaining
+- [ ] Expansion connectors ([#8](https://github.com/duketopceo/kurultai/issues/8), [#21](https://github.com/duketopceo/kurultai/issues/21)) — Dayflow + Pond ([#62](https://github.com/duketopceo/kurultai/pull/62)) + GitHub FS; Composio/plugins remaining
 - [ ] Production readiness ([#9](https://github.com/duketopceo/kurultai/issues/9), [#20](https://github.com/duketopceo/kurultai/issues/20))
 - [ ] Open source launch ([#10](https://github.com/duketopceo/kurultai/issues/10), [#22](https://github.com/duketopceo/kurultai/issues/22))
 
