@@ -257,7 +257,7 @@ CI on every PR ([`.github/workflows/ci.yml`](.github/workflows/ci.yml), [#23](ht
 | Line coverage **≥60%** (`cargo llvm-cov` + artifact) | Lint & Test |
 | macOS `cargo test` + release build | macOS smoke |
 | `cargo audit` | Dependency audit |
-| `cargo deny check` (licenses + bans) | Dependency deny |
+| `cargo deny check --all-features` (licenses + bans) | Dependency deny |
 
 Local coverage (same floor): `./scripts/coverage.sh` · `COVERAGE_MIN=60`. Deploy workflows ([`deploy.yml`](.github/workflows/deploy.yml)) run nextest before staging/prod artifacts. Later phases raise the floor (75% → 80%).
 

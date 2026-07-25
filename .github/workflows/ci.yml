@@ -48,21 +48,27 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      # nextest above is the fast fail gate; llvm-cov re-runs instrumented for the floor.
       - name: Coverage (≥${{ env.COVERAGE_MIN }}% lines)
         run: |
+          set +e
           cargo llvm-cov nextest --locked --lcov --output-path lcov.info \
             --fail-under-lines "${COVERAGE_MIN}"
+          status=$?
+          set -e
           cargo llvm-cov report --html --output-dir coverage-html
           cargo llvm-cov report --summary-only
+          exit "$status"
 
       - name: Upload coverage artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: |
             lcov.info
             coverage-html
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Release build
         run: cargo build --release --locked
@@ -105,15 +111,21 @@ jobs:
     name: Dependency deny
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
-      - name: Install cargo-deny
-        uses: EmbarkStudios/cargo-deny-action@v2
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
         with:
           command: check
           arguments: --all-features

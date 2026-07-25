@@ -31,7 +31,10 @@ if [[ "$DO_FAIL" -eq 1 ]]; then
   FAIL_ARGS=(--fail-under-lines "$COVERAGE_MIN")
 fi
 
+set +e
 cargo llvm-cov nextest --locked --lcov --output-path lcov.info "${FAIL_ARGS[@]}"
+status=$?
+set -e
 
 if [[ "$DO_HTML" -eq 1 ]]; then
   cargo llvm-cov report --html --output-dir coverage-html
@@ -39,3 +42,4 @@ fi
 
 cargo llvm-cov report --summary-only
 echo "Coverage gate: fail-under-lines=${COVERAGE_MIN} (disabled=$([[ $DO_FAIL -eq 0 ]] && echo yes || echo no))"
+exit "$status"

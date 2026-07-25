@@ -25,7 +25,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install nextest
-        uses: taiki-e/install-action@nextest
+        uses: taiki-e/install-action@c295c25a8d3df7288fa86db860a4f8062bf76ad8 # nextest
       - name: Test before deploy
         run: cargo nextest run --locked
       - name: Build release
@@ -50,7 +50,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install nextest
-        uses: taiki-e/install-action@nextest
+        uses: taiki-e/install-action@c295c25a8d3df7288fa86db860a4f8062bf76ad8 # nextest
       - name: Test before deploy
         run: cargo nextest run --locked
       - name: Build release

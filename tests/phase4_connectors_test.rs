@@ -87,12 +87,17 @@ async fn phase4_dayflow_index_searchable() {
 }
 
 #[tokio::test]
-async fn phase4_pond_index_searchable() {
-    let stub = format!("{}/tests/fixtures/pond_stub.sh", env!("CARGO_MANIFEST_DIR"));
-    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+async fn phase4_pond_index_searchable() -> anyhow::Result<()> {
+    let fixture_dir = tempfile::tempdir()?;
+    let stub = fixture_dir.path().join("pond_stub.sh");
+    std::fs::copy(
+        format!("{}/tests/fixtures/pond_stub.sh", env!("CARGO_MANIFEST_DIR")),
+        &stub,
+    )?;
+    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755))?;
 
-    let store_dir = tempfile::tempdir().unwrap();
-    let store = Arc::new(SqliteVecStore::open(store_dir.path().join("store.db"), 4).unwrap());
+    let store_dir = tempfile::tempdir()?;
+    let store = Arc::new(SqliteVecStore::open(store_dir.path().join("store.db"), 4)?);
     let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
     let pipeline = IndexPipeline::new(Arc::clone(&store) as Arc<dyn Store>, Arc::clone(&embedder));
 
@@ -103,14 +108,15 @@ async fn phase4_pond_index_searchable() {
             kind: SourceKind::Pond,
             enabled: true,
             poll_interval_secs: 60,
-            extra: HashMap::from([("pond_bin".into(), stub)]),
+            extra: HashMap::from([(
+                "pond_bin".into(),
+                stub.to_string_lossy().into_owned(),
+            )]),
         })
-        .await
-        .unwrap();
+        .await?;
     pipeline
         .index_connector("chats", &connector, true)
-        .await
-        .unwrap();
+        .await?;
 
     let brain = BrainService::new(
         store,
@@ -118,9 +124,10 @@ async fn phase4_pond_index_searchable() {
         Arc::new(NullReranker::new()),
         Arc::new(ExtractiveSynthesizer::new()),
     );
-    let hits = brain.search("KNOWN_POND_PHRASE_77", 5).await.unwrap();
+    let hits = brain.search("KNOWN_POND_PHRASE_77", 5).await?;
     assert!(!hits.is_empty());
     assert!(hits.iter().any(|h| h.atom.source == "chats"));
+    Ok(())
 }
 
 #[tokio::test]
