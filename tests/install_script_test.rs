@@ -37,14 +37,15 @@ fn install_script_help_exits_zero() {
 fn install_script_dry_run_does_not_require_cargo_install() {
     let path = install_sh();
     // Dry-run must succeed even without performing cargo install.
+    // Logs go to stderr so stdout stays free for path captures (resolve_src).
     Command::new("bash")
         .arg(&path)
         .arg("--dry-run")
         .arg("--no-init")
         .assert()
         .success()
-        .stdout(predicate::str::contains("DRY-RUN"))
-        .stdout(predicate::str::contains("personal install"));
+        .stderr(predicate::str::contains("DRY-RUN"))
+        .stderr(predicate::str::contains("personal install"));
 }
 
 #[test]

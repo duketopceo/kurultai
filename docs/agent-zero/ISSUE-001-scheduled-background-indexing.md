@@ -1,3 +1,15 @@
+---
+tags: [agent-zero, scheduler, daemon, v1]
+related:
+  - docs/agent-zero/INDEX.md
+  - docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md
+---
+
+> **Shipped contract (v1 batch #73):** config uses `[runtime] nightly_full_sync_hour` and `inactivity_threshold_hours` (not `[brain]`).  
+> `GET /api/status` returns `{ ok, service, atoms, scheduler }` where `scheduler` has  
+> `last_incremental_unix`, `last_full_unix`, `last_activity_unix`, `poll_enabled`, `watch_enabled`, `nightly_full_sync_hour`.  
+> Per-source `next_scheduled` / dashboard graph are deferred.
+
 # ISSUE: Scheduled Background Indexing
 
 **Labels:** feature, infrastructure, priority-high

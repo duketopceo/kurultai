@@ -2,7 +2,7 @@
 //!
 //! Bind to localhost only — no auth in this slice.
 
-use crate::daemon;
+use crate::daemon::DaemonStatus;
 use crate::mcp::brain::BrainService;
 use crate::mcp::interface::AgentRead;
 use crate::synthesize::WhoKnowsEntry;
@@ -20,12 +20,14 @@ use tower_http::trace::TraceLayer;
 #[derive(Clone)]
 struct AppState {
     brain: Arc<BrainService>,
+    status: Arc<DaemonStatus>,
 }
 
 /// Serve search/ask/cite/who_knows on `127.0.0.1:port` until cancelled.
-pub async fn serve(brain: BrainService, port: u16) -> crate::Result<()> {
+pub async fn serve(brain: BrainService, status: Arc<DaemonStatus>, port: u16) -> crate::Result<()> {
     let state = AppState {
         brain: Arc::new(brain),
+        status,
     };
     let app = router(state);
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -60,12 +62,11 @@ async fn health() -> Json<serde_json::Value> {
 
 async fn api_status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let atoms = state.brain.atom_count().await.unwrap_or(0);
-    let scheduler = daemon::global_daemon_status().map(|s| s.snapshot());
     Json(serde_json::json!({
         "ok": true,
         "service": "kurultai",
         "atoms": atoms,
-        "scheduler": scheduler,
+        "scheduler": state.status.snapshot(),
     }))
 }
 
@@ -282,6 +283,7 @@ mod tests {
     async fn health_ok() {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
         });
         let resp = app
             .oneshot(
@@ -299,6 +301,7 @@ mod tests {
     async fn ask_empty_store_json() {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
         });
         let resp = app
             .oneshot(
@@ -358,6 +361,7 @@ mod tests {
         );
         let app = router(AppState {
             brain: Arc::new(brain),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
         });
         (app, db_dir)
     }

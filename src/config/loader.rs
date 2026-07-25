@@ -127,7 +127,17 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
         embed_dim: file.embed.dimension.unwrap_or(3072),
         reranker_model: file.runtime.reranker_model,
         poll_interval_secs: file.runtime.poll_interval_secs.unwrap_or(300),
-        nightly_full_sync_hour: file.runtime.nightly_full_sync_hour.filter(|h| *h <= 23),
+        nightly_full_sync_hour: file.runtime.nightly_full_sync_hour.and_then(|h| {
+            if h <= 23 {
+                Some(h)
+            } else {
+                tracing::warn!(
+                    hour = h,
+                    "nightly_full_sync_hour out of range (0-23); disabling"
+                );
+                None
+            }
+        }),
         inactivity_threshold_hours: file.runtime.inactivity_threshold_hours,
     })
 }

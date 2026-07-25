@@ -1,3 +1,13 @@
+---
+tags: [agent-zero, index, v1]
+related:
+  - docs/agent-zero/ISSUE-001-scheduled-background-indexing.md
+  - docs/agent-zero/ISSUE-002-query-result-citations.md
+  - docs/agent-zero/ISSUE-003-multi-hop-reasoning.md
+  - docs/agent-zero/ISSUE-004-agent-installer.md
+  - docs/agent-zero/PR-001-dev-dashboard-http-daemon.md
+  - docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md
+---
 # Kurultai Agent Zero drafts → GitHub (v1)
 
 **Last Updated:** 2026-07-25  

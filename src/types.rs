@@ -54,7 +54,8 @@ pub struct Answer {
     pub citations: Vec<Citation>,
     pub sources_used: Vec<String>,
     pub confidence: f64,
-    /// Multi-hop chain of `source_id` values used for this answer (#74).
+    /// `source_id`s consulted for this answer (primary + multi-hop hits), score order (#74).
+    /// Not a graph edge walk — use for provenance, not path reconstruction.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graph_chain: Vec<String>,
 }

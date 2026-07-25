@@ -1,3 +1,9 @@
+---
+tags: [agent-zero, dashboard, http, v1]
+related:
+  - docs/agent-zero/INDEX.md
+  - docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md
+---
 # PR: Dev Dashboard (HTTP Daemon + WebSocket)
 
 **Tracking:** #42 (Phase 1 complete)

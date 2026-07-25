@@ -14,7 +14,7 @@ INSTALL_RUST=0
 DRY_RUN=0
 FORCE_CLONE=0
 
-log() { echo "[kurultai-install] $*"; }
+log() { echo "[kurultai-install] $*" >&2; }
 die() { echo "[kurultai-install] ERROR: $*" >&2; exit 1; }
 
 usage() {
@@ -97,13 +97,18 @@ ensure_cargo() {
     return 0
   fi
   if [[ "$INSTALL_RUST" -eq 1 ]]; then
-    log "cargo missing — installing Rust via rustup"
+    log "cargo missing — installing Rust via rustup (local copy, not pipe-to-shell)"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-      log "DRY-RUN: curl https://sh.rustup.rs | sh -s -- -y"
+      log "DRY-RUN: download rustup-init, then sh <file> -s -- -y"
       return 0
     fi
     command -v curl >/dev/null 2>&1 || die "curl required to install rustup"
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    local rs
+    rs="$(mktemp "${TMPDIR:-/tmp}/rustup-init.XXXXXX")"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o "$rs"
+    chmod +x "$rs"
+    sh "$rs" -s -- -y
+    rm -f "$rs"
     # shellcheck disable=SC1091
     source "${CARGO_HOME:-$HOME/.cargo}/env" 2>/dev/null || true
     command -v cargo >/dev/null 2>&1 || die "rustup finished but cargo still not on PATH"

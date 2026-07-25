@@ -63,6 +63,7 @@ async fn multi_hop_expand(
         by_id.insert(r.atom.id.clone(), r);
     }
 
+    // Bounded second-hop searches (sequential: BrainService is not cloned into tasks).
     for tag in tags.into_iter().take(4) {
         let hop = brain.search(&tag, 4).await.unwrap_or_default();
         for r in hop {

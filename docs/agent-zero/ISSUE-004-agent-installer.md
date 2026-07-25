@@ -1,3 +1,9 @@
+---
+tags: [agent-zero, installer, dx, v1]
+related:
+  - docs/agent-zero/INDEX.md
+  - docs/plans/2026-07-25-005-feat-v1-personal-installer-plan.md
+---
 # ISSUE: Agent-Level CLI Installer
 
 **Labels:** feature, developer-experience, agent-integration

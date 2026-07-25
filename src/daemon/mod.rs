@@ -47,6 +47,7 @@ pub struct DaemonStatus {
 }
 
 impl DaemonStatus {
+    /// JSON snapshot for `/api/status` (`scheduler` object).
     pub fn snapshot(&self) -> serde_json::Value {
         use std::sync::atomic::Ordering;
         let h = self.nightly_hour.load(Ordering::Relaxed);
@@ -65,12 +66,14 @@ impl DaemonStatus {
         })
     }
 
+    /// Record wall-clock activity (used by idle threshold).
     pub fn touch_activity(&self) {
         use std::sync::atomic::Ordering;
         let now = chrono::Utc::now().timestamp().max(0) as u64;
         self.last_activity_unix.store(now, Ordering::Relaxed);
     }
 
+    /// Record a completed incremental index cycle.
     pub fn mark_incremental(&self) {
         use std::sync::atomic::Ordering;
         let now = chrono::Utc::now().timestamp().max(0) as u64;
@@ -78,23 +81,13 @@ impl DaemonStatus {
         self.last_activity_unix.store(now, Ordering::Relaxed);
     }
 
+    /// Record a completed full (nightly) index cycle.
     pub fn mark_full(&self) {
         use std::sync::atomic::Ordering;
         let now = chrono::Utc::now().timestamp().max(0) as u64;
         self.last_full_unix.store(now, Ordering::Relaxed);
         self.last_activity_unix.store(now, Ordering::Relaxed);
     }
-}
-
-/// Process-wide status when daemon is running (HTTP status handler reads this).
-static DAEMON_STATUS: std::sync::OnceLock<Arc<DaemonStatus>> = std::sync::OnceLock::new();
-
-pub fn global_daemon_status() -> Option<Arc<DaemonStatus>> {
-    DAEMON_STATUS.get().cloned()
-}
-
-fn install_daemon_status(status: Arc<DaemonStatus>) {
-    let _ = DAEMON_STATUS.set(status);
 }
 
 /// Clamp poll interval to at least 1 second (shared by CLI + daemon).
@@ -188,7 +181,6 @@ pub async fn run(
         );
         status.touch_activity();
     }
-    install_daemon_status(Arc::clone(&status));
 
     if opts.poll {
         tracing::info!(
@@ -241,7 +233,7 @@ pub async fn run(
         }
     }
 
-    let serve_result = http::serve(brain, opts.port).await;
+    let serve_result = http::serve(brain, Arc::clone(&status), opts.port).await;
 
     for handle in bg.0.drain(..) {
         handle.abort();
@@ -260,6 +252,8 @@ async fn run_poll_cycle(
     full: bool,
 ) {
     let _guard = flight.lock().await;
+    // Always touch activity so failed cycles do not wedge idle_skip forever.
+    status.touch_activity();
     match if full {
         pipeline.index_all(connectors, true).await.map(|s| s.len())
     } else {
@@ -334,7 +328,8 @@ async fn nightly_full_loop(
     loop {
         let now = chrono::Local::now();
         let day = now.format("%Y-%m-%d").to_string();
-        if now.hour() as u8 == hour && day != last_run_day {
+        // Catch up after sleep: run once per local day once the target hour is reached.
+        if now.hour() as u8 >= hour && day != last_run_day {
             run_poll_cycle(
                 pipeline.as_ref(),
                 connectors.as_ref(),

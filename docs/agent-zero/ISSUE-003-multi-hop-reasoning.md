@@ -1,3 +1,9 @@
+---
+tags: [agent-zero, multi-hop, search, v1]
+related:
+  - docs/agent-zero/INDEX.md
+  - docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md
+---
 # ISSUE: Multi-hop Reasoning (Graph Orchestration)
 
 **Labels:** feature, search, priority-high
