@@ -17,104 +17,27 @@
 
 **Assemble what you know, from wherever it lives.**
 
-Kurultai is a unified knowledge retrieval layer — like having a single brain that indexes everything across your tools without moving your data.
+A local knowledge brain for agents and humans: index notes, agent chats, Dayflow, and code checkouts into one SQLite store — then `search` / `ask` / MCP without dumping whole vaults into context.
 
-Inspired by Cerebras's internal knowledge base architecture: one embeddings table, per-source connectors, MCP tools as primitives.
+## Install
 
-## Why
-
-Your knowledge lives in many places: notes (markdown folders), conversations (agents), code (GitHub), activity logs (Dayflow). Kurultai indexes all of them into one queryable store so you can ask anything and get answers with citations — no matter where the source data lives.
-
-## The brain vs your files
-
-| | **Your files** (`.md` folders, agent logs, etc.) | **Kurultai brain** (`store.db`) |
-|---|---------------------------------------------------|----------------------------------|
-| Format | `.md`, JSONL, SQLite… per tool | **SQLite + vector index** |
-| You edit here | ✅ Notes, code, chats | ❌ Index only |
-| Agent access | Slow, high tokens (read whole files) | **Fast, low tokens** (excerpts + citations) |
-
-Markdown vaults (including Obsidian folders) are **ingest sources** — Kurultai reads `.md` from disk. It does not integrate with the Obsidian desktop app.
-
-## Agent interface: read & write (MCP)
-
-Agents interact with the brain through two operations — exposed via **MCP** (stdio) and HTTP daemon (Phase 3):
-
-| Operation | MCP tools | What moves | Token budget |
-|-----------|-----------|------------|--------------|
-| **Read** | `search`, `cite`, `ask` | Excerpts + citations out | Minimal — never full vaults |
-| **Write** | `remember` | Distilled facts in | Minimal — summary/tags, not raw chat |
-
-```
-Agent ──read──► search/cite/ask ──► SQLite brain ──► ranked excerpts
-Agent ─write──► remember ──► distilled KnowledgeAtom ──► SQLite brain
-```
-
-MCP is an agent-ready API: structured tools instead of dumping files into context. See `src/mcp/` (#11 Phase 1 slice; full synthesis #7).
-
-## Design doctrine: speed + token budget
-
-**North star:** SQL agent-optimized brain with pristine structured atoms — not a markdown dump, not full-file RAG.
-
-| Principle | What it means |
-|-----------|----------------|
-| **Index-time heavy** | Embed, distill, dedupe when ingesting — not when the agent asks |
-| **Read-time light** | `search`/`cite` return `AgentAtomView` excerpts (~400 chars), never full `content` by default |
-| **Write-time minimal** | `remember` accepts summary + tags only — no raw chat blobs |
-| **Structuring rules** | Fixed schema (`title`, `summary`, `question`, `resolution`, `tags`, provenance) — stable for NN export |
-| **Bleeding-edge speed** | FTS + vector in SQLite, content-hash skip re-embed, query cache (Phase 2+) |
-
-If we nail **structured SQL + MCP views + structuring rules**, that is enough — we do not need agents reading vaults or SQL directly.
-
-Tracked in work order [#27](https://github.com/duketopceo/kurultai/issues/27) and [#37](https://github.com/duketopceo/kurultai/issues/37).
-
-## Who we build for (in order)
-
-We ship **developer → solo → team → company**. Each layer builds on the last without rework ([#25](https://github.com/duketopceo/kurultai/issues/25)).
-
-| Audience | Phases | What they get |
-|----------|--------|---------------|
-| **Developer** | 1–3 | CLI + MCP, local config, agent transcript indexing |
-| **Solo** | 1–4 | One-command install, on-prem data, Dayflow + notes unified |
-| **Team** | 4–5 | Shared daemon, per-user capture policies, internal network |
-| **Company** | 5–6+ | Multi-tenant, RBAC, audit, enterprise connectors, VPC deploy |
-
-> Rule: never build company-wide features before developer + solo paths work.
-
-## Architecture
-
-```
-Source Connectors → LLM Distillation → Embeddings → Vector Store
-                                                          ↓
-Question → Embed → Vector Search + FTS → RRF Fusion → Rerank → Synthesize → Answer + Citations
-```
-
-### Components
-
-| Layer | Technology | Status |
-|-------|-----------|--------|
-| **Connectors** | Trait-based; **markdown**, **Dayflow**, **Pond**, **GitHub** (local checkout) live; AppFlowy/Composio later | ✅ Markdown · Dayflow · Pond · GitHub FS |
-| **Distillation** | LLM extractors (question, summary, resolution, tags) per source | 📋 Planned (#7 / #12) |
-| **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key | ✅ |
-| **Vector Store** | SQLite + FTS5 + sqlite-vec (`=0.1.6`) | ✅ |
-| **Search** | FTS ∥ vector → **RRF (k=60)** → optional OpenRouter rerank → capped views | ✅ (#6) · distillation deferred (#12) |
-| **Synthesis** | Planner → Executor → Answer with citations | 📋 Planned (#7) |
-| **Interface** | CLI + MCP stdio (`search`/`cite`/`remember`); HTTP daemon later | ✅ CLI+MCP · 📋 daemon |
-
-## Quick Start
-
-**Mac / laptop (dev + debug) — one-line install** (npm-style):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.sh | bash
-```
-
-Uses a GitHub Release binary when present; otherwise falls back to `cargo install --git … --locked` (needs Rust). Equivalent direct form:
+No GitHub Release / `v*` tag yet — install from source with Cargo ([rustup](https://rustup.rs)):
 
 ```bash
 cargo install --git https://github.com/duketopceo/kurultai --locked
 ```
 
-Then on Mac (stay in **dev / debug**):
+Optional wrapper (same cargo path until binaries ship):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.sh | bash
+```
+
+Windows (when a release exists): `irm …/scripts/install.ps1 | iex` — until then, use `cargo install --git` as above.
+
+Tagged binary releases: workflow is ready (`.github/workflows/release.yml`); **not published yet**.
+
+## Mac / laptop — stay in dev + debug
 
 ```bash
 export KURULTAI_ENV=dev
@@ -122,7 +45,6 @@ export RUST_LOG=kurultai=debug
 
 kurultai init --agent cursor
 # edit ~/.config/kurultai/config.toml — keep environment = "dev"
-# enable markdown / dayflow / pond / github as you have them
 
 kurultai index --full          # FTS-first without OPENROUTER_API_KEY
 kurultai status
@@ -130,140 +52,105 @@ kurultai search "database migration" --limit 10
 kurultai ask "what deployments are we running?"
 
 kurultai mcp                   # Cursor / agents (stdio)
-kurultai daemon --port 8421    # HTTP + poll + notify watch
+kurultai daemon --port 8421    # HTTP + poll + filesystem watch
 ```
 
-Windows: `irm https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.ps1 | iex`
+Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md).
+
+## Why
+
+Knowledge lives in many places. Kurultai indexes it into one queryable brain so agents get **excerpts + citations**, not full-file dumps.
+
+| | **Your files** | **Kurultai brain** (`store.db`) |
+|---|--------------|----------------------------------|
+| You edit | ✅ notes, code, chats | ❌ index only |
+| Agent access | Slow / high tokens | Fast / low tokens (capped views) |
+
+## Status
+
+| Layer | What ships |
+|-------|------------|
+| **Connectors** | Markdown · Dayflow · Pond · GitHub (local checkout). AppFlowy deferred ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
+| **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key |
+| **Store** | SQLite + FTS5 + sqlite-vec |
+| **Search** | FTS ∥ vector → RRF → optional rerank |
+| **Synthesis** | Extractive / optional LLM `ask` with citations |
+| **Interface** | CLI + MCP stdio + HTTP daemon (poll + notify watch) |
 
 ## Configuration
 
-Create `~/.config/kurultai/config.toml`:
+`~/.config/kurultai/config.toml` (created by `kurultai init`):
 
 ```toml
 environment = "dev"   # dev | staging | prod
 
-[sources]
-[sources.appflowy]
-enabled = true
-kind = "appflowy"
-poll_interval_secs = 300
-
 [sources.notes]
 enabled = true
 kind = "markdown"
-root_path = "/Users/you/Documents/Obsidian/Vault"  # any .md folder — Obsidian app not required
+root_path = "/Users/you/Documents/notes"   # any .md folder
 poll_interval_secs = 60
 
-[storage]
-# Optional — defaults per environment (see below)
-# path = "~/.local/share/kurultai/dev/store.db"
+[sources.dayflow]
+enabled = false
+kind = "dayflow"
+# db_path optional on macOS
+
+[sources.pond]
+enabled = false
+kind = "pond"
+
+[sources.code]
+enabled = false
+kind = "github"
+root_path = "/Users/you/src/your-repo"
 
 [embed]
 model = "openai/text-embedding-3-large"
 dimension = 3072
 
 [runtime]
-# Optional — OpenRouter chat model for post-RRF rerank (needs API key)
-# reranker_model = "openai/gpt-4o-mini"
+poll_interval_secs = 300
+# reranker_model = "openai/gpt-4o-mini"   # needs API key
 ```
 
-Override via CLI or env: `kurultai --env staging status` or `KURULTAI_ENV=prod kurultai daemon`.
+Overrides: `KURULTAI_ENV=dev`, `kurultai --env staging status`. API keys via env only (`OPENROUTER_API_KEY` / `KURULTAI_API_KEY`) — never in config files.
 
-## Environments (dev · staging · prod)
+## Agents (MCP)
+
+| | Tools | Budget |
+|---|-------|--------|
+| **Read** | `search`, `cite`, `ask`, `who_knows` | Excerpts + citations |
+| **Write** | `remember` | Summary / tags only |
+
+```
+Agent ──read──► search/cite/ask ──► SQLite brain ──► ranked excerpts
+Agent ─write──► remember ──► KnowledgeAtom ──► SQLite brain
+```
+
+## Environments
 
 | | **Dev** | **Staging** | **Prod** |
 |---|---------|-------------|----------|
-| **Who** | Developer laptop | Team pre-prod | Company deployment |
-| **Audience** | Developer | Team | Enterprise |
-| **Storage** | `~/.local/share/kurultai/dev/store.db` | `.../staging/store.db` | `.../store.db` |
-| **Logging** | `kurultai=debug` | `info,warn` | `warn,error` |
-| **API keys** | Optional (zero-vector fallback) | Required for index | Required + audit |
-| **CI branch** | PR / feature branches | `staging` branch | `main` branch |
-| **Phase** | 1–3 | 4–5 | 5–6 |
+| Storage | `…/kurultai/dev/store.db` | `…/staging/…` | `…/store.db` |
+| Logging | `kurultai=debug` | info | warn |
+| API keys | Optional (FTS) | Optional for FTS; required for embeddings | Same + audit |
 
-**GitHub Actions:** PRs run `ci.yml` (dev). Push to `staging` → deploy workflow (staging environment). Push to `main` → production environment. Configure approval gates in GitHub → Settings → Environments.
+## Roadmap
 
-Track full deployment plan in [#27](https://github.com/duketopceo/kurultai/issues/27).
+Ship **developer → solo → team → company** ([#25](https://github.com/duketopceo/kurultai/issues/25)). Master plan: [#27](https://github.com/duketopceo/kurultai/issues/27).
 
-## Connectors
+| Phase | Status |
+|-------|--------|
+| 1–3 Foundation / search / synthesis | ✅ |
+| 4 Expansion (Dayflow · Pond · GitHub FS) | ✅ |
+| 5 Production (daemon poll + watch) | 🚧 local embeddings / ARC / ops follow |
+| 6 Launch (release packaging, yurt art) | 📋 [#10](https://github.com/duketopceo/kurultai/issues/10) |
 
-- **Markdown** — Index any directory of `.md` files (`root_path`). Works with Obsidian vaults, git wikis, plain folders — no desktop app integration
-- **Pond** — Index agent sessions via `pond sql` (`kind = "pond"`; optional `pond_bin`, `limit`)
-- **Dayflow** — Mac activity journal from `chunks.sqlite` (`kind = "dayflow"`; optional `db_path`)
-- **AppFlowy** — Index pages, databases, and AI chats via REST API or MCP (deferred #4)
-- **GitHub** — Index local checkouts (`kind = "github"`, `root_path`); CodeGraph/API later
-
-Each connector implements the `Connector` trait:
-
-```rust
-#[async_trait]
-pub trait Connector: Send + Sync {
-    fn name(&self) -> &str;
-    async fn init(&mut self, config: &SourceConfig) -> Result<()>;
-    async fn poll(&self) -> Result<Vec<KnowledgeAtom>>;
-    async fn full_sync(&self) -> Result<Vec<KnowledgeAtom>>;
-}
-```
-
-## Phases & work orders
-
-Master plan: **[#27 — Work Order: Master phase plan](https://github.com/duketopceo/kurultai/issues/27)**  
-Audience strategy: **[#25 — Developer → Solo → Team → Company](https://github.com/duketopceo/kurultai/issues/25)**  
-Upstream repos (depend / inspire / integrate): **[#40](https://github.com/duketopceo/kurultai/issues/40)** · [docs/upstream-inspiration.md](docs/upstream-inspiration.md)  
-Phase 1 CE plan: [docs/plans/phase-1-work-orders.md](docs/plans/phase-1-work-orders.md) · **complete:** [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md) · **closeout:** [docs/plans/phase-1-closeout.md](docs/plans/phase-1-closeout.md)  
-Phase 2 search plan: [docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md](docs/plans/2026-07-21-001-feat-search-retrieval-rrf-plan.md) (#6)  
-Phase 2 testing plan: [docs/plans/2026-07-21-002-feat-phase2-testing-gates-plan.md](docs/plans/2026-07-21-002-feat-phase2-testing-gates-plan.md) (#23) · [work orders](docs/plans/phase-2-testing-work-orders.md)  
-Phase 2 **complete:** [docs/plans/phase-2-complete.md](docs/plans/phase-2-complete.md) · [closeout](docs/plans/phase-2-closeout.md)  
-Phase 2 graph note: [docs/plans/phase-2-graph-orchestration.md](docs/plans/phase-2-graph-orchestration.md) (#6 / #7)  
-Phase 3 synthesis plan: [docs/plans/2026-07-23-001-feat-phase-3-synthesis-interface-plan.md](docs/plans/2026-07-23-001-feat-phase-3-synthesis-interface-plan.md) (#7 / #60)  
-Phase 4 **complete:** [docs/plans/phase-4-complete.md](docs/plans/phase-4-complete.md) · [closeout](docs/plans/phase-4-closeout.md)  
-Phase 5 daemon poll plan: [docs/plans/2026-07-25-003-feat-phase-5-daemon-poll-plan.md](docs/plans/2026-07-25-003-feat-phase-5-daemon-poll-plan.md) (#9)  
-Phase 5 notify watch plan: [docs/plans/2026-07-25-004-feat-phase-5-notify-watch-plan.md](docs/plans/2026-07-25-004-feat-phase-5-notify-watch-plan.md) (Milestone 5)
-
-| Phase | Audience unlocked | Milestone | Work order (in sequence) | Upstream (pull / inspire) |
-|-------|-------------------|-----------|--------------------------|---------------------------|
-| **1** Foundation | Developer | [Phase 1](https://github.com/duketopceo/kurultai/milestone/1) | ✅ [#18](https://github.com/duketopceo/kurultai/issues/18) framework → [#1](https://github.com/duketopceo/kurultai/issues/1) storage → [#2](https://github.com/duketopceo/kurultai/issues/2) embed → [#31](https://github.com/duketopceo/kurultai/issues/31)/[#4](https://github.com/duketopceo/kurultai/issues/4) connectors → [#5](https://github.com/duketopceo/kurultai/issues/5) CLI → [#11](https://github.com/duketopceo/kurultai/issues/11) MCP/install | [sqlite-vec](https://github.com/asg017/sqlite-vec), [layer0](https://github.com/amajorai/layer0), [kb-mcp](https://github.com/alphabet-h/kb-mcp), [mdvault](https://github.com/sderosiaux/mdvault), [Stratum](https://github.com/DakodaStemen/Stratum), [smithery](https://github.com/smithery-ai/cli) |
-| **2** Search | Developer | [Phase 2](https://github.com/duketopceo/kurultai/milestone/2) | ✅ [#6](https://github.com/duketopceo/kurultai/issues/6) RRF + testing gates (#23) — [complete](docs/plans/phase-2-complete.md) | [kb-mcp](https://github.com/alphabet-h/kb-mcp), [Stratum](https://github.com/DakodaStemen/Stratum), [sqmd](https://github.com/itkoren/sqmd), [Cerebras KB](https://mer.vin/2026/07/how-cerebras-built-a-15k-query-day-internal-knowledge-base/) |
-| **3** Synthesis | Developer ✓ | [Phase 3](https://github.com/duketopceo/kurultai/milestone/3) | ✅ [#7](https://github.com/duketopceo/kurultai/issues/7)/[#60](https://github.com/duketopceo/kurultai/pull/60) synthesis + `who_knows` + HTTP (privacy/#12/#34 deferred) | [gbrain](https://github.com/imphillip/gbrain-openclaw), [agent-knowledge](https://github.com/keshrath/agent-knowledge), [recall](https://github.com/pratikgajjar/recall), [atomic](https://github.com/yun-lim/atomic) |
-| **4** Expansion | Solo ✓ | [Phase 4](https://github.com/duketopceo/kurultai/milestone/4) | ✅ [#8](https://github.com/duketopceo/kurultai/issues/8)/[#62](https://github.com/duketopceo/kurultai/pull/62)/[#63](https://github.com/duketopceo/kurultai/pull/63) Dayflow + Pond + GitHub FS — [complete](docs/plans/phase-4-complete.md); Composio/plugins deferred | [cocoindex](https://github.com/cocoindex-io/cocoindex), [codebase-graph](https://github.com/Phoenixrr2113/codebase-graph), [Dayflow](https://github.com/JerryZLiu/Dayflow) |
-| **5** Production | Team | [Phase 5](https://github.com/duketopceo/kurultai/milestone/5) | 🚧 daemon poll ([#65](https://github.com/duketopceo/kurultai/pull/65)) → notify watch ([plan](docs/plans/2026-07-25-004-feat-phase-5-notify-watch-plan.md)) → llama.cpp later → [#20](https://github.com/duketopceo/kurultai/issues/20) self-hosted CI | [layer0](https://github.com/amajorai/layer0), [engram-mcp](https://github.com/edg-l/engram-mcp) |
-| **6** Launch | Company | [Phase 6](https://github.com/duketopceo/kurultai/milestone/6) | [#10](https://github.com/duketopceo/kurultai/issues/10) release → [#22](https://github.com/duketopceo/kurultai/issues/22) yurt art | — |
-
-**Cross-cutting (every phase):** [#37](https://github.com/duketopceo/kurultai/issues/37) speed + token doctrine · [#40](https://github.com/duketopceo/kurultai/issues/40) upstream matrix · [#23](https://github.com/duketopceo/kurultai/issues/23) testing & CI gates — coverage rises 50% → 60% → 75% → 80%.
-
-## Roadmap checklist
-
-- [x] Framework foundation ([#18](https://github.com/duketopceo/kurultai/issues/18) / PR [#19](https://github.com/duketopceo/kurultai/pull/19))
-- [x] Storage ([#1](https://github.com/duketopceo/kurultai/issues/1)) — SqliteVecStore FTS + vec0
-- [x] Embeddings ([#2](https://github.com/duketopceo/kurultai/issues/2)) — OpenRouter + NullEmbedder FTS-first
-- [x] Markdown / filesystem connector ([#31](https://github.com/duketopceo/kurultai/issues/31), was #3)
-- [x] CLI wired ([#5](https://github.com/duketopceo/kurultai/issues/5)) — index/status/search via brain views
-- [x] MCP + installer ([#11](https://github.com/duketopceo/kurultai/issues/11)) — stdio `search`/`cite`/`remember` + `init --agent cursor`
-- [x] **Phase 1 exit** — wrap-up: [docs/plans/phase-1-complete.md](docs/plans/phase-1-complete.md) · closeout: [docs/plans/phase-1-closeout.md](docs/plans/phase-1-closeout.md)
-- [ ] AppFlowy connector ([#4](https://github.com/duketopceo/kurultai/issues/4)) — **deferred** (not Phase 1 exit; Expansion)
-- [x] Search & retrieval ([#6](https://github.com/duketopceo/kurultai/issues/6)) — RRF + testing gates; [phase-2-complete.md](docs/plans/phase-2-complete.md); distillation deferred (#12)
-- [x] Synthesis & interface ([#7](https://github.com/duketopceo/kurultai/issues/7) / [#60](https://github.com/duketopceo/kurultai/pull/60)) — ask + who_knows + HTTP; privacy/#12/#34 deferred
-- [x] Expansion connectors ([#8](https://github.com/duketopceo/kurultai/issues/8) / [#62](https://github.com/duketopceo/kurultai/pull/62) / [#63](https://github.com/duketopceo/kurultai/pull/63)) — Dayflow + Pond + GitHub FS; [phase-4-complete.md](docs/plans/phase-4-complete.md); Composio/plugins/#4 deferred
-- [ ] Production readiness ([#9](https://github.com/duketopceo/kurultai/issues/9), [#20](https://github.com/duketopceo/kurultai/issues/20))
-- [ ] Open source launch ([#10](https://github.com/duketopceo/kurultai/issues/10), [#22](https://github.com/duketopceo/kurultai/issues/22))
-
-## Upstream inspiration
-
-Per-work-order context for external repos we **depend on**, **port patterns from**, or **integrate as connectors** — full detail in [docs/upstream-inspiration.md](docs/upstream-inspiration.md) ([#40](https://github.com/duketopceo/kurultai/issues/40)).
-
-**Study first:** [kb-mcp](https://github.com/alphabet-h/kb-mcp) · [layer0](https://github.com/amajorai/layer0) · [cocoindex](https://github.com/cocoindex-io/cocoindex) · [Stratum](https://github.com/DakodaStemen/Stratum) · [recall](https://github.com/pratikgajjar/recall)
-
-**Avoid fork:** [basic-memory](https://github.com/basicmachines-co/basic-memory) (AGPL, markdown-as-truth) · [Graphiti](https://github.com/getzep/graphiti) (Neo4j stack)
-
-## Quality
-
-CI runs on every PR: `cargo fmt`, `clippy -D warnings`, `cargo nextest run --locked` (Linux), `cargo llvm-cov` artifact (no coverage % gate yet), `cargo audit`, and a macOS smoke build (`cargo test`). Coverage floors and stricter gates expand by milestone ([#23](https://github.com/duketopceo/kurultai/issues/23)).
+Upstream notes: [docs/upstream-inspiration.md](docs/upstream-inspiration.md).
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on development setup, coding standards, and the pull request process.
-
-For security vulnerabilities, please see [SECURITY.md](SECURITY.md) for responsible disclosure guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security: [SECURITY.md](SECURITY.md).
 
 ## License
 
@@ -271,4 +158,4 @@ MIT
 
 ## Name
 
-Kurultai (курултай) — a council or assembly in Turkic/Mongolian tradition. A gathering of voices to reach consensus. Fitting for a system that assembles knowledge from many sources.
+Kurultai (курултай) — a council or assembly. Fitting for a system that gathers knowledge from many sources.
