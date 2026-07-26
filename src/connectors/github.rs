@@ -390,6 +390,7 @@ fn make_atom(
             ("chunk_index".into(), chunk_index.to_string()),
             ("chunk_count".into(), chunk_count.to_string()),
         ]),
+        ..Default::default()
     }
 }
 

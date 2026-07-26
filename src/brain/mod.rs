@@ -94,6 +94,7 @@ mod tests {
             indexed_at: Utc::now(),
             embedding: None,
             metadata: Default::default(),
+            ..Default::default()
         };
         let view = AgentAtomView::from_atom(&atom, 0.9, 50);
         assert!(view.excerpt.len() <= 50);

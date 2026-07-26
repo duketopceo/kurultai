@@ -6,9 +6,10 @@ use crate::embed::Embedder;
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::atom_id;
 use crate::mcp::interface::{AgentRead, AgentWrite};
-use crate::query::{expand_markdown_context, hybrid_search};
+use crate::quality::{apply_gate, evaluate, promote_atom, PromoteResult};
+use crate::query::{expand_markdown_context, hybrid_search_filtered};
 use crate::rerank::Reranker;
-use crate::store::Store;
+use crate::store::{SearchFilter, Store};
 use crate::synthesize::{who_knows_from_hits, Synthesizer, WhoKnowsEntry};
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
 use chrono::Utc;
@@ -148,14 +149,42 @@ impl BrainService {
 
     /// Hybrid search + markdown context expand (no activity record).
     async fn hybrid_hits(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        let results =
-            hybrid_search(&self.store, &self.embedder, &self.reranker, query, limit).await?;
+        self.hybrid_hits_filtered(query, limit, SearchFilter::default())
+            .await
+    }
+
+    async fn hybrid_hits_filtered(
+        &self,
+        query: &str,
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<SearchResult>> {
+        let results = hybrid_search_filtered(
+            &self.store,
+            &self.embedder,
+            &self.reranker,
+            query,
+            limit,
+            filter,
+        )
+        .await?;
         expand_markdown_context(&self.store, results).await
     }
 
     /// Search returning token-capped views (primary MCP payload).
     pub async fn search_views(&self, query: &str, limit: usize) -> Result<Vec<AgentAtomView>> {
-        let results = self.search(query, limit).await?;
+        self.search_views_filtered(query, limit, false).await
+    }
+
+    pub async fn search_views_filtered(
+        &self,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+    ) -> Result<Vec<AgentAtomView>> {
+        let results = self
+            .search_filtered(query, limit, include_quarantine)
+            .await?;
         Ok(results
             .into_iter()
             .map(|r| AgentAtomView::from_atom(&r.atom, r.score, DEFAULT_EXCERPT_CAP))
@@ -167,9 +196,70 @@ impl BrainService {
         self.store.count().await
     }
 
+    pub async fn lane_counts(&self) -> Result<(u64, u64, u64)> {
+        let trusted = self
+            .store
+            .count_by_lane(crate::types::TrustLane::Trusted)
+            .await?;
+        let quarantine = self
+            .store
+            .count_by_lane(crate::types::TrustLane::Quarantine)
+            .await?;
+        let merge_pending = self.store.count_merge_candidates_pending().await?;
+        Ok((trusted, quarantine, merge_pending))
+    }
+
     /// Return up to `limit` atoms ordered newest-first (dashboard default view).
     pub async fn list_atoms(&self, limit: usize) -> Result<Vec<KnowledgeAtom>> {
-        self.store.list_atoms(limit).await
+        self.list_atoms_filtered(limit, false).await
+    }
+
+    pub async fn list_atoms_filtered(
+        &self,
+        limit: usize,
+        include_quarantine: bool,
+    ) -> Result<Vec<KnowledgeAtom>> {
+        self.store
+            .list_atoms(
+                limit,
+                SearchFilter {
+                    trusted_only: !include_quarantine,
+                },
+            )
+            .await
+    }
+
+    /// Explicit promote (never called from remember).
+    pub async fn promote(
+        &self,
+        atom_id: &str,
+        actor: &str,
+        reason: Option<&str>,
+    ) -> Result<PromoteResult> {
+        let res = promote_atom(self.store.as_ref(), atom_id, actor, reason).await?;
+        self.activity
+            .record("promote", atom_id, vec![atom_id.to_string()], None);
+        Ok(res)
+    }
+
+    pub fn store(&self) -> Arc<dyn Store> {
+        Arc::clone(&self.store)
+    }
+
+    /// Search with optional quarantine inclusion (HTTP / MCP).
+    pub async fn search_filtered(
+        &self,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+    ) -> Result<Vec<SearchResult>> {
+        let filter = SearchFilter {
+            trusted_only: !include_quarantine,
+        };
+        let results = self.hybrid_hits_filtered(query, limit, filter).await?;
+        let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
+        self.activity.record("search", query, ids, None);
+        Ok(results)
     }
 }
 
@@ -185,10 +275,7 @@ fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Ci
 #[async_trait::async_trait]
 impl AgentRead for BrainService {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        let results = self.hybrid_hits(query, limit).await?;
-        let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
-        self.activity.record("search", query, ids, None);
-        Ok(results)
+        self.search_filtered(query, limit, false).await
     }
 
     async fn cite(&self, source: &str, source_id: &str) -> Result<Option<Citation>> {
@@ -282,7 +369,11 @@ impl AgentWrite for BrainService {
             indexed_at: Utc::now(),
             embedding: None,
             metadata: meta,
+            ..Default::default()
         };
+
+        let outcome = evaluate(self.store.as_ref(), &atom).await?;
+        apply_gate(&mut atom, outcome);
 
         if self.embedder.is_live() {
             let text = format!("{}\n{}", atom.title, atom.content);
@@ -291,9 +382,15 @@ impl AgentWrite for BrainService {
             }
         }
 
+        let lane = atom.trust_lane.as_str().to_string();
+        let q_reason = atom.quarantine_reason.clone();
         self.store.upsert(&atom).await?;
+        let detail = match q_reason {
+            Some(r) => Some(format!("{lane}:{r}")),
+            None => Some(lane),
+        };
         self.activity
-            .record("remember", &title, vec![id.clone()], None);
+            .record("remember", &title, vec![id.clone()], detail);
         Ok(id)
     }
 }

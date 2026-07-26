@@ -50,6 +50,7 @@ fn router(state: AppState) -> Router {
         .route("/api/status", get(api_status))
         .route("/api/atoms", get(api_atoms))
         .route("/api/activity", get(api_activity))
+        .route("/api/promote", post(api_promote))
         .route("/api/search", get(search_get).post(search_post))
         .route("/api/ask", get(ask_get).post(ask_post))
         .route("/api/open", get(api_open))
@@ -70,12 +71,21 @@ async fn api_status(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     match state.brain.atom_count().await {
-        Ok(atoms) => Ok(Json(serde_json::json!({
-            "ok": true,
-            "service": "kurultai",
-            "atoms": atoms,
-            "scheduler": state.status.snapshot(),
-        }))),
+        Ok(atoms) => {
+            let (trusted, quarantine, merge_pending) =
+                state.brain.lane_counts().await.unwrap_or((0, 0, 0));
+            Ok(Json(serde_json::json!({
+                "ok": true,
+                "service": "kurultai",
+                "atoms": atoms,
+                "brain": {
+                    "trusted_count": trusted,
+                    "quarantine_count": quarantine,
+                    "merge_candidates_pending": merge_pending,
+                },
+                "scheduler": state.status.snapshot(),
+            })))
+        }
         Err(e) => Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
@@ -99,9 +109,13 @@ async fn api_atoms(
         .and_then(|v| v.parse().ok())
         .unwrap_or(500)
         .min(500);
+    let include_quarantine = params
+        .get("include_quarantine")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
     state
         .brain
-        .list_atoms(limit)
+        .list_atoms_filtered(limit, include_quarantine)
         .await
         .map(|atoms| {
             Json(
@@ -118,6 +132,32 @@ async fn api_atoms(
             )
         })
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+#[derive(Debug, Deserialize)]
+struct PromoteBody {
+    atom_id: String,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+async fn api_promote(
+    State(state): State<AppState>,
+    Json(body): Json<PromoteBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    state.status.touch_client_activity();
+    match state
+        .brain
+        .promote(&body.atom_id, "http", body.reason.as_deref())
+        .await
+    {
+        Ok(res) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "atom_id": res.atom_id,
+            "actor": res.actor,
+        }))),
+        Err(e) => Err((StatusCode::BAD_REQUEST, e.to_string())),
+    }
 }
 
 async fn api_activity(
@@ -144,6 +184,8 @@ struct SearchQuery {
     q: String,
     #[serde(default = "default_limit")]
     limit: usize,
+    #[serde(default)]
+    include_quarantine: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -156,6 +198,8 @@ struct SearchBody {
     query: String,
     #[serde(default = "default_limit")]
     limit: usize,
+    #[serde(default)]
+    include_quarantine: bool,
 }
 
 async fn search_post(
@@ -165,7 +209,7 @@ async fn search_post(
     state.status.touch_client_activity();
     state
         .brain
-        .search(&body.query, body.limit)
+        .search_filtered(&body.query, body.limit, body.include_quarantine)
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -178,7 +222,7 @@ async fn search_get(
     state.status.touch_client_activity();
     state
         .brain
-        .search(&query.q, query.limit)
+        .search_filtered(&query.q, query.limit, query.include_quarantine)
         .await
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
@@ -645,6 +689,7 @@ mod tests {
             &self,
             _query_embed: &[f32],
             _limit: usize,
+            _filter: crate::store::SearchFilter,
         ) -> crate::Result<Vec<(crate::types::KnowledgeAtom, f64)>> {
             Ok(vec![])
         }
@@ -652,6 +697,7 @@ mod tests {
             &self,
             _query: &str,
             _limit: usize,
+            _filter: crate::store::SearchFilter,
         ) -> crate::Result<Vec<(crate::types::KnowledgeAtom, f64)>> {
             Ok(vec![])
         }
@@ -659,6 +705,7 @@ mod tests {
             &self,
             _query: &str,
             _limit: usize,
+            _filter: crate::store::SearchFilter,
         ) -> crate::Result<Vec<(String, f64)>> {
             Ok(vec![])
         }
@@ -666,6 +713,7 @@ mod tests {
             &self,
             _query_embed: &[f32],
             _limit: usize,
+            _filter: crate::store::SearchFilter,
         ) -> crate::Result<Vec<(String, f64)>> {
             Ok(vec![])
         }
@@ -675,15 +723,25 @@ mod tests {
         ) -> crate::Result<Vec<crate::types::KnowledgeAtom>> {
             Ok(vec![])
         }
+        async fn get(&self, _id: &str) -> crate::Result<Option<crate::types::KnowledgeAtom>> {
+            Ok(None)
+        }
+        async fn delete_atom(&self, _id: &str) -> crate::Result<()> {
+            Ok(())
+        }
         async fn delete_source(&self, _source: &str) -> crate::Result<()> {
             Ok(())
         }
         async fn count(&self) -> crate::Result<u64> {
             Err(crate::KurultaiError::Store("count failed".into()))
         }
+        async fn count_by_lane(&self, _lane: crate::types::TrustLane) -> crate::Result<u64> {
+            Ok(0)
+        }
         async fn list_atoms(
             &self,
             _limit: usize,
+            _filter: crate::store::SearchFilter,
         ) -> crate::Result<Vec<crate::types::KnowledgeAtom>> {
             Ok(vec![])
         }
@@ -704,6 +762,46 @@ mod tests {
         }
         async fn has_fresh_embedding(&self, _id: &str, _content_hash: &str) -> crate::Result<bool> {
             Ok(false)
+        }
+        async fn find_trusted_by_content_hash(
+            &self,
+            _content_hash: &str,
+        ) -> crate::Result<Option<String>> {
+            Ok(None)
+        }
+        async fn set_trust_lane(
+            &self,
+            _id: &str,
+            _lane: crate::types::TrustLane,
+            _quarantine_reason: Option<&str>,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn insert_quality_audit(
+            &self,
+            _action: &str,
+            _atom_id: &str,
+            _actor: &str,
+            _detail: &serde_json::Value,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn insert_merge_candidate(
+            &self,
+            _atom_a: &str,
+            _atom_b: &str,
+            _reason: &str,
+        ) -> crate::Result<bool> {
+            Ok(false)
+        }
+        async fn count_merge_candidates_pending(&self) -> crate::Result<u64> {
+            Ok(0)
+        }
+        async fn list_near_dupe_candidates(
+            &self,
+            _limit: usize,
+        ) -> crate::Result<Vec<crate::types::KnowledgeAtom>> {
+            Ok(vec![])
         }
     }
 

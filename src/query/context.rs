@@ -3,7 +3,7 @@
 use crate::brain::DEFAULT_EXCERPT_CAP;
 use crate::error::Result;
 use crate::store::Store;
-use crate::types::{KnowledgeAtom, SearchResult};
+use crate::types::{KnowledgeAtom, SearchResult, TrustLane};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -30,14 +30,14 @@ pub async fn expand_markdown_context(
 
         if idx > 0 {
             if let Some(prev) = store.get_by_chunk_meta(&source, &rel_path, idx - 1).await? {
-                if !top_ids.contains(&prev.id) {
+                if prev.trust_lane == TrustLane::Trusted && !top_ids.contains(&prev.id) {
                     parts.push(format!("…prev: {}", neighbor_snippet(&prev)));
                 }
             }
         }
 
         if let Some(next) = store.get_by_chunk_meta(&source, &rel_path, idx + 1).await? {
-            if !top_ids.contains(&next.id) {
+            if next.trust_lane == TrustLane::Trusted && !top_ids.contains(&next.id) {
                 parts.push(format!("…next: {}", neighbor_snippet(&next)));
             }
         }

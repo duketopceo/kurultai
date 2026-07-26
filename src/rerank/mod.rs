@@ -223,6 +223,7 @@ mod tests {
                 indexed_at: Utc::now(),
                 embedding: None,
                 metadata: HashMap::new(),
+                ..Default::default()
             },
             score,
             rank: 0,

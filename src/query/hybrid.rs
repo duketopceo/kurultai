@@ -5,7 +5,7 @@ use crate::embed::Embedder;
 use crate::error::Result;
 use crate::query::rrf::{candidate_limit, fuse_rrf_ids, RRF_K};
 use crate::rerank::{apply_rerank_order, Reranker};
-use crate::store::Store;
+use crate::store::{SearchFilter, Store};
 use crate::types::SearchResult;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,6 +18,26 @@ pub async fn hybrid_search(
     query: &str,
     limit: usize,
 ) -> Result<Vec<SearchResult>> {
+    hybrid_search_filtered(
+        store,
+        embedder,
+        reranker,
+        query,
+        limit,
+        SearchFilter::default(),
+    )
+    .await
+}
+
+/// Hybrid search with an explicit trust-lane filter.
+pub async fn hybrid_search_filtered(
+    store: &Arc<dyn Store>,
+    embedder: &Arc<dyn Embedder>,
+    reranker: &Arc<dyn Reranker>,
+    query: &str,
+    limit: usize,
+    filter: SearchFilter,
+) -> Result<Vec<SearchResult>> {
     if query.trim().is_empty() {
         return Ok(vec![]);
     }
@@ -26,7 +46,7 @@ pub async fn hybrid_search(
     let cand = candidate_limit(limit);
 
     let fts_fut = async {
-        match store.fts_search_ids(query, cand).await {
+        match store.fts_search_ids(query, cand, filter).await {
             Ok(hits) => hits,
             Err(err) => {
                 tracing::warn!(error = %err, "FTS search failed; continuing without FTS arm");
@@ -46,7 +66,7 @@ pub async fn hybrid_search(
                 return Vec::new();
             }
         };
-        match store.vector_search_ids(&emb, cand).await {
+        match store.vector_search_ids(&emb, cand, filter).await {
             Ok(hits) => hits,
             Err(err) => {
                 tracing::warn!(error = %err, "vector search failed; using FTS only");

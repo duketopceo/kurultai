@@ -12,6 +12,7 @@ pub mod http;
 pub mod logging;
 pub mod mcp;
 pub mod pipeline;
+pub mod quality;
 pub mod query;
 pub mod rerank;
 pub mod security;

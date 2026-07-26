@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 3;
+pub const CURRENT_SCHEMA_VERSION: i32 = 4;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -45,6 +45,34 @@ CREATE INDEX IF NOT EXISTS idx_atoms_content_hash ON knowledge_atoms(content_has
 
 const MIGRATION_003: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_atoms_indexed_at ON knowledge_atoms(indexed_at DESC);
+"#;
+
+const MIGRATION_004: &str = r#"
+ALTER TABLE knowledge_atoms ADD COLUMN trust_lane TEXT NOT NULL DEFAULT 'trusted';
+ALTER TABLE knowledge_atoms ADD COLUMN quarantine_reason TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_atoms_trust_lane ON knowledge_atoms(trust_lane);
+CREATE INDEX IF NOT EXISTS idx_atoms_hash_trusted
+    ON knowledge_atoms(content_hash) WHERE trust_lane = 'trusted';
+
+CREATE TABLE IF NOT EXISTS quality_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL DEFAULT (datetime('now')),
+    action TEXT NOT NULL,
+    atom_id TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    detail_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS merge_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    atom_a TEXT NOT NULL,
+    atom_b TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(atom_a, atom_b)
+);
 "#;
 
 /// Run pending migrations. Called once when the store opens (before vec0 setup).
@@ -121,6 +149,44 @@ pub fn migrate(conn: &Connection) -> Result<()> {
             .map_err(|e| KurultaiError::Store(format!("migration 003 failed: {e}")))?;
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [3])
             .map_err(|e| KurultaiError::Store(format!("migration 003 record failed: {e}")))?;
+    }
+
+    if current < 4 {
+        match conn.execute_batch(MIGRATION_004) {
+            Ok(()) => {}
+            Err(e) if e.to_string().contains("duplicate column") => {
+                conn.execute_batch(
+                    r#"
+                    CREATE INDEX IF NOT EXISTS idx_atoms_trust_lane ON knowledge_atoms(trust_lane);
+                    CREATE TABLE IF NOT EXISTS quality_audit (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ts TEXT NOT NULL DEFAULT (datetime('now')),
+                        action TEXT NOT NULL,
+                        atom_id TEXT NOT NULL,
+                        actor TEXT NOT NULL,
+                        detail_json TEXT NOT NULL DEFAULT '{}'
+                    );
+                    CREATE TABLE IF NOT EXISTS merge_candidates (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        atom_a TEXT NOT NULL,
+                        atom_b TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        UNIQUE(atom_a, atom_b)
+                    );
+                    "#,
+                )
+                .map_err(|e2| {
+                    KurultaiError::Store(format!("migration 004 recovery failed: {e2}"))
+                })?;
+            }
+            Err(e) => {
+                return Err(KurultaiError::Store(format!("migration 004 failed: {e}")));
+            }
+        }
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [4])
+            .map_err(|e| KurultaiError::Store(format!("migration 004 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");

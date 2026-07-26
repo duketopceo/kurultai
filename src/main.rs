@@ -67,6 +67,14 @@ enum Commands {
     },
     /// List configured sources and status
     Status,
+    /// Promote a quarantined atom to trusted (re-runs quality gate)
+    Promote {
+        /// Atom id
+        atom_id: String,
+        /// Optional audit note
+        #[arg(long)]
+        reason: Option<String>,
+    },
     /// Run MCP server on stdio (for Cursor / Claude)
     Mcp,
     /// Start the daemon (serves HTTP, polls sources, watches filesystem roots)
@@ -170,9 +178,20 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Commands::Promote {
+            ref atom_id,
+            ref reason,
+        } => {
+            let app = bootstrap_app(&cli).await?;
+            let brain = brain_from_app(&app);
+            let res = brain.promote(atom_id, "cli", reason.as_deref()).await?;
+            println!("promoted {} (actor={})", res.atom_id, res.actor);
+        }
         Commands::Status => {
             let app = bootstrap_app(&cli).await?;
             let atom_count = app.atom_count().await?;
+            let brain = brain_from_app(&app);
+            let (trusted, quarantine, merge_pending) = brain.lane_counts().await?;
             println!("Kurultai status");
             println!("  Environment: {}", app.environment);
             println!("  Storage: {}", app.config.storage_path);
@@ -199,6 +218,9 @@ async fn main() -> Result<()> {
                 println!("  Synthesizer: extractive (set OPENROUTER_API_KEY for LLM ask)");
             }
             println!("  Atoms:   {}", atom_count);
+            println!("  Trusted: {}", trusted);
+            println!("  Quarantine: {}", quarantine);
+            println!("  Merge candidates (pending): {}", merge_pending);
 
             if app.connectors.is_empty() {
                 println!("  Sources: (none enabled)");

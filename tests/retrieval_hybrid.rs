@@ -26,6 +26,7 @@ fn sample_atom(id: &str, title: &str, content: &str, embedding: Option<Vec<f32>>
         indexed_at: Utc::now(),
         embedding,
         metadata: HashMap::new(),
+        ..Default::default()
     }
 }
 
@@ -265,6 +266,7 @@ async fn markdown_context_expands_neighbors() {
         f,
         r#"---
 title: Multi
+tags: [test]
 ---
 
 ## First
