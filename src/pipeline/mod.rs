@@ -295,4 +295,44 @@ mod tests {
             "unchanged content must hash-skip re-embed"
         );
     }
+
+    #[tokio::test]
+    async fn live_embedder_writes_vectors_searchable() {
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
+        let db_dir = std::env::temp_dir().join(format!(
+            "kurultai-live-vec-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let store = Arc::new(SqliteVecStore::open(db_dir.join("store.db"), 4).unwrap());
+        let embedder: Arc<dyn Embedder> = Arc::new(CountingEmbedder::new(4));
+        assert!(embedder.is_live());
+        let pipeline = IndexPipeline::new(Arc::clone(&store) as Arc<dyn Store>, embedder);
+
+        let mut connector = MarkdownConnector::new();
+        let mut extra = HashMap::new();
+        extra.insert("root_path".into(), fixture.to_string_lossy().into_owned());
+        connector
+            .init(&SourceConfig {
+                name: "notes".into(),
+                kind: SourceKind::Markdown,
+                enabled: true,
+                poll_interval_secs: 60,
+                extra,
+            })
+            .await
+            .unwrap();
+
+        pipeline
+            .index_connector("notes", &connector, true)
+            .await
+            .unwrap();
+
+        let q = vec![0.1f32, 0.0, 0.0, 0.0];
+        let hits = store.vector_search(&q, 5).await.unwrap();
+        assert!(
+            !hits.is_empty(),
+            "live embedder must write searchable atoms_vec rows"
+        );
+    }
 }

@@ -23,7 +23,7 @@ Kurultai’s doctrine is FTS-first: full-text search is always available; vector
 
 ## Guidance
 
-1. **Missing API key → `NullEmbedder`** (`is_live() == false`). Pipeline skips `embed_batch` and indexes FTS-only.
+1. **Missing API key → `NullEmbedder`** (`is_live() == false`) unless `embed.backend = "local"` (feature `local-embed`). Pipeline skips `embed_batch` and indexes FTS-only when not live.
 2. **Store guard:** only insert into `atoms_vec` when the embedding norm is above `MIN_EMBEDDING_NORM` (~1e-6). Near-zero vectors are dropped, never indexed.
 3. **Search:** FTS always runs; vector arm runs only when the embedder is live and produces a non-zero query vector. Embed failures warn and fall back to FTS.
 4. **Status honesty:** CLI reports `Embedder: none (FTS-only …)` when not live.

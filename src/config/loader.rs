@@ -74,6 +74,7 @@ fn default_config(env: Environment) -> Result<Config> {
             .into_owned(),
         embed_model: "openai/text-embedding-3-large".into(),
         embed_dim: 3072,
+        embed_backend: None,
         reranker_model: None,
         poll_interval_secs: 300,
         nightly_full_sync_hour: None,
@@ -125,6 +126,11 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
             .model
             .unwrap_or_else(|| "openai/text-embedding-3-large".into()),
         embed_dim: file.embed.dimension.unwrap_or(3072),
+        embed_backend: file
+            .embed
+            .backend
+            .map(|b| b.trim().to_ascii_lowercase())
+            .filter(|b| !b.is_empty()),
         reranker_model: file.runtime.reranker_model,
         poll_interval_secs: file.runtime.poll_interval_secs.unwrap_or(300),
         nightly_full_sync_hour: match file.runtime.nightly_full_sync_hour {
@@ -257,6 +263,26 @@ nightly_full_sync_hour = 3
         std::fs::write(&path, toml).unwrap();
         let cfg = load_config_from(&path).unwrap();
         assert_eq!(cfg.nightly_full_sync_hour, Some(3));
+    }
+
+    #[test]
+    fn loads_local_embed_backend() {
+        let dir = tempfile_dir("cfg-local-embed");
+        let path = dir.join("config.toml");
+        let toml = r#"
+environment = "dev"
+[storage]
+path = "/tmp/kurultai-local-embed.db"
+[embed]
+backend = "local"
+model = "AllMiniLML6V2"
+dimension = 384
+"#;
+        std::fs::write(&path, toml).unwrap();
+        let cfg = load_config_from(&path).unwrap();
+        assert_eq!(cfg.embed_backend.as_deref(), Some("local"));
+        assert_eq!(cfg.embed_dim, 384);
+        assert_eq!(cfg.embed_model, "AllMiniLML6V2");
     }
 
     fn tempfile_dir(tag: &str) -> PathBuf {
