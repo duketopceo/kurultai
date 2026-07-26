@@ -37,6 +37,20 @@ Windows (when a release exists): `irm …/scripts/install.ps1 | iex` — until t
 
 Tagged binary releases: workflow is ready (`.github/workflows/release.yml`); **not published yet**.
 
+## Website & team login
+
+| Surface | Path | Purpose |
+|---------|------|---------|
+| Marketing site | [`website/`](website/) | Public Vite landing |
+| Team app | [`web/`](web/) | **Clerk + Sign in with GitHub** (orgs = one shared Kurultai) |
+
+```bash
+cd web && cp .env.example .env.local   # Clerk keys
+npm install && npm run dev             # http://localhost:3000
+```
+
+Enable GitHub under Clerk → Social connections. Multi-user / multi-device model: [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md) ([#81](https://github.com/duketopceo/kurultai/issues/81)).
+
 ## Mac / laptop — stay in dev + debug
 
 ```bash
