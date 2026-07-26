@@ -234,6 +234,10 @@ pub enum SourceKind {
     Dayflow,
     TechTracker,
     GitHub,
+    /// JSON / NDJSON file ingestion. Reads `.json` array-of-objects or `.jsonl`/`.ndjson`
+    /// line-delimited files from a `root_path`. Optional `id_field` in `extra` for stable
+    /// `source_id`.
+    Json,
     Custom(String),
 }
 
