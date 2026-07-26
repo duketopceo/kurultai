@@ -13,6 +13,10 @@ use zerocopy::AsBytes;
 /// Norm below this is treated as a zero / stub vector — never written to `atoms_vec`.
 const MIN_EMBEDDING_NORM: f32 = 1e-6;
 
+/// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
+const ATOM_COLUMNS: &str =
+    "id, source, source_id, title, summary, content, question, resolution, tags_json, source_updated_at, indexed_at, metadata_json";
+
 /// Storage backend for knowledge atoms and their embeddings.
 #[async_trait::async_trait]
 pub trait Store: Send + Sync {
@@ -68,6 +72,9 @@ pub trait Store: Send + Sync {
 
     /// True when atom `id` already has `content_hash` and a stored vector (hash-skip re-embed).
     async fn has_fresh_embedding(&self, id: &str, content_hash: &str) -> Result<bool>;
+
+    /// Return up to `limit` atoms ordered newest-first (no query required).
+    async fn list_atoms(&self, limit: usize) -> Result<Vec<KnowledgeAtom>>;
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -112,6 +119,24 @@ impl SqliteVecStore {
     pub fn get_by_id(&self, id: &str) -> Result<Option<KnowledgeAtom>> {
         let conn = self.lock()?;
         load_atom_by_id(&conn, id)
+    }
+
+    /// Return up to `limit` atoms ordered by indexed_at DESC (newest first).
+    pub fn list_atoms(&self, limit: usize) -> Result<Vec<KnowledgeAtom>> {
+        let conn = self.lock()?;
+        let sql = format!(
+            "SELECT {} FROM knowledge_atoms ORDER BY indexed_at DESC LIMIT ?1",
+            ATOM_COLUMNS
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| KurultaiError::Store(format!("list_atoms prepare: {e}")))?;
+        let atoms = stmt
+            .query_map([limit as i64], row_to_atom)
+            .map_err(|e| KurultaiError::Store(format!("list_atoms query: {e}")))?;
+        atoms
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| KurultaiError::Store(format!("list_atoms collect: {e}")))
     }
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
@@ -439,17 +464,16 @@ impl Store for SqliteVecStore {
         chunk_index: u32,
     ) -> Result<Option<KnowledgeAtom>> {
         let conn = self.lock()?;
+        let sql = format!(
+            "SELECT {} FROM knowledge_atoms
+             WHERE source = ?1
+               AND json_extract(metadata_json, '$.rel_path') = ?2
+               AND CAST(json_extract(metadata_json, '$.chunk_index') AS INTEGER) = ?3
+             LIMIT 1",
+            ATOM_COLUMNS
+        );
         conn.query_row(
-            r#"
-            SELECT id, source, source_id, title, summary, content,
-                   question, resolution, tags_json,
-                   source_updated_at, indexed_at, metadata_json
-            FROM knowledge_atoms
-            WHERE source = ?1
-              AND json_extract(metadata_json, '$.rel_path') = ?2
-              AND CAST(json_extract(metadata_json, '$.chunk_index') AS INTEGER) = ?3
-            LIMIT 1
-            "#,
+            &sql,
             params![source, rel_path, chunk_index as i64],
             row_to_atom,
         )
@@ -474,6 +498,10 @@ impl Store for SqliteVecStore {
             .optional()
             .map_err(|e| KurultaiError::Store(format!("has_fresh_embedding: {e}")))?;
         Ok(found.is_some())
+    }
+
+    async fn list_atoms(&self, limit: usize) -> Result<Vec<KnowledgeAtom>> {
+        self.list_atoms(limit)
     }
 }
 
@@ -541,18 +569,10 @@ const STOPWORDS: &[&str] = &[
 ];
 
 fn load_atom_by_id(conn: &Connection, id: &str) -> Result<Option<KnowledgeAtom>> {
-    conn.query_row(
-        r#"
-        SELECT id, source, source_id, title, summary, content,
-               question, resolution, tags_json,
-               source_updated_at, indexed_at, metadata_json
-        FROM knowledge_atoms WHERE id = ?1
-        "#,
-        [id],
-        row_to_atom,
-    )
-    .optional()
-    .map_err(|e| KurultaiError::Store(format!("load_atom_by_id: {e}")))
+    let sql = format!("SELECT {} FROM knowledge_atoms WHERE id = ?1", ATOM_COLUMNS);
+    conn.query_row(&sql, [id], row_to_atom)
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("load_atom_by_id: {e}")))
 }
 
 fn load_atom_by_source_id(
@@ -560,19 +580,13 @@ fn load_atom_by_source_id(
     source: &str,
     source_id: &str,
 ) -> Result<Option<KnowledgeAtom>> {
-    conn.query_row(
-        r#"
-        SELECT id, source, source_id, title, summary, content,
-               question, resolution, tags_json,
-               source_updated_at, indexed_at, metadata_json
-        FROM knowledge_atoms WHERE source = ?1 AND source_id = ?2
-        LIMIT 1
-        "#,
-        params![source, source_id],
-        row_to_atom,
-    )
-    .optional()
-    .map_err(|e| KurultaiError::Store(format!("load_atom_by_source_id: {e}")))
+    let sql = format!(
+        "SELECT {} FROM knowledge_atoms WHERE source = ?1 AND source_id = ?2 LIMIT 1",
+        ATOM_COLUMNS
+    );
+    conn.query_row(&sql, params![source, source_id], row_to_atom)
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("load_atom_by_source_id: {e}")))
 }
 
 fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
@@ -854,5 +868,52 @@ mod tests {
         ];
         store.upsert_batch(&atoms).await.unwrap();
         assert_eq!(store.count().await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn list_atoms_orders_newest_first_and_respects_limit() {
+        let store = temp_store(4);
+        let mut oldest = sample_atom("oldest", "Oldest", "oldest content", None);
+        let mut middle = sample_atom("middle", "Middle", "middle content", None);
+        let mut newest = sample_atom("newest", "Newest", "newest content", None);
+        oldest.indexed_at = Utc::now() - chrono::Duration::hours(2);
+        middle.indexed_at = Utc::now() - chrono::Duration::hours(1);
+        newest.indexed_at = Utc::now();
+        store.upsert(&oldest).await.unwrap();
+        store.upsert(&middle).await.unwrap();
+        store.upsert(&newest).await.unwrap();
+
+        let all = store.list_atoms(10).unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].title, "Newest");
+        assert_eq!(all[1].title, "Middle");
+        assert_eq!(all[2].title, "Oldest");
+
+        let limited = store.list_atoms(2).unwrap();
+        assert_eq!(limited.len(), 2);
+        assert_eq!(limited[0].title, "Newest");
+        assert_eq!(limited[1].title, "Middle");
+    }
+
+    #[test]
+    fn migration_v3_adds_indexed_at_index() {
+        let store = temp_store(4);
+        let conn = store.lock().unwrap();
+        let version: i32 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, migrations::CURRENT_SCHEMA_VERSION);
+        let index_count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_atoms_indexed_at'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(index_count, 1);
     }
 }

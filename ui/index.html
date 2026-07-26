@@ -77,20 +77,76 @@
             </div>
             
             <div class="flow-container glass-panel">
-                <div class="flow-nodes">
-                    <div class="flow-node node-agent">
-                        <span>Agent (Cursor)</span>
-                    </div>
-                    <div class="flow-arrow">⇄</div>
-                    <div class="flow-node node-kurultai">
-                        <span>Kurultai Brain</span>
-                    </div>
-                    <div class="flow-arrow">⇄</div>
-                    <div class="flow-node node-source">
-                        <span>CodeGraph / DB</span>
-                    </div>
-                </div>
-                <p style="margin-top: 32px; font-size: 0.95rem; text-align: center; max-width: 600px;">
+                <style>
+                    .circuit-svg { width: 100%; max-width: 880px; height: auto; display: block; margin: 0 auto; }
+                    .circuit-node-label { font-family: var(--font-mono); font-size: 13px; fill: #cccccc; text-anchor: middle; }
+                    .circuit-node-title { font-family: var(--font-heading); font-size: 15px; font-weight: 700; text-anchor: middle; letter-spacing: 0.02em; }
+                    .circuit-edge { stroke: rgba(168,85,247,0.35); stroke-width: 2; fill: none; stroke-dasharray: 8 10; animation: circuitFlow 1.4s linear infinite; }
+                    .circuit-edge.reverse { animation-direction: reverse; }
+                    @keyframes circuitFlow { to { stroke-dashoffset: -36; } }
+                    .circuit-halo { animation: circuitPulse 2.6s ease-in-out infinite; }
+                    .circuit-halo-2 { animation: circuitPulse 2.6s ease-in-out infinite 0.8s; }
+                    .circuit-halo-3 { animation: circuitPulse 2.6s ease-in-out infinite 1.6s; }
+                    @keyframes circuitPulse { 0%,100% { opacity: 0.35; r: 26; } 50% { opacity: 0.9; r: 34; } }
+                    @media (prefers-reduced-motion: reduce) {
+                        .circuit-edge, .circuit-halo, .circuit-halo-2, .circuit-halo-3 { animation: none; }
+                    }
+                </style>
+                <svg class="circuit-svg" viewBox="0 0 900 220" role="img" aria-label="Neural circuit loop: Agent, Kurultai Brain, CodeGraph">
+                    <defs>
+                        <filter id="circuit-glow" x="-60%" y="-60%" width="220%" height="220%">
+                            <feGaussianBlur stdDeviation="5" result="blur"/>
+                            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                        </filter>
+                        <radialGradient id="circuit-grad-purple">
+                            <stop offset="0%" stop-color="#c084fc" stop-opacity="1"/>
+                            <stop offset="100%" stop-color="#a855f7" stop-opacity="0.2"/>
+                        </radialGradient>
+                        <radialGradient id="circuit-grad-white">
+                            <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+                            <stop offset="100%" stop-color="#ffffff" stop-opacity="0.15"/>
+                        </radialGradient>
+                    </defs>
+
+                    <!-- Edges: bidirectional flowing electrons -->
+                    <path id="edge-ab" class="circuit-edge" d="M150,110 Q300,60 430,110"/>
+                    <path class="circuit-edge reverse" d="M150,110 Q300,160 430,110"/>
+                    <path id="edge-bc" class="circuit-edge" d="M470,110 Q620,60 750,110"/>
+                    <path class="circuit-edge reverse" d="M470,110 Q620,160 750,110"/>
+
+                    <!-- Electron particles traveling the edges -->
+                    <circle r="3.5" fill="#c084fc" filter="url(#circuit-glow)">
+                        <animateMotion dur="1.8s" repeatCount="indefinite"><mpath href="#edge-ab"/></animateMotion>
+                    </circle>
+                    <circle r="3.5" fill="#ffffff" filter="url(#circuit-glow)">
+                        <animateMotion dur="1.8s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear"><mpath href="#edge-ab"/></animateMotion>
+                    </circle>
+                    <circle r="3.5" fill="#c084fc" filter="url(#circuit-glow)">
+                        <animateMotion dur="1.8s" repeatCount="indefinite"><mpath href="#edge-bc"/></animateMotion>
+                    </circle>
+                    <circle r="3.5" fill="#ffffff" filter="url(#circuit-glow)">
+                        <animateMotion dur="1.8s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear"><mpath href="#edge-bc"/></animateMotion>
+                    </circle>
+
+                    <!-- Node A: Agent -->
+                    <circle class="circuit-halo" cx="130" cy="110" r="30" fill="url(#circuit-grad-white)" opacity="0.5"/>
+                    <circle cx="130" cy="110" r="20" fill="#ffffff" filter="url(#circuit-glow)"/>
+                    <text class="circuit-node-title" x="130" y="170" fill="#ffffff">Agent</text>
+                    <text class="circuit-node-label" x="130" y="190">Cursor · Claude · Codex · Hermes</text>
+
+                    <!-- Node B: Kurultai Brain (focal, purple) -->
+                    <circle class="circuit-halo-2" cx="450" cy="110" r="36" fill="url(#circuit-grad-purple)" opacity="0.6"/>
+                    <circle cx="450" cy="110" r="24" fill="#a855f7" filter="url(#circuit-glow)"/>
+                    <text class="circuit-node-title" x="450" y="170" fill="#c084fc">Kurultai Brain</text>
+                    <text class="circuit-node-label" x="450" y="190">SQLite-vec · FTS5 · RRF</text>
+
+                    <!-- Node C: CodeGraph / DB -->
+                    <circle class="circuit-halo-3" cx="770" cy="110" r="30" fill="url(#circuit-grad-white)" opacity="0.5"/>
+                    <circle cx="770" cy="110" r="20" fill="#ffffff" filter="url(#circuit-glow)"/>
+                    <text class="circuit-node-title" x="770" y="170" fill="#ffffff">CodeGraph / DB</text>
+                    <text class="circuit-node-label" x="770" y="190">Markdown · Dayflow · Pond</text>
+                </svg>
+                <p style="margin-top: 32px; font-size: 0.95rem; text-align: center; max-width: 600px; margin-left:auto; margin-right:auto;">
                     When your coding agent asks <em>"What did we change in the SQL database?"</em>, Kurultai coordinates neural context: querying CodeGraph for symbol diffs, Pond for execution logs, and Markdown for design specs.
                 </p>
             </div>

@@ -43,7 +43,7 @@ Tagged binary releases: workflow is ready (`.github/workflows/release.yml`); **n
 export KURULTAI_ENV=dev
 export RUST_LOG=kurultai=debug
 
-kurultai init --agent all      # cursor + claude + codex (or: cursor | claude | codex)
+kurultai init --agent all      # cursor + claude + codex + hermes (or: cursor | claude | codex | hermes)
 # edit ~/.config/kurultai/config.toml — keep environment = "dev"
 
 kurultai index --full          # FTS-first without OPENROUTER_API_KEY
@@ -52,8 +52,10 @@ kurultai search "database migration" --limit 10
 kurultai ask "what deployments are we running?"
 
 kurultai mcp                   # Cursor / Claude Code / Codex (stdio)
-kurultai daemon --port 8421    # HTTP + poll + watch · UI at /ui · /api/status
+kurultai daemon --port 8421    # HTTP + poll + watch · Brain UI at /ui · /api/status
 ```
+
+**Brain UI (one surface):** with the daemon running, open `http://127.0.0.1:8421/ui`. Assets live in `ui/` and are embedded into the binary — do not add a parallel `website/` / `web/` brain dashboard.
 
 Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md).
 
@@ -75,7 +77,7 @@ Knowledge lives in many places. Kurultai indexes it into one queryable brain so 
 | **Store** | SQLite + FTS5 + sqlite-vec |
 | **Search** | FTS ∥ vector → RRF → optional rerank |
 | **Synthesis** | Extractive / optional LLM `ask` with citations |
-| **Interface** | CLI + MCP stdio + HTTP daemon (poll + notify watch) |
+| **Interface** | CLI + MCP stdio + HTTP daemon (poll + notify watch) · **Brain UI** `GET /ui` (`ui/` embedded) |
 
 ## Configuration
 
@@ -135,7 +137,12 @@ Same stdio server (`kurultai mcp`) for every client — `init` only writes the h
 | `cursor` (default) | `~/.cursor/mcp.json` |
 | `claude` | `~/.claude.json` (Claude Code user scope) |
 | `codex` | `~/.codex/config.toml` |
-| `all` | all three |
+| `hermes` | `~/.hermes/config.yaml` (NousResearch Hermes Agent — tools register as `mcp_kurultai_*`) |
+| `all` | all four |
+
+A portable `kurultai-brain` SKILL.md (agentskills.io-compatible) lives at
+`skills/kurultai-brain/SKILL.md` so Hermes (and other skill hosts) can discover
+how to use the kurultai MCP tools.
 
 Restart the agent after `init` so tools reload.
 
@@ -190,8 +197,8 @@ Deep personal install script (checkout tree): `scripts/install/install.sh` (see 
 | #73 Scheduler | Nightly full hour + idle poll skip + `/api/status` times |
 | #74 Multi-hop | Tag/title hop expansion + `Answer.graph_chain` |
 | #75 Citations | `file_path`, `section`, `title_hash`, char range |
-| #76 Dashboard | `GET /ui` + `GET /api/status` (daemon) |
+| #76 Dashboard | `GET /ui` + `GET /api/status` (daemon; assets in `ui/`) |
 
 Plan: [`docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md`](docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md). Drafts: [`docs/agent-zero/`](docs/agent-zero/).
 
-With the daemon running: open `http://127.0.0.1:8421/ui`.
+With the daemon running: open `http://127.0.0.1:8421/ui` (single Brain UI — see [CONCEPTS.md](CONCEPTS.md#brain-ui)).

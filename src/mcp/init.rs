@@ -17,6 +17,7 @@ pub enum AgentTarget {
     Cursor,
     Claude,
     Codex,
+    Hermes,
     All,
 }
 
@@ -34,9 +35,10 @@ impl FromStr for AgentTarget {
             "cursor" => Ok(Self::Cursor),
             "claude" => Ok(Self::Claude),
             "codex" => Ok(Self::Codex),
+            "hermes" => Ok(Self::Hermes),
             "all" => Ok(Self::All),
             other => Err(format!(
-                "unsupported agent '{other}' — supports: cursor, claude, codex, all"
+                "unsupported agent '{other}' — supports: cursor, claude, codex, hermes, all"
             )),
         }
     }
@@ -58,10 +60,15 @@ pub fn wire_agent(agent: AgentTarget) -> Result<Vec<PathBuf>> {
             true,
         )?]),
         AgentTarget::Codex => Ok(vec![wire_codex_at(&home.join(".codex/config.toml"), &bin)?]),
+        AgentTarget::Hermes => Ok(vec![wire_hermes_at(
+            &home.join(".hermes/config.yaml"),
+            &bin,
+        )?]),
         AgentTarget::All => Ok(vec![
             wire_json_mcp_at(&home.join(".cursor/mcp.json"), &bin, false)?,
             wire_json_mcp_at(&home.join(".claude.json"), &bin, true)?,
             wire_codex_at(&home.join(".codex/config.toml"), &bin)?,
+            wire_hermes_at(&home.join(".hermes/config.yaml"), &bin)?,
         ]),
     }
 }
@@ -170,6 +177,64 @@ fn wire_codex_at(path: &Path, kurultai_bin: &str) -> Result<PathBuf> {
     Ok(path.to_path_buf())
 }
 
+/// Merge `mcp_servers.kurultai` into a Hermes Agent `config.yaml`.
+///
+/// Hermes reads MCP servers from `~/.hermes/config.yaml` under `mcp_servers`
+/// (see https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp).
+/// Stdio shape: `command` + `args`. Tools register as `mcp_kurultai_<tool>`.
+fn wire_hermes_at(path: &Path, kurultai_bin: &str) -> Result<PathBuf> {
+    ensure_parent_dir(path)?;
+
+    let mut root: serde_yaml::Value = match fs::read_to_string(path) {
+        Ok(raw) if raw.trim().is_empty() => {
+            serde_yaml::Value::Mapping(serde_yaml::Mapping::new())
+        }
+        Ok(raw) => serde_yaml::from_str(&raw).map_err(|e| {
+            KurultaiError::config(format!(
+                "existing {} is not valid YAML ({e}); fix or move it before re-running init — refusing to overwrite other MCP servers",
+                path.display()
+            ))
+        })?,
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            serde_yaml::Value::Mapping(serde_yaml::Mapping::new())
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    let mapping = root.as_mapping_mut().ok_or_else(|| {
+        KurultaiError::config(format!("{}: root must be a YAML mapping", path.display()))
+    })?;
+
+    let mcp_servers = mapping
+        .entry(serde_yaml::Value::String("mcp_servers".into()))
+        .or_insert_with(|| serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
+    let servers = mcp_servers.as_mapping_mut().ok_or_else(|| {
+        KurultaiError::config(format!(
+            "{}: mcp_servers must be a YAML mapping",
+            path.display()
+        ))
+    })?;
+
+    let mut kurultai = serde_yaml::Mapping::new();
+    kurultai.insert(
+        serde_yaml::Value::String("command".into()),
+        serde_yaml::Value::String(kurultai_bin.to_string()),
+    );
+    kurultai.insert(
+        serde_yaml::Value::String("args".into()),
+        serde_yaml::Value::Sequence(vec![serde_yaml::Value::String("mcp".into())]),
+    );
+    servers.insert(
+        serde_yaml::Value::String("kurultai".into()),
+        serde_yaml::Value::Mapping(kurultai),
+    );
+
+    let rendered = serde_yaml::to_string(&root)
+        .map_err(|e| KurultaiError::Other(anyhow::anyhow!("encode hermes config.yaml: {e}")))?;
+    atomic_write(path, rendered.as_bytes())?;
+    Ok(path.to_path_buf())
+}
+
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let tmp = path.with_extension(format!(
         "{}.tmp",
@@ -224,11 +289,14 @@ mod tests {
         assert_eq!(AgentTarget::parse("cursor").unwrap(), AgentTarget::Cursor);
         assert_eq!(AgentTarget::parse("Claude").unwrap(), AgentTarget::Claude);
         assert_eq!(AgentTarget::parse("CODEX").unwrap(), AgentTarget::Codex);
+        assert_eq!(AgentTarget::parse("hermes").unwrap(), AgentTarget::Hermes);
+        assert_eq!(AgentTarget::parse("Hermes").unwrap(), AgentTarget::Hermes);
         assert_eq!(AgentTarget::parse("all").unwrap(), AgentTarget::All);
         let err = AgentTarget::parse("bogus").unwrap_err().to_string();
         assert!(err.contains("cursor"));
         assert!(err.contains("claude"));
         assert!(err.contains("codex"));
+        assert!(err.contains("hermes"));
         assert!(err.contains("all"));
     }
 
@@ -314,5 +382,85 @@ mod tests {
         wire_json_mcp_at(&path, "kurultai", true).unwrap();
         let root: JsonValue = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(root["mcpServers"]["kurultai"]["type"], "stdio");
+    }
+
+    #[test]
+    fn hermes_yaml_creates_and_preserves_siblings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        fs::write(
+            &path,
+            "model: \"gpt-5\"\n\nmcp_servers:\n  other:\n    command: \"x\"\n    args: [\"run\"]\n",
+        )
+        .unwrap();
+
+        wire_hermes_at(&path, "/bin/kurultai").unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        let root: serde_yaml::Value = serde_yaml::from_str(&raw).unwrap();
+        assert_eq!(root["model"].as_str(), Some("gpt-5"));
+        assert_eq!(root["mcp_servers"]["other"]["command"].as_str(), Some("x"));
+        assert_eq!(
+            root["mcp_servers"]["kurultai"]["command"].as_str(),
+            Some("/bin/kurultai")
+        );
+        let args = root["mcp_servers"]["kurultai"]["args"]
+            .as_sequence()
+            .unwrap();
+        assert_eq!(args[0].as_str(), Some("mcp"));
+
+        // Idempotent: re-run updates only kurultai, preserves other + model
+        wire_hermes_at(&path, "/opt/kurultai").unwrap();
+        let root: serde_yaml::Value =
+            serde_yaml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(root["model"].as_str(), Some("gpt-5"));
+        assert_eq!(root["mcp_servers"]["other"]["command"].as_str(), Some("x"));
+        assert_eq!(
+            root["mcp_servers"]["kurultai"]["command"].as_str(),
+            Some("/opt/kurultai")
+        );
+    }
+
+    #[test]
+    fn hermes_yaml_creates_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        wire_hermes_at(&path, "kurultai").unwrap();
+        let root: serde_yaml::Value =
+            serde_yaml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            root["mcp_servers"]["kurultai"]["command"].as_str(),
+            Some("kurultai")
+        );
+        assert_eq!(
+            root["mcp_servers"]["kurultai"]["args"][0].as_str(),
+            Some("mcp")
+        );
+    }
+
+    #[test]
+    fn hermes_yaml_invalid_refuses() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        fs::write(&path, "model: \"gpt-5\n  : broken yaml\n").unwrap();
+        let err = wire_hermes_at(&path, "/bin/kurultai").unwrap_err();
+        assert!(err.to_string().contains("not valid YAML"));
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "model: \"gpt-5\n  : broken yaml\n"
+        );
+    }
+
+    #[test]
+    fn hermes_yaml_empty_treats_as_empty_mapping() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        fs::write(&path, "").unwrap();
+        wire_hermes_at(&path, "/bin/kurultai").unwrap();
+        let root: serde_yaml::Value =
+            serde_yaml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            root["mcp_servers"]["kurultai"]["command"].as_str(),
+            Some("/bin/kurultai")
+        );
     }
 }

@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 2;
+pub const CURRENT_SCHEMA_VERSION: i32 = 3;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -41,6 +41,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS atoms_fts USING fts5(
 );
 
 CREATE INDEX IF NOT EXISTS idx_atoms_content_hash ON knowledge_atoms(content_hash);
+"#;
+
+const MIGRATION_003: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_atoms_indexed_at ON knowledge_atoms(indexed_at DESC);
 "#;
 
 /// Run pending migrations. Called once when the store opens (before vec0 setup).
@@ -110,6 +114,13 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         }
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [2])
             .map_err(|e| KurultaiError::Store(format!("migration 002 record failed: {e}")))?;
+    }
+
+    if current < 3 {
+        conn.execute_batch(MIGRATION_003)
+            .map_err(|e| KurultaiError::Store(format!("migration 003 failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [3])
+            .map_err(|e| KurultaiError::Store(format!("migration 003 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");

@@ -1,5 +1,6 @@
 //! Brain facade — AgentRead / AgentWrite over the SQLite store.
 
+use crate::activity::ActivityLog;
 use crate::brain::{AgentAtomView, DEFAULT_EXCERPT_CAP};
 use crate::embed::Embedder;
 use crate::error::{KurultaiError, Result};
@@ -24,6 +25,7 @@ pub struct BrainService {
     embedder: Arc<dyn Embedder>,
     reranker: Arc<dyn Reranker>,
     synthesizer: Arc<dyn Synthesizer>,
+    activity: Arc<ActivityLog>,
 }
 
 /// Second-hop expansion: search shared tags from primary hits, merge unique atoms (#74).
@@ -71,7 +73,12 @@ async fn multi_hop_expand(
     let mut set = tokio::task::JoinSet::new();
     for tag in tags {
         let brain = brain.clone();
-        set.spawn(async move { brain.search(&tag, 4).await.unwrap_or_default() });
+        set.spawn(async move {
+            let hits = brain.hybrid_hits(&tag, 4).await.unwrap_or_default();
+            let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
+            brain.activity.record("search_hop", &tag, ids, None);
+            hits
+        });
     }
     while let Some(joined) = set.join_next().await {
         let hop = match joined {
@@ -110,12 +117,40 @@ impl BrainService {
         reranker: Arc<dyn Reranker>,
         synthesizer: Arc<dyn Synthesizer>,
     ) -> Self {
+        Self::with_activity(
+            store,
+            embedder,
+            reranker,
+            synthesizer,
+            Arc::new(ActivityLog::new()),
+        )
+    }
+
+    pub fn with_activity(
+        store: Arc<dyn Store>,
+        embedder: Arc<dyn Embedder>,
+        reranker: Arc<dyn Reranker>,
+        synthesizer: Arc<dyn Synthesizer>,
+        activity: Arc<ActivityLog>,
+    ) -> Self {
         Self {
             store,
             embedder,
             reranker,
             synthesizer,
+            activity,
         }
+    }
+
+    pub fn activity(&self) -> Arc<ActivityLog> {
+        Arc::clone(&self.activity)
+    }
+
+    /// Hybrid search + markdown context expand (no activity record).
+    async fn hybrid_hits(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        let results =
+            hybrid_search(&self.store, &self.embedder, &self.reranker, query, limit).await?;
+        expand_markdown_context(&self.store, results).await
     }
 
     /// Search returning token-capped views (primary MCP payload).
@@ -131,6 +166,11 @@ impl BrainService {
     pub async fn atom_count(&self) -> Result<u64> {
         self.store.count().await
     }
+
+    /// Return up to `limit` atoms ordered newest-first (dashboard default view).
+    pub async fn list_atoms(&self, limit: usize) -> Result<Vec<KnowledgeAtom>> {
+        self.store.list_atoms(limit).await
+    }
 }
 
 fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Citation {
@@ -145,30 +185,52 @@ fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Ci
 #[async_trait::async_trait]
 impl AgentRead for BrainService {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        let results =
-            hybrid_search(&self.store, &self.embedder, &self.reranker, query, limit).await?;
-        expand_markdown_context(&self.store, results).await
+        let results = self.hybrid_hits(query, limit).await?;
+        let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
+        self.activity.record("search", query, ids, None);
+        Ok(results)
     }
 
     async fn cite(&self, source: &str, source_id: &str) -> Result<Option<Citation>> {
         let Some(atom) = self.store.get_by_source_id(source, source_id).await? else {
+            self.activity.record(
+                "cite",
+                &format!("{source}/{source_id}"),
+                vec![],
+                Some("miss".into()),
+            );
             return Ok(None);
         };
+        let id = atom.id.clone();
+        self.activity
+            .record("cite", &format!("{source}/{source_id}"), vec![id], None);
         Ok(Some(citation_from_atom(&atom, 1.0, true)))
     }
 
     async fn ask(&self, question: &str) -> Result<Answer> {
-        let primary = self.search(question, 8).await?;
+        let primary = self.hybrid_hits(question, 8).await?;
         let hits = multi_hop_expand(self, primary, 8).await?;
         let mut answer = self.synthesizer.synthesize(question, &hits).await?;
         if answer.graph_chain.is_empty() {
             answer.graph_chain = crate::synthesize::graph_chain_from_hits(&hits);
         }
+        let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
+        let detail: Option<String> = {
+            let t: String = answer.answer.chars().take(160).collect();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t)
+            }
+        };
+        self.activity.record("ask", question, ids, detail);
         Ok(answer)
     }
 
     async fn who_knows(&self, topic: &str, limit: usize) -> Result<Vec<WhoKnowsEntry>> {
-        let hits = self.search(topic, limit.max(1)).await?;
+        let hits = self.hybrid_hits(topic, limit.max(1)).await?;
+        let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
+        self.activity.record("who_knows", topic, ids, None);
         Ok(who_knows_from_hits(&hits))
     }
 }
@@ -210,7 +272,7 @@ impl AgentWrite for BrainService {
             id: id.clone(),
             source: source.into(),
             source_id,
-            title,
+            title: title.clone(),
             summary: summary.chars().take(280).collect(),
             content,
             question: None,
@@ -230,6 +292,8 @@ impl AgentWrite for BrainService {
         }
 
         self.store.upsert(&atom).await?;
+        self.activity
+            .record("remember", &title, vec![id.clone()], None);
         Ok(id)
     }
 }
