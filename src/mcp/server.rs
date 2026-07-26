@@ -448,13 +448,17 @@ mod tests {
     use chrono::Utc;
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
 
     async fn brain_with_fixture() -> BrainService {
+        static N: AtomicU64 = AtomicU64::new(0);
         let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
         let db_dir = std::env::temp_dir().join(format!(
-            "kurultai-mcp-rpc-{}",
-            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            "kurultai-mcp-rpc-{}-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or(0),
+            N.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&db_dir).unwrap();
         let store = Arc::new(SqliteVecStore::open(db_dir.join("store.db"), 4).unwrap());

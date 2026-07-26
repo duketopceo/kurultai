@@ -62,13 +62,16 @@ mod tests {
     use crate::types::KnowledgeAtom;
     use chrono::Utc;
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
 
     fn temp_store() -> Arc<SqliteVecStore> {
+        static N: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "kurultai-promote-{}-{}",
+            "kurultai-promote-{}-{}-{}",
             std::process::id(),
-            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            Utc::now().timestamp_nanos_opt().unwrap_or(0),
+            N.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         Arc::new(SqliteVecStore::open(dir.join("store.db"), 4).unwrap())

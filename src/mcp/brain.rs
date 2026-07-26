@@ -407,12 +407,16 @@ mod tests {
     use crate::synthesize::ExtractiveSynthesizer;
     use crate::types::{SourceConfig, SourceKind};
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     async fn brain_with_fixture() -> BrainService {
+        static N: AtomicU64 = AtomicU64::new(0);
         let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
         let db_dir = std::env::temp_dir().join(format!(
-            "kurultai-mcp-{}",
-            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            "kurultai-mcp-{}-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or(0),
+            N.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&db_dir).unwrap();
         let store = Arc::new(SqliteVecStore::open(db_dir.join("store.db"), 4).unwrap());

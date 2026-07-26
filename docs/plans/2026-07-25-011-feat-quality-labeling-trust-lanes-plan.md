@@ -367,15 +367,20 @@ Focus: gate unit tests, retrieval filter integration, promote audit, near-dupe m
 
 ## Appendix: Research breadcrumbs (codebase)
 
+Working tree may already contain partial slice code; `ce-work` derives progress from git vs DoD — do not treat this appendix as a completion ledger.
+
 | Area | Path | Finding |
 |------|------|---------|
-| Atom shape | `src/types.rs:11-38` | No lane field yet; `tags: Vec<String>`, `content` canonical body |
-| Agent write | `src/mcp/brain.rs:240-298` | `remember` → `atom_id` + optional embed + `store.upsert`; no tag gate |
-| Content hash | `src/hashutil.rs:6-19` | `sha256_hex`, `atom_id` / `atom_id_from_hash` |
-| Store upsert | `src/store/mod.rs:148-251` | Computes `content_hash`, hash-skip vec; index on `content_hash` |
-| Hash-skip embed | `src/pipeline/mod.rs:80-113` | Unchanged by this slice |
-| Hybrid search | `src/query/hybrid.rs:14-102` | FTS ∥ vector → RRF; no lane filter yet |
-| Migrations | `src/store/migrations.rs:4-48` | Current v3; v2 added `content_hash` |
-| MCP tools | `src/mcp/server.rs:224-295` | Five tools; promote not present |
+| Atom shape | `src/types.rs` | `TrustLane` + `trust_lane` / `quarantine_reason` on `KnowledgeAtom`; `tags: Vec<String>`, `content` canonical body |
+| Quality gate | `src/quality/gate.rs` | Sync `evaluate` / `apply_gate`: untagged + exact trusted `content_hash` duplicate |
+| Promote | `src/quality/promote.rs`, `src/mcp/brain.rs`, `src/mcp/server.rs` | `promote_atom` + MCP tool `promote`; not on `AgentWrite` trait |
+| Agent write | `src/mcp/brain.rs` | `remember` → gate → optional embed → `store.upsert`; never auto-promotes |
+| Content hash | `src/hashutil.rs` | `sha256_hex`, `atom_id` / `atom_id_from_hash` |
+| Store | `src/store/mod.rs` | `content_hash`, `SearchFilter`, `find_trusted_by_content_hash`, lane counts / audit / merge candidates |
+| Hash-skip embed | `src/pipeline/mod.rs` | Unchanged by this slice; gate runs before upsert |
+| Hybrid search | `src/query/hybrid.rs` | `hybrid_search_filtered` + `SearchFilter` (trusted-by-default) |
+| Migrations | `src/store/migrations.rs` | `CURRENT_SCHEMA_VERSION = 4` (trust lanes + audit + merge candidates) |
+| MCP tools | `src/mcp/server.rs` | Tools include `promote`; search accepts `include_quarantine` |
+| Near-dupe | `src/quality/near_dupe.rs`, `src/quality/merge.rs`, `src/pipeline/mod.rs` | `run_near_dupe_pass` spawned from `IndexPipeline::index_all` after connector batch (off remember hot path) |
 | FTS-first | `docs/solutions/.../fts-first-null-embedder-no-zero-vectors.md` | Retrieval stays FTS-capable without embed key |
-| Daemon | `src/daemon/mod.rs` | Poll/watch loops — hook for near-dupe pass |
+| Daemon | `src/daemon/mod.rs` | `poll_once` / full sync call `pipeline.index_all` — inherits near-dupe spawn; no separate daemon hook needed |
