@@ -254,6 +254,7 @@ mod tests {
             poll_interval_secs: 300,
             nightly_full_sync_hour: None,
             inactivity_threshold_hours: None,
+            banner: crate::art::BannerMode::Auto,
         };
         assert!(crate::config::validate(&cfg).is_ok());
         cfg.embed_backend = Some("cloud".into());

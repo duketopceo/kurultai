@@ -1,5 +1,7 @@
+use crate::art::BannerMode;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::fmt;
 
 /// On-disk TOML shape. Kept separate from runtime `Config` so we can evolve
 /// the file format without breaking internal APIs.
@@ -17,9 +19,68 @@ pub struct FileConfig {
     #[serde(default)]
     pub runtime: FileRuntimeConfig,
 
+    #[serde(default)]
+    pub cli: FileCliConfig,
+
     /// Deployment environment: dev | staging | prod
     #[serde(default)]
     pub environment: Option<String>,
+}
+
+/// `[cli]` presentation settings.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct FileCliConfig {
+    /// `true` | `false` | `"auto"` (default auto = TTY only).
+    #[serde(default)]
+    pub banner: BannerSetting,
+}
+
+/// File-form of [`BannerMode`]; accepts TOML bool or `"auto"` / `"true"` / `"false"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BannerSetting(pub BannerMode);
+
+impl From<BannerSetting> for BannerMode {
+    fn from(value: BannerSetting) -> Self {
+        value.0
+    }
+}
+
+impl<'de> Deserialize<'de> for BannerSetting {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct Visitor;
+
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = BannerSetting;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("true, false, or \"auto\"")
+            }
+
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(BannerSetting(if v {
+                    BannerMode::Always
+                } else {
+                    BannerMode::Never
+                }))
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                match v.trim().to_ascii_lowercase().as_str() {
+                    "auto" => Ok(BannerSetting(BannerMode::Auto)),
+                    "true" | "always" | "on" => Ok(BannerSetting(BannerMode::Always)),
+                    "false" | "never" | "off" => Ok(BannerSetting(BannerMode::Never)),
+                    other => Err(E::custom(format!(
+                        "invalid [cli].banner value {other:?}; expected true, false, or \"auto\""
+                    ))),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(Visitor)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

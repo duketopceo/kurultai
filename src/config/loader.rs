@@ -1,3 +1,4 @@
+use crate::art::BannerMode;
 use crate::config::file::FileConfig;
 use crate::config::validate;
 use crate::environment::Environment;
@@ -79,6 +80,7 @@ fn default_config(env: Environment) -> Result<Config> {
         poll_interval_secs: 300,
         nightly_full_sync_hour: None,
         inactivity_threshold_hours: None,
+        banner: BannerMode::Auto,
     })
 }
 
@@ -143,6 +145,7 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
             }
         },
         inactivity_threshold_hours: file.runtime.inactivity_threshold_hours,
+        banner: file.cli.banner.into(),
     })
 }
 
@@ -286,6 +289,61 @@ nightly_full_sync_hour = 3
         std::fs::write(&path, toml).unwrap();
         let cfg = load_config_from(&path).unwrap();
         assert_eq!(cfg.nightly_full_sync_hour, Some(3));
+    }
+
+    #[test]
+    fn loads_cli_banner_settings() {
+        let dir = tempfile_dir("cfg-banner");
+        let path = dir.join("config.toml");
+        for (value, expected) in [
+            ("true", BannerMode::Always),
+            ("false", BannerMode::Never),
+            ("\"auto\"", BannerMode::Auto),
+        ] {
+            let toml = format!(
+                r#"
+environment = "dev"
+[storage]
+path = "/tmp/kurultai-banner.db"
+[embed]
+model = "openai/text-embedding-3-large"
+dimension = 4
+[cli]
+banner = {value}
+"#
+            );
+            std::fs::write(&path, toml).unwrap();
+            let cfg = load_config_from(&path).unwrap();
+            assert_eq!(cfg.banner, expected, "banner = {value}");
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_cli_banner() {
+        let dir = tempfile_dir("cfg-banner-bad");
+        let path = dir.join("config.toml");
+        let toml = r#"
+environment = "dev"
+[storage]
+path = "/tmp/kurultai-banner-bad.db"
+[embed]
+model = "openai/text-embedding-3-large"
+dimension = 4
+[cli]
+banner = "sometimes"
+"#;
+        std::fs::write(&path, toml).unwrap();
+        let err = load_config_from(&path).unwrap_err();
+        assert!(
+            err.to_string().contains("banner") || err.to_string().contains("cli"),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn default_config_toml_documents_cli_banner() {
+        assert!(default_config_toml().contains("[cli]"));
+        assert!(default_config_toml().contains("banner"));
     }
 
     #[test]

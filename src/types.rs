@@ -262,6 +262,9 @@ pub struct Config {
     /// Skip incremental poll when no client queries for this many hours (#73).
     #[serde(default)]
     pub inactivity_threshold_hours: Option<u64>,
+    /// CLI banner presentation (`[cli] banner`); default auto = TTY only.
+    #[serde(default)]
+    pub banner: crate::art::BannerMode,
 }
 
 #[cfg(test)]

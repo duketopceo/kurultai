@@ -1,5 +1,9 @@
 use clap::{Parser, Subcommand};
 use kurultai::app::App;
+use kurultai::art::{
+    effective_plain, env_no_color_set, print_banner_stdout, ArtVariant, BannerMode,
+};
+use kurultai::config::{config_path, load_config_from};
 use kurultai::environment::Environment;
 use kurultai::error::Result;
 use kurultai::logging;
@@ -25,6 +29,10 @@ struct Cli {
     /// Path to config file (overrides KURULTAI_CONFIG)
     #[arg(long, global = true)]
     config: Option<PathBuf>,
+
+    /// Suppress yurt banner art (also: KURULTAI_PLAIN=1, NO_COLOR)
+    #[arg(long, global = true, default_value_t = false)]
+    plain: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -96,13 +104,23 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Optional help art before clap emits --help (no App / SQLite bootstrap).
+    maybe_print_help_banner();
+
     let cli = Cli::parse();
     let env = Environment::resolve(cli.env.as_deref())?;
     logging::init_logging(cli.log.as_deref(), env)?;
 
+    let plain = effective_plain(cli.plain);
+    let no_color = env_no_color_set();
+
     match cli.command {
         Commands::Init { agent } => {
             let config_path = ensure_default_config()?;
+            let banner_mode = load_config_from(&config_path)
+                .map(|c| c.banner)
+                .unwrap_or(BannerMode::Auto);
+            let _ = print_banner_stdout(ArtVariant::Compact, banner_mode, plain, no_color);
             let mcp_paths = wire_agent(agent)?;
             println!("Config: {}", config_path.display());
             for path in &mcp_paths {
@@ -111,6 +129,7 @@ async fn main() -> Result<()> {
             println!("Restart the agent(s) to load the kurultai MCP server.");
         }
         Commands::Mcp => {
+            // Never print art on MCP stdio — protocol must stay clean.
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
             // MCP must not spam logs to stdout — stderr only via tracing.
@@ -189,6 +208,7 @@ async fn main() -> Result<()> {
         }
         Commands::Status => {
             let app = bootstrap_app(&cli).await?;
+            let _ = print_banner_stdout(ArtVariant::Compact, app.config.banner, plain, no_color);
             let atom_count = app.atom_count().await?;
             let brain = brain_from_app(&app);
             let (trusted, quarantine, merge_pending) = brain.lane_counts().await?;
@@ -313,5 +333,51 @@ async fn bootstrap_app(cli: &Cli) -> Result<App> {
         App::bootstrap_from(path, cli.env.as_deref()).await
     } else {
         App::bootstrap(cli.env.as_deref()).await
+    }
+}
+
+/// Best-effort help banner (KTD6): no store open; config only if cheaply readable.
+fn maybe_print_help_banner() {
+    let args: Vec<String> = std::env::args().collect();
+    let wants_help = args.iter().any(|a| a == "-h" || a == "--help");
+    if !wants_help {
+        return;
+    }
+
+    let plain = effective_plain(args.iter().any(|a| a == "--plain"));
+    let no_color = env_no_color_set();
+    let mode = cheap_banner_mode(&args);
+    let _ = print_banner_stdout(ArtVariant::Wide, mode, plain, no_color);
+}
+
+fn cheap_banner_mode(args: &[String]) -> BannerMode {
+    // Prefer explicit --config path; else default config path if it exists.
+    let mut config_arg: Option<&str> = None;
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--config" {
+            if let Some(p) = args.get(i + 1) {
+                config_arg = Some(p.as_str());
+            }
+            break;
+        }
+        if let Some(rest) = args[i].strip_prefix("--config=") {
+            config_arg = Some(rest);
+            break;
+        }
+        i += 1;
+    }
+
+    if let Some(path) = config_arg {
+        return load_config_from(std::path::Path::new(path))
+            .map(|c| c.banner)
+            .unwrap_or(BannerMode::Auto);
+    }
+
+    match config_path() {
+        Ok(path) if path.exists() => load_config_from(&path)
+            .map(|c| c.banner)
+            .unwrap_or(BannerMode::Auto),
+        _ => BannerMode::Auto,
     }
 }
