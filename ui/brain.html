@@ -210,6 +210,69 @@
             box-shadow: 0 0 16px rgba(255, 255, 255, 0.12);
         }
 
+        .atlas-layout {
+            display: grid;
+            grid-template-columns: 1.35fr 1fr;
+            gap: 24px;
+            align-items: stretch;
+        }
+
+        #brain-atlas-map {
+            position: relative;
+            width: 100%;
+            height: 560px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            background: #000000;
+            box-shadow:
+                inset 0 0 80px rgba(255, 255, 255, 0.03),
+                0 0 40px rgba(255, 255, 255, 0.04);
+            cursor: grab;
+            touch-action: none;
+        }
+
+        #brain-atlas-map:active {
+            cursor: grabbing;
+        }
+
+        #brain-atlas-map canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .atlas-hud {
+            position: absolute;
+            left: 16px;
+            bottom: 16px;
+            z-index: 2;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            padding: 8px 12px;
+        }
+
+        .atlas-tooltip {
+            position: absolute;
+            z-index: 3;
+            display: none;
+            max-width: 280px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            background: rgba(0, 0, 0, 0.92);
+            color: #ffffff;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            pointer-events: none;
+            box-shadow: 0 0 18px rgba(255, 255, 255, 0.12);
+        }
+
         #3d-synapse-graph {
             width: 100%;
             height: 560px;
@@ -222,8 +285,24 @@
                 0 0 40px rgba(255, 255, 255, 0.04);
         }
 
+        .focus-empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            padding: 24px;
+            text-align: center;
+        }
+
         @media (max-width: 992px) {
             .db-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .atlas-layout {
                 grid-template-columns: 1fr;
             }
         }
@@ -244,7 +323,7 @@
                 <a href="index.html">Home</a>
                 <a href="#stats">Brain Stats</a>
                 <a href="#data">Atom Explorer</a>
-                <a href="#vectors">Vector Mapping</a>
+                <a href="#atlas">Brain Atlas</a>
             </nav>
             <a href="https://github.com/duketopceo/kurultai" class="btn-github" target="_blank">GitHub</a>
         </div>
@@ -308,13 +387,27 @@
         </div>
     </section>
 
-    <!-- Vector Space Visualization -->
-    <section id="vectors" class="container vector-space-section">
+    <!-- Brain Atlas (overview) + focus neighborhood synapse -->
+    <section id="atlas" class="container vector-space-section">
         <div class="section-header" style="margin-bottom: 32px;">
-            <h2>3D Synaptic Network</h2>
-            <p>Interactive force-directed graph of indexed atoms. Hover a node to light its connections; soft pulses show delayed algorithm activity across the network.</p>
+            <h2>Brain Atlas</h2>
+            <p>Semantic overview map of the whole vault. Click a point (or an atom in the list) to open a local 3D synapse hologram of that atom and its neighbors — Connected Papers style.</p>
         </div>
-        <div id="3d-synapse-graph" class="glass-panel"></div>
+        <div class="atlas-layout">
+            <div>
+                <div class="detail-label" style="margin-bottom: 12px;">Overview map</div>
+                <div id="brain-atlas-map" class="glass-panel" aria-label="Brain atlas overview map">
+                    <div id="atlas-hud" class="atlas-hud">scroll to zoom · drag to pan · click to focus</div>
+                    <div id="atlas-tooltip" class="atlas-tooltip" role="tooltip"></div>
+                </div>
+            </div>
+            <div>
+                <div class="detail-label" style="margin-bottom: 12px;">Focus synapse</div>
+                <div id="3d-synapse-graph" class="glass-panel">
+                    <div class="focus-empty" id="focus-empty">Select an atom to load its neighborhood hologram</div>
+                </div>
+            </div>
+        </div>
     </section>
 
     <!-- Footer -->
