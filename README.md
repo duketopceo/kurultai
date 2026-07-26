@@ -169,7 +169,7 @@ Multi-user model: [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md). Co
 |---|---------|-------------|----------|
 | Storage | `…/kurultai/dev/store.db` | `…/staging/…` | `…/store.db` |
 | Logging | `kurultai=debug` | info | warn |
-| API keys | Optional (FTS) | Optional for FTS; required for embeddings | Same |
+| API keys | Optional (FTS) | Optional for FTS; required for **remote** embeddings (OpenRouter). Local ONNX (`embed.backend = "local"`) needs no cloud key | Same |
 
 ## Docs & contributing
 
@@ -180,7 +180,18 @@ Multi-user model: [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md). Co
 
 Roadmap: developer → solo → team → company ([#25](https://github.com/duketopceo/kurultai/issues/25), [#27](https://github.com/duketopceo/kurultai/issues/27)).
 
+<<<<<<< HEAD
 **Phase 6 (in progress):** Open Source Launch ([#10](https://github.com/duketopceo/kurultai/issues/10)) — first polish slice is Yurt terminal art ([#22](https://github.com/duketopceo/kurultai/issues/22)).
+=======
+| Phase | Status |
+|-------|--------|
+| 1–3 Foundation / search / synthesis | ✅ |
+| 4 Expansion (Dayflow · Pond · GitHub FS) | ✅ [complete](docs/plans/phase-4-complete.md) |
+| 5 Production (poll · watch · local ONNX · MCP agents) | ✅ [complete](docs/plans/phase-5-complete.md) · [closeout](docs/plans/phase-5-closeout.md) |
+| 6 Launch (release packaging, yurt art) | 📋 [#10](https://github.com/duketopceo/kurultai/issues/10) |
+
+Deferred ops (not Phase 5 product exit): [#20](https://github.com/duketopceo/kurultai/issues/20) ARC · [#29](https://github.com/duketopceo/kurultai/issues/29) env hardening · [#35](https://github.com/duketopceo/kurultai/issues/35) GlitchTip — see [phase-5-complete.md](docs/plans/phase-5-complete.md).
+>>>>>>> origin/main
 
 ## License
 
