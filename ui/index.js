@@ -4,7 +4,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const themeToggle = document.getElementById("theme-toggle");
     function applyTheme(theme) {
         document.documentElement.dataset.theme = theme;
-        localStorage.setItem("kurultai-theme", theme);
+        try {
+            localStorage.setItem("kurultai-theme", theme);
+        } catch (_) { /* private mode / blocked storage */ }
         const isLight = theme === "light";
         if (themeToggle) {
             themeToggle.setAttribute("aria-pressed", String(isLight));
@@ -103,11 +105,6 @@ document.addEventListener("DOMContentLoaded", () => {
     let width  = (canvas.width  = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
 
-    window.addEventListener("resize", () => {
-        width  = canvas.width  = window.innerWidth;
-        height = canvas.height = window.innerHeight;
-    });
-
     const mouse = { x: null, y: null, radius: 140 };
     window.addEventListener("mousemove", (e) => { mouse.x = e.x; mouse.y = e.y; });
     window.addEventListener("mouseleave", () => { mouse.x = null; mouse.y = null; });
@@ -158,6 +155,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const numParticles = Math.min(90, Math.floor((width * height) / 16000));
     const particles    = Array.from({ length: numParticles }, () => new Particle());
+
+    window.addEventListener("resize", () => {
+        width  = canvas.width  = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        particles.forEach((p) => {
+            p.x = Math.min(Math.max(p.x, 0), width);
+            p.y = Math.min(Math.max(p.y, 0), height);
+        });
+    });
 
     function drawLines() {
         for (let i = 0; i < particles.length; i++) {

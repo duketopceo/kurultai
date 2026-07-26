@@ -12,11 +12,14 @@ pub fn default_config_toml() -> &'static str {
 path = "~/.local/share/kurultai/dev/store.db"
 
 [embed]
+# OpenRouter / cloud (default when an API key is set):
 model = "openai/text-embedding-3-large"
 dimension = 3072
-# backend = "local"   # requires: cargo build --features local-embed
+# Local ONNX alternative (requires: cargo build --features local-embed).
+# Replace the two lines above — do not leave conflicting model/dimension active:
+# backend = "local"
 # model = "AllMiniLML6V2"
-# dimension = 384     # must match model + storage; mismatch fails at open
+# dimension = 384
 
 [runtime]
 poll_interval_secs = 300

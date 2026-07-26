@@ -126,11 +126,18 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
             .model
             .unwrap_or_else(|| "openai/text-embedding-3-large".into()),
         embed_dim: file.embed.dimension.unwrap_or(3072),
-        embed_backend: file
-            .embed
-            .backend
-            .map(|b| b.trim().to_ascii_lowercase())
-            .filter(|b| !b.is_empty()),
+        embed_backend: match &file.embed.backend {
+            None => None,
+            Some(b) => {
+                let trimmed = b.trim();
+                if trimmed.is_empty() {
+                    return Err(KurultaiError::config(
+                        "embed.backend is empty; use \"local\" or omit the key",
+                    ));
+                }
+                Some(trimmed.to_ascii_lowercase())
+            }
+        },
         reranker_model: file.runtime.reranker_model,
         poll_interval_secs: file.runtime.poll_interval_secs.unwrap_or(300),
         nightly_full_sync_hour: match file.runtime.nightly_full_sync_hour {
@@ -283,6 +290,27 @@ dimension = 384
         assert_eq!(cfg.embed_backend.as_deref(), Some("local"));
         assert_eq!(cfg.embed_dim, 384);
         assert_eq!(cfg.embed_model, "AllMiniLML6V2");
+    }
+
+    #[test]
+    fn rejects_empty_embed_backend() {
+        let dir = tempfile_dir("cfg-empty-backend");
+        let path = dir.join("config.toml");
+        let toml = r#"
+environment = "dev"
+[storage]
+path = "/tmp/kurultai-empty-backend.db"
+[embed]
+backend = ""
+model = "openai/text-embedding-3-large"
+dimension = 4
+"#;
+        std::fs::write(&path, toml).unwrap();
+        let err = load_config_from(&path).unwrap_err().to_string();
+        assert!(
+            err.contains("embed.backend is empty"),
+            "unexpected error: {err}"
+        );
     }
 
     fn tempfile_dir(tag: &str) -> PathBuf {

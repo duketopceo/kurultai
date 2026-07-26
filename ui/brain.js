@@ -198,7 +198,13 @@
 
   let searchDelay;
   async function search(query) {
-    if (!query.trim()) { state.query = ""; await loadAtoms(); return; }
+    if (!query.trim()) {
+      state.query = "";
+      elements.dropdown.hidden = true;
+      elements.dropdown.innerHTML = "";
+      await loadAtoms();
+      return;
+    }
     try {
       const results = (await getJson(`/api/search?q=${encodeURIComponent(query)}&limit=80`)).map(normalize);
       state.query = query;
@@ -281,8 +287,18 @@
     const raycaster = new THREE.Raycaster();
     const pointer   = new THREE.Vector2();
     let objects = [], nodeMap = new Map(), links = [];
-    let hover = null, dragging = false, last = null;
+    let hover = null, hoveredId = null, dragging = false, last = null;
     let yaw = 0, pitch = 0, distance = 24;
+
+    function disposeGroup(group) {
+      group.traverse((child) => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+          else child.material.dispose();
+        }
+      });
+    }
 
     function nodeMaterial(active) {
       return new THREE.MeshBasicMaterial({
@@ -312,6 +328,8 @@
     }
 
     function update(atoms) {
+      disposeGroup(nodes);
+      disposeGroup(edges);
       nodes.clear(); edges.clear();
       objects = []; nodeMap = new Map();
       links = buildRelationships(atoms);
@@ -352,9 +370,20 @@
     }
 
     /* Hover: highlight hovered node + connected edges/nodes */
+    function placeTooltip(event) {
+      const rect = stage.getBoundingClientRect();
+      elements.tooltip.style.left = `${Math.min(event.clientX - rect.left + 12, rect.width - 190)}px`;
+      elements.tooltip.style.top  = `${Math.min(event.clientY - rect.top  + 12, rect.height - 56)}px`;
+    }
+
     function showHover(mesh, event) {
+      const nextId = mesh.userData.atom.id;
+      if (hoveredId === nextId) {
+        placeTooltip(event);
+        return;
+      }
       hover = mesh;
-      const hoveredId = mesh.userData.atom.id;
+      hoveredId = nextId;
       const connectedIds = new Set();
       links.forEach((link) => {
         if (link.a === hoveredId) connectedIds.add(link.b);
@@ -388,15 +417,13 @@
       const metaEl = document.createElement("span");
       metaEl.textContent = `${atom.tags.length} tags · ${atom.tier}`;
       elements.tooltip.append(titleEl, metaEl);
-
-      const rect = stage.getBoundingClientRect();
-      elements.tooltip.style.left = `${Math.min(event.clientX - rect.left + 12, rect.width - 190)}px`;
-      elements.tooltip.style.top  = `${Math.min(event.clientY - rect.top  + 12, rect.height - 56)}px`;
+      placeTooltip(event);
       renderInspector(atom);
     }
 
     function clearHover() {
       hover = null;
+      hoveredId = null;
       elements.tooltip.hidden = true;
       objects.forEach((node) => {
         node.material.color.setHex(COLOUR.nodeBase);
