@@ -4,13 +4,17 @@
 
 - Do not commit `.cursor/` contents.
 - Before changing Kurultai Brain/dashboard visuals, ask first — the current design is largely liked.
-- Brain synaptic visualization: prefer a deep black background with white/electric nodes; hovering a node should highlight its connections; avoid extra chrome (control buttons and live/suggested/showcase MCP callouts).
+- Keep the dashboard layout with the brain as the main focal point; do not replace it with a full-viewport-only redesign unless asked.
+- Brain synaptic visualization: deep black background; black/white plus slight purple only (three colors); neurons/synapses with electric zap/shimmer (not plain white orbs); hovering a node highlights its connections; avoid extra chrome (control buttons and live/suggested/showcase MCP callouts).
+- Brain camera should start with the whole graph in view (no opening live zoom-in); search needs a clear/reset control; do not add circle or brain-shape layout modes.
+- Version/tag before risky Brain UI experiments so rollback is easy.
 
 ## Learned Workspace Facts
 
-- Brain UI assets live in `ui/` and are embedded in the daemon binary; with the daemon running, open `http://127.0.0.1:8421/ui` — do not maintain a parallel brain dashboard under `website/` or `web/`.
+- Brain UI assets live in `ui/` and are embedded in the daemon binary; with the daemon running, open `http://127.0.0.1:8421/ui/` — do not maintain a parallel brain dashboard under `website/` or `web/`.
 - Local Vite preview commonly runs from `website/` on `http://127.0.0.1:5174` (`npm run dev -- --host 127.0.0.1 --port 5174`) and can serve live `ui/` files; embedded daemon UI changes need a rebuild.
 - Default local daemon: `./target/debug/kurultai daemon --port 8421` from the repo root.
+- Large brain graphs should use tiered loading (hot/warm/cold, timestamped) rather than shipping all nodes to the browser at once.
 
 ## Cursor Cloud specific instructions
 
