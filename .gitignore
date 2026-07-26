@@ -43,3 +43,6 @@ web/out/
 web/.env
 web/.env.local
 web/.env.*.local
+.harness/workspace/
+.harness/offloads/
+.harness/threads/
