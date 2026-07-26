@@ -219,7 +219,29 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // 7. 3D synapse graph (3d-force-graph via CDN, same as before)
+    // 7. 3D synapse graph — glowing nodes (additive-blended halo sprites) + compact layout
+    const glowTextures = {};
+    function makeGlowTexture(rgb) {
+        const c = document.createElement("canvas");
+        c.width = c.height = 128;
+        const ctx = c.getContext("2d");
+        const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        g.addColorStop(0, `rgba(${rgb}, 0.95)`);
+        g.addColorStop(0.35, `rgba(${rgb}, 0.45)`);
+        g.addColorStop(1, `rgba(${rgb}, 0)`);
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, 128, 128);
+        const tex = new THREE.CanvasTexture(c);
+        tex.needsUpdate = true;
+        return tex;
+    }
+    function glowTex(colorKey) {
+        if (!glowTextures[colorKey]) {
+            glowTextures[colorKey] = makeGlowTexture(colorKey);
+        }
+        return glowTextures[colorKey];
+    }
+
     function update3DGraph(atoms) {
         if (!graphContainer || typeof ForceGraph3D === "undefined") return;
 
@@ -229,9 +251,10 @@ document.addEventListener("DOMContentLoaded", () => {
             source: atom.source,
             source_id: atom.source_id,
             tags: atom.tags,
-            // High-contrast palette: white default, purple for tagged/highlighted atoms
+            // High-contrast palette: white default, purple for tagged atoms
             color: (atom.tags && atom.tags.length > 0) ? "#c084fc" : "#ffffff",
-            val: 5
+            rgb: (atom.tags && atom.tags.length > 0) ? "192, 132, 252" : "255, 255, 255",
+            val: Math.max(3, (atom.tags && atom.tags.length || 0) + 4)
         }));
 
         const links = [];
@@ -245,24 +268,45 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
 
-        if (!Graph) {
+        const buildGraph = () => {
             Graph = ForceGraph3D()(graphContainer)
                 .graphData({ nodes, links })
                 .backgroundColor("#000000")
                 .nodeColor(node => node.color)
+                .nodeThreeObject(node => {
+                    if (typeof THREE === "undefined") return null;
+                    const group = new THREE.Group();
+                    const radius = Math.max(2, node.val);
+                    const core = new THREE.Mesh(
+                        new THREE.SphereGeometry(radius, 16, 16),
+                        new THREE.MeshBasicMaterial({ color: node.color })
+                    );
+                    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+                        map: glowTex(node.rgb),
+                        blending: THREE.AdditiveBlending,
+                        transparent: true,
+                        depthWrite: false
+                    }));
+                    const haloScale = radius * 6;
+                    halo.scale.set(haloScale, haloScale, 1);
+                    group.add(core);
+                    group.add(halo);
+                    return group;
+                })
+                .nodeThreeObjectExtend(true)
                 .nodeLabel(node => `
                     <div style="background: rgba(0, 0, 0, 0.9); border: 1px solid #c084fc; border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 0.85rem; color: #ffffff; pointer-events: none;">
                         <strong style="color: #c084fc; font-size: 0.9rem;">${node.title}</strong><br/>
                         <span style="color: #888888;">Source: ${node.source}/${node.source_id}</span><br/>
-                        <span style="color: #c084fc;">Tags: ${node.tags.join(", ")}</span>
+                        <span style="color: #c084fc;">Tags: ${(node.tags || []).join(", ")}</span>
                     </div>
                 `)
                 .nodeRelSize(3)
-                .linkColor(() => "rgba(255, 255, 255, 0.12)")
+                .linkColor(() => "rgba(168, 85, 247, 0.18)")
                 .linkWidth(0.5)
-                .linkDirectionalParticles(2)
-                .linkDirectionalParticleSpeed(0.006)
-                .linkDirectionalParticleWidth(1.5)
+                .linkDirectionalParticles(1)
+                .linkDirectionalParticleSpeed(0.004)
+                .linkDirectionalParticleWidth(1.4)
                 .linkDirectionalParticleColor(() => "#c084fc")
                 .onNodeClick(node => {
                     const atom = currentAtoms.find(a => a.id === node.id);
@@ -273,11 +317,25 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 });
 
+            // Compact layout — dampen charge so nodes don't drift to the far distance
+            const charge = Graph.d3Force("charge");
+            if (charge) charge.strength(-18);
+            const link = Graph.d3Force("link");
+            if (link) link.distance(30);
+
             Graph.width(graphContainer.clientWidth);
             Graph.height(500);
             window.addEventListener("resize", () => Graph.width(graphContainer.clientWidth));
+
+            // Frame the whole graph after the simulation settles a beat
+            setTimeout(() => { try { Graph.zoomToFit(1000, 80); } catch (e) {} }, 1400);
+        };
+
+        if (!Graph) {
+            buildGraph();
         } else {
             Graph.graphData({ nodes, links });
+            try { Graph.zoomToFit(800, 80); } catch (e) {}
         }
     }
 
