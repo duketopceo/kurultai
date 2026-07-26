@@ -959,7 +959,8 @@ impl Store for SqliteVecStore {
         let now = Utc::now();
         let mut out = Vec::with_capacity(limit.min(1024));
         for row in rows {
-            let atom = row.map_err(|e| KurultaiError::Store(format!("list_graph_nodes row: {e}")))?;
+            let atom =
+                row.map_err(|e| KurultaiError::Store(format!("list_graph_nodes row: {e}")))?;
             let t = classify(atom.indexed_at, atom.last_accessed_at, now, policy);
             if let Some(want) = tier {
                 if t != want {
@@ -1562,7 +1563,12 @@ mod tests {
         assert_eq!((h, w, c), (1, 1, 1));
 
         let hot_nodes = store
-            .list_graph_nodes(Some(MemoryTier::Hot), 10, SearchFilter::default(), TierPolicy::default())
+            .list_graph_nodes(
+                Some(MemoryTier::Hot),
+                10,
+                SearchFilter::default(),
+                TierPolicy::default(),
+            )
             .await
             .unwrap();
         assert_eq!(hot_nodes.len(), 1);
@@ -1570,7 +1576,12 @@ mod tests {
         assert!(hot_nodes[0].summary.is_some());
 
         let warm_nodes = store
-            .list_graph_nodes(Some(MemoryTier::Warm), 10, SearchFilter::default(), TierPolicy::default())
+            .list_graph_nodes(
+                Some(MemoryTier::Warm),
+                10,
+                SearchFilter::default(),
+                TierPolicy::default(),
+            )
             .await
             .unwrap();
         assert_eq!(warm_nodes.len(), 1);

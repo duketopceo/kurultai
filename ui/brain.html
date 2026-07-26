@@ -156,6 +156,7 @@
             display: flex;
             gap: 12px;
             margin-bottom: 24px;
+            align-items: stretch;
         }
 
         .search-input {
@@ -174,6 +175,83 @@
         .search-input:focus {
             border-color: rgba(160, 200, 255, 0.5);
             box-shadow: 0 0 18px rgba(120, 170, 255, 0.15);
+        }
+
+        .search-clear-btn {
+            padding: 0 18px;
+            border-radius: 8px;
+            border: 1px solid rgba(160, 200, 255, 0.35);
+            background: rgba(120, 170, 255, 0.08);
+            color: #eaf2ff;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: var(--transition-smooth);
+        }
+
+        .search-clear-btn:hover {
+            border-color: rgba(180, 210, 255, 0.6);
+            background: rgba(120, 170, 255, 0.16);
+            box-shadow: 0 0 16px rgba(120, 170, 255, 0.15);
+        }
+
+        .search-clear-btn[hidden] {
+            display: none !important;
+        }
+
+        .brain-layout-controls {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            z-index: 4;
+            display: flex;
+            gap: 8px;
+        }
+
+        .layout-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 999px;
+            border: 1px solid rgba(160, 200, 255, 0.35);
+            background: rgba(0, 0, 0, 0.65);
+            color: rgba(220, 235, 255, 0.85);
+            cursor: pointer;
+            display: grid;
+            place-items: center;
+            backdrop-filter: blur(12px);
+            transition: transform 0.45s cubic-bezier(0.32, 0.72, 0, 1),
+                        border-color 0.45s cubic-bezier(0.32, 0.72, 0, 1),
+                        box-shadow 0.45s cubic-bezier(0.32, 0.72, 0, 1),
+                        background 0.45s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+
+        .layout-btn:hover {
+            border-color: rgba(180, 210, 255, 0.65);
+            box-shadow: 0 0 18px rgba(120, 170, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .layout-btn.active {
+            border-color: rgba(200, 225, 255, 0.85);
+            background: rgba(120, 170, 255, 0.2);
+            box-shadow: 0 0 22px rgba(140, 190, 255, 0.28);
+        }
+
+        .layout-btn:active {
+            transform: scale(0.96);
+        }
+
+        .layout-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
         .view-toggle-row {
@@ -344,6 +422,17 @@
                 <div class="brain-shimmer" aria-hidden="true"></div>
                 <div id="3d-synapse-graph" aria-label="Synaptic brain network"></div>
                 <div class="brain-vignette" aria-hidden="true"></div>
+                <div class="brain-layout-controls" role="group" aria-label="Synapse formation">
+                    <button type="button" class="layout-btn active" id="layout-force" title="Organic force" aria-pressed="true">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="8" r="2"/><circle cx="16" cy="7" r="2"/><circle cx="12" cy="16" r="2"/><path d="M8.5 9.2 14.5 8.2M8.2 9.8 11 14.5M14.8 8.8 12.8 14.2"/></svg>
+                    </button>
+                    <button type="button" class="layout-btn" id="layout-circle" title="Circle formation" aria-pressed="false">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="5" r="1.2"/><circle cx="17.5" cy="15.5" r="1.2"/><circle cx="6.5" cy="15.5" r="1.2"/></svg>
+                    </button>
+                    <button type="button" class="layout-btn" id="layout-brain" title="Brain formation" aria-pressed="false">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 4.8c-2.2.2-3.7 2.2-3.5 4.3-.9.6-1.4 1.7-1.2 2.9.3 1.6 1.7 2.7 3.3 2.7h.2c.2 1.6 1.5 2.9 3.1 2.9.7 0 1.3-.2 1.8-.6.5.4 1.2.6 1.9.6 1.7 0 3-1.3 3.1-2.9h.1c1.6 0 3-1.1 3.3-2.7.3-1.3-.2-2.4-1.1-3 .1-2.1-1.3-4-3.5-4.2-1-.9-2.4-1.2-3.6-.8-1.1-.5-2.5-.3-3.9.8z"/><path d="M12 5.5v12.2"/><path d="M8.2 9.2c1.2.4 2.1 1.4 2.3 2.6M15.8 9.2c-1.2.4-2.1 1.4-2.3 2.6"/></svg>
+                    </button>
+                </div>
                 <div id="brain-hud-hint">loading neurons…</div>
             </div>
         </div>
@@ -377,7 +466,8 @@
 
     <section id="data" class="container" style="margin-bottom: 80px;">
         <div class="search-box">
-            <input type="text" id="brain-search" class="search-input" placeholder="Search FTS / Vector space (e.g. 'postgres', 'lente', 'revenue')...">
+            <input type="text" id="brain-search" class="search-input" placeholder="Search FTS / Vector space (e.g. 'postgres', 'lente', 'revenue')..." autocomplete="off">
+            <button type="button" id="search-clear" class="search-clear-btn" hidden aria-label="Clear search">Clear</button>
         </div>
 
         <div class="db-layout">

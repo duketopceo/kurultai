@@ -130,28 +130,48 @@ mod tests {
     #[test]
     fn recent_access_is_hot() {
         let now = Utc::now();
-        let t = classify(now - Duration::days(30), now - Duration::days(1), now, TierPolicy::default());
+        let t = classify(
+            now - Duration::days(30),
+            now - Duration::days(1),
+            now,
+            TierPolicy::default(),
+        );
         assert_eq!(t, MemoryTier::Hot);
     }
 
     #[test]
     fn fresh_index_is_hot() {
         let now = Utc::now();
-        let t = classify(now - Duration::hours(12), now - Duration::days(30), now, TierPolicy::default());
+        let t = classify(
+            now - Duration::hours(12),
+            now - Duration::days(30),
+            now,
+            TierPolicy::default(),
+        );
         assert_eq!(t, MemoryTier::Hot);
     }
 
     #[test]
     fn mid_age_is_warm() {
         let now = Utc::now();
-        let t = classify(now - Duration::days(30), now - Duration::days(30), now, TierPolicy::default());
+        let t = classify(
+            now - Duration::days(30),
+            now - Duration::days(30),
+            now,
+            TierPolicy::default(),
+        );
         assert_eq!(t, MemoryTier::Warm);
     }
 
     #[test]
     fn ancient_is_cold() {
         let now = Utc::now();
-        let t = classify(now - Duration::days(200), now - Duration::days(200), now, TierPolicy::default());
+        let t = classify(
+            now - Duration::days(200),
+            now - Duration::days(200),
+            now,
+            TierPolicy::default(),
+        );
         assert_eq!(t, MemoryTier::Cold);
     }
 }
