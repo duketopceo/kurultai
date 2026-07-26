@@ -166,7 +166,7 @@ Multi-user model: [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md). Co
 |---|---------|-------------|----------|
 | Storage | `…/kurultai/dev/store.db` | `…/staging/…` | `…/store.db` |
 | Logging | `kurultai=debug` | info | warn |
-| API keys | Optional (FTS) | Optional for FTS; required for embeddings | Same |
+| API keys | Optional (FTS) | Optional for FTS; required for **remote** embeddings (OpenRouter). Local ONNX (`embed.backend = "local"`) needs no cloud key | Same |
 
 ## Docs & contributing
 

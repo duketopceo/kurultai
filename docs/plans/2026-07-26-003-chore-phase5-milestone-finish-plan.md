@@ -7,6 +7,11 @@ artifact_readiness: implementation-ready
 product_contract_source: ce-plan-bootstrap
 execution: code
 origin: "User /lfg phase 5 — product exit shipped; finish Milestone 5 closeout land + remilestone handoff"
+tags:
+  - phase-5
+  - closeout
+  - plan
+  - chore
 ---
 
 # Phase 5 Milestone Finish - Plan
@@ -35,7 +40,11 @@ origin: "User /lfg phase 5 — product exit shipped; finish Milestone 5 closeout
 
 ### Summary
 
-Milestone 5 is still **OPEN** with three deferred ops issues (#20, #29, #35). Product PRs are merged; umbrella [#9](https://github.com/duketopceo/kurultai/issues/9) is closed. Closeout artifacts live on draft/ready PR [#97](https://github.com/duketopceo/kurultai/pull/97) but **not** on `main` yet. After [#98](https://github.com/duketopceo/kurultai/pull/98) rewrote the README, #97 merged `main` and restored the Phase roadmap table with Phase 5 complete/closeout links. Agent tokens still get **403** on issue milestone PATCH.
+Milestone 5 is still **OPEN** with three deferred ops issues (#20, #29, #35). Product PRs are merged; umbrella [#9](https://github.com/duketopceo/kurultai/issues/9) is closed.
+
+**Pre-merge state (current):** closeout artifacts (`phase-5-complete.md`, `phase-5-closeout.md`, `scripts/phase-5-closeout.sh`, README Phase 5 ✅ roadmap) exist only on open PR [#97](https://github.com/duketopceo/kurultai/pull/97) — they are **not** on `main` until #97 merges. The branch already contains `main` (including the [#98](https://github.com/duketopceo/kurultai/pull/98) README rewrite) plus the Phase roadmap table restored on top of that rewrite.
+
+**Do not** run `./scripts/phase-5-closeout.sh` until #97 is merged to `main`. Agent tokens still get **403** on issue milestone PATCH.
 
 ### Problem Frame
 
@@ -176,7 +185,8 @@ rg -n '✅' README.md
 rg -n '#97|pull/97' docs/plans/phase-5-closeout.md
 bash -n scripts/phase-5-closeout.sh
 test -x scripts/phase-5-closeout.sh
-# optional: cargo test --locked  (docs-only; CI covers)
+cargo test --locked
+cargo clippy --all-targets -- -D warnings
 ```
 
 ---

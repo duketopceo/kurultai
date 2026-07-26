@@ -1,3 +1,11 @@
+---
+title: Phase 5 closeout — tracker hygiene
+tags:
+  - phase-5
+  - closeout
+  - docs
+---
+
 # Phase 5 closeout — tracker hygiene
 
 **Product Phase 5 production-readiness is shipped** (#65 poll, #66 watch, #84 local embeddings, #83 multi-agent MCP).  

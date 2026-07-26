@@ -7,6 +7,11 @@ artifact_readiness: implementation-ready
 product_contract_source: ce-plan-bootstrap
 execution: code
 origin: "User /lfg phase 4 cleanup + phase 5 — product slices shipped; remaining = docs/README/tracker hygiene"
+tags:
+  - phase-5
+  - closeout
+  - plan
+  - chore
 ---
 
 # Phase 4 Residual + Phase 5 LFG Closeout - Plan
@@ -214,7 +219,7 @@ None blocking. Remilestone target and P4-link-vs-P5-wrap forks resolved as Assum
 | Phase 4 link restored | `rg -n '\]\([^)]*phase-4-complete\.md\)' README.md` | U2 |
 | Phase 5 package present | `test -f docs/plans/phase-5-complete.md && test -f docs/plans/phase-5-closeout.md && test -x scripts/phase-5-closeout.sh` | U3 |
 | Phase 5 README sync | `rg -n 'phase-5-complete' README.md` and Phase 5 row shows ✅ | U4 |
-| No product regression (optional on docs PR) | `cargo test --locked` · `cargo clippy --all-targets -- -D warnings` | U5 |
+| No product regression | `cargo test --locked` · `cargo clippy --all-targets -- -D warnings` | U5 |
 | Maintainer tracker hygiene | `./scripts/phase-5-closeout.sh` then `gh api -X PATCH repos/duketopceo/kurultai/milestones/5 -f state=closed` | post-merge; A1 only |
 
 Behavioral skill evaluation: not required (docs/tracker hygiene; no new runtime behavior).

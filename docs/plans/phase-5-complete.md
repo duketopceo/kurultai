@@ -1,3 +1,11 @@
+---
+title: Phase 5 complete — wrap-up
+tags:
+  - phase-5
+  - complete
+  - docs
+---
+
 # Phase 5 complete — wrap-up
 
 **Status:** ✅ Product production-readiness on `main` (2026-07-25–26)  
