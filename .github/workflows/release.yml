@@ -36,7 +36,8 @@ jobs:
             target: aarch64-apple-darwin
             artifact_name: kurultai-macos-arm64.tar.gz
             binary_name: kurultai
-          - os: macos-13
+          # Cross-compile Intel from Apple Silicon runners (macos-13 queue is scarce).
+          - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: kurultai-macos-amd64.tar.gz
             binary_name: kurultai
