@@ -9,10 +9,13 @@
     <!-- Apply saved theme before first paint to prevent flash -->
     <script>
       (function() {
-        var saved = localStorage.getItem('kurultai-theme');
-        var theme = (saved === 'light' || saved === 'dark')
-          ? saved
-          : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        var theme = 'dark';
+        try {
+          var saved = localStorage.getItem('kurultai-theme');
+          theme = (saved === 'light' || saved === 'dark')
+            ? saved
+            : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        } catch (_) { /* private mode / blocked storage */ }
         document.documentElement.dataset.theme = theme;
       })();
     </script>
@@ -219,7 +222,7 @@
             <div class="code-container">
                 <div class="code-header">
                     <span>1. Install and Initialize</span>
-                    <button class="btn-copy" data-target="code-install">Copy</button>
+                    <button type="button" class="btn-copy" data-target="code-install">Copy</button>
                 </div>
                 <div class="code-block">
                     <code id="code-install"># Build local binaries
@@ -231,7 +234,7 @@ kurultai init --agent cursor</code>
 
                 <div class="code-header" style="margin-top: 2.5rem;">
                     <span>2. Index Sources and Run Daemon</span>
-                    <button class="btn-copy" data-target="code-daemon">Copy</button>
+                    <button type="button" class="btn-copy" data-target="code-daemon">Copy</button>
                 </div>
                 <div class="code-block">
                     <code id="code-daemon"># Trigger full initial sync

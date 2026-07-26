@@ -198,7 +198,12 @@
 
   let searchDelay;
   async function search(query) {
-    if (!query.trim()) { state.query = ""; await loadAtoms(); return; }
+    if (!query.trim()) {
+      state.query = "";
+      renderSearchResults([]);
+      await loadAtoms();
+      return;
+    }
     try {
       const results = (await getJson(`/api/search?q=${encodeURIComponent(query)}&limit=80`)).map(normalize);
       state.query = query;
@@ -284,6 +289,16 @@
     let hover = null, dragging = false, last = null;
     let yaw = 0, pitch = 0, distance = 24;
 
+    function disposeGroup(group) {
+      group.traverse((child) => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
+          else child.material.dispose();
+        }
+      });
+    }
+
     function nodeMaterial(active) {
       return new THREE.MeshBasicMaterial({
         color:       active ? COLOUR.nodeHot : COLOUR.nodeBase,
@@ -312,6 +327,9 @@
     }
 
     function update(atoms) {
+      clearHover();
+      disposeGroup(nodes);
+      disposeGroup(edges);
       nodes.clear(); edges.clear();
       objects = []; nodeMap = new Map();
       links = buildRelationships(atoms);
@@ -352,13 +370,23 @@
     }
 
     /* Hover: highlight hovered node + connected edges/nodes */
+    function placeTooltip(event) {
+      const rect = stage.getBoundingClientRect();
+      elements.tooltip.style.left = `${Math.min(event.clientX - rect.left + 12, rect.width - 190)}px`;
+      elements.tooltip.style.top  = `${Math.min(event.clientY - rect.top  + 12, rect.height - 56)}px`;
+    }
+
     function showHover(mesh, event) {
+      if (hover === mesh) {
+        placeTooltip(event);
+        return;
+      }
       hover = mesh;
-      const hoveredId = mesh.userData.atom.id;
+      const nextId = mesh.userData.atom.id;
       const connectedIds = new Set();
       links.forEach((link) => {
-        if (link.a === hoveredId) connectedIds.add(link.b);
-        else if (link.b === hoveredId) connectedIds.add(link.a);
+        if (link.a === nextId) connectedIds.add(link.b);
+        else if (link.b === nextId) connectedIds.add(link.a);
       });
 
       objects.forEach((node) => {
@@ -375,7 +403,7 @@
       });
 
       edges.children.forEach((line) => {
-        const linked = line.userData.a === hoveredId || line.userData.b === hoveredId;
+        const linked = line.userData.a === nextId || line.userData.b === nextId;
         line.material.opacity = linked ? .9 : .04;
         line.material.color.setHex(linked ? COLOUR.edgeActive : COLOUR.edgeDim);
       });
@@ -388,10 +416,7 @@
       const metaEl = document.createElement("span");
       metaEl.textContent = `${atom.tags.length} tags · ${atom.tier}`;
       elements.tooltip.append(titleEl, metaEl);
-
-      const rect = stage.getBoundingClientRect();
-      elements.tooltip.style.left = `${Math.min(event.clientX - rect.left + 12, rect.width - 190)}px`;
-      elements.tooltip.style.top  = `${Math.min(event.clientY - rect.top  + 12, rect.height - 56)}px`;
+      placeTooltip(event);
       renderInspector(atom);
     }
 

@@ -6,6 +6,7 @@
 mod ui;
 
 use crate::daemon::DaemonStatus;
+use crate::error::KurultaiError;
 use crate::mcp::brain::BrainService;
 use crate::mcp::interface::AgentRead;
 use crate::synthesize::WhoKnowsEntry;
@@ -242,18 +243,24 @@ async fn api_touch(
         Ok(Some(atom)) => Ok(Json(serde_json::json!({
             "ok": true,
             "request_id": &request_id,
-            "atom": atom,
+            "atom_id": atom.id,
+            "title": atom.title,
+            "source": atom.source,
         }))),
         Ok(None) => Err(json_error(
             StatusCode::NOT_FOUND,
             "atom not found",
             &request_id,
         )),
-        Err(e) => Err(json_error(
-            StatusCode::BAD_REQUEST,
-            e.to_string(),
-            &request_id,
-        )),
+        Err(e) => {
+            let status = match &e {
+                KurultaiError::Store(msg) if msg.contains("atom not found") => {
+                    StatusCode::NOT_FOUND
+                }
+                _ => StatusCode::BAD_REQUEST,
+            };
+            Err(json_error(status, e.to_string(), &request_id))
+        }
     }
 }
 
@@ -1385,5 +1392,72 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         let rid = v["request_id"].as_str().unwrap_or("");
         assert!(!rid.is_empty(), "request_id must be present and non-empty");
+    }
+
+    #[tokio::test]
+    async fn api_touch_missing_atom_is_404() {
+        let (app, _db_dir) = fixture_brain_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/touch")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"atom_id":"does-not-exist"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], false);
+        assert!(v["error"].as_str().unwrap_or("").contains("atom not found"));
+        assert!(!v["request_id"].as_str().unwrap_or("").is_empty());
+    }
+
+    #[tokio::test]
+    async fn api_touch_ok_is_lean_without_full_content() {
+        let (app, _db_dir) = fixture_brain_app().await;
+        let list = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/atoms?limit=1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(list.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(list.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let results: Vec<SearchResult> = serde_json::from_slice(&bytes).unwrap();
+        let atom_id = results[0].atom.id.clone();
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/touch")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(r#"{{"atom_id":"{atom_id}"}}"#)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["atom_id"], atom_id);
+        assert!(v.get("atom").is_none(), "must not dump full atom payload");
+        assert!(v.get("content").is_none());
+        assert!(!v["request_id"].as_str().unwrap_or("").is_empty());
     }
 }

@@ -241,6 +241,12 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
         path.extension().and_then(|e| e.to_str()).unwrap_or("cfg")
     ));
     fs::write(&tmp, bytes)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))
+            .map_err(|e| KurultaiError::Other(anyhow::anyhow!("chmod temp config: {e}")))?;
+    }
     fs::rename(&tmp, path)?;
     Ok(())
 }
@@ -322,6 +328,17 @@ mod tests {
         assert_eq!(root["mcpServers"]["kurultai"]["command"], "/opt/kurultai");
         assert_eq!(root["mcpServers"]["kurultai"]["type"], "stdio");
         assert_eq!(root["mcpServers"]["other"]["command"], "x");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_sets_owner_only_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp.json");
+        atomic_write(&path, br#"{"mcpServers":{}}"#).unwrap();
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
     }
 
     #[test]

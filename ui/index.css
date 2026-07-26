@@ -372,6 +372,11 @@ button, input, textarea { font: inherit; }
   padding: 0 .85rem;
   box-shadow: var(--shadow);
 }
+.search-control:focus-within {
+  border-color: var(--electric);
+  outline: 2px solid var(--electric-dim);
+  outline-offset: 2px;
+}
 .search-control input {
   min-width: 0; flex: 1;
   border: 0; outline: 0;
