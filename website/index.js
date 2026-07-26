@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
             navigator.clipboard.writeText(textToCopy).then(() => {
                 const originalText = button.innerHTML;
                 button.innerHTML = "✓ Copied";
-                button.style.color = "#10b981";
+                button.style.color = "#c084fc";
                 setTimeout(() => {
                     button.innerHTML = originalText;
                     button.style.color = "";
@@ -106,8 +106,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 this.vx = (Math.random() - 0.5) * 0.4;
                 this.vy = (Math.random() - 0.5) * 0.4;
                 this.radius = Math.random() * 2 + 1;
-                // Electrons glow properties
-                this.color = Math.random() > 0.5 ? "rgba(56, 189, 248, " : "rgba(168, 85, 247, ";
+                // Electrons glow properties — white + purple only
+                this.color = Math.random() > 0.5 ? "rgba(255, 255, 255, " : "rgba(168, 85, 247, ";
                 this.alpha = Math.random() * 0.5 + 0.2;
             }
 
