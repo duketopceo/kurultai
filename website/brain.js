@@ -10,6 +10,32 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeAtom = null;
     let Graph = null;
 
+    // View mode: Simple (default) vs Technical
+    const viewModeBtn = document.getElementById("view-mode-btn");
+    let isTechnical = localStorage.getItem("kurultai-brain-view") === "technical";
+
+    function applyViewMode() {
+        if (!viewModeBtn) return;
+        viewModeBtn.textContent = isTechnical ? "Simple View" : "Technical View";
+        viewModeBtn.classList.toggle("technical", isTechnical);
+        viewModeBtn.setAttribute("aria-pressed", String(isTechnical));
+        const lAtoms = document.getElementById("label-atoms");
+        const lSources = document.getElementById("label-sources");
+        const lEnv = document.getElementById("label-env");
+        if (lAtoms) lAtoms.textContent = isTechnical ? "Indexed Atoms" : "Stored Memories";
+        if (lSources) lSources.textContent = isTechnical ? "Active Sources" : "Data Sources";
+        if (lEnv) lEnv.textContent = isTechnical ? "Environment" : "Server Mode";
+        if (activeAtom) inspectAtom(activeAtom);
+    }
+
+    if (viewModeBtn) {
+        viewModeBtn.addEventListener("click", () => {
+            isTechnical = !isTechnical;
+            localStorage.setItem("kurultai-brain-view", isTechnical ? "technical" : "simple");
+            applyViewMode();
+        });
+    }
+
     // 1. Boot: pull status + initial atom list from the daemon
     async function loadDashboard() {
         try {
@@ -121,6 +147,19 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const tagPills = (atom.tags || []).map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("");
+        const sourceLabel = isTechnical ? "Source Context" : "Memory Origin";
+        const contentLabel = isTechnical ? "Raw Database Content (content)" : "Excerpt / Content";
+        const summaryLabel = isTechnical ? "LLM-Distilled Summary (summary)" : "Summary";
+        const updatedSuffix = isTechnical && atom.source_updated_at ? ` (updated: ${escapeHtml(atom.source_updated_at)})` : "";
+        const idHeader = isTechnical ? `<div class="detail-label" style="text-align: right;">ID: ${escapeHtml(atom.id)}</div>` : "";
+        const openFileBtn = isTechnical && atom.file_path
+            ? `<button onclick="openFileInEditor('${escapeHtml(atom.file_path)}')" style="padding: 4px 12px; font-size: 0.75rem; border-radius: 9999px; background: rgba(168,85,247,0.1); border: 1px solid #c084fc; color: #c084fc; cursor: pointer; font-family: var(--font-mono);">Open File</button>`
+            : "";
+        const routingRow = isTechnical && atom.question ? `
+            <div class="detail-row">
+                <div class="detail-label">Routing Queries (question / resolution)</div>
+                <div class="detail-val"><strong>Q:</strong> ${escapeHtml(atom.question)}<br/><strong>A:</strong> ${escapeHtml(atom.resolution || "")}</div>
+            </div>` : "";
 
         inspector.innerHTML = `
             <div class="detail-header">
@@ -128,30 +167,37 @@ document.addEventListener("DOMContentLoaded", () => {
                     <h3 class="detail-title">${escapeHtml(atom.title)}</h3>
                     <div style="margin-top: 8px;">${tagPills}</div>
                 </div>
-                <div class="detail-label" style="text-align: right;">ID: ${escapeHtml(atom.id)}</div>
+                ${idHeader}
             </div>
 
             <div class="detail-layout">
                 <div class="detail-row">
-                    <div class="detail-label">Source Context</div>
-                    <div class="detail-val" style="font-family: var(--font-mono);">${escapeHtml(atom.source)} / ${escapeHtml(atom.source_id)}${atom.source_updated_at ? ` (updated: ${escapeHtml(atom.source_updated_at)})` : ""}</div>
+                    <div class="detail-label">${sourceLabel}</div>
+                    <div class="detail-val" style="font-family: var(--font-mono); display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                        <span>${escapeHtml(atom.source)} / ${escapeHtml(atom.source_id)}${updatedSuffix}</span>
+                        ${openFileBtn}
+                    </div>
                 </div>
                 <div class="detail-row">
-                    <div class="detail-label">Raw Database Content (content)</div>
+                    <div class="detail-label">${contentLabel}</div>
                     <div class="detail-val">${escapeHtml(atom.content)}</div>
                 </div>
                 <div class="detail-row">
-                    <div class="detail-label">LLM-Distilled Summary (summary)</div>
+                    <div class="detail-label">${summaryLabel}</div>
                     <div class="detail-val">${escapeHtml(atom.summary)}</div>
                 </div>
-                ${atom.question ? `
-                <div class="detail-row">
-                    <div class="detail-label">Routing Queries (question / resolution)</div>
-                    <div class="detail-val"><strong>Q:</strong> ${escapeHtml(atom.question)}<br/><strong>A:</strong> ${escapeHtml(atom.resolution || "")}</div>
-                </div>` : ""}
+                ${routingRow}
             </div>
         `;
     }
+
+    window.openFileInEditor = async function(filePath) {
+        try {
+            await fetch("/api/open?file=" + encodeURIComponent(filePath));
+        } catch (e) {
+            console.error("Failed to trigger file open API:", e);
+        }
+    };
 
     function escapeHtml(text) {
         if (!text) return "";
@@ -236,5 +282,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Kick off
+    applyViewMode();
     loadDashboard();
 });

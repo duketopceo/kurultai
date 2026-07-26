@@ -167,6 +167,44 @@
             border: 1px solid var(--border-color);
         }
 
+        .view-toggle-row {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+        }
+
+        .view-toggle-row .toggle-hint {
+            color: var(--text-muted);
+        }
+
+        .view-toggle-btn {
+            padding: 8px 18px;
+            border-radius: 9999px;
+            border: 1px solid var(--border-color);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            transition: var(--transition-smooth);
+        }
+
+        .view-toggle-btn:hover {
+            border-color: var(--primary);
+        }
+
+        .view-toggle-btn.technical {
+            border-color: #c084fc;
+            background: rgba(168, 85, 247, 0.12);
+            color: #c084fc;
+        }
+
         @media (max-width: 992px) {
             .db-layout {
                 grid-template-columns: 1fr;
@@ -202,6 +240,14 @@
         <p>Real-time view of ingested code blocks, note segments, database schemas, and embedding coordinates.</p>
     </section>
 
+    <!-- View Mode Toggle -->
+    <section class="container">
+        <div class="view-toggle-row">
+            <span class="toggle-hint">View Mode:</span>
+            <button id="view-mode-btn" class="view-toggle-btn" aria-pressed="false">Technical View</button>
+        </div>
+    </section>
+
     <!-- Database Stats -->
     <section id="stats" class="container">
         <div class="stats-grid">
@@ -210,15 +256,15 @@
                 <div id="stat-status" class="stat-val" style="font-size: 1.4rem; margin-top: 16px;">connecting…</div>
             </div>
             <div class="stat-card glass-panel">
-                <div class="detail-label">Total Atoms</div>
+                <div id="label-atoms" class="detail-label">Stored Memories</div>
                 <div id="stat-atoms" class="stat-val">—</div>
             </div>
             <div class="stat-card glass-panel">
-                <div class="detail-label">Active Sources</div>
+                <div id="label-sources" class="detail-label">Data Sources</div>
                 <div id="stat-sources" class="stat-val">—</div>
             </div>
             <div class="stat-card glass-panel">
-                <div class="detail-label">Environment</div>
+                <div id="label-env" class="detail-label">Server Mode</div>
                 <div id="stat-env" class="stat-val" style="font-size: 1.4rem; margin-top: 16px; text-transform: uppercase;">—</div>
             </div>
         </div>
