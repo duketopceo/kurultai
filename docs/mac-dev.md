@@ -29,8 +29,8 @@ export RUST_LOG=kurultai=debug
 ## Wire + index
 
 ```bash
-# Wire MCP into Cursor, Claude Code, and/or Codex (same tools; different configs)
-kurultai init --agent all          # or: cursor | claude | codex
+# Wire MCP into Cursor, Claude Code, Codex, and/or Hermes (same tools; different configs)
+kurultai init --agent all          # or: cursor | claude | codex | hermes
 # edit ~/.config/kurultai/config.toml — keep environment = "dev"
 # Restart the agent(s) so MCP tools reload
 kurultai index --full
@@ -42,6 +42,7 @@ kurultai status
 | Cursor | `~/.cursor/mcp.json` |
 | Claude Code | `~/.claude.json` |
 | Codex | `~/.codex/config.toml` |
+| Hermes Agent | `~/.hermes/config.yaml` (tools register as `mcp_kurultai_*`) |
 
 | Source | `kind` | Notes |
 |--------|--------|--------|

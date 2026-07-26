@@ -1230,6 +1230,9 @@ mod tests {
         async fn count(&self) -> crate::Result<u64> {
             Err(crate::KurultaiError::Store("count failed".into()))
         }
+        async fn list_atoms(&self, _limit: usize) -> crate::Result<Vec<crate::types::KnowledgeAtom>> {
+            Ok(vec![])
+        }
         async fn get_by_source_id(
             &self,
             _source: &str,

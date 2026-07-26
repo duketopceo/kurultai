@@ -34,7 +34,7 @@ struct Cli {
 enum Commands {
     /// Write default config and wire MCP into an agent
     Init {
-        /// Agent to wire: cursor, claude, codex, or all
+        /// Agent to wire: cursor, claude, codex, hermes, or all
         #[arg(long, default_value = "cursor")]
         agent: AgentTarget,
     },

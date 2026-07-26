@@ -43,7 +43,7 @@ Tagged binary releases: workflow is ready (`.github/workflows/release.yml`); **n
 export KURULTAI_ENV=dev
 export RUST_LOG=kurultai=debug
 
-kurultai init --agent all      # cursor + claude + codex (or: cursor | claude | codex)
+kurultai init --agent all      # cursor + claude + codex + hermes (or: cursor | claude | codex | hermes)
 # edit ~/.config/kurultai/config.toml — keep environment = "dev"
 
 kurultai index --full          # FTS-first without OPENROUTER_API_KEY
@@ -135,7 +135,12 @@ Same stdio server (`kurultai mcp`) for every client — `init` only writes the h
 | `cursor` (default) | `~/.cursor/mcp.json` |
 | `claude` | `~/.claude.json` (Claude Code user scope) |
 | `codex` | `~/.codex/config.toml` |
-| `all` | all three |
+| `hermes` | `~/.hermes/config.yaml` (NousResearch Hermes Agent — tools register as `mcp_kurultai_*`) |
+| `all` | all four |
+
+A portable `kurultai-brain` SKILL.md (agentskills.io-compatible) lives at
+`skills/kurultai-brain/SKILL.md` so Hermes (and other skill hosts) can discover
+how to use the kurultai MCP tools.
 
 Restart the agent after `init` so tools reload.
 
