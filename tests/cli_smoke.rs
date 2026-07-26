@@ -138,8 +138,8 @@ fn status_banner_true_shows_compact_art() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Kurultai status"))
-        .stdout(predicate::str::contains("╭"))
-        .stdout(predicate::str::contains("⌂"));
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_BOX))
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_YURT));
 }
 
 #[test]
@@ -153,8 +153,8 @@ fn status_plain_flag_suppresses_art() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Kurultai status"))
-        .stdout(predicate::str::contains("╭").not())
-        .stdout(predicate::str::contains("⌂").not());
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_BOX).not())
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_YURT).not());
 }
 
 #[test]
@@ -168,8 +168,8 @@ fn status_no_color_suppresses_art() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Kurultai status"))
-        .stdout(predicate::str::contains("╭").not())
-        .stdout(predicate::str::contains("⌂").not());
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_BOX).not())
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_YURT).not());
 }
 
 #[test]
@@ -183,8 +183,22 @@ fn status_kurultai_plain_env_suppresses_art() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Kurultai status"))
-        .stdout(predicate::str::contains("╭").not())
-        .stdout(predicate::str::contains("⌂").not());
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_BOX).not())
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_YURT).not());
+}
+
+#[test]
+fn mcp_help_never_prints_yurt_art() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = fixture_config_with_cli(&tmp, Some("true"));
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "mcp", "--help"])
+        .env_remove("NO_COLOR")
+        .env_remove("KURULTAI_PLAIN")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_BOX).not())
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_YURT).not());
 }
 
 #[test]

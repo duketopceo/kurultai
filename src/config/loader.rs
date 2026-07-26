@@ -145,7 +145,7 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
             }
         },
         inactivity_threshold_hours: file.runtime.inactivity_threshold_hours,
-        banner: file.cli.banner.into(),
+        banner: file.cli.banner,
     })
 }
 

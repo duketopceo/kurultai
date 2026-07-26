@@ -339,19 +339,47 @@ async fn bootstrap_app(cli: &Cli) -> Result<App> {
 /// Best-effort help banner (KTD6): no store open; config only if cheaply readable.
 fn maybe_print_help_banner() {
     let args: Vec<String> = std::env::args().collect();
-    let wants_help = args.iter().any(|a| a == "-h" || a == "--help");
-    if !wants_help {
+    if !args.iter().any(|a| a == "-h" || a == "--help") {
+        return;
+    }
+    // MCP stdout must stay art-free (R5/AE5), including `mcp --help`.
+    if argv_has_mcp_subcommand(&args) {
         return;
     }
 
     let plain = effective_plain(args.iter().any(|a| a == "--plain"));
     let no_color = env_no_color_set();
+    // plain / NO_COLOR win over Always — skip config read when art cannot show.
+    if plain || no_color {
+        return;
+    }
+
     let mode = cheap_banner_mode(&args);
-    let _ = print_banner_stdout(ArtVariant::Wide, mode, plain, no_color);
+    let _ = print_banner_stdout(ArtVariant::Wide, mode, false, false);
+}
+
+/// True when the first positional CLI subcommand is `mcp`.
+fn argv_has_mcp_subcommand(args: &[String]) -> bool {
+    let mut skip_next = false;
+    for a in args.iter().skip(1) {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if a == "--config" {
+            skip_next = true;
+            continue;
+        }
+        if a.starts_with("--config=") || a.starts_with('-') {
+            continue;
+        }
+        return a == "mcp";
+    }
+    false
 }
 
 fn cheap_banner_mode(args: &[String]) -> BannerMode {
-    // Prefer explicit --config path; else default config path if it exists.
+    // Prefer explicit --config path; else default config path (load or Auto).
     let mut config_arg: Option<&str> = None;
     let mut i = 0;
     while i < args.len() {
@@ -368,16 +396,14 @@ fn cheap_banner_mode(args: &[String]) -> BannerMode {
         i += 1;
     }
 
-    if let Some(path) = config_arg {
-        return load_config_from(std::path::Path::new(path))
-            .map(|c| c.banner)
-            .unwrap_or(BannerMode::Auto);
-    }
-
-    match config_path() {
-        Ok(path) if path.exists() => load_config_from(&path)
-            .map(|c| c.banner)
-            .unwrap_or(BannerMode::Auto),
-        _ => BannerMode::Auto,
-    }
+    let path = match config_arg {
+        Some(p) => std::path::PathBuf::from(p),
+        None => match config_path() {
+            Ok(p) => p,
+            Err(_) => return BannerMode::Auto,
+        },
+    };
+    load_config_from(&path)
+        .map(|c| c.banner)
+        .unwrap_or(BannerMode::Auto)
 }

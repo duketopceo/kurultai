@@ -32,7 +32,6 @@ pub const YURT_PLAIN: &str = "\
 /// Stable markers used by smoke tests to detect art leakage.
 pub const ART_MARKER_BOX: &str = "╭";
 pub const ART_MARKER_YURT: &str = "⌂";
-pub const ART_MARKER_ASSEMBLE: &str = "assemble what";
 
 /// Which art string to print when policy allows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,18 +52,66 @@ impl ArtVariant {
 }
 
 /// Config `[cli] banner` / runtime presentation mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+///
+/// Accepts TOML/JSON bools (`true`/`false`) and string aliases
+/// (`"auto"` / `"always"` / `"never"` / `"on"` / `"off"` / …).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BannerMode {
     /// Show only when stdout is a TTY (default).
     #[default]
     Auto,
     /// Always attempt to show (still suppressed by plain / NO_COLOR).
-    #[serde(alias = "true", alias = "always", alias = "on")]
     Always,
     /// Never show.
-    #[serde(alias = "false", alias = "never", alias = "off")]
     Never,
+}
+
+impl BannerMode {
+    /// Parse string aliases used in config files.
+    pub fn from_config_str(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "true" | "always" | "on" => Some(Self::Always),
+            "false" | "never" | "off" => Some(Self::Never),
+            _ => None,
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for BannerMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct Visitor;
+
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = BannerMode;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("true, false, or \"auto\"")
+            }
+
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(if v {
+                    BannerMode::Always
+                } else {
+                    BannerMode::Never
+                })
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                BannerMode::from_config_str(v).ok_or_else(|| {
+                    E::custom(format!(
+                        "invalid [cli].banner value {v:?}; expected true, false, or \"auto\""
+                    ))
+                })
+            }
+        }
+
+        deserializer.deserialize_any(Visitor)
+    }
 }
 
 /// Whether art should be printed given config + suppress flags + TTY.
@@ -109,9 +156,9 @@ pub fn print_banner_stdout(
     plain: bool,
     no_color: bool,
 ) -> io::Result<bool> {
-    let mut out = io::stdout().lock();
-    let tty = io::stdout().is_terminal();
-    write_banner(&mut out, variant, mode, plain, no_color, tty)
+    let stdout = io::stdout();
+    let tty = stdout.is_terminal();
+    write_banner(&mut stdout.lock(), variant, mode, plain, no_color, tty)
 }
 
 /// `NO_COLOR` is set (any value) ⇒ treat as no-color / suppress art.
@@ -190,6 +237,17 @@ mod tests {
         assert!(!should_show_banner(BannerMode::Always, true, false, true));
         assert!(!should_show_banner(BannerMode::Always, false, true, true));
         assert!(!should_show_banner(BannerMode::Always, true, true, true));
+    }
+
+    #[test]
+    fn banner_mode_from_config_str_aliases() {
+        assert_eq!(BannerMode::from_config_str("auto"), Some(BannerMode::Auto));
+        assert_eq!(
+            BannerMode::from_config_str("TRUE"),
+            Some(BannerMode::Always)
+        );
+        assert_eq!(BannerMode::from_config_str("off"), Some(BannerMode::Never));
+        assert_eq!(BannerMode::from_config_str("sometimes"), None);
     }
 
     #[test]
