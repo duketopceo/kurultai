@@ -41,3 +41,11 @@ One structured knowledge unit: title, summary, content, tags, provenance (source
 ### Graph orchestration (diamond)
 
 Cut non-data “and then” waits: fan-out independent nodes with typed I/O, fan-in only at merge barriers. Loops stay inside nodes; the database is the shared state.
+
+## Interface
+
+### Brain UI
+
+Single product dashboard for the local brain: daemon `GET /ui`, assets under `ui/` embedded into the binary. Not a parallel Vite/`website/` product and not the Clerk `web/` auth portal.
+
+See: [docs/solutions/architecture-patterns/one-brain-ui-daemon-ui-only.md](docs/solutions/architecture-patterns/one-brain-ui-daemon-ui-only.md)

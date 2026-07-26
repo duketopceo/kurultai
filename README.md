@@ -57,17 +57,21 @@ Enable GitHub under Clerk → Social connections. Multi-user / multi-device mode
 export KURULTAI_ENV=dev
 export RUST_LOG=kurultai=debug
 
-kurultai init --agent cursor
+kurultai init --agent all      # cursor + claude + codex + hermes (or: cursor | claude | codex | hermes)
 # edit ~/.config/kurultai/config.toml — keep environment = "dev"
 
 kurultai index --full          # FTS-first without OPENROUTER_API_KEY
 kurultai status
 kurultai search "database migration" --limit 10
 kurultai ask "what deployments are we running?"
+# Quality: writes need ≥1 tag; failures land in quarantine (skipped by default search).
+# kurultai promote <atom_id>   # after fixing tags — never auto-promotes from remember
 
-kurultai mcp                   # Cursor / agents (stdio)
-kurultai daemon --port 8421    # HTTP + poll + watch · UI at /ui · /api/status
+kurultai mcp                   # Cursor / Claude Code / Codex (stdio)
+kurultai daemon --port 8421    # HTTP + poll + watch · Brain UI at /ui · /api/status
 ```
+
+**Brain UI (one surface):** with the daemon running, open `http://127.0.0.1:8421/ui`. Assets live in `ui/` and are embedded into the binary — do not add a parallel `website/` / `web/` brain dashboard.
 
 Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md).
 
@@ -85,11 +89,11 @@ Knowledge lives in many places. Kurultai indexes it into one queryable brain so 
 | Layer | What ships |
 |-------|------------|
 | **Connectors** | Markdown · Dayflow · Pond · GitHub (local checkout). AppFlowy deferred ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
-| **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key |
+| **Embeddings** | OpenRouter when keyed; **NullEmbedder** FTS-first without key; opt-in **local ONNX** (`embed.backend = "local"`, `--features local-embed`) |
 | **Store** | SQLite + FTS5 + sqlite-vec |
 | **Search** | FTS ∥ vector → RRF → optional rerank |
 | **Synthesis** | Extractive / optional LLM `ask` with citations |
-| **Interface** | CLI + MCP stdio + HTTP daemon (poll + notify watch) |
+| **Interface** | CLI + MCP stdio + HTTP daemon (poll + notify watch) · **Brain UI** `GET /ui` (`ui/` embedded) |
 
 ## Configuration
 
@@ -121,6 +125,10 @@ root_path = "/Users/you/src/your-repo"
 [embed]
 model = "openai/text-embedding-3-large"
 dimension = 3072
+# Offline vectors (requires `cargo install --path . --features local-embed`):
+# backend = "local"
+# model = "AllMiniLML6V2"
+# dimension = 384   # must match model; use a fresh storage.path when switching dims
 
 [runtime]
 poll_interval_secs = 300
@@ -137,6 +145,22 @@ Overrides: `KURULTAI_ENV=dev`, `kurultai --env staging status`. API keys via env
 |---|-------|--------|
 | **Read** | `search`, `cite`, `ask`, `who_knows` | Excerpts + citations |
 | **Write** | `remember` | Summary / tags only |
+
+Same stdio server (`kurultai mcp`) for every client — `init` only writes the host config:
+
+| `--agent` | Config written |
+|-----------|----------------|
+| `cursor` (default) | `~/.cursor/mcp.json` |
+| `claude` | `~/.claude.json` (Claude Code user scope) |
+| `codex` | `~/.codex/config.toml` |
+| `hermes` | `~/.hermes/config.yaml` (NousResearch Hermes Agent — tools register as `mcp_kurultai_*`) |
+| `all` | all four |
+
+A portable `kurultai-brain` SKILL.md (agentskills.io-compatible) lives at
+`skills/kurultai-brain/SKILL.md` so Hermes (and other skill hosts) can discover
+how to use the kurultai MCP tools.
+
+Restart the agent after `init` so tools reload.
 
 ```
 Agent ──read──► search/cite/ask ──► SQLite brain ──► ranked excerpts
@@ -159,7 +183,7 @@ Ship **developer → solo → team → company** ([#25](https://github.com/duket
 |-------|--------|
 | 1–3 Foundation / search / synthesis | ✅ |
 | 4 Expansion (Dayflow · Pond · GitHub FS) | ✅ |
-| 5 Production (daemon poll + watch) | 🚧 local embeddings / ARC / ops follow |
+| 5 Production (daemon poll + watch) | 🚧 local embeddings (opt-in ONNX) / ARC / ops follow |
 | 6 Launch (release packaging, yurt art) | 📋 [#10](https://github.com/duketopceo/kurultai/issues/10) |
 
 Upstream notes: [docs/upstream-inspiration.md](docs/upstream-inspiration.md).
@@ -189,8 +213,8 @@ Deep personal install script (checkout tree): `scripts/install/install.sh` (see 
 | #73 Scheduler | Nightly full hour + idle poll skip + `/api/status` times |
 | #74 Multi-hop | Tag/title hop expansion + `Answer.graph_chain` |
 | #75 Citations | `file_path`, `section`, `title_hash`, char range |
-| #76 Dashboard | `GET /ui` + `GET /api/status` (daemon) |
+| #76 Dashboard | `GET /ui` + `GET /api/status` (daemon; assets in `ui/`) |
 
 Plan: [`docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md`](docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md). Drafts: [`docs/agent-zero/`](docs/agent-zero/).
 
-With the daemon running: open `http://127.0.0.1:8421/ui`.
+With the daemon running: open `http://127.0.0.1:8421/ui` (single Brain UI — see [CONCEPTS.md](CONCEPTS.md#brain-ui)).

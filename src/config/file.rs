@@ -40,6 +40,8 @@ pub struct FileStorageConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileEmbedConfig {
+    /// `local` enables on-device ONNX (feature `local-embed`). Omit for OpenRouter/Null.
+    pub backend: Option<String>,
     pub model: Option<String>,
     pub dimension: Option<usize>,
 }
@@ -47,6 +49,7 @@ pub struct FileEmbedConfig {
 impl Default for FileEmbedConfig {
     fn default() -> Self {
         Self {
+            backend: None,
             model: Some("openai/text-embedding-3-large".into()),
             dimension: Some(3072),
         }

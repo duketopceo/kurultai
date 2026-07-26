@@ -14,6 +14,9 @@ path = "~/.local/share/kurultai/dev/store.db"
 [embed]
 model = "openai/text-embedding-3-large"
 dimension = 3072
+# backend = "local"   # requires: cargo build --features local-embed
+# model = "AllMiniLML6V2"
+# dimension = 384     # must match model + storage; mismatch fails at open
 
 [runtime]
 poll_interval_secs = 300
@@ -38,6 +41,15 @@ pub fn validate(config: &Config) -> Result<()> {
 
     if config.embed_model.trim().is_empty() {
         return Err(KurultaiError::config("embed.model must not be empty"));
+    }
+
+    if let Some(backend) = config.embed_backend.as_deref() {
+        let b = backend.trim().to_ascii_lowercase();
+        if b != "local" {
+            return Err(KurultaiError::config(format!(
+                "embed.backend must be \"local\" or omitted, got {backend:?}"
+            )));
+        }
     }
 
     let mut names = std::collections::HashSet::new();
@@ -105,6 +117,7 @@ mod tests {
             storage_path: "  ".into(),
             embed_model: "model".into(),
             embed_dim: 3072,
+            embed_backend: None,
             reranker_model: None,
             poll_interval_secs: 300,
             nightly_full_sync_hour: None,

@@ -374,6 +374,7 @@ fn make_atom(
         indexed_at: Utc::now(),
         embedding: None,
         metadata,
+        ..Default::default()
     }
 }
 

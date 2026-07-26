@@ -2,7 +2,7 @@ pub mod migrations;
 
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
-use crate::types::KnowledgeAtom;
+use crate::types::{KnowledgeAtom, TrustLane};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
@@ -12,6 +12,22 @@ use zerocopy::AsBytes;
 
 /// Norm below this is treated as a zero / stub vector — never written to `atoms_vec`.
 const MIN_EMBEDDING_NORM: f32 = 1e-6;
+
+/// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
+const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, question, resolution, \
+     tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason";
+
+/// Retrieval filter — default skips quarantine.
+#[derive(Debug, Clone, Copy)]
+pub struct SearchFilter {
+    pub trusted_only: bool,
+}
+
+impl Default for SearchFilter {
+    fn default() -> Self {
+        Self { trusted_only: true }
+    }
+}
 
 /// Storage backend for knowledge atoms and their embeddings.
 #[async_trait::async_trait]
@@ -27,29 +43,59 @@ pub trait Store: Send + Sync {
         &self,
         query_embed: &[f32],
         limit: usize,
+        filter: SearchFilter,
     ) -> Result<Vec<(KnowledgeAtom, f64)>>;
 
     /// Full-text search over atom content.
-    async fn fts_search(&self, query: &str, limit: usize) -> Result<Vec<(KnowledgeAtom, f64)>>;
+    async fn fts_search(
+        &self,
+        query: &str,
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<(KnowledgeAtom, f64)>>;
 
     /// FTS ranks as `(id, score)` without hydrating full atoms.
-    async fn fts_search_ids(&self, query: &str, limit: usize) -> Result<Vec<(String, f64)>>;
+    async fn fts_search_ids(
+        &self,
+        query: &str,
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<(String, f64)>>;
 
     /// Vector ranks as `(id, score)` without hydrating full atoms.
     async fn vector_search_ids(
         &self,
         query_embed: &[f32],
         limit: usize,
+        filter: SearchFilter,
     ) -> Result<Vec<(String, f64)>>;
 
     /// Batch load atoms by id (order not guaranteed; missing ids omitted).
     async fn get_many(&self, ids: &[String]) -> Result<Vec<KnowledgeAtom>>;
+
+    /// Load one atom by id (any lane).
+    async fn get(&self, id: &str) -> Result<Option<KnowledgeAtom>>;
+
+    /// Delete a single atom (and its FTS/vec rows).
+    async fn delete_atom(&self, id: &str) -> Result<()>;
+
+    /// Atomic auto-merge: upsert survivor, delete loser (fts+vec+row), insert quality_audit
+    /// in one `BEGIN IMMEDIATE` transaction.
+    async fn apply_auto_merge(
+        &self,
+        survivor: &KnowledgeAtom,
+        loser_id: &str,
+        audit_detail: &serde_json::Value,
+    ) -> Result<()>;
 
     /// Delete atoms for a given source (for re-index).
     async fn delete_source(&self, source: &str) -> Result<()>;
 
     /// Total atom count.
     async fn count(&self) -> Result<u64>;
+
+    /// Count atoms in a trust lane.
+    async fn count_by_lane(&self, lane: TrustLane) -> Result<u64>;
 
     /// Lookup by source + source_id (cite path).
     async fn get_by_source_id(
@@ -68,6 +114,43 @@ pub trait Store: Send + Sync {
 
     /// True when atom `id` already has `content_hash` and a stored vector (hash-skip re-embed).
     async fn has_fresh_embedding(&self, id: &str, content_hash: &str) -> Result<bool>;
+
+    /// Return up to `limit` atoms ordered newest-first.
+    async fn list_atoms(&self, limit: usize, filter: SearchFilter) -> Result<Vec<KnowledgeAtom>>;
+
+    /// First trusted atom id with this content hash (exact-dupe gate).
+    async fn find_trusted_by_content_hash(&self, content_hash: &str) -> Result<Option<String>>;
+
+    /// Update trust lane + optional quarantine reason.
+    async fn set_trust_lane(
+        &self,
+        id: &str,
+        lane: TrustLane,
+        quarantine_reason: Option<&str>,
+    ) -> Result<()>;
+
+    /// Append a quality_audit row.
+    async fn insert_quality_audit(
+        &self,
+        action: &str,
+        atom_id: &str,
+        actor: &str,
+        detail: &serde_json::Value,
+    ) -> Result<()>;
+
+    /// Insert merge candidate if not already pending; returns true when inserted.
+    async fn insert_merge_candidate(
+        &self,
+        atom_a: &str,
+        atom_b: &str,
+        reason: &str,
+    ) -> Result<bool>;
+
+    /// Pending merge_candidates count.
+    async fn count_merge_candidates_pending(&self) -> Result<u64>;
+
+    /// Quarantine + recently indexed atoms for near-dupe scan.
+    async fn list_near_dupe_candidates(&self, limit: usize) -> Result<Vec<KnowledgeAtom>>;
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -114,6 +197,36 @@ impl SqliteVecStore {
         load_atom_by_id(&conn, id)
     }
 
+    /// Return up to `limit` atoms ordered by indexed_at DESC (newest first).
+    pub fn list_atoms_sync(
+        &self,
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<KnowledgeAtom>> {
+        let conn = self.lock()?;
+        let sql = if filter.trusted_only {
+            format!(
+                "SELECT {} FROM knowledge_atoms WHERE trust_lane = 'trusted' \
+                 ORDER BY indexed_at DESC LIMIT ?1",
+                ATOM_COLUMNS
+            )
+        } else {
+            format!(
+                "SELECT {} FROM knowledge_atoms ORDER BY indexed_at DESC LIMIT ?1",
+                ATOM_COLUMNS
+            )
+        };
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| KurultaiError::Store(format!("list_atoms prepare: {e}")))?;
+        let atoms = stmt
+            .query_map([limit as i64], row_to_atom)
+            .map_err(|e| KurultaiError::Store(format!("list_atoms query: {e}")))?;
+        atoms
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| KurultaiError::Store(format!("list_atoms collect: {e}")))
+    }
+
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
         self.conn
             .lock()
@@ -136,13 +249,16 @@ impl SqliteVecStore {
             .map_err(|e| KurultaiError::Store(format!("prior hash lookup: {e}")))?;
         let hash_unchanged = prior_hash.as_deref() == Some(content_hash.as_str());
 
+        let trust_lane = atom.trust_lane.as_str();
+        let quarantine_reason = atom.quarantine_reason.as_deref();
         conn.execute(
             r#"
             INSERT INTO knowledge_atoms (
                 id, source, source_id, title, summary, content,
                 question, resolution, tags_json,
-                source_updated_at, indexed_at, metadata_json, content_hash
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                source_updated_at, indexed_at, metadata_json, content_hash,
+                trust_lane, quarantine_reason
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             ON CONFLICT(id) DO UPDATE SET
                 source = excluded.source,
                 source_id = excluded.source_id,
@@ -155,7 +271,9 @@ impl SqliteVecStore {
                 source_updated_at = excluded.source_updated_at,
                 indexed_at = excluded.indexed_at,
                 metadata_json = excluded.metadata_json,
-                content_hash = excluded.content_hash
+                content_hash = excluded.content_hash,
+                trust_lane = excluded.trust_lane,
+                quarantine_reason = excluded.quarantine_reason
             "#,
             params![
                 atom.id,
@@ -171,6 +289,8 @@ impl SqliteVecStore {
                 atom.indexed_at.to_rfc3339(),
                 metadata_json,
                 content_hash,
+                trust_lane,
+                quarantine_reason,
             ],
         )
         .map_err(|e| KurultaiError::Store(format!("upsert atom failed: {e}")))?;
@@ -261,17 +381,28 @@ impl Store for SqliteVecStore {
         &self,
         query_embed: &[f32],
         limit: usize,
+        filter: SearchFilter,
     ) -> Result<Vec<(KnowledgeAtom, f64)>> {
-        let ids = self.vector_search_ids(query_embed, limit).await?;
+        let ids = self.vector_search_ids(query_embed, limit, filter).await?;
         hydrate_ranked(self, ids).await
     }
 
-    async fn fts_search(&self, query: &str, limit: usize) -> Result<Vec<(KnowledgeAtom, f64)>> {
-        let ids = self.fts_search_ids(query, limit).await?;
+    async fn fts_search(
+        &self,
+        query: &str,
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<(KnowledgeAtom, f64)>> {
+        let ids = self.fts_search_ids(query, limit, filter).await?;
         hydrate_ranked(self, ids).await
     }
 
-    async fn fts_search_ids(&self, query: &str, limit: usize) -> Result<Vec<(String, f64)>> {
+    async fn fts_search_ids(
+        &self,
+        query: &str,
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<(String, f64)>> {
         if limit == 0 || query.trim().is_empty() {
             return Ok(vec![]);
         }
@@ -282,17 +413,27 @@ impl Store for SqliteVecStore {
         }
 
         let conn = self.lock()?;
-        let mut stmt = conn
-            .prepare(
-                r#"
+        let sql = if filter.trusted_only {
+            r#"
+                SELECT a.id, bm25(atoms_fts) AS score
+                FROM atoms_fts
+                JOIN knowledge_atoms a ON a.id = atoms_fts.id
+                WHERE atoms_fts MATCH ?1 AND a.trust_lane = 'trusted'
+                ORDER BY score
+                LIMIT ?2
+                "#
+        } else {
+            r#"
                 SELECT a.id, bm25(atoms_fts) AS score
                 FROM atoms_fts
                 JOIN knowledge_atoms a ON a.id = atoms_fts.id
                 WHERE atoms_fts MATCH ?1
                 ORDER BY score
                 LIMIT ?2
-                "#,
-            )
+                "#
+        };
+        let mut stmt = conn
+            .prepare(sql)
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids prepare: {e}")))?;
 
         let rows = stmt
@@ -315,6 +456,7 @@ impl Store for SqliteVecStore {
         &self,
         query_embed: &[f32],
         limit: usize,
+        filter: SearchFilter,
     ) -> Result<Vec<(String, f64)>> {
         if limit == 0 {
             return Ok(vec![]);
@@ -330,11 +472,18 @@ impl Store for SqliteVecStore {
             return Ok(vec![]);
         }
 
+        // Over-fetch when filtering trusted so k-nearest still fills after lane filter.
+        let k = if filter.trusted_only {
+            (limit.saturating_mul(3)).max(limit)
+        } else {
+            limit
+        };
+
         let conn = self.lock()?;
         let mut stmt = conn
             .prepare(
                 r#"
-                SELECT a.id, v.distance
+                SELECT a.id, v.distance, a.trust_lane
                 FROM atoms_vec v
                 JOIN knowledge_atoms a ON a.rowid = v.rowid
                 WHERE v.embedding MATCH ?1 AND k = ?2
@@ -344,17 +493,27 @@ impl Store for SqliteVecStore {
             .map_err(|e| KurultaiError::Store(format!("vector_search_ids prepare: {e}")))?;
 
         let rows = stmt
-            .query_map(params![query_embed.as_bytes(), limit as i64], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
+            .query_map(params![query_embed.as_bytes(), k as i64], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, f64>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
             })
             .map_err(|e| KurultaiError::Store(format!("vector_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
-            let (id, distance) =
+            let (id, distance, lane) =
                 row.map_err(|e| KurultaiError::Store(format!("vector_search_ids row: {e}")))?;
+            if filter.trusted_only && lane != "trusted" {
+                continue;
+            }
             let score = 1.0 / (1.0 + distance);
             out.push((id, score));
+            if out.len() >= limit {
+                break;
+            }
         }
         Ok(out)
     }
@@ -439,17 +598,16 @@ impl Store for SqliteVecStore {
         chunk_index: u32,
     ) -> Result<Option<KnowledgeAtom>> {
         let conn = self.lock()?;
+        let sql = format!(
+            "SELECT {} FROM knowledge_atoms
+             WHERE source = ?1
+               AND json_extract(metadata_json, '$.rel_path') = ?2
+               AND CAST(json_extract(metadata_json, '$.chunk_index') AS INTEGER) = ?3
+             LIMIT 1",
+            ATOM_COLUMNS
+        );
         conn.query_row(
-            r#"
-            SELECT id, source, source_id, title, summary, content,
-                   question, resolution, tags_json,
-                   source_updated_at, indexed_at, metadata_json
-            FROM knowledge_atoms
-            WHERE source = ?1
-              AND json_extract(metadata_json, '$.rel_path') = ?2
-              AND CAST(json_extract(metadata_json, '$.chunk_index') AS INTEGER) = ?3
-            LIMIT 1
-            "#,
+            &sql,
             params![source, rel_path, chunk_index as i64],
             row_to_atom,
         )
@@ -474,6 +632,227 @@ impl Store for SqliteVecStore {
             .optional()
             .map_err(|e| KurultaiError::Store(format!("has_fresh_embedding: {e}")))?;
         Ok(found.is_some())
+    }
+
+    async fn list_atoms(&self, limit: usize, filter: SearchFilter) -> Result<Vec<KnowledgeAtom>> {
+        self.list_atoms_sync(limit, filter)
+    }
+
+    async fn get(&self, id: &str) -> Result<Option<KnowledgeAtom>> {
+        let conn = self.lock()?;
+        load_atom_by_id(&conn, id)
+    }
+
+    async fn delete_atom(&self, id: &str) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| KurultaiError::Store(format!("begin delete_atom: {e}")))?;
+
+        let result = (|| {
+            let rowid: Option<i64> = conn
+                .query_row(
+                    "SELECT rowid FROM knowledge_atoms WHERE id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(|e| KurultaiError::Store(format!("delete_atom rowid: {e}")))?;
+            let Some(rowid) = rowid else {
+                return Ok(());
+            };
+            conn.execute("DELETE FROM atoms_fts WHERE id = ?1", [id])
+                .map_err(|e| KurultaiError::Store(format!("delete_atom fts: {e}")))?;
+            conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
+                .map_err(|e| KurultaiError::Store(format!("delete_atom vec: {e}")))?;
+            conn.execute("DELETE FROM knowledge_atoms WHERE id = ?1", [id])
+                .map_err(|e| KurultaiError::Store(format!("delete_atom: {e}")))?;
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                conn.execute_batch("COMMIT;")
+                    .map_err(|e| KurultaiError::Store(format!("commit delete_atom: {e}")))?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(e)
+            }
+        }
+    }
+
+    async fn apply_auto_merge(
+        &self,
+        survivor: &KnowledgeAtom,
+        loser_id: &str,
+        audit_detail: &serde_json::Value,
+    ) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| KurultaiError::Store(format!("begin apply_auto_merge: {e}")))?;
+
+        let result = (|| {
+            Self::upsert_sync(&conn, survivor, self.embed_dim)?;
+
+            let rowid: Option<i64> = conn
+                .query_row(
+                    "SELECT rowid FROM knowledge_atoms WHERE id = ?1",
+                    [loser_id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(|e| KurultaiError::Store(format!("apply_auto_merge rowid: {e}")))?;
+            if let Some(rowid) = rowid {
+                conn.execute("DELETE FROM atoms_fts WHERE id = ?1", [loser_id])
+                    .map_err(|e| KurultaiError::Store(format!("apply_auto_merge fts: {e}")))?;
+                conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
+                    .map_err(|e| KurultaiError::Store(format!("apply_auto_merge vec: {e}")))?;
+                conn.execute("DELETE FROM knowledge_atoms WHERE id = ?1", [loser_id])
+                    .map_err(|e| KurultaiError::Store(format!("apply_auto_merge delete: {e}")))?;
+            }
+
+            let detail_json = audit_detail.to_string();
+            conn.execute(
+                "INSERT INTO quality_audit (action, atom_id, actor, detail_json) VALUES (?1, ?2, ?3, ?4)",
+                params!["auto_merge", survivor.id.as_str(), "near_dupe", detail_json],
+            )
+            .map_err(|e| KurultaiError::Store(format!("apply_auto_merge audit: {e}")))?;
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                conn.execute_batch("COMMIT;")
+                    .map_err(|e| KurultaiError::Store(format!("commit apply_auto_merge: {e}")))?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(e)
+            }
+        }
+    }
+
+    async fn count_by_lane(&self, lane: TrustLane) -> Result<u64> {
+        let conn = self.lock()?;
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM knowledge_atoms WHERE trust_lane = ?1",
+                [lane.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(|e| KurultaiError::Store(format!("count_by_lane: {e}")))?;
+        Ok(count as u64)
+    }
+
+    async fn find_trusted_by_content_hash(&self, content_hash: &str) -> Result<Option<String>> {
+        let conn = self.lock()?;
+        conn.query_row(
+            "SELECT id FROM knowledge_atoms WHERE content_hash = ?1 AND trust_lane = 'trusted' LIMIT 1",
+            [content_hash],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("find_trusted_by_content_hash: {e}")))
+    }
+
+    async fn set_trust_lane(
+        &self,
+        id: &str,
+        lane: TrustLane,
+        quarantine_reason: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.lock()?;
+        let n = conn
+            .execute(
+                "UPDATE knowledge_atoms SET trust_lane = ?1, quarantine_reason = ?2 WHERE id = ?3",
+                params![lane.as_str(), quarantine_reason, id],
+            )
+            .map_err(|e| KurultaiError::Store(format!("set_trust_lane: {e}")))?;
+        if n == 0 {
+            return Err(KurultaiError::Store(format!(
+                "set_trust_lane: atom not found: {id}"
+            )));
+        }
+        Ok(())
+    }
+
+    async fn insert_quality_audit(
+        &self,
+        action: &str,
+        atom_id: &str,
+        actor: &str,
+        detail: &serde_json::Value,
+    ) -> Result<()> {
+        let conn = self.lock()?;
+        let detail_json = detail.to_string();
+        conn.execute(
+            "INSERT INTO quality_audit (action, atom_id, actor, detail_json) VALUES (?1, ?2, ?3, ?4)",
+            params![action, atom_id, actor, detail_json],
+        )
+        .map_err(|e| KurultaiError::Store(format!("insert_quality_audit: {e}")))?;
+        Ok(())
+    }
+
+    async fn insert_merge_candidate(
+        &self,
+        atom_a: &str,
+        atom_b: &str,
+        reason: &str,
+    ) -> Result<bool> {
+        let (a, b) = if atom_a <= atom_b {
+            (atom_a, atom_b)
+        } else {
+            (atom_b, atom_a)
+        };
+        let conn = self.lock()?;
+        let n = conn
+            .execute(
+                r#"
+                INSERT OR IGNORE INTO merge_candidates (atom_a, atom_b, reason, status)
+                VALUES (?1, ?2, ?3, 'pending')
+                "#,
+                params![a, b, reason],
+            )
+            .map_err(|e| KurultaiError::Store(format!("insert_merge_candidate: {e}")))?;
+        Ok(n > 0)
+    }
+
+    async fn count_merge_candidates_pending(&self) -> Result<u64> {
+        let conn = self.lock()?;
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM merge_candidates WHERE status = 'pending'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| KurultaiError::Store(format!("count_merge_candidates_pending: {e}")))?;
+        Ok(count as u64)
+    }
+
+    async fn list_near_dupe_candidates(&self, limit: usize) -> Result<Vec<KnowledgeAtom>> {
+        let conn = self.lock()?;
+        // Sargable recency: compare indexed_at (RFC3339) to a UTC cutoff string.
+        // Quarantine branch is intentionally unbounded in time — near-dupe must see all quarantine.
+        let cutoff = (Utc::now() - chrono::Duration::days(1)).to_rfc3339();
+        let sql = format!(
+            "SELECT {} FROM knowledge_atoms
+             WHERE trust_lane = 'quarantine'
+                OR indexed_at >= ?1
+             ORDER BY indexed_at DESC
+             LIMIT ?2",
+            ATOM_COLUMNS
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| KurultaiError::Store(format!("list_near_dupe_candidates prepare: {e}")))?;
+        let atoms = stmt
+            .query_map(params![cutoff, limit as i64], row_to_atom)
+            .map_err(|e| KurultaiError::Store(format!("list_near_dupe_candidates query: {e}")))?;
+        atoms
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| KurultaiError::Store(format!("list_near_dupe_candidates collect: {e}")))
     }
 }
 
@@ -541,18 +920,10 @@ const STOPWORDS: &[&str] = &[
 ];
 
 fn load_atom_by_id(conn: &Connection, id: &str) -> Result<Option<KnowledgeAtom>> {
-    conn.query_row(
-        r#"
-        SELECT id, source, source_id, title, summary, content,
-               question, resolution, tags_json,
-               source_updated_at, indexed_at, metadata_json
-        FROM knowledge_atoms WHERE id = ?1
-        "#,
-        [id],
-        row_to_atom,
-    )
-    .optional()
-    .map_err(|e| KurultaiError::Store(format!("load_atom_by_id: {e}")))
+    let sql = format!("SELECT {} FROM knowledge_atoms WHERE id = ?1", ATOM_COLUMNS);
+    conn.query_row(&sql, [id], row_to_atom)
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("load_atom_by_id: {e}")))
 }
 
 fn load_atom_by_source_id(
@@ -560,19 +931,13 @@ fn load_atom_by_source_id(
     source: &str,
     source_id: &str,
 ) -> Result<Option<KnowledgeAtom>> {
-    conn.query_row(
-        r#"
-        SELECT id, source, source_id, title, summary, content,
-               question, resolution, tags_json,
-               source_updated_at, indexed_at, metadata_json
-        FROM knowledge_atoms WHERE source = ?1 AND source_id = ?2
-        LIMIT 1
-        "#,
-        params![source, source_id],
-        row_to_atom,
-    )
-    .optional()
-    .map_err(|e| KurultaiError::Store(format!("load_atom_by_source_id: {e}")))
+    let sql = format!(
+        "SELECT {} FROM knowledge_atoms WHERE source = ?1 AND source_id = ?2 LIMIT 1",
+        ATOM_COLUMNS
+    );
+    conn.query_row(&sql, params![source, source_id], row_to_atom)
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("load_atom_by_source_id: {e}")))
 }
 
 fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
@@ -580,6 +945,8 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
     let metadata_json: String = row.get(11)?;
     let source_updated_at: String = row.get(9)?;
     let indexed_at: String = row.get(10)?;
+    let trust_lane: String = row.get(12)?;
+    let quarantine_reason: Option<String> = row.get(13)?;
 
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
     let metadata: HashMap<String, String> =
@@ -599,6 +966,8 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
         indexed_at: parse_dt(&indexed_at),
         embedding: None, // not loaded on read path by default (token budget)
         metadata,
+        trust_lane: TrustLane::parse(&trust_lane),
+        quarantine_reason,
     })
 }
 
@@ -629,14 +998,18 @@ mod tests {
             indexed_at: Utc::now(),
             embedding: emb,
             metadata: HashMap::new(),
+            ..Default::default()
         }
     }
 
     fn temp_store(dim: usize) -> SqliteVecStore {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "kurultai-store-test-{}-{}",
+            "kurultai-store-test-{}-{}-{}",
             std::process::id(),
-            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            Utc::now().timestamp_nanos_opt().unwrap_or(0),
+            N.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         SqliteVecStore::open(dir.join("store.db"), dim).unwrap()
@@ -689,7 +1062,10 @@ mod tests {
             .await
             .unwrap();
 
-        let hits = store.fts_search("database migration", 10).await.unwrap();
+        let hits = store
+            .fts_search("database migration", 10, SearchFilter::default())
+            .await
+            .unwrap();
         assert!(!hits.is_empty(), "expected FTS hit");
         assert_eq!(hits[0].0.id, "a1");
     }
@@ -707,7 +1083,7 @@ mod tests {
             .await
             .unwrap();
         let ranks = store
-            .fts_search_ids("database migration", 10)
+            .fts_search_ids("database migration", 10, SearchFilter::default())
             .await
             .unwrap();
         assert_eq!(ranks[0].0, "a1");
@@ -743,7 +1119,7 @@ mod tests {
             .unwrap();
 
         let hits = store
-            .vector_search(&[0.85, 0.85, 0.85, 0.85], 2)
+            .vector_search(&[0.85, 0.85, 0.85, 0.85], 2, SearchFilter::default())
             .await
             .unwrap();
         assert_eq!(hits.len(), 2);
@@ -769,7 +1145,10 @@ mod tests {
         again.title = "Keep (retitled)".into();
         store.upsert(&again).await.unwrap();
         assert!(store.has_fresh_embedding("keep", &hash).await.unwrap());
-        let hits = store.vector_search(&[0.5, 0.5, 0.5, 0.5], 1).await.unwrap();
+        let hits = store
+            .vector_search(&[0.5, 0.5, 0.5, 0.5], 1, SearchFilter::default())
+            .await
+            .unwrap();
         assert_eq!(hits[0].0.id, "keep");
         assert_eq!(hits[0].0.title, "Keep (retitled)");
     }
@@ -797,7 +1176,10 @@ mod tests {
             .has_fresh_embedding("stale", &sha256_hex("new body"))
             .await
             .unwrap());
-        let hits = store.vector_search(&[0.7, 0.1, 0.1, 0.1], 5).await.unwrap();
+        let hits = store
+            .vector_search(&[0.7, 0.1, 0.1, 0.1], 5, SearchFilter::default())
+            .await
+            .unwrap();
         assert!(hits.is_empty(), "stale vector must be removed");
     }
 
@@ -813,14 +1195,21 @@ mod tests {
             ))
             .await
             .unwrap();
-        let hits = store.vector_search(&[0.1, 0.1, 0.1, 0.1], 5).await.unwrap();
+        let hits = store
+            .vector_search(&[0.1, 0.1, 0.1, 0.1], 5, SearchFilter::default())
+            .await
+            .unwrap();
         assert!(
             hits.is_empty(),
             "zero vectors must not appear in vec search"
         );
         // Still in FTS / count
         assert_eq!(store.count().await.unwrap(), 1);
-        assert!(!store.fts_search("zero embed", 5).await.unwrap().is_empty());
+        assert!(!store
+            .fts_search("zero embed", 5, SearchFilter::default())
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
@@ -837,9 +1226,13 @@ mod tests {
             .unwrap();
         store.delete_source("markdown").await.unwrap();
         assert_eq!(store.count().await.unwrap(), 0);
-        assert!(store.fts_search("delete", 5).await.unwrap().is_empty());
         assert!(store
-            .vector_search(&[0.2, 0.2, 0.2, 0.2], 5)
+            .fts_search("delete", 5, SearchFilter::default())
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(store
+            .vector_search(&[0.2, 0.2, 0.2, 0.2], 5, SearchFilter::default())
             .await
             .unwrap()
             .is_empty());
@@ -854,5 +1247,141 @@ mod tests {
         ];
         store.upsert_batch(&atoms).await.unwrap();
         assert_eq!(store.count().await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn list_atoms_orders_newest_first_and_respects_limit() {
+        let store = temp_store(4);
+        let mut oldest = sample_atom("oldest", "Oldest", "oldest content", None);
+        let mut middle = sample_atom("middle", "Middle", "middle content", None);
+        let mut newest = sample_atom("newest", "Newest", "newest content", None);
+        oldest.indexed_at = Utc::now() - chrono::Duration::hours(2);
+        middle.indexed_at = Utc::now() - chrono::Duration::hours(1);
+        newest.indexed_at = Utc::now();
+        store.upsert(&oldest).await.unwrap();
+        store.upsert(&middle).await.unwrap();
+        store.upsert(&newest).await.unwrap();
+
+        let all = store.list_atoms_sync(10, SearchFilter::default()).unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].title, "Newest");
+        assert_eq!(all[1].title, "Middle");
+        assert_eq!(all[2].title, "Oldest");
+
+        let limited = store.list_atoms_sync(2, SearchFilter::default()).unwrap();
+        assert_eq!(limited.len(), 2);
+        assert_eq!(limited[0].title, "Newest");
+        assert_eq!(limited[1].title, "Middle");
+    }
+
+    #[test]
+    fn migration_v4_adds_trust_lane_audit_and_merge_tables() {
+        let store = temp_store(4);
+        let conn = store.lock().unwrap();
+        let version: i32 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, migrations::CURRENT_SCHEMA_VERSION);
+
+        let has_col = |name: &str| -> bool {
+            let mut stmt = conn.prepare("PRAGMA table_info(knowledge_atoms)").unwrap();
+            let cols: Vec<String> = stmt
+                .query_map([], |r| r.get::<_, String>(1))
+                .unwrap()
+                .map(|c| c.unwrap())
+                .collect();
+            cols.iter().any(|c| c == name)
+        };
+        assert!(has_col("trust_lane"));
+        assert!(has_col("quarantine_reason"));
+
+        let index_count = |name: &str| -> i32 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?1",
+                [name],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(index_count("idx_atoms_indexed_at"), 1);
+        assert_eq!(index_count("idx_atoms_trust_lane"), 1);
+        assert_eq!(index_count("idx_atoms_hash_trusted"), 1);
+
+        let table_count = |name: &str| -> i32 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                [name],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(table_count("quality_audit"), 1);
+        assert_eq!(table_count("merge_candidates"), 1);
+    }
+
+    #[tokio::test]
+    async fn trust_lane_and_quarantine_reason_round_trip() {
+        let store = temp_store(4);
+        let mut atom = sample_atom("q-rt", "Q", "quarantine round trip body", None);
+        atom.trust_lane = TrustLane::Quarantine;
+        atom.quarantine_reason = Some("untagged".into());
+        store.upsert(&atom).await.unwrap();
+        let loaded = store.get("q-rt").await.unwrap().unwrap();
+        assert_eq!(loaded.trust_lane, TrustLane::Quarantine);
+        assert_eq!(loaded.quarantine_reason.as_deref(), Some("untagged"));
+    }
+
+    #[tokio::test]
+    async fn fts_vector_list_exclude_quarantine_by_default() {
+        let store = temp_store(4);
+        let trusted = sample_atom(
+            "t-lane",
+            "Trusted Lane",
+            "LANEFILTERTOKEN trusted body",
+            Some(vec![0.9, 0.1, 0.0, 0.0]),
+        );
+        let mut quarantine = sample_atom(
+            "q-lane",
+            "Quarantine Lane",
+            "LANEFILTERTOKEN quarantine body",
+            Some(vec![0.85, 0.15, 0.0, 0.0]),
+        );
+        quarantine.trust_lane = TrustLane::Quarantine;
+        quarantine.quarantine_reason = Some("untagged".into());
+        store.upsert(&trusted).await.unwrap();
+        store.upsert(&quarantine).await.unwrap();
+
+        let fts = store
+            .fts_search("LANEFILTERTOKEN", 10, SearchFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(fts.len(), 1);
+        assert_eq!(fts[0].0.id, "t-lane");
+
+        let fts_all = store
+            .fts_search(
+                "LANEFILTERTOKEN",
+                10,
+                SearchFilter {
+                    trusted_only: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(fts_all.len(), 2);
+
+        let vec_hits = store
+            .vector_search(&[0.9, 0.1, 0.0, 0.0], 5, SearchFilter::default())
+            .await
+            .unwrap();
+        assert!(vec_hits.iter().all(|(a, _)| a.id == "t-lane"));
+
+        let listed = store.list_atoms(10, SearchFilter::default()).await.unwrap();
+        assert!(listed.iter().all(|a| a.trust_lane == TrustLane::Trusted));
+        assert!(!listed.iter().any(|a| a.id == "q-lane"));
     }
 }

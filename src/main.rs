@@ -34,7 +34,7 @@ struct Cli {
 enum Commands {
     /// Write default config and wire MCP into an agent
     Init {
-        /// Agent to wire: cursor
+        /// Agent to wire: cursor, claude, codex, hermes, or all
         #[arg(long, default_value = "cursor")]
         agent: AgentTarget,
     },
@@ -67,6 +67,14 @@ enum Commands {
     },
     /// List configured sources and status
     Status,
+    /// Promote a quarantined atom to trusted (re-runs quality gate)
+    Promote {
+        /// Atom id
+        atom_id: String,
+        /// Optional audit note
+        #[arg(long)]
+        reason: Option<String>,
+    },
     /// Run MCP server on stdio (for Cursor / Claude)
     Mcp,
     /// Start the daemon (serves HTTP, polls sources, watches filesystem roots)
@@ -95,10 +103,12 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Init { agent } => {
             let config_path = ensure_default_config()?;
-            let mcp_path = wire_agent(agent)?;
+            let mcp_paths = wire_agent(agent)?;
             println!("Config: {}", config_path.display());
-            println!("MCP wired: {}", mcp_path.display());
-            println!("Restart Cursor to load the kurultai MCP server.");
+            for path in &mcp_paths {
+                println!("MCP wired: {}", path.display());
+            }
+            println!("Restart the agent(s) to load the kurultai MCP server.");
         }
         Commands::Mcp => {
             let app = bootstrap_app(&cli).await?;
@@ -168,9 +178,20 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Commands::Promote {
+            ref atom_id,
+            ref reason,
+        } => {
+            let app = bootstrap_app(&cli).await?;
+            let brain = brain_from_app(&app);
+            let res = brain.promote(atom_id, "cli", reason.as_deref()).await?;
+            println!("promoted {} (actor={})", res.atom_id, res.actor);
+        }
         Commands::Status => {
             let app = bootstrap_app(&cli).await?;
             let atom_count = app.atom_count().await?;
+            let brain = brain_from_app(&app);
+            let (trusted, quarantine, merge_pending) = brain.lane_counts().await?;
             println!("Kurultai status");
             println!("  Environment: {}", app.environment);
             println!("  Storage: {}", app.config.storage_path);
@@ -182,7 +203,9 @@ async fn main() -> Result<()> {
                     app.embedder.dim()
                 );
             } else {
-                println!("  Embedder: none (FTS-only — set OPENROUTER_API_KEY for vectors)");
+                println!(
+                    "  Embedder: none (FTS-only — set OPENROUTER_API_KEY or embed.backend=local)"
+                );
             }
             if app.reranker.is_live() {
                 println!("  Reranker: {}", app.reranker.name());
@@ -195,6 +218,9 @@ async fn main() -> Result<()> {
                 println!("  Synthesizer: extractive (set OPENROUTER_API_KEY for LLM ask)");
             }
             println!("  Atoms:   {}", atom_count);
+            println!("  Trusted: {}", trusted);
+            println!("  Quarantine: {}", quarantine);
+            println!("  Merge candidates (pending): {}", merge_pending);
 
             if app.connectors.is_empty() {
                 println!("  Sources: (none enabled)");

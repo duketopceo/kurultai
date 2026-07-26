@@ -1,7 +1,7 @@
 //! Minimal MCP stdio JSON-RPC server (Phase 1 #11 + Phase 3 #7).
 //!
 //! Speaks newline-delimited JSON-RPC 2.0 over stdin/stdout.
-//! Tools: `search`, `cite`, `remember`, `ask`, `who_knows`.
+//! Tools: `search`, `cite`, `remember`, `ask`, `who_knows`, `promote`.
 
 use crate::error::{KurultaiError, Result};
 use crate::mcp::brain::BrainService;
@@ -22,6 +22,7 @@ const TOOL_CITE: &str = "cite";
 const TOOL_REMEMBER: &str = "remember";
 const TOOL_ASK: &str = "ask";
 const TOOL_WHO_KNOWS: &str = "who_knows";
+const TOOL_PROMOTE: &str = "promote";
 
 enum StdinFrame {
     Eof,
@@ -227,12 +228,13 @@ fn tool_defs() -> &'static [Value] {
         vec![
             json!({
                 "name": TOOL_SEARCH,
-                "description": "Search the Kurultai knowledge brain. Returns token-capped excerpts, not full documents.",
+                "description": "Search the Kurultai knowledge brain. Returns token-capped excerpts, not full documents. Default skips quarantine; set include_quarantine=true to include.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "query": { "type": "string" },
-                        "limit": { "type": "integer", "default": 10 }
+                        "limit": { "type": "integer", "default": 10 },
+                        "include_quarantine": { "type": "boolean", "default": false }
                     },
                     "required": ["query"]
                 }
@@ -289,6 +291,18 @@ fn tool_defs() -> &'static [Value] {
                     "required": ["topic"]
                 }
             }),
+            json!({
+                "name": TOOL_PROMOTE,
+                "description": "Promote a quarantined atom to trusted after tags/content pass the quality gate. Never a side effect of remember.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "atom_id": { "type": "string" },
+                        "reason": { "type": "string" }
+                    },
+                    "required": ["atom_id"]
+                }
+            }),
         ]
     })
     .as_slice()
@@ -306,6 +320,15 @@ struct SearchArgs {
     query: String,
     #[serde(default = "default_limit")]
     limit: usize,
+    #[serde(default)]
+    include_quarantine: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct PromoteArgs {
+    atom_id: String,
+    #[serde(default)]
+    reason: Option<String>,
 }
 
 fn default_limit() -> usize {
@@ -346,7 +369,9 @@ async fn call_tool(brain: &BrainService, params: Value) -> Result<Value> {
         TOOL_SEARCH => {
             let args: SearchArgs = serde_json::from_value(call.arguments)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad search args: {e}")))?;
-            let views = brain.search_views(&args.query, args.limit).await?;
+            let views = brain
+                .search_views_filtered(&args.query, args.limit, args.include_quarantine)
+                .await?;
             serde_json::to_string(&views)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
         }
@@ -365,7 +390,24 @@ async fn call_tool(brain: &BrainService, params: Value) -> Result<Value> {
             let id = brain
                 .remember(&args.title, &args.summary, &args.tags, &[])
                 .await?;
-            format!("remembered atom id={id}")
+            let lane = brain
+                .store()
+                .get(&id)
+                .await?
+                .map(|a| match a.quarantine_reason {
+                    Some(r) => format!("quarantined:{r}"),
+                    None => a.trust_lane.as_str().to_string(),
+                })
+                .unwrap_or_else(|| "unknown".into());
+            format!("remembered atom id={id} lane={lane}")
+        }
+        TOOL_PROMOTE => {
+            let args: PromoteArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad promote args: {e}")))?;
+            let res = brain
+                .promote(&args.atom_id, "mcp", args.reason.as_deref())
+                .await?;
+            format!("promoted atom id={} actor={}", res.atom_id, res.actor)
         }
         TOOL_ASK => {
             let args: AskArgs = serde_json::from_value(call.arguments)
@@ -406,13 +448,17 @@ mod tests {
     use chrono::Utc;
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
 
     async fn brain_with_fixture() -> BrainService {
+        static N: AtomicU64 = AtomicU64::new(0);
         let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
         let db_dir = std::env::temp_dir().join(format!(
-            "kurultai-mcp-rpc-{}",
-            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            "kurultai-mcp-rpc-{}-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or(0),
+            N.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&db_dir).unwrap();
         let store = Arc::new(SqliteVecStore::open(db_dir.join("store.db"), 4).unwrap());
@@ -455,6 +501,7 @@ mod tests {
         assert!(names.contains(&"remember"));
         assert!(names.contains(&"ask"));
         assert!(names.contains(&"who_knows"));
+        assert!(names.contains(&"promote"));
     }
 
     #[tokio::test]

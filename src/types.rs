@@ -3,6 +3,36 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Trust lane for quality gating — trusted atoms are default-retrieval; quarantine is opt-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TrustLane {
+    #[default]
+    Trusted,
+    Quarantine,
+}
+
+impl TrustLane {
+    /// Canonical DB / wire string (`"trusted"` or `"quarantine"`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Trusted => "trusted",
+            Self::Quarantine => "quarantine",
+        }
+    }
+
+    /// Parse a stored lane value. Fail-closed: only exact `"trusted"` is Trusted;
+    /// `"quarantine"` and any other/unknown value map to Quarantine so corrupt rows
+    /// never leak into default retrieval. DB migration default remains `'trusted'`.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "trusted" => Self::Trusted,
+            "quarantine" => Self::Quarantine,
+            _ => Self::Quarantine,
+        }
+    }
+}
+
 /// A single knowledge atom — the unit of indexed information.
 ///
 /// Stored in SQL for speed; agents receive [`crate::brain::AgentAtomView`] via MCP,
@@ -35,6 +65,34 @@ pub struct KnowledgeAtom {
     pub embedding: Option<Vec<f32>>,
     /// Arbitrary source-specific metadata
     pub metadata: HashMap<String, String>,
+    /// Quality lane (`trusted` or `quarantine`). Legacy rows migrate as trusted.
+    #[serde(default)]
+    pub trust_lane: TrustLane,
+    /// Why the atom was quarantined (when `trust_lane = quarantine`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quarantine_reason: Option<String>,
+}
+
+impl Default for KnowledgeAtom {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            source: String::new(),
+            source_id: String::new(),
+            title: String::new(),
+            summary: String::new(),
+            content: String::new(),
+            question: None,
+            resolution: None,
+            tags: Vec::new(),
+            source_updated_at: Utc::now(),
+            indexed_at: Utc::now(),
+            embedding: None,
+            metadata: HashMap::new(),
+            trust_lane: TrustLane::Trusted,
+            quarantine_reason: None,
+        }
+    }
 }
 
 /// A search result returned by the query pipeline.
@@ -181,6 +239,9 @@ pub struct Config {
     pub storage_path: String,
     pub embed_model: String,
     pub embed_dim: usize,
+    /// When `Some("local")`, use on-device embeddings (requires `--features local-embed`).
+    #[serde(default)]
+    pub embed_backend: Option<String>,
     pub reranker_model: Option<String>,
     pub poll_interval_secs: u64,
     /// Local hour (0–23) for nightly full reindex; `None` disables (#73).
@@ -189,6 +250,38 @@ pub struct Config {
     /// Skip incremental poll when no client queries for this many hours (#73).
     #[serde(default)]
     pub inactivity_threshold_hours: Option<u64>,
+}
+
+#[cfg(test)]
+mod trust_lane_tests {
+    use super::*;
+
+    #[test]
+    fn parse_exact_trusted_and_quarantine() {
+        assert_eq!(TrustLane::parse("trusted"), TrustLane::Trusted);
+        assert_eq!(TrustLane::parse("quarantine"), TrustLane::Quarantine);
+    }
+
+    #[test]
+    fn parse_invalid_fail_closed_to_quarantine() {
+        assert_eq!(TrustLane::parse(""), TrustLane::Quarantine);
+        assert_eq!(TrustLane::parse("Trusted"), TrustLane::Quarantine);
+        assert_eq!(TrustLane::parse("TRUSTED"), TrustLane::Quarantine);
+        assert_eq!(TrustLane::parse("unknown"), TrustLane::Quarantine);
+        assert_eq!(TrustLane::parse("trusted "), TrustLane::Quarantine);
+    }
+
+    #[test]
+    fn as_str_round_trips_with_parse() {
+        assert_eq!(
+            TrustLane::parse(TrustLane::Trusted.as_str()),
+            TrustLane::Trusted
+        );
+        assert_eq!(
+            TrustLane::parse(TrustLane::Quarantine.as_str()),
+            TrustLane::Quarantine
+        );
+    }
 }
 
 #[cfg(test)]

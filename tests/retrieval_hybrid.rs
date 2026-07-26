@@ -26,6 +26,7 @@ fn sample_atom(id: &str, title: &str, content: &str, embedding: Option<Vec<f32>>
         indexed_at: Utc::now(),
         embedding,
         metadata: HashMap::new(),
+        ..Default::default()
     }
 }
 
@@ -265,6 +266,7 @@ async fn markdown_context_expands_neighbors() {
         f,
         r#"---
 title: Multi
+tags: [test]
 ---
 
 ## First
@@ -334,4 +336,112 @@ next chunk unique NEXTTOKEN
         mid.atom.summary
     );
     assert!(mid.atom.summary.chars().count() <= DEFAULT_EXCERPT_CAP);
+}
+
+#[tokio::test]
+async fn untagged_markdown_quarantined_excluded_from_hybrid_and_neighbors() {
+    use kurultai::connectors::markdown::MarkdownConnector;
+    use kurultai::connectors::Connector;
+    use kurultai::pipeline::IndexPipeline;
+    use kurultai::store::SearchFilter;
+    use kurultai::types::{SearchResult, SourceConfig, SourceKind, TrustLane};
+    use std::io::Write;
+
+    let dir = tempfile::tempdir().unwrap();
+    let md = dir.path().join("untagged.md");
+    let mut f = std::fs::File::create(&md).unwrap();
+    writeln!(
+        f,
+        r#"---
+title: Untagged Multi
+---
+
+## First
+prev chunk unique UNTAGPREV
+
+## Middle
+UNTAGMIDDLE center chunk content
+
+## Last
+next chunk unique UNTAGNEXT
+"#
+    )
+    .unwrap();
+
+    let db = tempfile::tempdir().unwrap();
+    let store = Arc::new(SqliteVecStore::open(db.path().join("s.db"), 4).unwrap());
+    let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+    let pipeline = IndexPipeline::new(Arc::clone(&store) as Arc<dyn Store>, Arc::clone(&embedder));
+
+    let mut connector = MarkdownConnector::new();
+    let mut extra = HashMap::new();
+    extra.insert(
+        "root_path".into(),
+        dir.path().to_string_lossy().into_owned(),
+    );
+    connector
+        .init(&SourceConfig {
+            name: "notes-untagged".into(),
+            kind: SourceKind::Markdown,
+            enabled: true,
+            poll_interval_secs: 60,
+            extra,
+        })
+        .await
+        .unwrap();
+    pipeline
+        .index_connector("notes-untagged", &connector, true)
+        .await
+        .unwrap();
+
+    let all = store
+        .list_atoms(
+            50,
+            SearchFilter {
+                trusted_only: false,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!all.is_empty());
+    assert!(all.iter().all(|a| a.trust_lane == TrustLane::Quarantine));
+
+    let reranker: Arc<dyn Reranker> = Arc::new(NullReranker::new());
+    let hits = hybrid_search(
+        &(Arc::clone(&store) as Arc<dyn Store>),
+        &embedder,
+        &reranker,
+        "UNTAGMIDDLE",
+        5,
+    )
+    .await
+    .unwrap();
+    assert!(
+        hits.is_empty(),
+        "quarantine chunks must be excluded from default hybrid_search"
+    );
+
+    let middle = all
+        .iter()
+        .find(|a| a.content.contains("UNTAGMIDDLE"))
+        .expect("middle quarantine chunk")
+        .clone();
+    let forged = vec![SearchResult {
+        atom: middle,
+        score: 1.0,
+        rank: 0,
+        matched_by: vec!["fts".into()],
+    }];
+    let expanded = expand_markdown_context(&(Arc::clone(&store) as Arc<dyn Store>), forged)
+        .await
+        .unwrap();
+    let summary = &expanded[0].atom.summary;
+    assert!(
+        !summary.contains("UNTAGPREV") && !summary.contains("…prev"),
+        "quarantine prev must not appear as neighbor: {summary}"
+    );
+    assert!(
+        !summary.contains("UNTAGNEXT") && !summary.contains("…next"),
+        "quarantine next must not appear as neighbor: {summary}"
+    );
 }
