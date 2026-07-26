@@ -33,13 +33,7 @@ impl ActivityLog {
         Self::default()
     }
 
-    pub fn record(
-        &self,
-        tool: &str,
-        query: &str,
-        atom_ids: Vec<String>,
-        detail: Option<String>,
-    ) {
+    pub fn record(&self, tool: &str, query: &str, atom_ids: Vec<String>, detail: Option<String>) {
         let mut g = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let seq = g.next_seq;
         g.next_seq = g.next_seq.saturating_add(1);

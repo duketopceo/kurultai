@@ -64,12 +64,7 @@ mod tests {
     async fn ui_root_serves_brain_html() {
         let app = routes::<()>();
         let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/ui/")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/ui/").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);

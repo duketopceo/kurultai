@@ -202,12 +202,8 @@ impl AgentRead for BrainService {
             return Ok(None);
         };
         let id = atom.id.clone();
-        self.activity.record(
-            "cite",
-            &format!("{source}/{source_id}"),
-            vec![id],
-            None,
-        );
+        self.activity
+            .record("cite", &format!("{source}/{source_id}"), vec![id], None);
         Ok(Some(citation_from_atom(&atom, 1.0, true)))
     }
 

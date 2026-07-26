@@ -398,15 +398,14 @@ mod tests {
         let raw = fs::read_to_string(&path).unwrap();
         let root: serde_yaml::Value = serde_yaml::from_str(&raw).unwrap();
         assert_eq!(root["model"].as_str(), Some("gpt-5"));
-        assert_eq!(
-            root["mcp_servers"]["other"]["command"].as_str(),
-            Some("x")
-        );
+        assert_eq!(root["mcp_servers"]["other"]["command"].as_str(), Some("x"));
         assert_eq!(
             root["mcp_servers"]["kurultai"]["command"].as_str(),
             Some("/bin/kurultai")
         );
-        let args = root["mcp_servers"]["kurultai"]["args"].as_sequence().unwrap();
+        let args = root["mcp_servers"]["kurultai"]["args"]
+            .as_sequence()
+            .unwrap();
         assert_eq!(args[0].as_str(), Some("mcp"));
 
         // Idempotent: re-run updates only kurultai, preserves other + model
@@ -414,10 +413,7 @@ mod tests {
         let root: serde_yaml::Value =
             serde_yaml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(root["model"].as_str(), Some("gpt-5"));
-        assert_eq!(
-            root["mcp_servers"]["other"]["command"].as_str(),
-            Some("x")
-        );
+        assert_eq!(root["mcp_servers"]["other"]["command"].as_str(), Some("x"));
         assert_eq!(
             root["mcp_servers"]["kurultai"]["command"].as_str(),
             Some("/opt/kurultai")
