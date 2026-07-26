@@ -127,6 +127,9 @@ poll_interval_secs = 300
 # nightly_full_sync_hour = 3
 # inactivity_threshold_hours = 6
 # reranker_model = "openai/gpt-4o-mini"
+
+[cli]
+# banner = "auto"   # true | false | "auto" (TTY only); suppressed by --plain / NO_COLOR / KURULTAI_PLAIN
 ```
 
 Overrides: `KURULTAI_ENV=dev`, `kurultai --env staging status`. API keys via env only — never in config files.
@@ -182,7 +185,7 @@ Roadmap: developer → solo → team → company ([#25](https://github.com/duket
 | 1–3 Foundation / search / synthesis | ✅ |
 | 4 Expansion (Dayflow · Pond · GitHub FS) | ✅ [complete](docs/plans/phase-4-complete.md) |
 | 5 Production (poll · watch · local ONNX · MCP agents) | ✅ [complete](docs/plans/phase-5-complete.md) · [closeout](docs/plans/phase-5-closeout.md) |
-| 6 Launch (release packaging, yurt art) | 📋 [#10](https://github.com/duketopceo/kurultai/issues/10) |
+| 6 Launch (release packaging, yurt art) | 📋 [#10](https://github.com/duketopceo/kurultai/issues/10) · yurt CLI art [#22](https://github.com/duketopceo/kurultai/issues/22) |
 
 Deferred ops (not Phase 5 product exit): [#20](https://github.com/duketopceo/kurultai/issues/20) ARC · [#29](https://github.com/duketopceo/kurultai/issues/29) env hardening · [#35](https://github.com/duketopceo/kurultai/issues/35) GlitchTip — see [phase-5-complete.md](docs/plans/phase-5-complete.md).
 

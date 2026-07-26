@@ -141,6 +141,7 @@ mod tests {
             poll_interval_secs: 300,
             nightly_full_sync_hour: None,
             inactivity_threshold_hours: None,
+            banner: crate::art::BannerMode::Auto,
         };
 
         let registry = ConnectorRegistry::from_config(&config).await.unwrap();
@@ -169,6 +170,7 @@ mod tests {
             poll_interval_secs: 300,
             nightly_full_sync_hour: None,
             inactivity_threshold_hours: None,
+            banner: crate::art::BannerMode::Auto,
         };
         let registry = ConnectorRegistry::from_config(&config).await.unwrap();
         assert_eq!(registry.len(), 1);
@@ -194,6 +196,7 @@ mod tests {
             poll_interval_secs: 300,
             nightly_full_sync_hour: None,
             inactivity_threshold_hours: None,
+            banner: crate::art::BannerMode::Auto,
         };
         match ConnectorRegistry::from_config(&config).await {
             Ok(_) => panic!("expected unimplemented connector error"),

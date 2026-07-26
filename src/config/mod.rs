@@ -22,6 +22,12 @@ dimension = 3072
 poll_interval_secs = 300
 # nightly_full_sync_hour = 2
 # inactivity_threshold_hours = 24
+
+# CLI presentation — banner art on human TTY surfaces (status / init / --help).
+# auto = TTY only (default); true = always (still respects --plain / NO_COLOR);
+# false = never. Art never appears on `kurultai mcp` stdio.
+[cli]
+# banner = "auto"
 "#
 }
 
@@ -122,6 +128,7 @@ mod tests {
             poll_interval_secs: 300,
             nightly_full_sync_hour: None,
             inactivity_threshold_hours: None,
+            banner: crate::art::BannerMode::Auto,
         };
         assert!(validate(&config).is_err());
     }

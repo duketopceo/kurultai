@@ -14,9 +14,17 @@ fn bin() -> Command {
 }
 
 fn fixture_config(tmp: &tempfile::TempDir) -> PathBuf {
+    fixture_config_with_cli(tmp, None)
+}
+
+fn fixture_config_with_cli(tmp: &tempfile::TempDir, cli_banner: Option<&str>) -> PathBuf {
     let vault = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
     let db = tmp.path().join("store.db");
     let cfg_path = tmp.path().join("config.toml");
+    let cli_section = match cli_banner {
+        Some(v) => format!("\n[cli]\nbanner = {v}\n"),
+        None => String::new(),
+    };
     let body = format!(
         r#"environment = "dev"
 
@@ -34,9 +42,10 @@ poll_interval_secs = 300
 kind = "markdown"
 enabled = true
 root_path = "{vault}"
-"#,
+{cli_section}"#,
         db = db.display(),
-        vault = vault.display()
+        vault = vault.display(),
+        cli_section = cli_section
     );
     fs::write(&cfg_path, body).unwrap();
     cfg_path
@@ -116,6 +125,80 @@ fn cli_ask_extractive_fixture() {
         .assert()
         .success()
         .stdout(predicate::str::contains("KNOWN_PHRASE_KURULTAI_42"));
+}
+
+#[test]
+fn status_banner_true_shows_compact_art() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = fixture_config_with_cli(&tmp, Some("true"));
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "status"])
+        .env_remove("NO_COLOR")
+        .env_remove("KURULTAI_PLAIN")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Kurultai status"))
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_BOX))
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_YURT));
+}
+
+#[test]
+fn status_plain_flag_suppresses_art() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = fixture_config_with_cli(&tmp, Some("true"));
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "--plain", "status"])
+        .env_remove("NO_COLOR")
+        .env_remove("KURULTAI_PLAIN")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Kurultai status"))
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_BOX).not())
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_YURT).not());
+}
+
+#[test]
+fn status_no_color_suppresses_art() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = fixture_config_with_cli(&tmp, Some("true"));
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "status"])
+        .env("NO_COLOR", "1")
+        .env_remove("KURULTAI_PLAIN")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Kurultai status"))
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_BOX).not())
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_YURT).not());
+}
+
+#[test]
+fn status_kurultai_plain_env_suppresses_art() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = fixture_config_with_cli(&tmp, Some("true"));
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "status"])
+        .env("KURULTAI_PLAIN", "1")
+        .env_remove("NO_COLOR")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Kurultai status"))
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_BOX).not())
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_YURT).not());
+}
+
+#[test]
+fn mcp_help_never_prints_yurt_art() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = fixture_config_with_cli(&tmp, Some("true"));
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "mcp", "--help"])
+        .env_remove("NO_COLOR")
+        .env_remove("KURULTAI_PLAIN")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_BOX).not())
+        .stdout(predicate::str::contains(kurultai::art::ART_MARKER_YURT).not());
 }
 
 #[test]

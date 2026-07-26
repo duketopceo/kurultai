@@ -1,3 +1,4 @@
+use crate::art::BannerMode;
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -17,9 +18,20 @@ pub struct FileConfig {
     #[serde(default)]
     pub runtime: FileRuntimeConfig,
 
+    #[serde(default)]
+    pub cli: FileCliConfig,
+
     /// Deployment environment: dev | staging | prod
     #[serde(default)]
     pub environment: Option<String>,
+}
+
+/// `[cli]` presentation settings.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct FileCliConfig {
+    /// `true` | `false` | `"auto"` (default auto = TTY only).
+    #[serde(default)]
+    pub banner: BannerMode,
 }
 
 #[derive(Debug, Clone, Deserialize)]
