@@ -6,6 +6,7 @@ use crate::embed::Embedder;
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::atom_id;
 use crate::mcp::interface::{AgentRead, AgentWrite};
+use crate::memory::{GraphNode, MemoryTier, TierPolicy};
 use crate::quality::{apply_gate, evaluate, promote_atom, PromoteResult};
 use crate::query::{expand_markdown_context, hybrid_search_filtered};
 use crate::rerank::Reranker;
@@ -258,8 +259,45 @@ impl BrainService {
         };
         let results = self.hybrid_hits_filtered(query, limit, filter).await?;
         let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
+        self.touch_access_many(&ids).await;
         self.activity.record("search", query, ids, None);
         Ok(results)
+    }
+
+    /// Hot / warm / cold counts under default [`TierPolicy`].
+    pub async fn tier_counts(&self) -> Result<(u64, u64, u64)> {
+        self.store.count_by_tier(TierPolicy::default()).await
+    }
+
+    /// Graph stubs for the Brain UI (foveated whole-brain load).
+    pub async fn list_graph_nodes(
+        &self,
+        tier: Option<MemoryTier>,
+        limit: usize,
+        include_quarantine: bool,
+    ) -> Result<Vec<GraphNode>> {
+        self.store
+            .list_graph_nodes(
+                tier,
+                limit,
+                SearchFilter {
+                    trusted_only: !include_quarantine,
+                },
+                TierPolicy::default(),
+            )
+            .await
+    }
+
+    /// Bump access timestamp (UI focus / explicit touch).
+    pub async fn touch_access(&self, id: &str) -> Result<Option<KnowledgeAtom>> {
+        self.store.touch_access(id).await?;
+        self.store.get(id).await
+    }
+
+    async fn touch_access_many(&self, ids: &[String]) {
+        for id in ids {
+            let _ = self.store.touch_access(id).await;
+        }
     }
 }
 
@@ -289,6 +327,7 @@ impl AgentRead for BrainService {
             return Ok(None);
         };
         let id = atom.id.clone();
+        let _ = self.store.touch_access(&id).await;
         self.activity
             .record("cite", &format!("{source}/{source_id}"), vec![id], None);
         Ok(Some(citation_from_atom(&atom, 1.0, true)))

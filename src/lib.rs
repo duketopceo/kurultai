@@ -11,6 +11,7 @@ pub mod hashutil;
 pub mod http;
 pub mod logging;
 pub mod mcp;
+pub mod memory;
 pub mod pipeline;
 pub mod quality;
 pub mod query;

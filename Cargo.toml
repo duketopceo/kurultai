@@ -1,6 +1,6 @@
 [package]
 name = "kurultai"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Kurultai — a unified knowledge retrieval layer. Assemble what you know, from wherever it lives."
 authors = ["Luke Kimball <duketopceo@gmail.com>"]

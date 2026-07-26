@@ -49,6 +49,8 @@ fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/api/status", get(api_status))
         .route("/api/atoms", get(api_atoms))
+        .route("/api/graph", get(api_graph))
+        .route("/api/touch", post(api_touch))
         .route("/api/activity", get(api_activity))
         .route("/api/promote", post(api_promote))
         .route("/api/search", get(search_get).post(search_post))
@@ -72,17 +74,28 @@ async fn api_status(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     match state.brain.atom_count().await {
         Ok(atoms) => match state.brain.lane_counts().await {
-            Ok((trusted, quarantine, merge_pending)) => Ok(Json(serde_json::json!({
-                "ok": true,
-                "service": "kurultai",
-                "atoms": atoms,
-                "brain": {
-                    "trusted_count": trusted,
-                    "quarantine_count": quarantine,
-                    "merge_candidates_pending": merge_pending,
-                },
-                "scheduler": state.status.snapshot(),
-            }))),
+            Ok((trusted, quarantine, merge_pending)) => {
+                let memory = match state.brain.tier_counts().await {
+                    Ok((hot, warm, cold)) => serde_json::json!({
+                        "hot": hot,
+                        "warm": warm,
+                        "cold": cold,
+                    }),
+                    Err(_) => serde_json::Value::Null,
+                };
+                Ok(Json(serde_json::json!({
+                    "ok": true,
+                    "service": "kurultai",
+                    "atoms": atoms,
+                    "brain": {
+                        "trusted_count": trusted,
+                        "quarantine_count": quarantine,
+                        "merge_candidates_pending": merge_pending,
+                    },
+                    "memory": memory,
+                    "scheduler": state.status.snapshot(),
+                })))
+            }
             Err(e) => Err((
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(serde_json::json!({
@@ -139,6 +152,64 @@ async fn api_atoms(
             )
         })
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn api_graph(
+    State(state): State<AppState>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    state.status.touch_client_activity();
+    let limit: usize = params
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10_000)
+        .min(50_000);
+    let tier = params
+        .get("tier")
+        .and_then(|s| crate::memory::MemoryTier::parse(s));
+    if let Some(raw) = params.get("tier") {
+        if tier.is_none() && !raw.is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("invalid tier '{raw}' (want hot|warm|cold)"),
+            ));
+        }
+    }
+    let include_quarantine = params
+        .get("include_quarantine")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let nodes = state
+        .brain
+        .list_graph_nodes(tier, limit, include_quarantine)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "tier": tier.map(|t| t.as_str()),
+        "count": nodes.len(),
+        "nodes": nodes,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+struct TouchBody {
+    atom_id: String,
+}
+
+async fn api_touch(
+    State(state): State<AppState>,
+    Json(body): Json<TouchBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    state.status.touch_client_activity();
+    match state.brain.touch_access(&body.atom_id).await {
+        Ok(Some(atom)) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "atom": atom,
+        }))),
+        Ok(None) => Err((StatusCode::NOT_FOUND, "atom not found".into())),
+        Err(e) => Err((StatusCode::BAD_REQUEST, e.to_string())),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -818,6 +889,24 @@ mod tests {
         ) -> crate::Result<Vec<crate::types::KnowledgeAtom>> {
             Ok(vec![])
         }
+        async fn touch_access(&self, _id: &str) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn count_by_tier(
+            &self,
+            _policy: crate::memory::TierPolicy,
+        ) -> crate::Result<(u64, u64, u64)> {
+            Ok((0, 0, 0))
+        }
+        async fn list_graph_nodes(
+            &self,
+            _tier: Option<crate::memory::MemoryTier>,
+            _limit: usize,
+            _filter: crate::store::SearchFilter,
+            _policy: crate::memory::TierPolicy,
+        ) -> crate::Result<Vec<crate::memory::GraphNode>> {
+            Ok(vec![])
+        }
     }
 
     #[tokio::test]
@@ -843,6 +932,9 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["ok"], true);
         assert!(v["atoms"].is_number());
+        assert!(v["memory"]["hot"].is_number());
+        assert!(v["memory"]["warm"].is_number());
+        assert!(v["memory"]["cold"].is_number());
         assert!(v["scheduler"]["last_client_activity_unix"].is_number());
     }
 

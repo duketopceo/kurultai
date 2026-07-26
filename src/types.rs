@@ -3,6 +3,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+fn chrono_utc_now() -> DateTime<Utc> {
+    Utc::now()
+}
+
 /// Trust lane for quality gating — trusted atoms are default-retrieval; quarantine is opt-in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -61,6 +65,9 @@ pub struct KnowledgeAtom {
     pub source_updated_at: DateTime<Utc>,
     /// When this atom was indexed
     pub indexed_at: DateTime<Utc>,
+    /// Last search / cite / UI focus — drives hot/warm/cold ([`crate::memory::MemoryTier`]).
+    #[serde(default = "chrono_utc_now")]
+    pub last_accessed_at: DateTime<Utc>,
     /// Embedding vector (3072-dim, stored as Vec<f32>)
     pub embedding: Option<Vec<f32>>,
     /// Arbitrary source-specific metadata
@@ -87,6 +94,7 @@ impl Default for KnowledgeAtom {
             tags: Vec::new(),
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
+            last_accessed_at: Utc::now(),
             embedding: None,
             metadata: HashMap::new(),
             trust_lane: TrustLane::Trusted,
