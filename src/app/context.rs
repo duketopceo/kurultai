@@ -147,6 +147,28 @@ fn build_local_embedder(config: &Config) -> Result<Arc<dyn Embedder>> {
     }
 }
 
+fn build_reranker(config: &Config) -> Arc<dyn Reranker> {
+    let Some(model) = config
+        .reranker_model
+        .as_ref()
+        .filter(|m| !m.trim().is_empty())
+    else {
+        return Arc::new(NullReranker::new());
+    };
+    let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
+        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));
+    match api_key {
+        Some(key) => Arc::new(OpenRouterReranker::new(
+            key.expose().to_string(),
+            model.clone(),
+        )),
+        None => {
+            tracing::warn!("reranker_model set but no API key — rerank disabled");
+            Arc::new(NullReranker::new())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,33 +212,9 @@ mod tests {
 
     #[test]
     fn null_when_no_key_and_no_local() {
-        // Clear ambient keys for this assertion path by using Null path only when
-        // build_embedder sees no key — we assert the selection helpers instead.
         let cfg = sample_config(None);
         assert!(!wants_local_embed(&cfg));
         let e = NullEmbedder::new(cfg.embed_dim);
         assert!(!e.is_live());
-    }
-}
-
-fn build_reranker(config: &Config) -> Arc<dyn Reranker> {
-    let Some(model) = config
-        .reranker_model
-        .as_ref()
-        .filter(|m| !m.trim().is_empty())
-    else {
-        return Arc::new(NullReranker::new());
-    };
-    let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
-        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));
-    match api_key {
-        Some(key) => Arc::new(OpenRouterReranker::new(
-            key.expose().to_string(),
-            model.clone(),
-        )),
-        None => {
-            tracing::warn!("reranker_model set but no API key — rerank disabled");
-            Arc::new(NullReranker::new())
-        }
     }
 }
