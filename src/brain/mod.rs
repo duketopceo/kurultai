@@ -33,6 +33,11 @@ pub struct AgentAtomView {
     pub excerpt: String,
     pub score: f64,
     pub tags: Vec<String>,
+    /// Trust lane (`trusted` / `quarantine`) so agents can see quarantine when opted in.
+    pub trust_lane: String,
+    /// Present when the atom is quarantined (include_quarantine search).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quarantine_reason: Option<String>,
     /// Optional routing fields when present (cheap to include, high signal).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub question: Option<String>,
@@ -67,6 +72,8 @@ impl AgentAtomView {
             excerpt,
             score,
             tags: atom.tags.clone(),
+            trust_lane: atom.trust_lane.as_str().to_string(),
+            quarantine_reason: atom.quarantine_reason.clone(),
             question: atom.question.clone(),
             resolution: atom.resolution.clone(),
         }
@@ -94,6 +101,7 @@ mod tests {
             indexed_at: Utc::now(),
             embedding: None,
             metadata: Default::default(),
+            ..Default::default()
         };
         let view = AgentAtomView::from_atom(&atom, 0.9, 50);
         assert!(view.excerpt.len() <= 50);

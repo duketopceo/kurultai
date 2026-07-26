@@ -200,6 +200,7 @@ impl PondMessageRow {
             indexed_at: Utc::now(),
             embedding: None,
             metadata,
+            ..Default::default()
         })
     }
 }

@@ -1,3 +1,6 @@
+# Codegraph local index
+.codegraph/
+
 # Rust
 target/
 # Commit Cargo.lock for the CLI binary (reproducible CI builds).

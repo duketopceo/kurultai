@@ -5,7 +5,7 @@ mod hybrid;
 mod rrf;
 
 pub use context::expand_markdown_context;
-pub use hybrid::hybrid_search;
+pub use hybrid::{hybrid_search, hybrid_search_filtered};
 pub use rrf::{candidate_limit, fuse_rrf, fuse_rrf_ids, FusedId, RRF_K};
 
 use crate::embed::Embedder;

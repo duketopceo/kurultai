@@ -50,6 +50,8 @@ kurultai index --full          # FTS-first without OPENROUTER_API_KEY
 kurultai status
 kurultai search "database migration" --limit 10
 kurultai ask "what deployments are we running?"
+# Quality: writes need ≥1 tag; failures land in quarantine (skipped by default search).
+# kurultai promote <atom_id>   # after fixing tags — never auto-promotes from remember
 
 kurultai mcp                   # Cursor / Claude Code / Codex (stdio)
 kurultai daemon --port 8421    # HTTP + poll + watch · Brain UI at /ui · /api/status

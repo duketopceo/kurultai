@@ -2,6 +2,7 @@ use crate::connectors::ConnectorRegistry;
 use crate::embed::Embedder;
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
+use crate::quality::{apply_gate, evaluate};
 use crate::store::Store;
 use std::sync::Arc;
 use std::time::Instant;
@@ -39,6 +40,19 @@ impl IndexPipeline {
             let stats = self.index_connector(name, connector, full).await?;
             results.push(stats);
         }
+
+        // Near-dupe off the write hot path — fire-and-forget after the batch.
+        let store = Arc::clone(&self.store);
+        let embedder = Arc::clone(&self.embedder);
+        tokio::spawn(async move {
+            match crate::quality::near_dupe::run_near_dupe_pass(store.as_ref(), &embedder).await {
+                Ok((merges, pending)) if merges > 0 || pending > 0 => {
+                    tracing::info!(merges, pending, "near-dupe pass complete");
+                }
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "near-dupe pass failed"),
+            }
+        });
 
         Ok(results)
     }
@@ -118,6 +132,22 @@ impl IndexPipeline {
             );
         }
 
+        // Gate each atom; track in-batch content hashes so exact dupes in the
+        // same connector batch quarantine even before commit.
+        let mut batch_seen_hashes = std::collections::HashSet::new();
+        for atom in &mut enriched {
+            let hash = sha256_hex(&atom.content);
+            let outcome = if batch_seen_hashes.contains(&hash) {
+                crate::quality::GateOutcome::Quarantine {
+                    reason: format!("exact_duplicate:batch:{hash}"),
+                }
+            } else {
+                evaluate(self.store.as_ref(), atom).await?
+            };
+            batch_seen_hashes.insert(hash);
+            apply_gate(atom, outcome);
+        }
+
         if !enriched.is_empty() {
             self.store
                 .upsert_batch(&enriched)
@@ -150,7 +180,7 @@ mod tests {
     use crate::connectors::markdown::MarkdownConnector;
     use crate::connectors::Connector;
     use crate::embed::NullEmbedder;
-    use crate::store::SqliteVecStore;
+    use crate::store::{SearchFilter, SqliteVecStore};
     use crate::types::{SourceConfig, SourceKind};
     use chrono::Utc;
     use std::collections::HashMap;
@@ -194,7 +224,7 @@ mod tests {
         assert!(stats.atoms_indexed > 0);
 
         let hits = store
-            .fts_search("KNOWN_PHRASE_KURULTAI_42", 5)
+            .fts_search("KNOWN_PHRASE_KURULTAI_42", 5, SearchFilter::default())
             .await
             .unwrap();
         assert!(!hits.is_empty(), "expected FTS hit on golden phrase");
@@ -329,7 +359,10 @@ mod tests {
             .unwrap();
 
         let q = vec![0.1f32, 0.0, 0.0, 0.0];
-        let hits = store.vector_search(&q, 5).await.unwrap();
+        let hits = store
+            .vector_search(&q, 5, SearchFilter::default())
+            .await
+            .unwrap();
         assert!(
             !hits.is_empty(),
             "live embedder must write searchable atoms_vec rows"

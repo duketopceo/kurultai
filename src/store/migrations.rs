@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 3;
+pub const CURRENT_SCHEMA_VERSION: i32 = 4;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -46,6 +46,66 @@ CREATE INDEX IF NOT EXISTS idx_atoms_content_hash ON knowledge_atoms(content_has
 const MIGRATION_003: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_atoms_indexed_at ON knowledge_atoms(indexed_at DESC);
 "#;
+
+/// Indexes + audit/merge tables for v4 (columns applied via [`add_column_if_missing`]).
+const MIGRATION_004_OBJECTS: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_atoms_trust_lane ON knowledge_atoms(trust_lane);
+CREATE INDEX IF NOT EXISTS idx_atoms_hash_trusted
+    ON knowledge_atoms(content_hash) WHERE trust_lane = 'trusted';
+
+CREATE TABLE IF NOT EXISTS quality_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL DEFAULT (datetime('now')),
+    action TEXT NOT NULL,
+    atom_id TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    detail_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS merge_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    atom_a TEXT NOT NULL,
+    atom_b TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(atom_a, atom_b)
+);
+"#;
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|e| KurultaiError::Store(format!("table_info prepare: {e}")))?;
+    let rows = stmt
+        .query_map([], |r| r.get::<_, String>(1))
+        .map_err(|e| KurultaiError::Store(format!("table_info query: {e}")))?;
+    for row in rows {
+        let name = row.map_err(|e| KurultaiError::Store(format!("table_info row: {e}")))?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Idempotent ADD COLUMN — probes `PRAGMA table_info` before altering.
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    column_ddl: &str,
+) -> Result<()> {
+    if column_exists(conn, table, column)? {
+        return Ok(());
+    }
+    conn.execute(
+        &format!("ALTER TABLE {table} ADD COLUMN {column} {column_ddl}"),
+        [],
+    )
+    .map_err(|e| KurultaiError::Store(format!("add column {table}.{column} failed: {e}")))?;
+    Ok(())
+}
 
 /// Run pending migrations. Called once when the store opens (before vec0 setup).
 pub fn migrate(conn: &Connection) -> Result<()> {
@@ -121,6 +181,21 @@ pub fn migrate(conn: &Connection) -> Result<()> {
             .map_err(|e| KurultaiError::Store(format!("migration 003 failed: {e}")))?;
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [3])
             .map_err(|e| KurultaiError::Store(format!("migration 003 record failed: {e}")))?;
+    }
+
+    if current < 4 {
+        // Columns first (idempotent probe), then objects; record v4 only after both succeed.
+        add_column_if_missing(
+            conn,
+            "knowledge_atoms",
+            "trust_lane",
+            "TEXT NOT NULL DEFAULT 'trusted'",
+        )?;
+        add_column_if_missing(conn, "knowledge_atoms", "quarantine_reason", "TEXT")?;
+        conn.execute_batch(MIGRATION_004_OBJECTS)
+            .map_err(|e| KurultaiError::Store(format!("migration 004 objects failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [4])
+            .map_err(|e| KurultaiError::Store(format!("migration 004 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");
