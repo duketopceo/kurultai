@@ -1,27 +1,106 @@
+// brain.js — wired to the local kurultai daemon.
+// /api/* is proxied to http://127.0.0.1:8421 by vite.config.js so there are no CORS issues.
 document.addEventListener("DOMContentLoaded", () => {
     const listContainer = document.getElementById("atoms-list-container");
     const inspector = document.getElementById("atom-inspector");
     const searchInput = document.getElementById("brain-search");
     const graphContainer = document.getElementById("3d-synapse-graph");
 
-    let activeAtom = brainAtoms[0];
+    let currentAtoms = [];
+    let activeAtom = null;
+    let Graph = null;
 
-    // 1. Populate Lists and Inspect Actions
-    function renderAtomsList(filteredAtoms) {
+    // 1. Boot: pull status + initial atom list from the daemon
+    async function loadDashboard() {
+        try {
+            const r = await fetch("/api/status");
+            const j = await r.json();
+            document.getElementById("stat-status").textContent = j.ok ? "Online" : "Offline";
+            document.getElementById("stat-atoms").textContent = j.atoms ?? "—";
+            document.getElementById("stat-env").textContent =
+                (j.scheduler && j.scheduler.env) || "dev";
+            // sources: derived from atom list below (daemon status doesn't expose source count directly)
+        } catch (e) {
+            document.getElementById("stat-status").textContent = "Daemon unreachable";
+            console.error("status fetch failed:", e);
+        }
+        await triggerLoadAtoms();
+    }
+
+    // 2. Fetch atoms (no query = list all) or run a real FTS/vector search
+    async function triggerLoadAtoms() {
+        try {
+            const r = await fetch("/api/atoms?limit=200");
+            const results = await r.json();
+            processResults(results);
+        } catch (e) {
+            console.error("atoms fetch failed:", e);
+            listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Could not reach the local daemon at /api/atoms.</div>`;
+        }
+    }
+
+    async function triggerSearch(query) {
+        if (!query) return triggerLoadAtoms();
+        try {
+            const r = await fetch("/api/search?q=" + encodeURIComponent(query) + "&limit=25");
+            const results = await r.json();
+            processResults(results);
+        } catch (e) {
+            console.error("search fetch failed:", e);
+            listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Search request failed.</div>`;
+        }
+    }
+
+    // 3. Normalize daemon SearchResult -> atom shape the UI expects
+    function processResults(results) {
+        const seen = new Set();
+        currentAtoms = (results || []).map(r => {
+            const a = r.atom || r;
+            return {
+                id: a.id || a.title_hash || r.rank || Math.random().toString(36).slice(2, 11),
+                title: a.title || "(untitled)",
+                source: a.source || "",
+                source_id: a.source_id || "",
+                summary: a.summary || "",
+                content: a.content || "",
+                question: a.question || "",
+                resolution: a.resolution || "",
+                tags: a.tags || [],
+                file_path: a.file_path || null,
+                source_updated_at: a.source_updated_at || "",
+                score: r.score
+            };
+        });
+
+        // distinct source count for the stat card
+        const sources = new Set(currentAtoms.map(a => a.source).filter(Boolean));
+        const sourcesEl = document.getElementById("stat-sources");
+        if (sourcesEl) sourcesEl.textContent = sources.size || "—";
+
+        renderAtomsList(currentAtoms);
+        if (currentAtoms.length > 0 && !activeAtom) {
+            activeAtom = currentAtoms[0];
+            inspectAtom(activeAtom);
+        }
+        update3DGraph(currentAtoms);
+    }
+
+    // 4. Render the left-pane atom list
+    function renderAtomsList(atoms) {
         listContainer.innerHTML = "";
-        if (filteredAtoms.length === 0) {
-            listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">No matching atoms in SQLite store.</div>`;
+        if (!atoms || atoms.length === 0) {
+            listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">No atoms in the local store.</div>`;
             return;
         }
 
-        filteredAtoms.forEach(atom => {
+        atoms.forEach(atom => {
             const div = document.createElement("div");
             div.className = `atom-item ${activeAtom && activeAtom.id === atom.id ? "active" : ""}`;
             div.innerHTML = `
-                <h4>${atom.title}</h4>
+                <h4>${escapeHtml(atom.title)}</h4>
                 <div class="atom-meta">
-                    <span>${atom.source}/${atom.source_id}</span>
-                    <span>${atom.id}</span>
+                    <span>${escapeHtml(atom.source)}/${escapeHtml(atom.source_id)}</span>
+                    <span>${atom.score !== undefined ? atom.score.toFixed(3) : atom.id.slice(0, 8)}</span>
                 </div>
             `;
             div.addEventListener("click", () => {
@@ -29,41 +108,33 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.querySelectorAll(".atom-item").forEach(el => el.classList.remove("active"));
                 div.classList.add("active");
                 inspectAtom(atom);
-                if (window.Graph) {
-                    window.Graph.centerAt(atom.x, atom.y, atom.z, 1000);
-                    window.Graph.zoomToFit(1000, 100);
-                }
             });
             listContainer.appendChild(div);
         });
     }
 
+    // 5. Inspector pane
     function inspectAtom(atom) {
         if (!atom) {
-            inspector.innerHTML = `
-                <div style="text-align: center; color: var(--text-muted); padding-top: 100px;">
-                    <p>Select an atom from the list to inspect its database structure</p>
-                </div>
-            `;
+            inspector.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding-top: 100px;"><p>Select an atom to inspect its database structure</p></div>`;
             return;
         }
 
-        const tagPills = atom.tags.map(t => `<span class="tag-pill">${t}</span>`).join("");
-        const pseudoEmbedding = Array.from({length: 8}, (_, i) => (Math.sin(atom.id.charCodeAt(0) + i) * 0.1).toFixed(6)).join(", ") + ", ...";
+        const tagPills = (atom.tags || []).map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("");
 
         inspector.innerHTML = `
             <div class="detail-header">
                 <div>
-                    <h3 class="detail-title">${atom.title}</h3>
+                    <h3 class="detail-title">${escapeHtml(atom.title)}</h3>
                     <div style="margin-top: 8px;">${tagPills}</div>
                 </div>
-                <div class="detail-label" style="text-align: right;">ID: ${atom.id}</div>
+                <div class="detail-label" style="text-align: right;">ID: ${escapeHtml(atom.id)}</div>
             </div>
-            
+
             <div class="detail-layout">
                 <div class="detail-row">
                     <div class="detail-label">Source Context</div>
-                    <div class="detail-val" style="font-family: var(--font-mono);">${atom.source} / ${atom.source_id} (updated: ${atom.source_updated_at})</div>
+                    <div class="detail-val" style="font-family: var(--font-mono);">${escapeHtml(atom.source)} / ${escapeHtml(atom.source_id)}${atom.source_updated_at ? ` (updated: ${escapeHtml(atom.source_updated_at)})` : ""}</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">Raw Database Content (content)</div>
@@ -73,21 +144,18 @@ document.addEventListener("DOMContentLoaded", () => {
                     <div class="detail-label">LLM-Distilled Summary (summary)</div>
                     <div class="detail-val">${escapeHtml(atom.summary)}</div>
                 </div>
+                ${atom.question ? `
                 <div class="detail-row">
                     <div class="detail-label">Routing Queries (question / resolution)</div>
-                    <div class="detail-val"><strong>Q:</strong> ${escapeHtml(atom.question)}\n<strong>A:</strong> ${escapeHtml(atom.resolution)}</div>
-                </div>
-                <div class="detail-row">
-                    <div class="detail-label">SQLite-Vec Embedding (float[3072])</div>
-                    <div class="detail-val" style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--primary);">[${pseudoEmbedding}]</div>
-                </div>
+                    <div class="detail-val"><strong>Q:</strong> ${escapeHtml(atom.question)}<br/><strong>A:</strong> ${escapeHtml(atom.resolution || "")}</div>
+                </div>` : ""}
             </div>
         `;
     }
 
     function escapeHtml(text) {
         if (!text) return "";
-        return text
+        return String(text)
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
@@ -95,39 +163,28 @@ document.addEventListener("DOMContentLoaded", () => {
             .replace(/'/g, "&#039;");
     }
 
-    // 2. Interactive FTS/Semantic Search
+    // 6. Search input — debounced, hits /api/search on the daemon
+    let searchTimeout = null;
     if (searchInput) {
         searchInput.addEventListener("input", (e) => {
-            const query = e.target.value.toLowerCase().trim();
-            if (!query) {
-                renderAtomsList(brainAtoms);
-                return;
-            }
-
-            const matches = brainAtoms.filter(atom => 
-                atom.title.toLowerCase().includes(query) ||
-                atom.content.toLowerCase().includes(query) ||
-                atom.summary.toLowerCase().includes(query) ||
-                atom.tags.some(t => t.toLowerCase().includes(query))
-            );
-            renderAtomsList(matches);
+            clearTimeout(searchTimeout);
+            const q = e.target.value.trim();
+            searchTimeout = setTimeout(() => triggerSearch(q), 300);
         });
     }
 
-    // Initialize list and inspector
-    renderAtomsList(brainAtoms);
-    inspectAtom(activeAtom);
+    // 7. 3D synapse graph (3d-force-graph via CDN, same as before)
+    function update3DGraph(atoms) {
+        if (!graphContainer || typeof ForceGraph3D === "undefined") return;
 
-    // 3. 3D Synaptic Force Graph Projection (Using 3d-force-graph library via CDN)
-    if (graphContainer && typeof ForceGraph3D !== 'undefined') {
-        const nodes = brainAtoms.map(atom => ({
+        const nodes = atoms.map(atom => ({
             id: atom.id,
             title: atom.title,
             source: atom.source,
             source_id: atom.source_id,
             tags: atom.tags,
-            // Non-standard high-tech neon colors matching theme
-            color: atom.source_id.includes('guidelines') ? '#c084fc' : (atom.source_id.includes('migration') ? '#38bdf8' : '#10b981'),
+            // High-contrast palette: white default, purple for tagged/highlighted atoms
+            color: (atom.tags && atom.tags.length > 0) ? "#c084fc" : "#ffffff",
             val: 5
         }));
 
@@ -137,48 +194,47 @@ document.addEventListener("DOMContentLoaded", () => {
                 const sharesSource = nodes[i].source_id === nodes[j].source_id;
                 const sharesTag = nodes[i].tags.some(t => nodes[j].tags.includes(t));
                 if (sharesSource || sharesTag) {
-                    links.push({
-                        source: nodes[i].id,
-                        target: nodes[j].id
-                    });
+                    links.push({ source: nodes[i].id, target: nodes[j].id });
                 }
             }
         }
 
-        window.Graph = ForceGraph3D()(graphContainer)
-            .graphData({ nodes, links })
-            .backgroundColor('#030712')
-            .nodeColor(node => node.color)
-            .nodeLabel(node => `
-                <div style="background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(8px); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-primary); pointer-events: none;">
-                    <strong style="color: var(--primary); font-size: 0.9rem;">${node.title}</strong><br/>
-                    <span style="color: var(--text-muted);">Source: ${node.source}/${node.source_id}</span><br/>
-                    <span style="color: var(--secondary);">Tags: ${node.tags.join(', ')}</span>
-                </div>
-            `)
-            .nodeRelSize(3)
-            .linkColor(() => 'rgba(255, 255, 255, 0.08)')
-            .linkWidth(0.5)
-            // Particle electrons transmission effect through synapses
-            .linkDirectionalParticles(2)
-            .linkDirectionalParticleSpeed(0.006)
-            .linkDirectionalParticleWidth(1.5)
-            .linkDirectionalParticleColor(() => '#38bdf8')
-            .onNodeClick(node => {
-                const atom = brainAtoms.find(a => a.id === node.id);
-                if (atom) {
-                    activeAtom = atom;
-                    renderAtomsList(brainAtoms);
-                    inspectAtom(atom);
-                }
-            });
+        if (!Graph) {
+            Graph = ForceGraph3D()(graphContainer)
+                .graphData({ nodes, links })
+                .backgroundColor("#000000")
+                .nodeColor(node => node.color)
+                .nodeLabel(node => `
+                    <div style="background: rgba(0, 0, 0, 0.9); border: 1px solid #c084fc; border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 0.85rem; color: #ffffff; pointer-events: none;">
+                        <strong style="color: #c084fc; font-size: 0.9rem;">${node.title}</strong><br/>
+                        <span style="color: #888888;">Source: ${node.source}/${node.source_id}</span><br/>
+                        <span style="color: #c084fc;">Tags: ${node.tags.join(", ")}</span>
+                    </div>
+                `)
+                .nodeRelSize(3)
+                .linkColor(() => "rgba(255, 255, 255, 0.12)")
+                .linkWidth(0.5)
+                .linkDirectionalParticles(2)
+                .linkDirectionalParticleSpeed(0.006)
+                .linkDirectionalParticleWidth(1.5)
+                .linkDirectionalParticleColor(() => "#c084fc")
+                .onNodeClick(node => {
+                    const atom = currentAtoms.find(a => a.id === node.id);
+                    if (atom) {
+                        activeAtom = atom;
+                        renderAtomsList(currentAtoms);
+                        inspectAtom(atom);
+                    }
+                });
 
-        // Set dimensions match the glass-panel dimensions
-        window.Graph.width(graphContainer.clientWidth);
-        window.Graph.height(500);
-
-        window.addEventListener("resize", () => {
-            window.Graph.width(graphContainer.clientWidth);
-        });
+            Graph.width(graphContainer.clientWidth);
+            Graph.height(500);
+            window.addEventListener("resize", () => Graph.width(graphContainer.clientWidth));
+        } else {
+            Graph.graphData({ nodes, links });
+        }
     }
+
+    // Kick off
+    loadDashboard();
 });

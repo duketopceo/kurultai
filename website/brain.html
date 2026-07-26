@@ -61,7 +61,7 @@
 
         .atom-item:hover, .atom-item.active {
             border-color: var(--primary);
-            background: rgba(56, 189, 248, 0.05);
+            background: rgba(168, 85, 247, 0.08);
         }
 
         .atom-item h4 {
@@ -151,7 +151,7 @@
 
         .search-input:focus {
             border-color: var(--primary);
-            box-shadow: 0 0 15px rgba(56, 189, 248, 0.15);
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.15);
         }
 
         .vector-space-section {
@@ -206,20 +206,20 @@
     <section id="stats" class="container">
         <div class="stats-grid">
             <div class="stat-card glass-panel">
-                <div class="detail-label">Database Path</div>
-                <div class="stat-val" style="font-size: 1.1rem; line-height: 1.8; margin-top: 16px; font-family: var(--font-mono); color: var(--primary);">~/.local/.../dev/store.db</div>
+                <div class="detail-label">Daemon Status</div>
+                <div id="stat-status" class="stat-val" style="font-size: 1.4rem; margin-top: 16px;">connecting…</div>
             </div>
             <div class="stat-card glass-panel">
                 <div class="detail-label">Total Atoms</div>
-                <div class="stat-val">12</div>
+                <div id="stat-atoms" class="stat-val">—</div>
             </div>
             <div class="stat-card glass-panel">
-                <div class="detail-label">Dimensions</div>
-                <div class="stat-val">3072</div>
+                <div class="detail-label">Active Sources</div>
+                <div id="stat-sources" class="stat-val">—</div>
             </div>
             <div class="stat-card glass-panel">
-                <div class="detail-label">Schema Version</div>
-                <div class="stat-val">v2</div>
+                <div class="detail-label">Environment</div>
+                <div id="stat-env" class="stat-val" style="font-size: 1.4rem; margin-top: 16px; text-transform: uppercase;">—</div>
             </div>
         </div>
     </section>
@@ -265,123 +265,7 @@
         </div>
     </footer>
 
-    <!-- Inject data into JS for interactivity -->
-    <script>
-        const brainAtoms = [
-            {
-                id: "d4e21b7a2d83ab9a",
-                source: "test-vault",
-                source_id: "agent_guidelines.md",
-                title: "Agent Guidelines — Core Mottos",
-                summary: "Directives detailing core mottos for agent development, emphasizing Festina lente, Divide et impera, and Memento mori.",
-                content: "# Agent Guidelines\n\nPhilosophical and operational directives for building AI agents.\n\n## Core Mottos\n- **Festina lente**: Make haste slowly. Move intentionally, write robust tests, and avoid hasty hacks.\n- **Divide et impera**: Divide and conquer. Break complex tasks down into isolated, testable modules.\n- **Memento mori**: Remember that code rots. Keep dependencies up to date.",
-                question: "What are the core mottos for building AI agents?",
-                resolution: "Focus on intentional speed, modularity, and dependency maintenance.",
-                tags: ["philosophy", "standards", "mct"],
-                source_updated_at: "2026-07-25T15:30:00Z",
-                indexed_at: "2026-07-25T15:30:36Z",
-                coordinates: { x: 0.15, y: -0.4 }
-            },
-            {
-                id: "c8e12a45d7f8ab21",
-                source: "test-vault",
-                source_id: "agent_guidelines.md",
-                title: "Agent Guidelines — Key Actions",
-                summary: "Outlines coding guidelines, including CODE_STANDARDS compliance, 100% security path test coverage, and complexity thresholds.",
-                content: "## Key Actions\n1. Follow CODE_STANDARDS.md.\n2. Ensure 100% test coverage on security critical paths.\n3. Keep cyclomatic complexity under 10.",
-                question: "What standard rules must developers verify when modifying functions?",
-                resolution: "Follow standards, enforce coverage, keep complexity low.",
-                tags: ["rules", "standards", "testing"],
-                source_updated_at: "2026-07-25T15:30:00Z",
-                indexed_at: "2026-07-25T15:30:36Z",
-                coordinates: { x: 0.12, y: -0.42 }
-            },
-            {
-                id: "e5f2a14589dbe71c",
-                source: "test-vault",
-                source_id: "database_migration.md",
-                title: "Database Migration Guide",
-                summary: "Summary of procedures for executing postgres/sqlite database migrations.",
-                content: "# Database Migration Guide\n\nInstructions for running postgres/sqlite migrations.",
-                question: "How do we run migrations on the database?",
-                resolution: "Backup, apply upgrades using Alembic/schema, and run verification scripts.",
-                tags: ["database", "deployment", "postgres"],
-                source_updated_at: "2026-07-25T15:30:00Z",
-                indexed_at: "2026-07-25T15:30:36Z",
-                coordinates: { x: -0.6, y: 0.2 }
-            },
-            {
-                id: "a9b1c78df34ea601",
-                source: "test-vault",
-                source_id: "database_migration.md",
-                title: "Database Migration — Step 1: Backup database",
-                summary: "Pre-migration guidelines indicating the importance of backing up database tables prior to upgrading.",
-                content: "## Step 1: Backup database\nAlways run a backup before migration.\n`pg_dump -U postgres dbname > backup.sql`",
-                question: "What is the preflight step before database migrations?",
-                resolution: "Backup database via pg_dump command.",
-                tags: ["database", "postgres", "backup"],
-                source_updated_at: "2026-07-25T15:30:00Z",
-                indexed_at: "2026-07-25T15:30:36Z",
-                coordinates: { x: -0.62, y: 0.25 }
-            },
-            {
-                id: "b7e12f6a7d90bc3c",
-                source: "test-vault",
-                source_id: "database_migration.md",
-                title: "Database Migration — Step 2: Apply migrations",
-                summary: "Instruction on executing head upgrades using Alembic migrations tool.",
-                content: "## Step 2: Apply migrations\nRun Alembic upgrade command:\n`alembic upgrade head`",
-                question: "How are migrations executed in production?",
-                resolution: "Run alembic upgrade head command.",
-                tags: ["database", "deployment", "alembic"],
-                source_updated_at: "2026-07-25T15:30:00Z",
-                indexed_at: "2026-07-25T15:30:36Z",
-                coordinates: { x: -0.58, y: 0.18 }
-            },
-            {
-                id: "f8b9d012e34fa56b",
-                source: "test-vault",
-                source_id: "numbers_report.md",
-                title: "Numbers Report 2026",
-                summary: "Statistical and financial overview metrics for the year 2026.",
-                content: "# Numbers Report 2026\n\nThis is the annual stats and metrics report for the year 2026.",
-                question: "What does the 2026 stats report contain?",
-                resolution: "Financial parameters and inventory counts.",
-                tags: ["finance", "stats", "2026"],
-                source_updated_at: "2026-07-25T15:30:00Z",
-                indexed_at: "2026-07-25T15:30:36Z",
-                coordinates: { x: 0.7, y: 0.5 }
-            },
-            {
-                id: "1a2b3c4d5e6f7a8b",
-                source: "test-vault",
-                source_id: "numbers_report.md",
-                title: "Numbers Report — Financial Figures",
-                summary: "Key financial metrics detailing total revenue, net profits, growth rates, and active users.",
-                content: "## Financial Figures\n- Total Revenue: 1543200 USD\n- Net Profit: 345000 USD\n- Growth Rate: 12 percent\n- Active Users: 87654",
-                question: "What is the net profit and active user count for 2026?",
-                resolution: "Net Profit: 345,000 USD, Active Users: 87,654.",
-                tags: ["finance", "stats", "revenue"],
-                source_updated_at: "2026-07-25T15:30:00Z",
-                indexed_at: "2026-07-25T15:30:36Z",
-                coordinates: { x: 0.72, y: 0.48 }
-            },
-            {
-                id: "8c7b6a5e4d3c2b1a",
-                source: "test-vault",
-                source_id: "lorem_ipsum.md",
-                title: "Lorem Ipsum Dolor Sit Amet",
-                summary: "Standard placeholder text referencing Latin terms used to verify formatting.",
-                content: "# Lorem Ipsum Dolor Sit Amet\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
-                question: "What is the standard lorem ipsum text?",
-                resolution: "Standard typesetting placeholder content.",
-                tags: ["lorem", "latin", "mock"],
-                source_updated_at: "2026-07-25T15:30:00Z",
-                indexed_at: "2026-07-25T15:30:36Z",
-                coordinates: { x: -0.1, y: -0.1 }
-            }
-        ];
-    </script>
+    <!-- brain.js fetches live atoms from the local kurultai daemon (/api/* proxied to 127.0.0.1:8421) -->
     <script src="brain.js" defer></script>
 
 </body>
