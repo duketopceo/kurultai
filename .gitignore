@@ -29,6 +29,9 @@ config.toml
 *.db-wal
 *.db-shm
 
+# Local embedding model cache (fastembed / ONNX)
+.fastembed_cache/
+
 # Frontend Website (marketing)
 website/node_modules/
 website/dist/
