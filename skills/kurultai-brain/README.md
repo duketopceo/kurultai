@@ -31,7 +31,7 @@ kurultai init --agent hermes      # or: cursor | claude | codex | all
 
 # 3. Index sources + run the brain
 kurultai index --full
-kurultai daemon --port 8421       # optional: HTTP + poll + watch, UI at /ui
+kurultai daemon --port 8421       # optional: HTTP + poll + watch, Brain UI at /ui
 
 # 4. Restart the agent so the kurultai MCP tools load
 ```

@@ -19,7 +19,7 @@ setup: |
 
   # Index sources + run the brain, then restart the agent so tools load:
   kurultai index --full
-  kurultai daemon --port 8421       # optional: HTTP + poll + watch, UI at /ui
+  kurultai daemon --port 8421       # optional: HTTP + poll + watch, Brain UI at /ui
 ---
 
 # kurultai-brain

@@ -1,8 +1,12 @@
 import { defineConfig } from 'vite';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// Proxy daemon API (/api/*) and /ui to the local kurultai daemon on 8421
-// so the standalone website talks to the real brain without CORS rebuilds.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Optional preview of ../ui — product UI is daemon GET /ui (embedded from ui/).
 export default defineConfig({
+  root: path.resolve(__dirname, '../ui'),
   server: {
     port: 5174,
     proxy: {

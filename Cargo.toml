@@ -27,6 +27,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace"] }
+rust-embed = { version = "8", features = ["mime-guess"] }
+mime_guess = "2"
 
 # SQLite with vector support (pin 0.1.6 — newer alphas fail to compile)
 rusqlite = { version = "0.31", features = ["bundled"] }

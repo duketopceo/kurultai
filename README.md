@@ -52,8 +52,10 @@ kurultai search "database migration" --limit 10
 kurultai ask "what deployments are we running?"
 
 kurultai mcp                   # Cursor / Claude Code / Codex (stdio)
-kurultai daemon --port 8421    # HTTP + poll + watch · UI at /ui · /api/status
+kurultai daemon --port 8421    # HTTP + poll + watch · Brain UI at /ui · /api/status
 ```
+
+**Brain UI (one surface):** with the daemon running, open `http://127.0.0.1:8421/ui`. Assets live in `ui/` and are embedded into the binary — do not add a parallel `website/` / `web/` brain dashboard.
 
 Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md).
 
@@ -75,7 +77,7 @@ Knowledge lives in many places. Kurultai indexes it into one queryable brain so 
 | **Store** | SQLite + FTS5 + sqlite-vec |
 | **Search** | FTS ∥ vector → RRF → optional rerank |
 | **Synthesis** | Extractive / optional LLM `ask` with citations |
-| **Interface** | CLI + MCP stdio + HTTP daemon (poll + notify watch) |
+| **Interface** | CLI + MCP stdio + HTTP daemon (poll + notify watch) · **Brain UI** `GET /ui` (`ui/` embedded) |
 
 ## Configuration
 
@@ -195,8 +197,8 @@ Deep personal install script (checkout tree): `scripts/install/install.sh` (see 
 | #73 Scheduler | Nightly full hour + idle poll skip + `/api/status` times |
 | #74 Multi-hop | Tag/title hop expansion + `Answer.graph_chain` |
 | #75 Citations | `file_path`, `section`, `title_hash`, char range |
-| #76 Dashboard | `GET /ui` + `GET /api/status` (daemon) |
+| #76 Dashboard | `GET /ui` + `GET /api/status` (daemon; assets in `ui/`) |
 
 Plan: [`docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md`](docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md). Drafts: [`docs/agent-zero/`](docs/agent-zero/).
 
-With the daemon running: open `http://127.0.0.1:8421/ui`.
+With the daemon running: open `http://127.0.0.1:8421/ui` (single Brain UI — see [CONCEPTS.md](CONCEPTS.md#brain-ui)).

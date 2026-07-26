@@ -161,7 +161,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         ctx.beginPath();
                         ctx.moveTo(particles[i].x, particles[i].y);
                         ctx.lineTo(particles[j].x, particles[j].y);
-                        // Gradient line between cyan and purple
+                        // Gradient line between white and purple
                         let grad = ctx.createLinearGradient(particles[i].x, particles[i].y, particles[j].x, particles[j].y);
                         grad.addColorStop(0, particles[i].color + alpha + ")");
                         grad.addColorStop(1, particles[j].color + alpha + ")");

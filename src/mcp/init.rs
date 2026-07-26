@@ -186,6 +186,9 @@ fn wire_hermes_at(path: &Path, kurultai_bin: &str) -> Result<PathBuf> {
     ensure_parent_dir(path)?;
 
     let mut root: serde_yaml::Value = match fs::read_to_string(path) {
+        Ok(raw) if raw.trim().is_empty() => {
+            serde_yaml::Value::Mapping(serde_yaml::Mapping::new())
+        }
         Ok(raw) => serde_yaml::from_str(&raw).map_err(|e| {
             KurultaiError::config(format!(
                 "existing {} is not valid YAML ({e}); fix or move it before re-running init — refusing to overwrite other MCP servers",
@@ -448,6 +451,20 @@ mod tests {
         assert_eq!(
             fs::read_to_string(&path).unwrap(),
             "model: \"gpt-5\n  : broken yaml\n"
+        );
+    }
+
+    #[test]
+    fn hermes_yaml_empty_treats_as_empty_mapping() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        fs::write(&path, "").unwrap();
+        wire_hermes_at(&path, "/bin/kurultai").unwrap();
+        let root: serde_yaml::Value =
+            serde_yaml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            root["mcp_servers"]["kurultai"]["command"].as_str(),
+            Some("/bin/kurultai")
         );
     }
 }
