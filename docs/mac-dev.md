@@ -44,6 +44,10 @@ kurultai status
 | Codex | `~/.codex/config.toml` |
 | Hermes Agent | `~/.hermes/config.yaml` (tools register as `mcp_kurultai_*`) |
 
+A portable `kurultai-brain` SKILL.md (agentskills.io-compatible) lives at
+`skills/kurultai-brain/SKILL.md` so skill-host agents (Hermes, Claude Code,
+Cursor, Codex) can discover how to use the kurultai MCP tools.
+
 | Source | `kind` | Notes |
 |--------|--------|--------|
 | Notes | `markdown` | `root_path` to a `.md` folder |
