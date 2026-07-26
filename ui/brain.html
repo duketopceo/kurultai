@@ -4,31 +4,30 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kurultai — Brain Synapse & Ingested Data View</title>
-    <meta name="description" content="Explore the active working data, SQLite-vec tables, and vector space of the Kurultai brain.">
+    <meta name="description" content="Explore the active working memory and living synaptic map of the Kurultai brain.">
     <link rel="stylesheet" href="index.css">
-    <!-- Pin UMD builds: latest 3d-force-graph needs three>=0.179 (no three.min.js). -->
     <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
     <script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
     <style>
         .brain-header {
             margin-top: 40px;
-            margin-bottom: 40px;
+            margin-bottom: 28px;
         }
-        
+
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 24px;
-            margin-bottom: 40px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 20px;
+            margin-bottom: 36px;
         }
-        
+
         .stat-card {
-            padding: 24px;
+            padding: 20px;
             text-align: center;
         }
-        
+
         .stat-val {
-            font-size: 2.2rem;
+            font-size: 2rem;
             font-weight: 800;
             background: var(--grad-glow);
             -webkit-background-clip: text;
@@ -62,9 +61,9 @@
         }
 
         .atom-item:hover, .atom-item.active {
-            border-color: var(--primary);
+            border-color: rgba(180, 210, 255, 0.55);
             background: rgba(255, 255, 255, 0.06);
-            box-shadow: 0 0 18px rgba(255, 255, 255, 0.06);
+            box-shadow: 0 0 22px rgba(140, 180, 255, 0.12);
         }
 
         .atom-item h4 {
@@ -98,9 +97,7 @@
             font-weight: 700;
         }
 
-        .detail-row {
-            margin-bottom: 20px;
-        }
+        .detail-row { margin-bottom: 20px; }
 
         .detail-label {
             font-size: 0.8rem;
@@ -133,10 +130,33 @@
             font-family: var(--font-mono);
         }
 
+        .tier-chip {
+            display: inline-block;
+            padding: 1px 7px;
+            margin-left: 6px;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            vertical-align: middle;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: var(--text-muted);
+        }
+        .tier-chip.tier-hot {
+            color: #e8f0ff;
+            border-color: rgba(160, 200, 255, 0.55);
+            background: rgba(120, 170, 255, 0.12);
+            box-shadow: 0 0 10px rgba(140, 190, 255, 0.2);
+        }
+        .tier-chip.tier-warm { color: #b8b8c0; }
+        .tier-chip.tier-cold { color: #6a6a74; }
+
         .search-box {
             display: flex;
             gap: 12px;
             margin-bottom: 24px;
+            align-items: stretch;
         }
 
         .search-input {
@@ -153,21 +173,85 @@
         }
 
         .search-input:focus {
-            border-color: rgba(255, 255, 255, 0.45);
-            box-shadow: 0 0 18px rgba(255, 255, 255, 0.12);
+            border-color: rgba(160, 200, 255, 0.5);
+            box-shadow: 0 0 18px rgba(120, 170, 255, 0.15);
         }
 
-        .vector-space-section {
-            margin-top: 80px;
-            margin-bottom: 80px;
+        .search-clear-btn {
+            padding: 0 18px;
+            border-radius: 8px;
+            border: 1px solid rgba(160, 200, 255, 0.35);
+            background: rgba(120, 170, 255, 0.08);
+            color: #eaf2ff;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: var(--transition-smooth);
         }
 
-        #vector-space-canvas {
-            width: 100%;
-            height: 350px;
-            background: #000000;
-            border-radius: 16px;
-            border: 1px solid var(--border-color);
+        .search-clear-btn:hover {
+            border-color: rgba(180, 210, 255, 0.6);
+            background: rgba(120, 170, 255, 0.16);
+            box-shadow: 0 0 16px rgba(120, 170, 255, 0.15);
+        }
+
+        .search-clear-btn[hidden] {
+            display: none !important;
+        }
+
+        .brain-layout-controls {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            z-index: 4;
+            display: flex;
+            gap: 8px;
+        }
+
+        .layout-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 999px;
+            border: 1px solid rgba(160, 200, 255, 0.35);
+            background: rgba(0, 0, 0, 0.65);
+            color: rgba(220, 235, 255, 0.85);
+            cursor: pointer;
+            display: grid;
+            place-items: center;
+            backdrop-filter: blur(12px);
+            transition: transform 0.45s cubic-bezier(0.32, 0.72, 0, 1),
+                        border-color 0.45s cubic-bezier(0.32, 0.72, 0, 1),
+                        box-shadow 0.45s cubic-bezier(0.32, 0.72, 0, 1),
+                        background 0.45s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+
+        .layout-btn:hover {
+            border-color: rgba(180, 210, 255, 0.65);
+            box-shadow: 0 0 18px rgba(120, 170, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .layout-btn.active {
+            border-color: rgba(200, 225, 255, 0.85);
+            background: rgba(120, 170, 255, 0.2);
+            box-shadow: 0 0 22px rgba(140, 190, 255, 0.28);
+        }
+
+        .layout-btn:active {
+            transform: scale(0.96);
+        }
+
+        .layout-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
         .view-toggle-row {
@@ -180,9 +264,7 @@
             font-size: 0.85rem;
         }
 
-        .view-toggle-row .toggle-hint {
-            color: var(--text-muted);
-        }
+        .view-toggle-row .toggle-hint { color: var(--text-muted); }
 
         .view-toggle-btn {
             padding: 8px 18px;
@@ -199,112 +281,100 @@
         }
 
         .view-toggle-btn:hover {
-            border-color: rgba(255, 255, 255, 0.45);
-            box-shadow: 0 0 14px rgba(255, 255, 255, 0.1);
+            border-color: rgba(160, 200, 255, 0.5);
+            box-shadow: 0 0 14px rgba(120, 170, 255, 0.12);
         }
 
         .view-toggle-btn.technical {
-            border-color: rgba(255, 255, 255, 0.55);
-            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(160, 200, 255, 0.55);
+            background: rgba(120, 170, 255, 0.12);
             color: #ffffff;
-            box-shadow: 0 0 16px rgba(255, 255, 255, 0.12);
+            box-shadow: 0 0 16px rgba(120, 170, 255, 0.15);
         }
 
-        .atlas-layout {
-            display: grid;
-            grid-template-columns: 1.35fr 1fr;
-            gap: 24px;
-            align-items: stretch;
+        /* Hero brain — focal point */
+        .brain-hero {
+            margin-top: 12px;
+            margin-bottom: 72px;
         }
 
-        #brain-atlas-map {
+        .brain-hero .section-header h2 {
+            font-size: 2rem;
+        }
+
+        .brain-frame {
             position: relative;
-            width: 100%;
-            height: 560px;
-            border-radius: 16px;
-            border: 1px solid var(--border-color);
-            overflow: hidden;
-            background: #000000;
+            border-radius: 20px;
+            padding: 3px;
+            background:
+                linear-gradient(135deg, rgba(160, 210, 255, 0.35), rgba(255, 255, 255, 0.05) 40%, rgba(100, 140, 255, 0.2));
             box-shadow:
-                inset 0 0 80px rgba(255, 255, 255, 0.03),
-                0 0 40px rgba(255, 255, 255, 0.04);
-            cursor: grab;
-            touch-action: none;
+                0 0 60px rgba(100, 160, 255, 0.12),
+                0 0 120px rgba(80, 120, 255, 0.06);
         }
 
-        #brain-atlas-map:active {
-            cursor: grabbing;
-        }
-
-        #brain-atlas-map canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
-        }
-
-        .atlas-hud {
-            position: absolute;
-            left: 16px;
-            bottom: 16px;
-            z-index: 2;
-            font-family: var(--font-mono);
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            pointer-events: none;
-            background: rgba(0, 0, 0, 0.72);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 8px;
-            padding: 8px 12px;
-        }
-
-        .atlas-tooltip {
-            position: absolute;
-            z-index: 3;
-            display: none;
-            max-width: 280px;
-            padding: 10px 12px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.35);
-            background: rgba(0, 0, 0, 0.92);
-            color: #ffffff;
-            font-family: var(--font-mono);
-            font-size: 0.8rem;
-            pointer-events: none;
-            box-shadow: 0 0 18px rgba(255, 255, 255, 0.12);
+        .brain-frame-inner {
+            position: relative;
+            border-radius: 17px;
+            overflow: hidden;
+            background: #000;
         }
 
         #3d-synapse-graph {
             width: 100%;
-            height: 560px;
-            border-radius: 16px;
-            border: 1px solid var(--border-color);
-            overflow: hidden;
+            height: min(72vh, 720px);
             background: #000000;
-            box-shadow:
-                inset 0 0 80px rgba(255, 255, 255, 0.03),
-                0 0 40px rgba(255, 255, 255, 0.04);
         }
 
-        .focus-empty {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: var(--text-muted);
+        .brain-vignette {
+            pointer-events: none;
+            position: absolute;
+            inset: 0;
+            border-radius: 17px;
+            box-shadow:
+                inset 0 0 100px 30px rgba(0, 0, 0, 0.75),
+                inset 0 0 40px rgba(120, 170, 255, 0.06);
+            z-index: 2;
+        }
+
+        .brain-shimmer {
+            pointer-events: none;
+            position: absolute;
+            inset: -20%;
+            z-index: 1;
+            background:
+                radial-gradient(ellipse 45% 35% at 50% 42%, rgba(140, 190, 255, 0.09) 0%, transparent 55%),
+                radial-gradient(ellipse 30% 25% at 30% 60%, rgba(200, 220, 255, 0.04) 0%, transparent 50%),
+                radial-gradient(ellipse 25% 20% at 70% 35%, rgba(160, 180, 255, 0.05) 0%, transparent 50%);
+            animation: storm-drift 14s ease-in-out infinite alternate;
+        }
+
+        @keyframes storm-drift {
+            0% { transform: translate3d(-2%, -1%, 0) scale(1); opacity: 0.85; }
+            50% { transform: translate3d(2%, 1.5%, 0) scale(1.04); opacity: 1; }
+            100% { transform: translate3d(1%, -2%, 0) scale(1.02); opacity: 0.9; }
+        }
+
+        #brain-hud-hint {
+            position: absolute;
+            left: 50%;
+            bottom: 16px;
+            transform: translateX(-50%);
+            z-index: 3;
             font-family: var(--font-mono);
-            font-size: 0.9rem;
-            padding: 24px;
+            font-size: 0.72rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: rgba(180, 210, 255, 0.45);
+            pointer-events: none;
             text-align: center;
+            white-space: nowrap;
         }
 
         @media (max-width: 992px) {
-            .db-layout {
-                grid-template-columns: 1fr;
-            }
-
-            .atlas-layout {
-                grid-template-columns: 1fr;
-            }
+            .db-layout { grid-template-columns: 1fr; }
+            #3d-synapse-graph { height: 56vh; }
+            #brain-hud-hint { white-space: normal; max-width: 90%; }
         }
     </style>
 </head>
@@ -312,7 +382,6 @@
 
     <canvas id="neural-canvas"></canvas>
 
-    <!-- Header Navigation -->
     <header>
         <div class="container nav-wrapper">
             <a href="index.html" class="logo">
@@ -321,22 +390,20 @@
             </a>
             <nav class="nav-links">
                 <a href="index.html">Home</a>
-                <a href="#stats">Brain Stats</a>
+                <a href="#brain">Brain</a>
+                <a href="#stats">Stats</a>
                 <a href="#data">Atom Explorer</a>
-                <a href="#atlas">Brain Atlas</a>
             </nav>
             <a href="https://github.com/duketopceo/kurultai" class="btn-github" target="_blank">GitHub</a>
         </div>
     </header>
 
-    <!-- Brain Header -->
     <section class="container brain-header">
         <span class="badge">Working Memory Explorer</span>
         <h1 style="font-size: 3rem; margin-bottom: 12px;">Active Brain Data</h1>
-        <p>Real-time view of ingested code blocks, note segments, database schemas, and embedding coordinates.</p>
+        <p>Neurons, synapses, and electrons — the living map of what Kurultai knows.</p>
     </section>
 
-    <!-- View Mode Toggle -->
     <section class="container">
         <div class="view-toggle-row">
             <span class="toggle-hint">View Mode:</span>
@@ -344,7 +411,33 @@
         </div>
     </section>
 
-    <!-- Database Stats -->
+    <!-- Focal: synaptic brain -->
+    <section id="brain" class="container brain-hero">
+        <div class="section-header" style="margin-bottom: 20px;">
+            <h2>Synaptic Brain</h2>
+            <p>Whole-brain force graph — hot memory first. Hover to light connections; watch synaptic fire arc through the network.</p>
+        </div>
+        <div class="brain-frame">
+            <div class="brain-frame-inner">
+                <div class="brain-shimmer" aria-hidden="true"></div>
+                <div id="3d-synapse-graph" aria-label="Synaptic brain network"></div>
+                <div class="brain-vignette" aria-hidden="true"></div>
+                <div class="brain-layout-controls" role="group" aria-label="Synapse formation">
+                    <button type="button" class="layout-btn active" id="layout-force" title="Organic force" aria-pressed="true">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="8" r="2"/><circle cx="16" cy="7" r="2"/><circle cx="12" cy="16" r="2"/><path d="M8.5 9.2 14.5 8.2M8.2 9.8 11 14.5M14.8 8.8 12.8 14.2"/></svg>
+                    </button>
+                    <button type="button" class="layout-btn" id="layout-circle" title="Circle formation" aria-pressed="false">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="5" r="1.2"/><circle cx="17.5" cy="15.5" r="1.2"/><circle cx="6.5" cy="15.5" r="1.2"/></svg>
+                    </button>
+                    <button type="button" class="layout-btn" id="layout-brain" title="Brain formation" aria-pressed="false">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 4.8c-2.2.2-3.7 2.2-3.5 4.3-.9.6-1.4 1.7-1.2 2.9.3 1.6 1.7 2.7 3.3 2.7h.2c.2 1.6 1.5 2.9 3.1 2.9.7 0 1.3-.2 1.8-.6.5.4 1.2.6 1.9.6 1.7 0 3-1.3 3.1-2.9h.1c1.6 0 3-1.1 3.3-2.7.3-1.3-.2-2.4-1.1-3 .1-2.1-1.3-4-3.5-4.2-1-.9-2.4-1.2-3.6-.8-1.1-.5-2.5-.3-3.9.8z"/><path d="M12 5.5v12.2"/><path d="M8.2 9.2c1.2.4 2.1 1.4 2.3 2.6M15.8 9.2c-1.2.4-2.1 1.4-2.3 2.6"/></svg>
+                    </button>
+                </div>
+                <div id="brain-hud-hint">loading neurons…</div>
+            </div>
+        </div>
+    </section>
+
     <section id="stats" class="container">
         <div class="stats-grid">
             <div class="stat-card glass-panel">
@@ -354,6 +447,11 @@
             <div class="stat-card glass-panel">
                 <div id="label-atoms" class="detail-label">Stored Memories</div>
                 <div id="stat-atoms" class="stat-val">—</div>
+            </div>
+            <div class="stat-card glass-panel">
+                <div class="detail-label">Memory Tiers</div>
+                <div id="stat-memory" class="stat-val" style="font-size: 1.1rem; margin-top: 16px;">—</div>
+                <div class="detail-label" style="margin-top: 8px; opacity: 0.7;">hot / warm / cold</div>
             </div>
             <div class="stat-card glass-panel">
                 <div id="label-sources" class="detail-label">Data Sources</div>
@@ -366,51 +464,22 @@
         </div>
     </section>
 
-    <!-- Atom Browser -->
     <section id="data" class="container" style="margin-bottom: 80px;">
         <div class="search-box">
-            <input type="text" id="brain-search" class="search-input" placeholder="Search FTS / Vector space (e.g. 'postgres', 'lente', 'revenue')...">
+            <input type="text" id="brain-search" class="search-input" placeholder="Search FTS / Vector space (e.g. 'postgres', 'lente', 'revenue')..." autocomplete="off">
+            <button type="button" id="search-clear" class="search-clear-btn" hidden aria-label="Clear search">Clear</button>
         </div>
 
         <div class="db-layout">
-            <!-- Left Pane: Atoms List -->
-            <div class="atoms-list" id="atoms-list-container">
-                <!-- Javascript will populate -->
-            </div>
-
-            <!-- Right Pane: Atom Detail Inspector -->
+            <div class="atoms-list" id="atoms-list-container"></div>
             <div class="atom-details glass-panel" id="atom-inspector">
                 <div style="text-align: center; color: var(--text-muted); padding-top: 100px;">
-                    <p>Select an atom from the list to inspect its database structure</p>
+                    <p>Select an atom to inspect its structure</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Brain Atlas (overview) + focus neighborhood synapse -->
-    <section id="atlas" class="container vector-space-section">
-        <div class="section-header" style="margin-bottom: 32px;">
-            <h2>Brain Atlas</h2>
-            <p>Semantic overview map of the whole vault. Click a point (or an atom in the list) to open a local 3D synapse hologram of that atom and its neighbors — Connected Papers style.</p>
-        </div>
-        <div class="atlas-layout">
-            <div>
-                <div class="detail-label" style="margin-bottom: 12px;">Overview map</div>
-                <div id="brain-atlas-map" class="glass-panel" aria-label="Brain atlas overview map">
-                    <div id="atlas-hud" class="atlas-hud">scroll to zoom · drag to pan · click to focus</div>
-                    <div id="atlas-tooltip" class="atlas-tooltip" role="tooltip"></div>
-                </div>
-            </div>
-            <div>
-                <div class="detail-label" style="margin-bottom: 12px;">Focus synapse</div>
-                <div id="3d-synapse-graph" class="glass-panel">
-                    <div class="focus-empty" id="focus-empty">Select an atom to load its neighborhood hologram</div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Footer -->
     <footer>
         <div class="container footer-wrapper">
             <p>© 2026 Kurultai. MIT Licensed.</p>
@@ -421,8 +490,7 @@
         </div>
     </footer>
 
-    <!-- brain.js fetches atoms from the local kurultai daemon (/api/* proxied to 127.0.0.1:8421) -->
+    <script src="index.js" defer></script>
     <script src="brain.js" defer></script>
-
 </body>
 </html>

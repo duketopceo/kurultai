@@ -1,25 +1,31 @@
-// brain.js — wired to the local kurultai daemon (served at GET /ui).
-// Absolute /api/* paths hit the same origin when loaded from the daemon.
-// Overview: 2D atlas map (Three.js Points). Focus: 3D synapse for neighborhood only.
+// brain.js — dashboard + whole-brain synaptic storm (neurons / electrons / zaps).
 document.addEventListener("DOMContentLoaded", () => {
     const listContainer = document.getElementById("atoms-list-container");
     const inspector = document.getElementById("atom-inspector");
     const searchInput = document.getElementById("brain-search");
-    const graphContainer = document.getElementById("3d-synapse-graph");
-    const atlasContainer = document.getElementById("brain-atlas-map");
-    const atlasHud = document.getElementById("atlas-hud");
-    const atlasTooltip = document.getElementById("atlas-tooltip");
+    const searchClearBtn = document.getElementById("search-clear");
+    const stage = document.getElementById("3d-synapse-graph");
+    const hint = document.getElementById("brain-hud-hint");
+    const layoutForceBtn = document.getElementById("layout-force");
+    const layoutCircleBtn = document.getElementById("layout-circle");
+    const layoutBrainBtn = document.getElementById("layout-brain");
 
-    const ATOMS_LIMIT = 200;
-    const FOCUS_MAX_NODES = 120;
-    const LAYOUT_CACHE_KEY = "kurultai-brain-atlas-layout-v1";
+    const LIST_HOT_CAP = 400;
+    const GRAPH_TIER_LIMIT = 20000;
+    const BRAIN_MAX_NODES = 1400;
+    const AMBIENT_PARTICLE_LINKS = 0.18;
+    const FORMATION_RADIUS = 92;
+    const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
     let currentAtoms = [];
     let activeAtom = null;
     let Graph = null;
-    let layoutById = new Map(); // id -> {x, y}
+    let graphBuiltForSig = "";
+    let isSearchMode = false;
+    let layoutMode = "force"; // force | circle | brain
+    let formationAngle = 0;
+    let formationSpinTimer = null;
 
-    // View mode: Simple (default) vs Technical
     const viewModeBtn = document.getElementById("view-mode-btn");
     let isTechnical = localStorage.getItem("kurultai-brain-view") === "technical";
 
@@ -45,7 +51,12 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // 1. Boot: pull status + initial atom list from the daemon in parallel
+    function renderMemoryStats(memory) {
+        const el = document.getElementById("stat-memory");
+        if (!el || !memory) return;
+        el.textContent = `${memory.hot ?? 0} / ${memory.warm ?? 0} / ${memory.cold ?? 0}`;
+    }
+
     async function loadDashboard() {
         const statusPromise = fetch("/api/status")
             .then(async r => {
@@ -54,6 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.getElementById("stat-atoms").textContent = j.atoms ?? "—";
                 document.getElementById("stat-env").textContent =
                     (j.scheduler && j.scheduler.env) || "dev";
+                if (j.memory) renderMemoryStats(j.memory);
             })
             .catch(e => {
                 document.getElementById("stat-status").textContent = "Daemon unreachable";
@@ -62,37 +74,102 @@ document.addEventListener("DOMContentLoaded", () => {
         await Promise.all([statusPromise, triggerLoadAtoms()]);
     }
 
-    // 2. Fetch atoms (no query = list all) or run a real FTS/vector search
+    async function fetchGraphTier(tier) {
+        const r = await fetch(`/api/graph?tier=${tier}&limit=${GRAPH_TIER_LIMIT}`);
+        if (!r.ok) throw new Error(`graph ${tier} failed: ${r.status}`);
+        return r.json();
+    }
+
     async function triggerLoadAtoms() {
+        isSearchMode = false;
+        updateSearchClearVisibility();
         try {
-            const r = await fetch(`/api/atoms?limit=${ATOMS_LIMIT}`);
-            const results = await r.json();
-            processResults(results);
+            const hot = await fetchGraphTier("hot");
+            mergeGraphNodes(hot.nodes || [], { replace: true });
+            if (hint) hint.textContent = `hot ${hot.count ?? 0} · loading warm / cold…`;
+            const [warm, cold] = await Promise.all([
+                fetchGraphTier("warm"),
+                fetchGraphTier("cold")
+            ]);
+            mergeGraphNodes([...(warm.nodes || []), ...(cold.nodes || [])], { replace: false });
+            if (hint) {
+                hint.textContent =
+                    `hot ${hot.count ?? 0} · warm ${warm.count ?? 0} · cold ${cold.count ?? 0} · drag · scroll · click a neuron`;
+            }
+            if (layoutMode !== "force") applyFormationLayout(layoutMode, { animate: false });
         } catch (e) {
-            console.error("atoms fetch failed:", e);
-            listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Could not reach the local daemon at /api/atoms.</div>`;
+            console.error("graph fetch failed:", e);
+            if (hint) hint.textContent = "could not reach /api/graph";
+            listContainer.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:20px;">Could not reach the local daemon.</div>`;
         }
     }
 
+    function updateSearchClearVisibility() {
+        if (!searchClearBtn) return;
+        const show = isSearchMode || !!(searchInput && searchInput.value.trim());
+        searchClearBtn.hidden = !show;
+    }
+
+    async function clearSearch() {
+        if (searchInput) searchInput.value = "";
+        isSearchMode = false;
+        updateSearchClearVisibility();
+        await triggerLoadAtoms();
+    }
+
     async function triggerSearch(query) {
-        if (!query) return triggerLoadAtoms();
+        if (!query) return clearSearch();
+        isSearchMode = true;
+        updateSearchClearVisibility();
         try {
             const r = await fetch("/api/search?q=" + encodeURIComponent(query) + "&limit=25");
             const results = await r.json();
             processResults(results);
+            if (layoutMode !== "force") applyFormationLayout(layoutMode, { animate: false });
         } catch (e) {
             console.error("search fetch failed:", e);
-            listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Search request failed.</div>`;
+            listContainer.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:20px;">Search request failed.</div>`;
         }
     }
 
-    // 3. Normalize daemon SearchResult -> atom shape the UI expects
+    function graphNodeToAtom(n) {
+        return {
+            id: n.id || Math.random().toString(36).slice(2, 11),
+            title: n.title || "(untitled)",
+            source: n.source || "",
+            source_id: n.source_id || "",
+            summary: n.summary || "",
+            content: "",
+            question: "",
+            resolution: "",
+            tags: [],
+            file_path: null,
+            source_updated_at: "",
+            indexed_at: n.indexed_at || "",
+            last_accessed_at: n.last_accessed_at || "",
+            tier: n.tier || "warm",
+            stub: n.tier !== "hot",
+            score: undefined
+        };
+    }
+
+    function mergeGraphNodes(nodes, { replace }) {
+        const mapped = (nodes || []).map(graphNodeToAtom);
+        if (replace) currentAtoms = mapped;
+        else {
+            const byId = new Map(currentAtoms.map(a => [a.id, a]));
+            for (const a of mapped) {
+                if (!byId.has(a.id)) byId.set(a.id, a);
+            }
+            currentAtoms = Array.from(byId.values());
+        }
+        refreshFromCurrentAtoms({ rebuildBrain: true });
+    }
+
     function processResults(results) {
         currentAtoms = (results || []).map(r => {
             const a = r.atom || r;
             const meta = a.metadata || {};
-            const layoutX = parseFloat(meta.layout_x);
-            const layoutY = parseFloat(meta.layout_y);
             return {
                 id: a.id || Math.random().toString(36).slice(2, 11),
                 title: a.title || "(untitled)",
@@ -105,59 +182,114 @@ document.addEventListener("DOMContentLoaded", () => {
                 tags: a.tags || [],
                 file_path: meta.file_path || meta.rel_path || null,
                 source_updated_at: a.source_updated_at || "",
-                score: r.score,
-                layout_x: Number.isFinite(layoutX) ? layoutX : null,
-                layout_y: Number.isFinite(layoutY) ? layoutY : null
+                indexed_at: a.indexed_at || "",
+                last_accessed_at: a.last_accessed_at || "",
+                tier: "hot",
+                stub: false,
+                score: r.score
             };
         });
+        refreshFromCurrentAtoms({ rebuildBrain: true });
+    }
 
+    function atomsForList() {
+        const hot = currentAtoms.filter(a => a.tier === "hot");
+        const pool = hot.length ? hot : currentAtoms;
+        return pool.slice(0, LIST_HOT_CAP);
+    }
+
+    function refreshFromCurrentAtoms({ rebuildBrain } = { rebuildBrain: false }) {
         const sources = new Set(currentAtoms.map(a => a.source).filter(Boolean));
         const sourcesEl = document.getElementById("stat-sources");
         if (sourcesEl) sourcesEl.textContent = sources.size || "—";
 
-        layoutById = ensureAtlasLayout(currentAtoms);
-        renderAtomsList(currentAtoms);
-        updateAtlasMap(currentAtoms);
+        const listSlice = atomsForList();
+        renderAtomsList(listSlice);
 
         if (currentAtoms.length > 0) {
             const keep = activeAtom && currentAtoms.find(a => a.id === activeAtom.id);
-            activeAtom = keep || currentAtoms[0];
-            renderAtomsList(currentAtoms);
+            activeAtom = keep || listSlice[0] || currentAtoms[0];
             inspectAtom(activeAtom);
-            updateFocusSynapse(activeAtom);
-            highlightAtlasSelection(activeAtom.id);
+            if (rebuildBrain) updateMainBrain(currentAtoms);
+            else focusCameraOnAtom(activeAtom);
+            refreshGraphPaint();
         } else {
             activeAtom = null;
-            updateFocusSynapse(null);
+            if (Graph) Graph.graphData({ nodes: [], links: [] });
         }
     }
 
-    function selectAtom(atom, { scrollList } = { scrollList: false }) {
+    function hydrateFromServerAtom(a) {
+        const meta = a.metadata || {};
+        return {
+            id: a.id,
+            title: a.title || "(untitled)",
+            source: a.source || "",
+            source_id: a.source_id || "",
+            summary: a.summary || "",
+            content: a.content || "",
+            question: a.question || "",
+            resolution: a.resolution || "",
+            tags: a.tags || [],
+            file_path: meta.file_path || meta.rel_path || null,
+            source_updated_at: a.source_updated_at || "",
+            indexed_at: a.indexed_at || "",
+            last_accessed_at: a.last_accessed_at || "",
+            tier: "hot",
+            stub: false,
+            score: undefined
+        };
+    }
+
+    async function selectAtom(atom, { scrollList } = {}) {
         if (!atom) return;
         activeAtom = atom;
-        renderAtomsList(currentAtoms);
+        renderAtomsList(atomsForList());
         inspectAtom(atom);
-        updateFocusSynapse(atom);
-        highlightAtlasSelection(atom.id);
+        focusCameraOnAtom(atom);
+        refreshGraphPaint();
         if (scrollList) {
             const el = listContainer.querySelector(".atom-item.active");
             if (el) el.scrollIntoView({ block: "nearest" });
         }
+        try {
+            const r = await fetch("/api/touch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ atom_id: atom.id })
+            });
+            if (!r.ok) return;
+            const j = await r.json();
+            if (!j.atom) return;
+            const full = hydrateFromServerAtom(j.atom);
+            const idx = currentAtoms.findIndex(a => a.id === full.id);
+            if (idx >= 0) currentAtoms[idx] = { ...currentAtoms[idx], ...full };
+            else currentAtoms.push(full);
+            if (activeAtom && activeAtom.id === full.id) {
+                activeAtom = currentAtoms.find(a => a.id === full.id) || full;
+                inspectAtom(activeAtom);
+                renderAtomsList(atomsForList());
+                refreshGraphPaint();
+            }
+        } catch (e) {
+            console.error("touch failed:", e);
+        }
     }
 
-    // 4. Render the left-pane atom list
     function renderAtomsList(atoms) {
         listContainer.innerHTML = "";
         if (!atoms || atoms.length === 0) {
-            listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">No atoms in the local store.</div>`;
+            listContainer.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:20px;">No atoms in the local store.</div>`;
             return;
         }
-
         atoms.forEach(atom => {
             const div = document.createElement("div");
             div.className = `atom-item ${activeAtom && activeAtom.id === atom.id ? "active" : ""}`;
+            const tier = atom.tier
+                ? `<span class="tier-chip tier-${escapeHtml(atom.tier)}">${escapeHtml(atom.tier)}</span>`
+                : "";
             div.innerHTML = `
-                <h4>${escapeHtml(atom.title)}</h4>
+                <h4>${escapeHtml(atom.title)} ${tier}</h4>
                 <div class="atom-meta">
                     <span>${escapeHtml(atom.source)}/${escapeHtml(atom.source_id)}</span>
                     <span>${atom.score !== undefined ? atom.score.toFixed(3) : atom.id.slice(0, 8)}</span>
@@ -168,59 +300,59 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // 5. Inspector pane
     function inspectAtom(atom) {
         if (!atom) {
-            inspector.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding-top: 100px;"><p>Select an atom to inspect its database structure</p></div>`;
+            inspector.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding-top:100px;"><p>Select an atom to inspect its structure</p></div>`;
             return;
         }
-
         const tagPills = (atom.tags || []).map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("");
         const sourceLabel = isTechnical ? "Source Context" : "Memory Origin";
         const contentLabel = isTechnical ? "Raw Database Content (content)" : "Excerpt / Content";
         const summaryLabel = isTechnical ? "LLM-Distilled Summary (summary)" : "Summary";
-        const updatedSuffix = isTechnical && atom.source_updated_at ? ` (updated: ${escapeHtml(atom.source_updated_at)})` : "";
-        const idHeader = isTechnical ? `<div class="detail-label" style="text-align: right;">ID: ${escapeHtml(atom.id)}</div>` : "";
-        const openFileBtn = isTechnical && atom.file_path
-            ? `<button onclick="openFileInEditor('${escapeHtml(atom.file_path)}')" style="padding: 4px 12px; font-size: 0.75rem; border-radius: 9999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.35); color: #ffffff; cursor: pointer; font-family: var(--font-mono);">Open File</button>`
+        const updatedSuffix = isTechnical && atom.source_updated_at
+            ? ` (updated: ${escapeHtml(atom.source_updated_at)})`
             : "";
-        const routingRow = isTechnical && atom.question ? `
-            <div class="detail-row">
-                <div class="detail-label">Routing Queries (question / resolution)</div>
-                <div class="detail-val"><strong>Q:</strong> ${escapeHtml(atom.question)}<br/><strong>A:</strong> ${escapeHtml(atom.resolution || "")}</div>
-            </div>` : "";
+        const idHeader = isTechnical
+            ? `<div class="detail-label" style="text-align:right;">ID: ${escapeHtml(atom.id)}</div>`
+            : "";
+        const openFileBtn = isTechnical && atom.file_path
+            ? `<button onclick="openFileInEditor('${escapeHtml(atom.file_path)}')" style="padding:4px 12px;font-size:0.75rem;border-radius:9999px;background:rgba(255,255,255,0.08);border:1px solid rgba(160,200,255,0.4);color:#fff;cursor:pointer;font-family:var(--font-mono);">Open File</button>`
+            : "";
+        const routingRow = isTechnical && atom.question
+            ? `<div class="detail-row"><div class="detail-label">Routing Queries</div><div class="detail-val"><strong>Q:</strong> ${escapeHtml(atom.question)}<br/><strong>A:</strong> ${escapeHtml(atom.resolution || "")}</div></div>`
+            : "";
+        const body = atom.content || atom.summary || "(stub — click again after focus to hydrate)";
 
         inspector.innerHTML = `
             <div class="detail-header">
                 <div>
                     <h3 class="detail-title">${escapeHtml(atom.title)}</h3>
-                    <div style="margin-top: 8px;">${tagPills}</div>
+                    <div style="margin-top:8px;">${tagPills}</div>
                 </div>
                 ${idHeader}
             </div>
-
             <div class="detail-layout">
                 <div class="detail-row">
                     <div class="detail-label">${sourceLabel}</div>
-                    <div class="detail-val" style="font-family: var(--font-mono); display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                    <div class="detail-val" style="font-family:var(--font-mono);display:flex;justify-content:space-between;align-items:center;gap:12px;">
                         <span>${escapeHtml(atom.source)} / ${escapeHtml(atom.source_id)}${updatedSuffix}</span>
                         ${openFileBtn}
                     </div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">${contentLabel}</div>
-                    <div class="detail-val">${escapeHtml(atom.content)}</div>
+                    <div class="detail-val">${escapeHtml(body)}</div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">${summaryLabel}</div>
-                    <div class="detail-val">${escapeHtml(atom.summary)}</div>
+                    <div class="detail-val">${escapeHtml(atom.summary || "—")}</div>
                 </div>
                 ${routingRow}
             </div>
         `;
     }
 
-    window.openFileInEditor = async function(filePath) {
+    window.openFileInEditor = async function (filePath) {
         try {
             await fetch("/api/open?file=" + encodeURIComponent(filePath));
         } catch (e) {
@@ -238,446 +370,186 @@ document.addEventListener("DOMContentLoaded", () => {
             .replace(/'/g, "&#039;");
     }
 
-    // 6. Search input — debounced, hits /api/search on the daemon
     let searchTimeout = null;
     if (searchInput) {
-        searchInput.addEventListener("input", (e) => {
+        searchInput.addEventListener("input", e => {
             clearTimeout(searchTimeout);
             const q = e.target.value.trim();
+            updateSearchClearVisibility();
             searchTimeout = setTimeout(() => triggerSearch(q), 300);
         });
+        searchInput.addEventListener("keydown", e => {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                clearSearch();
+            }
+        });
+    }
+    if (searchClearBtn) {
+        searchClearBtn.addEventListener("click", () => clearSearch());
     }
 
-    // ——— Atlas layout (metadata → cache → force) ———
-
-    function layoutFingerprint(atoms) {
-        return atoms.map(a => a.id).slice().sort().join("|");
-    }
-
-    function loadLayoutCache(fp) {
-        try {
-            const raw = localStorage.getItem(LAYOUT_CACHE_KEY);
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
-            if (!parsed || parsed.fp !== fp || !parsed.pos) return null;
-            return parsed.pos;
-        } catch (_) {
-            return null;
+    function setLayoutMode(mode) {
+        layoutMode = mode;
+        [layoutForceBtn, layoutCircleBtn, layoutBrainBtn].forEach(btn => {
+            if (!btn) return;
+            const id = btn.id;
+            const active =
+                (id === "layout-force" && mode === "force") ||
+                (id === "layout-circle" && mode === "circle") ||
+                (id === "layout-brain" && mode === "brain");
+            btn.classList.toggle("active", active);
+            btn.setAttribute("aria-pressed", String(active));
+        });
+        const controls = Graph && Graph.controls();
+        if (mode === "force") {
+            clearFormationPins();
+            stopFormationSpin();
+            if (controls) controls.autoRotate = true;
+            if (hint) {
+                hint.textContent = "organic force · drag · scroll · click a neuron";
+            }
+        } else {
+            if (controls) controls.autoRotate = false;
+            applyFormationLayout(mode, { animate: true });
+            startFormationSpin();
+            if (hint) {
+                hint.textContent =
+                    mode === "circle"
+                        ? "circle formation · slow spin · organic to release"
+                        : "brain formation · slow spin · organic to release";
+            }
         }
     }
 
-    function saveLayoutCache(fp, pos) {
-        try {
-            localStorage.setItem(LAYOUT_CACHE_KEY, JSON.stringify({ fp, pos, t: Date.now() }));
-        } catch (_) {
-            // quota / private mode — ignore
-        }
-    }
+    if (layoutForceBtn) layoutForceBtn.addEventListener("click", () => setLayoutMode("force"));
+    if (layoutCircleBtn) layoutCircleBtn.addEventListener("click", () => setLayoutMode("circle"));
+    if (layoutBrainBtn) layoutBrainBtn.addEventListener("click", () => setLayoutMode("brain"));
 
-    function hashSeed(str) {
-        let h = 2166136261;
-        for (let i = 0; i < str.length; i++) {
-            h ^= str.charCodeAt(i);
-            h = Math.imul(h, 16777619);
-        }
+    function hash01(i) {
+        let h = (i * 2654435761) >>> 0;
+        h ^= h >>> 16;
+        h = Math.imul(h, 2246822507);
+        h ^= h >>> 13;
         return (h >>> 0) / 4294967296;
     }
 
-    function buildStructuralLinks(nodes) {
-        const links = [];
-        for (let i = 0; i < nodes.length; i++) {
-            for (let j = i + 1; j < nodes.length; j++) {
-                const sharesSource = nodes[i].source_id === nodes[j].source_id;
-                const sharesTag = nodes[i].tags.some(t => nodes[j].tags.includes(t));
-                if (sharesSource || sharesTag) {
-                    links.push({ source: nodes[i].id, target: nodes[j].id });
-                }
-            }
-        }
-        return links;
-    }
-
-    function runForceLayout2d(atoms, iterations) {
-        const n = atoms.length;
-        if (n === 0) return {};
-        const pos = {};
-        atoms.forEach(a => {
-            if (a.layout_x != null && a.layout_y != null) {
-                pos[a.id] = { x: a.layout_x, y: a.layout_y };
-            } else {
-                const t = hashSeed(a.id) * Math.PI * 2;
-                const r = 40 + hashSeed(a.id + ":r") * 120;
-                pos[a.id] = { x: Math.cos(t) * r, y: Math.sin(t) * r };
-            }
-        });
-
-        const links = buildStructuralLinks(atoms);
-        const ids = atoms.map(a => a.id);
-        const kRep = 900;
-        const kSpring = 0.035;
-        const ideal = 55;
-        const damp = 0.82;
-
-        const vx = {};
-        const vy = {};
-        ids.forEach(id => { vx[id] = 0; vy[id] = 0; });
-
-        for (let iter = 0; iter < iterations; iter++) {
-            for (let i = 0; i < n; i++) {
-                for (let j = i + 1; j < n; j++) {
-                    const a = ids[i];
-                    const b = ids[j];
-                    let dx = pos[a].x - pos[b].x;
-                    let dy = pos[a].y - pos[b].y;
-                    let dist2 = dx * dx + dy * dy + 0.01;
-                    const dist = Math.sqrt(dist2);
-                    const force = kRep / dist2;
-                    const fx = (dx / dist) * force;
-                    const fy = (dy / dist) * force;
-                    vx[a] += fx;
-                    vy[a] += fy;
-                    vx[b] -= fx;
-                    vy[b] -= fy;
-                }
-            }
-            for (const link of links) {
-                const a = link.source;
-                const b = link.target;
-                let dx = pos[b].x - pos[a].x;
-                let dy = pos[b].y - pos[a].y;
-                const dist = Math.sqrt(dx * dx + dy * dy) + 0.01;
-                const stretch = dist - ideal;
-                const fx = (dx / dist) * stretch * kSpring;
-                const fy = (dy / dist) * stretch * kSpring;
-                vx[a] += fx;
-                vy[a] += fy;
-                vx[b] -= fx;
-                vy[b] -= fy;
-            }
-            // mild centering
-            for (const id of ids) {
-                vx[id] -= pos[id].x * 0.002;
-                vy[id] -= pos[id].y * 0.002;
-                vx[id] *= damp;
-                vy[id] *= damp;
-                pos[id].x += vx[id];
-                pos[id].y += vy[id];
-            }
-        }
-
-        // Normalize to roughly [-1, 1]
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        for (const id of ids) {
-            minX = Math.min(minX, pos[id].x);
-            maxX = Math.max(maxX, pos[id].x);
-            minY = Math.min(minY, pos[id].y);
-            maxY = Math.max(maxY, pos[id].y);
-        }
-        const spanX = Math.max(1e-6, maxX - minX);
-        const spanY = Math.max(1e-6, maxY - minY);
-        const out = {};
-        for (const id of ids) {
-            out[id] = {
-                x: ((pos[id].x - minX) / spanX) * 2 - 1,
-                y: ((pos[id].y - minY) / spanY) * 2 - 1
-            };
-        }
-        return out;
-    }
-
-    function ensureAtlasLayout(atoms) {
-        const map = new Map();
-        if (!atoms.length) return map;
-
-        const allHaveMeta = atoms.every(a => a.layout_x != null && a.layout_y != null);
-        if (allHaveMeta) {
-            atoms.forEach(a => map.set(a.id, { x: a.layout_x, y: a.layout_y }));
-            if (atlasHud) atlasHud.textContent = `${atoms.length} pts · layout from metadata · scroll/drag/click`;
-            return map;
-        }
-
-        const fp = layoutFingerprint(atoms);
-        const cached = loadLayoutCache(fp);
-        if (cached) {
-            for (const a of atoms) {
-                if (cached[a.id]) map.set(a.id, cached[a.id]);
-            }
-            if (map.size === atoms.length) {
-                if (atlasHud) atlasHud.textContent = `${atoms.length} pts · cached force layout · scroll/drag/click`;
-                return map;
-            }
-        }
-
-        const iters = Math.min(120, 40 + Math.floor(atoms.length / 3));
-        const computed = runForceLayout2d(atoms, iters);
-        saveLayoutCache(fp, computed);
-        for (const a of atoms) {
-            if (computed[a.id]) map.set(a.id, computed[a.id]);
-        }
-        if (atlasHud) atlasHud.textContent = `${atoms.length} pts · force layout · scroll/drag/click`;
-        return map;
-    }
-
-    // ——— Overview atlas (Three.js Points) ———
-
-    let atlasState = null;
-
-    function initAtlas() {
-        if (!atlasContainer || typeof THREE === "undefined") return null;
-
-        const width = atlasContainer.clientWidth || 640;
-        const height = atlasContainer.clientHeight || 560;
-
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000);
-
-        const camera = new THREE.OrthographicCamera(-1.4, 1.4, 1.4, -1.4, 0.1, 10);
-        camera.position.z = 2;
-
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-        renderer.setSize(width, height);
-        atlasContainer.appendChild(renderer.domElement);
-
-        const geometry = new THREE.BufferGeometry();
-        const material = new THREE.PointsMaterial({
-            size: 7,
-            sizeAttenuation: false,
-            vertexColors: true,
-            transparent: true,
-            opacity: 0.95
-        });
-        const points = new THREE.Points(geometry, material);
-        scene.add(points);
-
-        const state = {
-            scene,
-            camera,
-            renderer,
-            geometry,
-            material,
-            points,
-            atomIds: [],
-            selectedId: null,
-            hoverId: null,
-            view: { cx: 0, cy: 0, zoom: 1 },
-            pointerDown: false,
-            didDrag: false,
-            lastX: 0,
-            lastY: 0,
-            needsRender: true
+    function circlePoint(i, n, radius) {
+        const t = (i / Math.max(1, n)) * Math.PI * 2;
+        return {
+            x: Math.cos(t) * radius,
+            y: Math.sin(t) * radius * 0.22,
+            z: Math.sin(t) * radius
         };
+    }
 
-        const canvas = renderer.domElement;
+    /** Two-hemisphere cloud — reads as a brain in 3D. */
+    function brainPoint(i, n, radius) {
+        const y = n <= 1 ? 0 : 1 - (i / (n - 1)) * 2;
+        const r = Math.sqrt(Math.max(0, 1 - y * y));
+        const theta = i * GOLDEN_ANGLE;
+        let x = Math.cos(theta) * r;
+        let z = Math.sin(theta) * r;
+        const hemi = i % 2 === 0 ? -1 : 1;
+        // Offset hemispheres + slight midline cleft
+        x = x * 0.52 + hemi * 0.48;
+        const bulge = 0.88 + 0.12 * Math.sin(theta * 2 + hemi);
+        const sulcus = 1 - 0.08 * Math.abs(Math.sin(theta * 3));
+        const jitter = (hash01(i) - 0.5) * 0.06;
+        return {
+            x: x * radius * bulge * sulcus + jitter * radius,
+            y: y * radius * 0.78 + jitter * radius * 0.4,
+            z: z * radius * 0.72 * sulcus
+        };
+    }
 
-        canvas.addEventListener("wheel", (e) => {
-            e.preventDefault();
-            const factor = e.deltaY > 0 ? 0.9 : 1.1;
-            state.view.zoom = Math.min(8, Math.max(0.35, state.view.zoom * factor));
-            applyAtlasCamera(state);
-            state.needsRender = true;
-        }, { passive: false });
+    function clearFormationPins() {
+        if (!Graph) return;
+        const nodes = Graph.graphData().nodes || [];
+        for (const node of nodes) {
+            node.fx = undefined;
+            node.fy = undefined;
+            node.fz = undefined;
+        }
+        const charge = Graph.d3Force("charge");
+        if (charge) charge.strength(-38);
+        const linkF = Graph.d3Force("link");
+        if (linkF) linkF.distance(40);
+        Graph.d3ReheatSimulation();
+    }
 
-        canvas.addEventListener("pointerdown", (e) => {
-            state.pointerDown = true;
-            state.didDrag = false;
-            state.lastX = e.clientX;
-            state.lastY = e.clientY;
-            canvas.setPointerCapture(e.pointerId);
-        });
-
-        canvas.addEventListener("pointermove", (e) => {
-            if (state.pointerDown) {
-                const moveX = e.clientX - state.lastX;
-                const moveY = e.clientY - state.lastY;
-                if (!state.didDrag && (Math.abs(moveX) > 3 || Math.abs(moveY) > 3)) {
-                    state.didDrag = true;
-                }
-                if (state.didDrag) {
-                    const rect = canvas.getBoundingClientRect();
-                    const worldW = (state.camera.right - state.camera.left);
-                    const worldH = (state.camera.top - state.camera.bottom);
-                    const dx = moveX / rect.width * worldW;
-                    const dy = -moveY / rect.height * worldH;
-                    state.view.cx -= dx;
-                    state.view.cy -= dy;
-                    state.lastX = e.clientX;
-                    state.lastY = e.clientY;
-                    applyAtlasCamera(state);
-                    state.needsRender = true;
-                }
-                return;
-            }
-            const hit = pickAtlasPoint(state, e);
-            if (hit !== state.hoverId) {
-                state.hoverId = hit;
-                updateAtlasTooltip(state, e, hit);
-                paintAtlasColors(state);
-                state.needsRender = true;
-            } else if (hit && atlasTooltip) {
-                atlasTooltip.style.left = `${e.offsetX + 14}px`;
-                atlasTooltip.style.top = `${e.offsetY + 14}px`;
-            }
-        });
-
-        canvas.addEventListener("pointerup", (e) => {
-            const clicked = state.pointerDown && !state.didDrag;
-            state.pointerDown = false;
-            try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
-            if (!clicked) return;
-            const hit = pickAtlasPoint(state, e);
-            if (hit) {
-                const atom = currentAtoms.find(a => a.id === hit);
-                if (atom) selectAtom(atom, { scrollList: true });
-            }
-        });
-
-        canvas.addEventListener("pointerleave", () => {
-            state.hoverId = null;
-            if (atlasTooltip) atlasTooltip.style.display = "none";
-            paintAtlasColors(state);
-            state.needsRender = true;
-        });
-
-        window.addEventListener("resize", () => {
-            if (!atlasContainer || !state) return;
-            const w = atlasContainer.clientWidth;
-            const h = atlasContainer.clientHeight;
-            state.renderer.setSize(w, h);
-            state.needsRender = true;
-        });
-
-        function loop() {
-            requestAnimationFrame(loop);
-            if (state.needsRender) {
-                state.renderer.render(state.scene, state.camera);
-                state.needsRender = false;
+    function applyFormationLayout(mode, { animate } = { animate: true }) {
+        if (!Graph || mode === "force") return;
+        const nodes = Graph.graphData().nodes || [];
+        const n = nodes.length;
+        if (!n) return;
+        const radius = FORMATION_RADIUS * Math.min(1.35, 0.55 + Math.sqrt(n) / 28);
+        for (let i = 0; i < n; i++) {
+            const p = mode === "brain" ? brainPoint(i, n, radius) : circlePoint(i, n, radius);
+            // Apply current spin angle so layout doesn't jump on refresh
+            const c = Math.cos(formationAngle);
+            const s = Math.sin(formationAngle);
+            const x = p.x * c - p.z * s;
+            const z = p.x * s + p.z * c;
+            nodes[i].fx = x;
+            nodes[i].fy = p.y;
+            nodes[i].fz = z;
+            if (!animate) {
+                nodes[i].x = x;
+                nodes[i].y = p.y;
+                nodes[i].z = z;
             }
         }
-        loop();
-
-        return state;
+        const charge = Graph.d3Force("charge");
+        if (charge) charge.strength(-2);
+        const linkF = Graph.d3Force("link");
+        if (linkF) linkF.distance(18);
+        Graph.d3ReheatSimulation();
+        if (animate) {
+            setTimeout(() => {
+                try { Graph.zoomToFit(900, 70); } catch (_) {}
+            }, 400);
+        }
     }
 
-    function applyAtlasCamera(state) {
-        const z = state.view.zoom;
-        const half = 1.4 / z;
-        state.camera.left = state.view.cx - half;
-        state.camera.right = state.view.cx + half;
-        state.camera.top = state.view.cy + half;
-        state.camera.bottom = state.view.cy - half;
-        state.camera.updateProjectionMatrix();
-    }
-
-    function ndcFromEvent(state, e) {
-        const rect = state.renderer.domElement.getBoundingClientRect();
-        const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-        const ny = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-        const x = state.view.cx + nx * (1.4 / state.view.zoom);
-        const y = state.view.cy + ny * (1.4 / state.view.zoom);
-        return { x, y };
-    }
-
-    function pickAtlasPoint(state, e) {
-        if (!state.atomIds.length) return null;
-        const { x, y } = ndcFromEvent(state, e);
-        const pos = state.geometry.attributes.position;
-        const thresh = 0.06 / state.view.zoom;
-        let best = null;
-        let bestD = thresh * thresh;
-        for (let i = 0; i < state.atomIds.length; i++) {
-            const dx = pos.getX(i) - x;
-            const dy = pos.getY(i) - y;
-            const d = dx * dx + dy * dy;
-            if (d < bestD) {
-                bestD = d;
-                best = state.atomIds[i];
+    function startFormationSpin() {
+        stopFormationSpin();
+        formationSpinTimer = setInterval(() => {
+            if (!Graph || layoutMode === "force") return;
+            formationAngle += 0.008; // slow spin
+            const nodes = Graph.graphData().nodes || [];
+            const n = nodes.length;
+            const radius = FORMATION_RADIUS * Math.min(1.35, 0.55 + Math.sqrt(n) / 28);
+            const c = Math.cos(formationAngle);
+            const s = Math.sin(formationAngle);
+            for (let i = 0; i < n; i++) {
+                const p = layoutMode === "brain" ? brainPoint(i, n, radius) : circlePoint(i, n, radius);
+                nodes[i].fx = p.x * c - p.z * s;
+                nodes[i].fy = p.y;
+                nodes[i].fz = p.x * s + p.z * c;
             }
-        }
-        return best;
+        }, 40);
     }
 
-    function updateAtlasTooltip(state, e, atomId) {
-        if (!atlasTooltip) return;
-        if (!atomId) {
-            atlasTooltip.style.display = "none";
-            return;
+    function stopFormationSpin() {
+        if (formationSpinTimer) {
+            clearInterval(formationSpinTimer);
+            formationSpinTimer = null;
         }
-        const atom = currentAtoms.find(a => a.id === atomId);
-        if (!atom) {
-            atlasTooltip.style.display = "none";
-            return;
-        }
-        atlasTooltip.innerHTML = `<strong>${escapeHtml(atom.title)}</strong><br/><span style="color:#888">${escapeHtml(atom.source)}/${escapeHtml(atom.source_id)}</span>`;
-        atlasTooltip.style.display = "block";
-        atlasTooltip.style.left = `${e.offsetX + 14}px`;
-        atlasTooltip.style.top = `${e.offsetY + 14}px`;
     }
 
-    function paintAtlasColors(state) {
-        const colors = state.geometry.attributes.color;
-        if (!colors) return;
-        for (let i = 0; i < state.atomIds.length; i++) {
-            const id = state.atomIds[i];
-            let r = 1, g = 1, b = 1;
-            if (state.selectedId && id === state.selectedId) {
-                r = 1; g = 1; b = 1;
-            } else if (state.hoverId && id === state.hoverId) {
-                r = 0.92; g = 0.92; b = 0.92;
-            } else if (state.selectedId) {
-                r = 0.22; g = 0.22; b = 0.22;
-            } else {
-                r = 0.85; g = 0.85; b = 0.85;
-            }
-            colors.setXYZ(i, r, g, b);
-        }
-        colors.needsUpdate = true;
-        state.material.size = state.selectedId ? 8 : 7;
-    }
-
-    function highlightAtlasSelection(atomId) {
-        if (!atlasState) return;
-        atlasState.selectedId = atomId;
-        paintAtlasColors(atlasState);
-        atlasState.needsRender = true;
-    }
-
-    function updateAtlasMap(atoms) {
-        if (!atlasContainer || typeof THREE === "undefined") return;
-        if (!atlasState) atlasState = initAtlas();
-        if (!atlasState) return;
-
-        const ids = [];
-        const positions = [];
-        const colors = [];
-
-        for (const atom of atoms) {
-            const p = layoutById.get(atom.id) || { x: 0, y: 0 };
-            ids.push(atom.id);
-            positions.push(p.x, p.y, 0);
-            colors.push(0.85, 0.85, 0.85);
-        }
-
-        atlasState.atomIds = ids;
-        atlasState.geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-        atlasState.geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-        atlasState.geometry.computeBoundingSphere();
-        paintAtlasColors(atlasState);
-        atlasState.needsRender = true;
-    }
-
-    // ——— Focus 3D synapse (neighborhood only) ———
+    // ——— Synaptic brain (neurons + lightning zaps) ———
 
     let baseLinks = [];
     let adjacency = new Map();
-
     let hoverNodeId = null;
     let hoverNeighborIds = new Set();
-
     let simNodeIds = new Set();
     let simLinkKeys = new Set();
     let simTimer = null;
     let simClearTimer = null;
+    let ambientPulse = 0;
+    let zapBurstUntil = 0;
 
     function linkId(end) {
         return typeof end === "object" && end ? end.id : end;
@@ -700,66 +572,81 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function pickBrainAtoms(atoms) {
+        const hot = atoms.filter(a => a.tier === "hot");
+        const warm = atoms.filter(a => a.tier === "warm");
+        const cold = atoms.filter(a => a.tier === "cold");
+        const out = [];
+        const pushCap = arr => {
+            for (const a of arr) {
+                if (out.length >= BRAIN_MAX_NODES) break;
+                out.push(a);
+            }
+        };
+        pushCap(hot);
+        pushCap(warm);
+        pushCap(cold);
+        return out;
+    }
+
     function atomsToNodes(atoms) {
         return atoms.map(atom => {
             const tags = Array.isArray(atom.tags) ? atom.tags : [];
+            const tier = atom.tier || "warm";
+            let val = tier === "hot" ? 4 : tier === "cold" ? 1.4 : 2.4;
             return {
                 id: atom.id,
                 title: atom.title,
                 source: atom.source,
                 source_id: atom.source_id,
                 tags,
+                tier,
                 kind: "atom",
-                val: Math.max(2, Math.min(6, tags.length + 2))
+                val
             };
         });
     }
 
-    function collectNeighborhood(focusAtom, allAtoms) {
-        if (!focusAtom) return [];
-        const byId = new Map(allAtoms.map(a => [a.id, a]));
-        const globalLinks = buildStructuralLinks(allAtoms);
-        const adj = new Map();
-        for (const link of globalLinks) {
-            if (!adj.has(link.source)) adj.set(link.source, new Set());
-            if (!adj.has(link.target)) adj.set(link.target, new Set());
-            adj.get(link.source).add(link.target);
-            adj.get(link.target).add(link.source);
+    function buildBrainLinks(nodes) {
+        const links = [];
+        const seen = new Set();
+        const add = (a, b) => {
+            if (!a || !b || a === b) return;
+            const k = sortedLinkKey(a, b);
+            if (seen.has(k)) return;
+            seen.add(k);
+            links.push({ source: a, target: b });
+        };
+
+        const bySourceId = new Map();
+        const bySource = new Map();
+        for (const n of nodes) {
+            if (n.source_id) {
+                if (!bySourceId.has(n.source_id)) bySourceId.set(n.source_id, []);
+                bySourceId.get(n.source_id).push(n);
+            }
+            if (!bySource.has(n.source)) bySource.set(n.source, []);
+            bySource.get(n.source).push(n);
         }
 
-        const selected = new Set([focusAtom.id]);
-        const hop1 = [...(adj.get(focusAtom.id) || [])];
-        hop1.forEach(id => selected.add(id));
+        for (const group of bySourceId.values()) {
+            group.sort((a, b) => a.id.localeCompare(b.id));
+            for (let i = 0; i < group.length - 1; i++) add(group[i].id, group[i + 1].id);
+        }
 
-        if (selected.size < 8) {
-            for (const id of hop1) {
-                for (const n2 of (adj.get(id) || [])) {
-                    selected.add(n2);
-                    if (selected.size >= FOCUS_MAX_NODES) break;
-                }
-                if (selected.size >= FOCUS_MAX_NODES) break;
+        for (const group of bySource.values()) {
+            const hub = group.find(g => g.tier === "hot") || group[0];
+            if (!hub) continue;
+            const cap = Math.min(group.length, 26);
+            for (let i = 0; i < cap; i++) {
+                if (group[i].id !== hub.id) add(hub.id, group[i].id);
+            }
+            const hots = group.filter(g => g.tier === "hot").slice(0, 14);
+            for (let i = 0; i < hots.length; i++) {
+                add(hots[i].id, hots[(i + 1) % hots.length].id);
             }
         }
-
-        // Always include focus; cap size
-        const out = [];
-        out.push(focusAtom);
-        for (const id of selected) {
-            if (id === focusAtom.id) continue;
-            const a = byId.get(id);
-            if (a) out.push(a);
-            if (out.length >= FOCUS_MAX_NODES) break;
-        }
-
-        // If isolated, still show focus alone (plus a few same-source if any)
-        if (out.length === 1) {
-            for (const a of allAtoms) {
-                if (a.id === focusAtom.id) continue;
-                if (a.source === focusAtom.source) out.push(a);
-                if (out.length >= Math.min(12, FOCUS_MAX_NODES)) break;
-            }
-        }
-        return out;
+        return links;
     }
 
     function isHoverActive() {
@@ -780,56 +667,94 @@ document.addEventListener("DOMContentLoaded", () => {
         return simLinkKeys.has(sortedLinkKey(s, t));
     }
 
+    function linkAmbientIndex(link) {
+        const k = sortedLinkKey(linkId(link.source), linkId(link.target));
+        let h = 0;
+        for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) >>> 0;
+        return (h % 1000) / 1000;
+    }
+
+    function inZapBurst() {
+        return performance.now() < zapBurstUntil;
+    }
+
+    /** Small core + soft halo — neuron, not a fat white orb. */
+    function makeNeuronObject(node) {
+        const THREE = window.THREE;
+        const tier = node.tier || "warm";
+        const group = new THREE.Group();
+
+        const coreR = tier === "hot" ? 0.55 : tier === "cold" ? 0.28 : 0.4;
+        const haloR = coreR * (tier === "hot" ? 3.2 : tier === "cold" ? 2.2 : 2.6);
+
+        const coreMat = new THREE.MeshBasicMaterial({
+            color: tier === "hot" ? 0xeaf2ff : tier === "cold" ? 0x6a7890 : 0xb8c8e0,
+            transparent: true,
+            opacity: tier === "cold" ? 0.55 : 0.92
+        });
+        const core = new THREE.Mesh(new THREE.SphereGeometry(coreR, 10, 10), coreMat);
+        group.add(core);
+
+        const haloMat = new THREE.MeshBasicMaterial({
+            color: tier === "hot" ? 0x9ec4ff : 0x5a6a88,
+            transparent: true,
+            opacity: tier === "hot" ? 0.16 : 0.07,
+            depthWrite: false
+        });
+        const halo = new THREE.Mesh(new THREE.SphereGeometry(haloR, 12, 12), haloMat);
+        group.add(halo);
+
+        group.userData = { coreMat, haloMat, tier, baseHalo: haloMat.opacity };
+        return group;
+    }
+
     function applyGraphStyle(g) {
         g.backgroundColor("#000000")
-            .nodeColor(node => {
-                if (activeAtom && node.id === activeAtom.id) return "#ffffff";
-                if (isHoverActive()) {
-                    if (node.id === hoverNodeId) return "#ffffff";
-                    if (hoverNeighborIds.has(node.id)) return "#e8e8e8";
-                    return "#1a1a1a";
-                }
-                if (simNodeIds.has(node.id)) return "#f5f5f5";
-                return "#cccccc";
-            })
-            .nodeRelSize(4)
-            .nodeVal(node => {
-                if (activeAtom && node.id === activeAtom.id) return 12;
-                if (isHoverActive() && node.id === hoverNodeId) return 11;
-                if (isHoverActive() && hoverNeighborIds.has(node.id)) return 8;
-                if (simNodeIds.has(node.id)) return 7;
-                return node.val || 3;
-            })
-            .nodeOpacity(0.95)
+            .showNavInfo(false)
+            .nodeThreeObject(node => makeNeuronObject(node))
+            .nodeThreeObjectExtend(false)
             .nodeLabel(node => {
                 const tags = (node.tags || []).map(t => escapeHtml(t)).join(", ");
                 return `
-                    <div style="background: rgba(0, 0, 0, 0.92); border: 1px solid rgba(255,255,255,0.35); border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 0.85rem; color: #ffffff; pointer-events: none; box-shadow: 0 0 18px rgba(255,255,255,0.12);">
-                        <strong style="color: #ffffff; font-size: 0.9rem;">${escapeHtml(node.title)}</strong><br/>
-                        <span style="color: #888888;">Source: ${escapeHtml(node.source)}/${escapeHtml(node.source_id)}</span><br/>
-                        <span style="color: #cccccc;">Tags: ${tags}</span>
+                    <div style="background:rgba(0,0,0,0.92);border:1px solid rgba(160,200,255,0.4);border-radius:10px;padding:12px 14px;font-family:Share Tech Mono,monospace;font-size:0.8rem;color:#fff;box-shadow:0 0 28px rgba(120,170,255,0.2);">
+                        <strong style="font-size:0.9rem;">${escapeHtml(node.title)}</strong><br/>
+                        <span style="color:#8899aa;">${escapeHtml(node.source)}/${escapeHtml(node.source_id)}</span>
+                        ${node.tier ? `<br/><span style="color:#b8d0ff;text-transform:uppercase;letter-spacing:0.08em;font-size:0.68rem;">${escapeHtml(node.tier)}</span>` : ""}
+                        ${tags ? `<br/><span style="color:#ccd;">${tags}</span>` : ""}
                     </div>`;
             })
             .linkColor(link => {
-                if (linkIsHovered(link)) return "rgba(255, 255, 255, 0.92)";
-                if (isHoverActive()) return "rgba(255, 255, 255, 0.04)";
-                if (linkIsSim(link)) return "rgba(255, 255, 255, 0.55)";
-                return "rgba(255, 255, 255, 0.14)";
+                if (linkIsHovered(link)) return "rgba(220, 235, 255, 0.98)";
+                if (isHoverActive()) return "rgba(100, 140, 200, 0.04)";
+                if (linkIsSim(link) || inZapBurst()) return "rgba(190, 220, 255, 0.85)";
+                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return "rgba(140, 180, 255, 0.28)";
+                return "rgba(90, 120, 170, 0.12)";
             })
             .linkWidth(link => {
-                if (linkIsHovered(link)) return 1.6;
-                if (linkIsSim(link)) return 1.1;
-                return 0.35;
+                if (linkIsHovered(link)) return 1.7;
+                if (linkIsSim(link)) return 1.35;
+                if (inZapBurst() && linkAmbientIndex(link) < 0.35) return 0.9;
+                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return 0.45;
+                return 0.22;
             })
-            .linkOpacity(0.65)
+            .linkOpacity(0.75)
             .linkDirectionalParticles(link => {
-                if (linkIsHovered(link)) return 4;
-                if (linkIsSim(link)) return 2;
+                if (linkIsHovered(link)) return 7;
+                if (linkIsSim(link)) return 5;
+                if (inZapBurst() && linkAmbientIndex(link) < 0.4) return 3;
+                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return 2;
                 return 0;
             })
-            .linkDirectionalParticleSpeed(0.005)
-            .linkDirectionalParticleWidth(1.8)
-            .linkDirectionalParticleColor(() => "#ffffff")
+            .linkDirectionalParticleSpeed(link => {
+                if (linkIsHovered(link) || linkIsSim(link)) return 0.012;
+                if (inZapBurst()) return 0.01;
+                return 0.0045;
+            })
+            .linkDirectionalParticleWidth(link => (linkIsSim(link) || linkIsHovered(link) ? 2.4 : 1.6))
+            .linkDirectionalParticleColor(link => {
+                if (linkIsSim(link) || linkIsHovered(link)) return "#eaf2ff";
+                return "#9ec4ff";
+            })
             .onNodeHover(node => {
                 if (!node) {
                     hoverNodeId = null;
@@ -844,19 +769,53 @@ document.addEventListener("DOMContentLoaded", () => {
                 const atom = currentAtoms.find(a => a.id === node.id);
                 if (atom) selectAtom(atom, { scrollList: true });
             });
+
         const charge = g.d3Force("charge");
-        if (charge) charge.strength(-28);
+        if (charge) charge.strength(-38);
         const linkF = g.d3Force("link");
-        if (linkF) linkF.distance(36);
+        if (linkF) linkF.distance(40);
     }
 
     function refreshGraphPaint() {
         if (!Graph) return;
-        Graph.nodeColor(Graph.nodeColor());
-        Graph.nodeVal(Graph.nodeVal());
         Graph.linkColor(Graph.linkColor());
         Graph.linkWidth(Graph.linkWidth());
         Graph.linkDirectionalParticles(Graph.linkDirectionalParticles());
+        Graph.linkDirectionalParticleSpeed(Graph.linkDirectionalParticleSpeed());
+        Graph.linkDirectionalParticleColor(Graph.linkDirectionalParticleColor());
+
+        // Pulse neuron halos
+        const nodes = Graph.graphData().nodes || [];
+        for (const n of nodes) {
+            const obj = n.__threeObj;
+            if (!obj || !obj.userData || !obj.userData.haloMat) continue;
+            const { haloMat, coreMat, tier, baseHalo } = obj.userData;
+            const selected = activeAtom && n.id === activeAtom.id;
+            const hovered = isHoverActive() && n.id === hoverNodeId;
+            const neigh = isHoverActive() && hoverNeighborIds.has(n.id);
+            const firing = simNodeIds.has(n.id);
+
+            let halo = baseHalo * (1 + 0.35 * Math.sin(ambientPulse + (n.val || 0)));
+            let coreOp = tier === "cold" ? 0.55 : 0.92;
+            if (selected || hovered) {
+                halo = Math.min(0.42, halo + 0.22);
+                coreOp = 1;
+                if (coreMat) coreMat.color.setHex(0xffffff);
+            } else if (neigh || firing) {
+                halo = Math.min(0.32, halo + 0.14);
+                if (coreMat) coreMat.color.setHex(0xeaf2ff);
+            } else if (isHoverActive()) {
+                halo *= 0.35;
+                coreOp *= 0.35;
+                if (coreMat) {
+                    coreMat.color.setHex(tier === "hot" ? 0x4a5870 : 0x2a3040);
+                }
+            } else if (coreMat) {
+                coreMat.color.setHex(tier === "hot" ? 0xeaf2ff : tier === "cold" ? 0x6a7890 : 0xb8c8e0);
+            }
+            haloMat.opacity = halo;
+            if (coreMat) coreMat.opacity = coreOp;
+        }
     }
 
     function clearSimOverlay() {
@@ -872,13 +831,11 @@ document.addEventListener("DOMContentLoaded", () => {
     function randomWalkPath(maxHops) {
         const nodeIds = [...adjacency.keys()];
         if (nodeIds.length < 2) return { nodes: [], linkKeys: [] };
-
         const start = nodeIds[Math.floor(Math.random() * nodeIds.length)];
         const pathNodes = [start];
         const pathLinks = [];
         let current = start;
-        const hops = 2 + Math.floor(Math.random() * Math.max(1, maxHops - 1));
-
+        const hops = 4 + Math.floor(Math.random() * Math.max(1, maxHops - 3));
         for (let i = 0; i < hops; i++) {
             const neighbors = [...(adjacency.get(current) || [])];
             if (!neighbors.length) break;
@@ -887,7 +844,6 @@ document.addEventListener("DOMContentLoaded", () => {
             pathNodes.push(next);
             current = next;
         }
-
         return { nodes: pathNodes, linkKeys: pathLinks };
     }
 
@@ -896,13 +852,14 @@ document.addEventListener("DOMContentLoaded", () => {
             scheduleNextSim();
             return;
         }
-
-        const walk = randomWalkPath(5);
+        // Lightning burst: one primary bolt + brief ambient shimmer
+        const walk = randomWalkPath(8);
         simNodeIds = new Set(walk.nodes);
         simLinkKeys = new Set(walk.linkKeys);
+        zapBurstUntil = performance.now() + 420;
         refreshGraphPaint();
 
-        const holdMs = 1600 + Math.floor(Math.random() * 1400);
+        const holdMs = 900 + Math.floor(Math.random() * 1400);
         if (simClearTimer) clearTimeout(simClearTimer);
         simClearTimer = setTimeout(() => {
             clearSimOverlay();
@@ -912,71 +869,114 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function scheduleNextSim() {
         if (simTimer) clearTimeout(simTimer);
-        const delay = 2800 + Math.floor(Math.random() * 5200);
+        // Storm cadence — frequent but irregular
+        const delay = 900 + Math.floor(Math.random() * 2200);
         simTimer = setTimeout(pulseSimActivity, delay);
     }
 
     function startSimActivity() {
         if (simTimer) clearTimeout(simTimer);
-        simTimer = setTimeout(pulseSimActivity, 2200);
+        simTimer = setTimeout(pulseSimActivity, 700);
     }
 
-    function clearFocusEmpty() {
-        const empty = document.getElementById("focus-empty");
-        if (empty) empty.remove();
+    function stageSize() {
+        if (!stage) return { w: 800, h: 560 };
+        return {
+            w: stage.clientWidth || 800,
+            h: stage.clientHeight || 560
+        };
     }
 
-    function showFocusEmpty() {
-        if (!graphContainer) return;
-        if (Graph) {
-            Graph.graphData({ nodes: [], links: [] });
-        }
-        if (!document.getElementById("focus-empty")) {
-            const div = document.createElement("div");
-            div.id = "focus-empty";
-            div.className = "focus-empty";
-            div.textContent = "Select an atom to load its neighborhood hologram";
-            graphContainer.appendChild(div);
-        }
+    function focusCameraOnAtom(atom) {
+        if (!Graph || !atom) return;
+        const nodes = Graph.graphData().nodes || [];
+        const node = nodes.find(n => n.id === atom.id);
+        if (!node || node.x == null) return;
+        const dist = 160;
+        const cam = Graph.cameraPosition();
+        const len = Math.hypot(cam.x || 1, cam.y || 1, cam.z || 1) || 1;
+        Graph.cameraPosition(
+            {
+                x: node.x + (cam.x / len) * dist,
+                y: node.y + (cam.y / len) * dist,
+                z: node.z + (cam.z / len) * dist
+            },
+            { x: node.x, y: node.y, z: node.z },
+            850
+        );
     }
 
-    function updateFocusSynapse(focusAtom) {
-        if (!graphContainer || typeof ForceGraph3D === "undefined") return;
-
-        if (!focusAtom) {
-            showFocusEmpty();
-            return;
-        }
-
-        clearFocusEmpty();
-        const neighborhood = collectNeighborhood(focusAtom, currentAtoms);
-        const nodes = atomsToNodes(neighborhood);
-        baseLinks = buildStructuralLinks(nodes);
+    function updateMainBrain(atoms) {
+        if (!stage || typeof ForceGraph3D === "undefined" || typeof THREE === "undefined") return;
+        const picked = pickBrainAtoms(atoms);
+        const nodes = atomsToNodes(picked);
+        const sig = nodes.map(n => n.id).sort().join("|").slice(0, 2000);
+        baseLinks = buildBrainLinks(nodes);
         rebuildAdjacency(baseLinks);
         clearSimOverlay();
 
+        const { w, h } = stageSize();
+
         if (!Graph) {
-            Graph = ForceGraph3D()(graphContainer);
+            Graph = ForceGraph3D()(stage);
             applyGraphStyle(Graph);
+            Graph.width(w).height(h);
             Graph.graphData({ nodes, links: baseLinks.slice() });
-            Graph.width(graphContainer.clientWidth);
-            Graph.height(560);
+
+            const controls = Graph.controls();
+            if (controls) {
+                controls.autoRotate = true;
+                controls.autoRotateSpeed = 0.4;
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.07;
+            }
+
             window.addEventListener("resize", () => {
-                if (!Graph || !graphContainer) return;
-                Graph.width(graphContainer.clientWidth);
-                Graph.height(560);
+                if (!Graph || !stage) return;
+                const s = stageSize();
+                Graph.width(s.w).height(s.h);
             });
-            setTimeout(() => { try { Graph.zoomToFit(800, 60); } catch (e) {} }, 900);
+
+            setInterval(() => {
+                ambientPulse += 0.1;
+                if (Graph) refreshGraphPaint();
+            }, 70);
+
+            stage.addEventListener("pointerdown", () => {
+                const c = Graph && Graph.controls();
+                if (c) c.autoRotate = false;
+            });
+            stage.addEventListener("pointerleave", () => {
+                const c = Graph && Graph.controls();
+                if (c) c.autoRotate = true;
+            });
+
+            setTimeout(() => {
+                try { Graph.zoomToFit(1000, 70); } catch (_) {}
+            }, 1000);
             startSimActivity();
-        } else {
-            Graph.graphData({ nodes, links: baseLinks.slice() });
-            refreshGraphPaint();
-            setTimeout(() => { try { Graph.zoomToFit(600, 50); } catch (e) {} }, 400);
-            startSimActivity();
+            graphBuiltForSig = sig;
+            if (layoutMode !== "force") {
+                applyFormationLayout(layoutMode, { animate: false });
+                startFormationSpin();
+            }
+            return;
         }
+
+        if (sig !== graphBuiltForSig) {
+            Graph.graphData({ nodes, links: baseLinks.slice() });
+            graphBuiltForSig = sig;
+            setTimeout(() => {
+                try { Graph.zoomToFit(850, 60); } catch (_) {}
+            }, 500);
+        } else {
+            refreshGraphPaint();
+        }
+        startSimActivity();
+        if (layoutMode !== "force") applyFormationLayout(layoutMode, { animate: false });
+        if (activeAtom) setTimeout(() => focusCameraOnAtom(activeAtom), 650);
     }
 
-    // Kick off
     applyViewMode();
     loadDashboard();
 });

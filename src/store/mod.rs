@@ -2,6 +2,7 @@ pub mod migrations;
 
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
+use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
 use crate::types::{KnowledgeAtom, TrustLane};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -15,7 +16,8 @@ const MIN_EMBEDDING_NORM: f32 = 1e-6;
 
 /// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
 const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, question, resolution, \
-     tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason";
+     tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
+     last_accessed_at";
 
 /// Retrieval filter — default skips quarantine.
 #[derive(Debug, Clone, Copy)]
@@ -151,6 +153,21 @@ pub trait Store: Send + Sync {
 
     /// Quarantine + recently indexed atoms for near-dupe scan.
     async fn list_near_dupe_candidates(&self, limit: usize) -> Result<Vec<KnowledgeAtom>>;
+
+    /// Bump `last_accessed_at` (search / cite / UI focus).
+    async fn touch_access(&self, id: &str) -> Result<()>;
+
+    /// Count atoms by derived memory tier (hot / warm / cold).
+    async fn count_by_tier(&self, policy: TierPolicy) -> Result<(u64, u64, u64)>;
+
+    /// Graph stubs ordered by access freshness; optional tier filter.
+    async fn list_graph_nodes(
+        &self,
+        tier: Option<MemoryTier>,
+        limit: usize,
+        filter: SearchFilter,
+        policy: TierPolicy,
+    ) -> Result<Vec<GraphNode>>;
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -251,14 +268,19 @@ impl SqliteVecStore {
 
         let trust_lane = atom.trust_lane.as_str();
         let quarantine_reason = atom.quarantine_reason.as_deref();
+        let last_accessed = if atom.last_accessed_at.timestamp() == 0 {
+            atom.indexed_at
+        } else {
+            atom.last_accessed_at
+        };
         conn.execute(
             r#"
             INSERT INTO knowledge_atoms (
                 id, source, source_id, title, summary, content,
                 question, resolution, tags_json,
                 source_updated_at, indexed_at, metadata_json, content_hash,
-                trust_lane, quarantine_reason
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                trust_lane, quarantine_reason, last_accessed_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
             ON CONFLICT(id) DO UPDATE SET
                 source = excluded.source,
                 source_id = excluded.source_id,
@@ -269,7 +291,11 @@ impl SqliteVecStore {
                 resolution = excluded.resolution,
                 tags_json = excluded.tags_json,
                 source_updated_at = excluded.source_updated_at,
-                indexed_at = excluded.indexed_at,
+                indexed_at = CASE
+                    WHEN knowledge_atoms.content_hash = excluded.content_hash
+                    THEN knowledge_atoms.indexed_at
+                    ELSE excluded.indexed_at
+                END,
                 metadata_json = excluded.metadata_json,
                 content_hash = excluded.content_hash,
                 trust_lane = excluded.trust_lane,
@@ -291,6 +317,7 @@ impl SqliteVecStore {
                 content_hash,
                 trust_lane,
                 quarantine_reason,
+                last_accessed.to_rfc3339(),
             ],
         )
         .map_err(|e| KurultaiError::Store(format!("upsert atom failed: {e}")))?;
@@ -854,6 +881,100 @@ impl Store for SqliteVecStore {
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|e| KurultaiError::Store(format!("list_near_dupe_candidates collect: {e}")))
     }
+
+    async fn touch_access(&self, id: &str) -> Result<()> {
+        let conn = self.lock()?;
+        let now = Utc::now().to_rfc3339();
+        let n = conn
+            .execute(
+                "UPDATE knowledge_atoms SET last_accessed_at = ?1 WHERE id = ?2",
+                params![now, id],
+            )
+            .map_err(|e| KurultaiError::Store(format!("touch_access: {e}")))?;
+        if n == 0 {
+            return Err(KurultaiError::Store(format!("atom not found: {id}")));
+        }
+        Ok(())
+    }
+
+    async fn count_by_tier(&self, policy: TierPolicy) -> Result<(u64, u64, u64)> {
+        let conn = self.lock()?;
+        let sql = format!(
+            "SELECT {} FROM knowledge_atoms WHERE trust_lane = 'trusted'",
+            ATOM_COLUMNS
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| KurultaiError::Store(format!("count_by_tier prepare: {e}")))?;
+        let rows = stmt
+            .query_map([], row_to_atom)
+            .map_err(|e| KurultaiError::Store(format!("count_by_tier query: {e}")))?;
+        let now = Utc::now();
+        let mut hot = 0u64;
+        let mut warm = 0u64;
+        let mut cold = 0u64;
+        for row in rows {
+            let atom = row.map_err(|e| KurultaiError::Store(format!("count_by_tier row: {e}")))?;
+            match classify(atom.indexed_at, atom.last_accessed_at, now, policy) {
+                MemoryTier::Hot => hot += 1,
+                MemoryTier::Warm => warm += 1,
+                MemoryTier::Cold => cold += 1,
+            }
+        }
+        Ok((hot, warm, cold))
+    }
+
+    async fn list_graph_nodes(
+        &self,
+        tier: Option<MemoryTier>,
+        limit: usize,
+        filter: SearchFilter,
+        policy: TierPolicy,
+    ) -> Result<Vec<GraphNode>> {
+        let conn = self.lock()?;
+        let sql = if filter.trusted_only {
+            format!(
+                "SELECT {} FROM knowledge_atoms WHERE trust_lane = 'trusted'
+                 ORDER BY last_accessed_at DESC LIMIT ?1",
+                ATOM_COLUMNS
+            )
+        } else {
+            format!(
+                "SELECT {} FROM knowledge_atoms ORDER BY last_accessed_at DESC LIMIT ?1",
+                ATOM_COLUMNS
+            )
+        };
+        // Over-fetch then filter by tier so hot/warm/cold slices stay accurate.
+        let fetch_cap = if tier.is_some() {
+            (limit.saturating_mul(8)).max(limit).min(50_000)
+        } else {
+            limit.min(50_000)
+        };
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| KurultaiError::Store(format!("list_graph_nodes prepare: {e}")))?;
+        let rows = stmt
+            .query_map(params![fetch_cap as i64], row_to_atom)
+            .map_err(|e| KurultaiError::Store(format!("list_graph_nodes query: {e}")))?;
+        let now = Utc::now();
+        let mut out = Vec::with_capacity(limit.min(1024));
+        for row in rows {
+            let atom =
+                row.map_err(|e| KurultaiError::Store(format!("list_graph_nodes row: {e}")))?;
+            let t = classify(atom.indexed_at, atom.last_accessed_at, now, policy);
+            if let Some(want) = tier {
+                if t != want {
+                    continue;
+                }
+            }
+            let include_summary = t == MemoryTier::Hot;
+            out.push(GraphNode::from_atom(&atom, t, include_summary));
+            if out.len() >= limit {
+                break;
+            }
+        }
+        Ok(out)
+    }
 }
 
 /// Hydrate ranked `(id, score)` pairs into atoms, skipping missing ids.
@@ -947,10 +1068,17 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
     let indexed_at: String = row.get(10)?;
     let trust_lane: String = row.get(12)?;
     let quarantine_reason: Option<String> = row.get(13)?;
+    let last_accessed_raw: String = row.get(14).unwrap_or_default();
 
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
     let metadata: HashMap<String, String> =
         serde_json::from_str(&metadata_json).unwrap_or_default();
+    let indexed = parse_dt(&indexed_at);
+    let last_accessed_at = if last_accessed_raw.is_empty() {
+        indexed
+    } else {
+        parse_dt(&last_accessed_raw)
+    };
 
     Ok(KnowledgeAtom {
         id: row.get(0)?,
@@ -963,7 +1091,8 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
         resolution: row.get(7)?,
         tags,
         source_updated_at: parse_dt(&source_updated_at),
-        indexed_at: parse_dt(&indexed_at),
+        indexed_at: indexed,
+        last_accessed_at,
         embedding: None, // not loaded on read path by default (token budget)
         metadata,
         trust_lane: TrustLane::parse(&trust_lane),
@@ -1383,5 +1512,86 @@ mod tests {
         let listed = store.list_atoms(10, SearchFilter::default()).await.unwrap();
         assert!(listed.iter().all(|a| a.trust_lane == TrustLane::Trusted));
         assert!(!listed.iter().any(|a| a.id == "q-lane"));
+    }
+
+    #[tokio::test]
+    async fn upsert_preserves_indexed_at_when_hash_unchanged() {
+        let store = temp_store(4);
+        let mut atom = sample_atom("a1", "V1", "same content", None);
+        let first_indexed = Utc::now() - chrono::Duration::days(10);
+        atom.indexed_at = first_indexed;
+        atom.last_accessed_at = first_indexed;
+        store.upsert(&atom).await.unwrap();
+
+        atom.title = "V2".into();
+        atom.indexed_at = Utc::now();
+        atom.last_accessed_at = Utc::now();
+        store.upsert(&atom).await.unwrap();
+
+        let loaded = store.get("a1").await.unwrap().unwrap();
+        assert_eq!(loaded.title, "V2");
+        assert_eq!(
+            loaded.indexed_at.timestamp(),
+            first_indexed.timestamp(),
+            "unchanged content must not refresh indexed_at"
+        );
+        assert_eq!(
+            loaded.last_accessed_at.timestamp(),
+            first_indexed.timestamp(),
+            "re-index must not overwrite last_accessed_at"
+        );
+    }
+
+    #[tokio::test]
+    async fn memory_tiers_touch_and_graph() {
+        let store = temp_store(4);
+        let now = Utc::now();
+        let mut hot = sample_atom("hot1", "Hot", "recent access", None);
+        hot.indexed_at = now - chrono::Duration::days(30);
+        hot.last_accessed_at = now - chrono::Duration::days(1);
+        let mut warm = sample_atom("warm1", "Warm", "mid age", None);
+        warm.indexed_at = now - chrono::Duration::days(40);
+        warm.last_accessed_at = now - chrono::Duration::days(40);
+        let mut cold = sample_atom("cold1", "Cold", "ancient", None);
+        cold.indexed_at = now - chrono::Duration::days(200);
+        cold.last_accessed_at = now - chrono::Duration::days(200);
+        store.upsert(&hot).await.unwrap();
+        store.upsert(&warm).await.unwrap();
+        store.upsert(&cold).await.unwrap();
+
+        let (h, w, c) = store.count_by_tier(TierPolicy::default()).await.unwrap();
+        assert_eq!((h, w, c), (1, 1, 1));
+
+        let hot_nodes = store
+            .list_graph_nodes(
+                Some(MemoryTier::Hot),
+                10,
+                SearchFilter::default(),
+                TierPolicy::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(hot_nodes.len(), 1);
+        assert_eq!(hot_nodes[0].id, "hot1");
+        assert!(hot_nodes[0].summary.is_some());
+
+        let warm_nodes = store
+            .list_graph_nodes(
+                Some(MemoryTier::Warm),
+                10,
+                SearchFilter::default(),
+                TierPolicy::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(warm_nodes.len(), 1);
+        assert!(warm_nodes[0].summary.is_none());
+
+        store.touch_access("cold1").await.unwrap();
+        let loaded = store.get("cold1").await.unwrap().unwrap();
+        assert!(loaded.last_accessed_at > cold.last_accessed_at);
+        let (h2, _, c2) = store.count_by_tier(TierPolicy::default()).await.unwrap();
+        assert_eq!(h2, 2);
+        assert_eq!(c2, 0);
     }
 }
