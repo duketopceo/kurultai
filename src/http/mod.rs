@@ -71,10 +71,8 @@ async fn api_status(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     match state.brain.atom_count().await {
-        Ok(atoms) => {
-            let (trusted, quarantine, merge_pending) =
-                state.brain.lane_counts().await.unwrap_or((0, 0, 0));
-            Ok(Json(serde_json::json!({
+        Ok(atoms) => match state.brain.lane_counts().await {
+            Ok((trusted, quarantine, merge_pending)) => Ok(Json(serde_json::json!({
                 "ok": true,
                 "service": "kurultai",
                 "atoms": atoms,
@@ -84,8 +82,17 @@ async fn api_status(
                     "merge_candidates_pending": merge_pending,
                 },
                 "scheduler": state.status.snapshot(),
-            })))
-        }
+            }))),
+            Err(e) => Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "ok": false,
+                    "service": "kurultai",
+                    "atoms": atoms,
+                    "error": e.to_string(),
+                })),
+            )),
+        },
         Err(e) => Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
@@ -729,6 +736,14 @@ mod tests {
         async fn delete_atom(&self, _id: &str) -> crate::Result<()> {
             Ok(())
         }
+        async fn apply_auto_merge(
+            &self,
+            _survivor: &crate::types::KnowledgeAtom,
+            _loser_id: &str,
+            _audit_detail: &serde_json::Value,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
         async fn delete_source(&self, _source: &str) -> crate::Result<()> {
             Ok(())
         }
@@ -930,5 +945,199 @@ mod tests {
                 .load(std::sync::atomic::Ordering::Relaxed)
                 >= after_post
         );
+    }
+
+    #[tokio::test]
+    async fn promote_gate_audit_and_quarantine_exclusion() {
+        use crate::quality::gate::{apply_gate, GateOutcome};
+        use crate::types::{KnowledgeAtom, TrustLane};
+        use chrono::Utc;
+
+        let dir = std::env::temp_dir().join(format!(
+            "kurultai-http-lanes-{}",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sqlite = Arc::new(SqliteVecStore::open(dir.join("store.db"), 4).unwrap());
+        let store: Arc<dyn Store> = Arc::clone(&sqlite) as Arc<dyn Store>;
+        let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+        let synth: Arc<dyn Synthesizer> = Arc::new(ExtractiveSynthesizer::new());
+        let brain = Arc::new(BrainService::new(
+            Arc::clone(&store),
+            embedder,
+            Arc::new(NullReranker::new()),
+            synth,
+        ));
+
+        let mut trusted = KnowledgeAtom {
+            id: "http-t1".into(),
+            source: "agent".into(),
+            source_id: "/http-t1".into(),
+            title: "Trusted Hit".into(),
+            summary: "HTTPTRUSTTOKEN trusted summary".into(),
+            content: "HTTPTRUSTTOKEN trusted content body".into(),
+            tags: vec!["ops".into()],
+            source_updated_at: Utc::now(),
+            indexed_at: Utc::now(),
+            metadata: HashMap::new(),
+            ..Default::default()
+        };
+        apply_gate(&mut trusted, GateOutcome::Trusted);
+
+        let mut quarantine = KnowledgeAtom {
+            id: "http-q1".into(),
+            source: "agent".into(),
+            source_id: "/http-q1".into(),
+            title: "Quarantine Hit".into(),
+            summary: "HTTPTRUSTTOKEN quarantine summary".into(),
+            content: "HTTPTRUSTTOKEN quarantine content body".into(),
+            tags: vec![],
+            source_updated_at: Utc::now(),
+            indexed_at: Utc::now(),
+            metadata: HashMap::new(),
+            ..Default::default()
+        };
+        apply_gate(
+            &mut quarantine,
+            GateOutcome::Quarantine {
+                reason: "untagged".into(),
+            },
+        );
+
+        store.upsert(&trusted).await.unwrap();
+        store.upsert(&quarantine).await.unwrap();
+
+        let app = router(AppState {
+            brain: Arc::clone(&brain),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+        });
+
+        // Default list excludes quarantine.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/atoms")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let listed: Vec<SearchResult> = serde_json::from_slice(&bytes).unwrap();
+        assert!(listed.iter().any(|r| r.atom.id == "http-t1"));
+        assert!(!listed.iter().any(|r| r.atom.id == "http-q1"));
+
+        // include_quarantine=true includes quarantine.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/atoms?include_quarantine=true")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let listed: Vec<SearchResult> = serde_json::from_slice(&bytes).unwrap();
+        assert!(listed.iter().any(|r| r.atom.id == "http-q1"));
+
+        // Default search excludes quarantine.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/search?q=HTTPTRUSTTOKEN&limit=10")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let hits: Vec<SearchResult> = serde_json::from_slice(&bytes).unwrap();
+        assert!(hits.iter().any(|r| r.atom.id == "http-t1"));
+        assert!(!hits.iter().any(|r| r.atom.id == "http-q1"));
+
+        // include_quarantine on search.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/search?q=HTTPTRUSTTOKEN&limit=10&include_quarantine=true")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let hits: Vec<SearchResult> = serde_json::from_slice(&bytes).unwrap();
+        assert!(hits.iter().any(|r| r.atom.id == "http-q1"));
+
+        // Promote gate refuses untagged quarantine.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/promote")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"atom_id":"http-q1"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        // Fix tags, then promote succeeds + audit row.
+        quarantine.tags = vec!["ops".into()];
+        store.upsert(&quarantine).await.unwrap();
+        store
+            .set_trust_lane("http-q1", TrustLane::Quarantine, Some("untagged"))
+            .await
+            .unwrap();
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/promote")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"atom_id":"http-q1","reason":"added tags via http test"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["atom_id"], "http-q1");
+
+        let promoted = store.get("http-q1").await.unwrap().unwrap();
+        assert_eq!(promoted.trust_lane, TrustLane::Trusted);
+
+        let conn = rusqlite::Connection::open(sqlite.path()).unwrap();
+        let audit_n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM quality_audit WHERE action = 'promote' AND atom_id = 'http-q1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(audit_n >= 1);
     }
 }

@@ -1,7 +1,7 @@
 //! Safe auto-merge rules for near-duplicate atoms.
 
 use crate::hashutil::sha256_hex;
-use crate::types::KnowledgeAtom;
+use crate::types::{KnowledgeAtom, TrustLane};
 
 /// Normalize body for Jaccard: lowercase, strip punctuation, collapse whitespace.
 pub fn normalize_body(content: &str) -> String {
@@ -19,6 +19,8 @@ pub fn normalize_body(content: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Token-set Jaccard similarity on whitespace-split strings (`|A∩B| / |A∪B|`).
+/// Empty∩empty → `1.0`; exactly one empty → `0.0`.
 pub fn jaccard(a: &str, b: &str) -> f64 {
     use std::collections::HashSet;
     let ta: HashSet<&str> = a.split_whitespace().collect();
@@ -73,11 +75,16 @@ pub fn bodies_similar(a: &KnowledgeAtom, b: &KnowledgeAtom, jaccard_threshold: f
     jaccard(&na, &nb) >= jaccard_threshold
 }
 
-/// Choose survivor: older `indexed_at`, then lower id.
+/// Choose survivor: prefer `TrustLane::Trusted`, then older `indexed_at`, then lower id.
 pub fn survivor_loser<'a>(
     a: &'a KnowledgeAtom,
     b: &'a KnowledgeAtom,
 ) -> (&'a KnowledgeAtom, &'a KnowledgeAtom) {
+    match (a.trust_lane, b.trust_lane) {
+        (TrustLane::Trusted, TrustLane::Quarantine) => return (a, b),
+        (TrustLane::Quarantine, TrustLane::Trusted) => return (b, a),
+        _ => {}
+    }
     if a.indexed_at < b.indexed_at {
         (a, b)
     } else if b.indexed_at < a.indexed_at {
@@ -156,5 +163,21 @@ mod tests {
         let b = atom("2", "", "body");
         a.title = "Alpha".into();
         assert!(!has_merge_conflict(&a, &b));
+    }
+
+    #[test]
+    fn trusted_wins_over_older_quarantine() {
+        let mut trusted = atom("new", "Same", "body");
+        let mut quarantine = atom("old", "Same", "body");
+        trusted.trust_lane = TrustLane::Trusted;
+        trusted.indexed_at = Utc::now();
+        quarantine.trust_lane = TrustLane::Quarantine;
+        quarantine.indexed_at = Utc::now() - chrono::Duration::days(30);
+        let (survivor, loser) = survivor_loser(&trusted, &quarantine);
+        assert_eq!(survivor.id, "new");
+        assert_eq!(loser.id, "old");
+        let (survivor2, loser2) = survivor_loser(&quarantine, &trusted);
+        assert_eq!(survivor2.id, "new");
+        assert_eq!(loser2.id, "old");
     }
 }

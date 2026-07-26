@@ -79,6 +79,15 @@ pub trait Store: Send + Sync {
     /// Delete a single atom (and its FTS/vec rows).
     async fn delete_atom(&self, id: &str) -> Result<()>;
 
+    /// Atomic auto-merge: upsert survivor, delete loser (fts+vec+row), insert quality_audit
+    /// in one `BEGIN IMMEDIATE` transaction.
+    async fn apply_auto_merge(
+        &self,
+        survivor: &KnowledgeAtom,
+        loser_id: &str,
+        audit_detail: &serde_json::Value,
+    ) -> Result<()>;
+
     /// Delete atoms for a given source (for re-index).
     async fn delete_source(&self, source: &str) -> Result<()>;
 
@@ -636,24 +645,93 @@ impl Store for SqliteVecStore {
 
     async fn delete_atom(&self, id: &str) -> Result<()> {
         let conn = self.lock()?;
-        let rowid: Option<i64> = conn
-            .query_row(
-                "SELECT rowid FROM knowledge_atoms WHERE id = ?1",
-                [id],
-                |r| r.get(0),
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| KurultaiError::Store(format!("begin delete_atom: {e}")))?;
+
+        let result = (|| {
+            let rowid: Option<i64> = conn
+                .query_row(
+                    "SELECT rowid FROM knowledge_atoms WHERE id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(|e| KurultaiError::Store(format!("delete_atom rowid: {e}")))?;
+            let Some(rowid) = rowid else {
+                return Ok(());
+            };
+            conn.execute("DELETE FROM atoms_fts WHERE id = ?1", [id])
+                .map_err(|e| KurultaiError::Store(format!("delete_atom fts: {e}")))?;
+            conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
+                .map_err(|e| KurultaiError::Store(format!("delete_atom vec: {e}")))?;
+            conn.execute("DELETE FROM knowledge_atoms WHERE id = ?1", [id])
+                .map_err(|e| KurultaiError::Store(format!("delete_atom: {e}")))?;
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                conn.execute_batch("COMMIT;")
+                    .map_err(|e| KurultaiError::Store(format!("commit delete_atom: {e}")))?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(e)
+            }
+        }
+    }
+
+    async fn apply_auto_merge(
+        &self,
+        survivor: &KnowledgeAtom,
+        loser_id: &str,
+        audit_detail: &serde_json::Value,
+    ) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| KurultaiError::Store(format!("begin apply_auto_merge: {e}")))?;
+
+        let result = (|| {
+            Self::upsert_sync(&conn, survivor, self.embed_dim)?;
+
+            let rowid: Option<i64> = conn
+                .query_row(
+                    "SELECT rowid FROM knowledge_atoms WHERE id = ?1",
+                    [loser_id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(|e| KurultaiError::Store(format!("apply_auto_merge rowid: {e}")))?;
+            if let Some(rowid) = rowid {
+                conn.execute("DELETE FROM atoms_fts WHERE id = ?1", [loser_id])
+                    .map_err(|e| KurultaiError::Store(format!("apply_auto_merge fts: {e}")))?;
+                conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
+                    .map_err(|e| KurultaiError::Store(format!("apply_auto_merge vec: {e}")))?;
+                conn.execute("DELETE FROM knowledge_atoms WHERE id = ?1", [loser_id])
+                    .map_err(|e| KurultaiError::Store(format!("apply_auto_merge delete: {e}")))?;
+            }
+
+            let detail_json = audit_detail.to_string();
+            conn.execute(
+                "INSERT INTO quality_audit (action, atom_id, actor, detail_json) VALUES (?1, ?2, ?3, ?4)",
+                params!["auto_merge", survivor.id.as_str(), "near_dupe", detail_json],
             )
-            .optional()
-            .map_err(|e| KurultaiError::Store(format!("delete_atom rowid: {e}")))?;
-        let Some(rowid) = rowid else {
-            return Ok(());
-        };
-        conn.execute("DELETE FROM atoms_fts WHERE id = ?1", [id])
-            .map_err(|e| KurultaiError::Store(format!("delete_atom fts: {e}")))?;
-        conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
-            .map_err(|e| KurultaiError::Store(format!("delete_atom vec: {e}")))?;
-        conn.execute("DELETE FROM knowledge_atoms WHERE id = ?1", [id])
-            .map_err(|e| KurultaiError::Store(format!("delete_atom: {e}")))?;
-        Ok(())
+            .map_err(|e| KurultaiError::Store(format!("apply_auto_merge audit: {e}")))?;
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                conn.execute_batch("COMMIT;")
+                    .map_err(|e| KurultaiError::Store(format!("commit apply_auto_merge: {e}")))?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(e)
+            }
+        }
     }
 
     async fn count_by_lane(&self, lane: TrustLane) -> Result<u64> {
@@ -755,21 +833,22 @@ impl Store for SqliteVecStore {
 
     async fn list_near_dupe_candidates(&self, limit: usize) -> Result<Vec<KnowledgeAtom>> {
         let conn = self.lock()?;
-        // indexed_at is RFC3339; normalize T→space for SQLite datetime compare.
+        // Sargable recency: compare indexed_at (RFC3339) to a UTC cutoff string.
+        // Quarantine branch is intentionally unbounded in time — near-dupe must see all quarantine.
+        let cutoff = (Utc::now() - chrono::Duration::days(1)).to_rfc3339();
         let sql = format!(
             "SELECT {} FROM knowledge_atoms
              WHERE trust_lane = 'quarantine'
-                OR datetime(replace(substr(indexed_at, 1, 19), 'T', ' '))
-                   >= datetime('now', '-1 day')
+                OR indexed_at >= ?1
              ORDER BY indexed_at DESC
-             LIMIT ?1",
+             LIMIT ?2",
             ATOM_COLUMNS
         );
         let mut stmt = conn
             .prepare(&sql)
             .map_err(|e| KurultaiError::Store(format!("list_near_dupe_candidates prepare: {e}")))?;
         let atoms = stmt
-            .query_map([limit as i64], row_to_atom)
+            .query_map(params![cutoff, limit as i64], row_to_atom)
             .map_err(|e| KurultaiError::Store(format!("list_near_dupe_candidates query: {e}")))?;
         atoms
             .collect::<std::result::Result<Vec<_>, _>>()
@@ -1196,7 +1275,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_v3_adds_indexed_at_index() {
+    fn migration_v4_adds_trust_lane_audit_and_merge_tables() {
         let store = temp_store(4);
         let conn = store.lock().unwrap();
         let version: i32 = conn
@@ -1207,13 +1286,102 @@ mod tests {
             )
             .unwrap();
         assert_eq!(version, migrations::CURRENT_SCHEMA_VERSION);
-        let index_count: i32 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_atoms_indexed_at'",
-                [],
+
+        let has_col = |name: &str| -> bool {
+            let mut stmt = conn.prepare("PRAGMA table_info(knowledge_atoms)").unwrap();
+            let cols: Vec<String> = stmt
+                .query_map([], |r| r.get::<_, String>(1))
+                .unwrap()
+                .map(|c| c.unwrap())
+                .collect();
+            cols.iter().any(|c| c == name)
+        };
+        assert!(has_col("trust_lane"));
+        assert!(has_col("quarantine_reason"));
+
+        let index_count = |name: &str| -> i32 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?1",
+                [name],
                 |r| r.get(0),
             )
+            .unwrap()
+        };
+        assert_eq!(index_count("idx_atoms_indexed_at"), 1);
+        assert_eq!(index_count("idx_atoms_trust_lane"), 1);
+        assert_eq!(index_count("idx_atoms_hash_trusted"), 1);
+
+        let table_count = |name: &str| -> i32 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                [name],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(table_count("quality_audit"), 1);
+        assert_eq!(table_count("merge_candidates"), 1);
+    }
+
+    #[tokio::test]
+    async fn trust_lane_and_quarantine_reason_round_trip() {
+        let store = temp_store(4);
+        let mut atom = sample_atom("q-rt", "Q", "quarantine round trip body", None);
+        atom.trust_lane = TrustLane::Quarantine;
+        atom.quarantine_reason = Some("untagged".into());
+        store.upsert(&atom).await.unwrap();
+        let loaded = store.get("q-rt").await.unwrap().unwrap();
+        assert_eq!(loaded.trust_lane, TrustLane::Quarantine);
+        assert_eq!(loaded.quarantine_reason.as_deref(), Some("untagged"));
+    }
+
+    #[tokio::test]
+    async fn fts_vector_list_exclude_quarantine_by_default() {
+        let store = temp_store(4);
+        let trusted = sample_atom(
+            "t-lane",
+            "Trusted Lane",
+            "LANEFILTERTOKEN trusted body",
+            Some(vec![0.9, 0.1, 0.0, 0.0]),
+        );
+        let mut quarantine = sample_atom(
+            "q-lane",
+            "Quarantine Lane",
+            "LANEFILTERTOKEN quarantine body",
+            Some(vec![0.85, 0.15, 0.0, 0.0]),
+        );
+        quarantine.trust_lane = TrustLane::Quarantine;
+        quarantine.quarantine_reason = Some("untagged".into());
+        store.upsert(&trusted).await.unwrap();
+        store.upsert(&quarantine).await.unwrap();
+
+        let fts = store
+            .fts_search("LANEFILTERTOKEN", 10, SearchFilter::default())
+            .await
             .unwrap();
-        assert_eq!(index_count, 1);
+        assert_eq!(fts.len(), 1);
+        assert_eq!(fts[0].0.id, "t-lane");
+
+        let fts_all = store
+            .fts_search(
+                "LANEFILTERTOKEN",
+                10,
+                SearchFilter {
+                    trusted_only: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(fts_all.len(), 2);
+
+        let vec_hits = store
+            .vector_search(&[0.9, 0.1, 0.0, 0.0], 5, SearchFilter::default())
+            .await
+            .unwrap();
+        assert!(vec_hits.iter().all(|(a, _)| a.id == "t-lane"));
+
+        let listed = store.list_atoms(10, SearchFilter::default()).await.unwrap();
+        assert!(listed.iter().all(|a| a.trust_lane == TrustLane::Trusted));
+        assert!(!listed.iter().any(|a| a.id == "q-lane"));
     }
 }

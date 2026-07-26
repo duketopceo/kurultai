@@ -101,7 +101,7 @@ Introduce **trust lanes** on every atom write so the personal/team/company brain
 | KTD1 | **Quality bar slice, not organizer** `(session-settled: user-directed — rejected pathfinding brain-organizer for this slice: multi-year brain needs clean data first)` | Focus; avoids scope creep |
 | KTD2 | **Same gate for humans + agents** on every write — `IndexPipeline::index_connector` and `BrainService::remember` both call `quality::gate::evaluate` `(session-settled: user-directed — rejected human-only or agent-only bars)` | One brain, one standard |
 | KTD3 | **Quarantine on fail; default retrieval skips** `(session-settled: user-directed — rejected hard reject and warn-and-allow)` | Agents keep writing; bad data isolated |
-| KTD4 | **`trust_lane` column on `knowledge_atoms`** (`trusted` \| `quarantine`) + `quarantine_reason TEXT` via migration v4; filter in store search/list SQL | Single table; FTS/vec rows only for atoms that pass gate on trusted path — quarantine atoms still get FTS rows for explicit include_quarantine queries |
+| KTD4 | **`trust_lane` column on `knowledge_atoms`** (`trusted` \| `quarantine`) + `quarantine_reason TEXT` via migration v4; filter in store search/list SQL | Single table; quarantine atoms get **FTS only** on write (no `atoms_vec` row / no embed on quarantine write). `include_quarantine=true` searches FTS (+ any pre-existing vectors only if present — typically none). Trusted path: gate stays no-embed-on-write; vectors only when embedder is live after gate pass |
 | KTD5 | **Exact duplicate via existing `content_hash`** (`sha256_hex(content)` already in `src/store/mod.rs` upsert + `idx_atoms_content_hash`) `(session-settled: user-directed — primary crap includes duplicates)` | Reuses `src/hashutil.rs` + store index; no new hash |
 | KTD6 | **Trusted path = cheap sync only**: tag check + `SELECT id FROM knowledge_atoms WHERE content_hash = ? AND trust_lane = 'trusted' LIMIT 1` `(session-settled: user-directed — rejected admit-all-then-grade-async for trusted; must not delay agent DB use)` | Sub-ms SQLite; no embed on write |
 | KTD7 | **Promote is explicit** — new MCP/HTTP/CLI; writes `quality_audit` row; `remember` never flips lane `(session-settled: user-directed — rejected auto-promote-on-fix and human-only)` | Auditable, agent-callable |
@@ -113,7 +113,7 @@ Introduce **trust lanes** on every atom write so the personal/team/company brain
 
 ### Safe auto-merge definition (normative)
 
-Merge atom **B** into **A** (A = older `indexed_at` or lower id) when **all** hold:
+Merge atom **B** into **A** (A = `TrustLane::Trusted` preferred over quarantine; else older `indexed_at` or lower id) when **all** hold:
 
 1. Same `content_hash` **OR** normalized-body Jaccard ≥ 0.95
 2. **No conflict:** not (both have non-empty `title` and titles differ case-insensitively); not (both have non-empty `summary` and summaries differ); not (both have `Some(resolution)` with different text)
@@ -126,7 +126,7 @@ Otherwise: insert `merge_candidates(a_id, b_id, reason)` with status `pending`.
 
 - `content_hash` column populated on all upserts today (`src/store/mod.rs:153`).
 - Atom id stability uses `atom_id(source, source_id, content)` (`src/hashutil.rs`) — duplicate **content** from different sources gets different ids but same hash; gate catches via hash not id.
-- Quarantine atoms remain in `atoms_fts` so `include_quarantine` search works without reindex.
+- Quarantine atoms are written to `atoms_fts` only (not `atoms_vec`); `include_quarantine` FTS search works without reindex. Pre-existing vectors on a quarantined row are rare and optional — typical quarantine writes have none.
 - Near-dupe job budget: scan atoms with `indexed_at` in last 24h + all quarantine (cap 500/run).
 
 ### Dependencies

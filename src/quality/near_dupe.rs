@@ -6,6 +6,7 @@ use crate::hashutil::sha256_hex;
 use crate::quality::merge::{bodies_similar, has_merge_conflict, merge_additive, survivor_loser};
 use crate::store::{SearchFilter, Store};
 use crate::types::{KnowledgeAtom, TrustLane};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Near-dupe Jaccard threshold for pairing (plan ≥ 0.92).
@@ -36,11 +37,15 @@ pub async fn run_near_dupe_pass(
 
     let mut auto_merges = 0usize;
     let mut pending = 0usize;
+    let mut removed: HashSet<String> = HashSet::new();
 
     for i in 0..candidates.len() {
         for j in (i + 1)..candidates.len() {
             let a = &candidates[i];
             let b = &candidates[j];
+            if removed.contains(&a.id) || removed.contains(&b.id) {
+                continue;
+            }
             if !bodies_similar(a, b, JACCARD_CANDIDATE) {
                 continue;
             }
@@ -81,6 +86,8 @@ pub async fn run_near_dupe_pass(
             }
 
             if try_auto_merge(store, a, b).await? {
+                let (_, loser) = survivor_loser(a, b);
+                removed.insert(loser.id.clone());
                 auto_merges += 1;
             }
         }
@@ -92,19 +99,11 @@ pub async fn run_near_dupe_pass(
 async fn try_auto_merge(store: &dyn Store, a: &KnowledgeAtom, b: &KnowledgeAtom) -> Result<bool> {
     let (survivor, loser) = survivor_loser(a, b);
     let merged = merge_additive(survivor, loser);
-    store.upsert(&merged).await?;
-    store.delete_atom(&loser.id).await?;
-    store
-        .insert_quality_audit(
-            "auto_merge",
-            &survivor.id,
-            "near_dupe",
-            &serde_json::json!({
-                "loser_id": loser.id,
-                "survivor_id": survivor.id,
-            }),
-        )
-        .await?;
+    let detail = serde_json::json!({
+        "loser_id": loser.id,
+        "survivor_id": survivor.id,
+    });
+    store.apply_auto_merge(&merged, &loser.id, &detail).await?;
     Ok(true)
 }
 
@@ -182,6 +181,33 @@ mod tests {
         let t_gone = store.get("t1").await.unwrap().is_none();
         let q_gone = store.get("q1").await.unwrap().is_none();
         assert!(t_gone || q_gone);
+        // Trusted must survive over quarantine.
+        assert!(store.get("t1").await.unwrap().is_some());
+        assert!(store.get("q1").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn three_identical_atoms_skip_stale_pairs_after_merge() {
+        let store = temp_store();
+        let emb: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+        let body = "triple identical body for merge skip";
+        let a = atom("a1", "Same", body, TrustLane::Trusted);
+        let b = atom("b1", "Same", body, TrustLane::Quarantine);
+        let c = atom("c1", "Same", body, TrustLane::Quarantine);
+        store.upsert(&a).await.unwrap();
+        store.upsert(&b).await.unwrap();
+        store.upsert(&c).await.unwrap();
+
+        let (m, pending) = run_near_dupe_pass(store.as_ref() as &dyn Store, &emb)
+            .await
+            .unwrap();
+        // Two quarantine copies merge into trusted; no pending for stale pairs.
+        assert_eq!(m, 2);
+        assert_eq!(pending, 0);
+        assert!(store.get("a1").await.unwrap().is_some());
+        assert!(store.get("b1").await.unwrap().is_none());
+        assert!(store.get("c1").await.unwrap().is_none());
+        assert_eq!(store.count().await.unwrap(), 1);
     }
 
     #[tokio::test]
