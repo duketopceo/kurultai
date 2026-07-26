@@ -13,6 +13,8 @@ Merge **[#97](https://github.com/duketopceo/kurultai/pull/97)** (`cursor/phase5-
 
 Maintainer sequence: merge #97 → `./scripts/phase-5-closeout.sh` → close Milestone 5.
 
+**Remilestone status (2026-07-26):** agent `gh` integration got **403** on `PATCH /issues/{20,29,35}` milestone updates — deferred ops still on Milestone 5 until a maintainer runs the script.
+
 ---
 
 ## Remilestone (deferred ops — leave open)
