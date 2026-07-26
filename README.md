@@ -186,9 +186,11 @@ Ship **developer → solo → team → company** ([#25](https://github.com/duket
 | Phase | Status |
 |-------|--------|
 | 1–3 Foundation / search / synthesis | ✅ |
-| 4 Expansion (Dayflow · Pond · GitHub FS) | ✅ |
-| 5 Production (daemon poll + watch) | 🚧 local embeddings (opt-in ONNX) / ARC / ops follow |
+| 4 Expansion (Dayflow · Pond · GitHub FS) | ✅ [complete](docs/plans/phase-4-complete.md) |
+| 5 Production (poll · watch · local ONNX · MCP agents) | ✅ [complete](docs/plans/phase-5-complete.md) · [closeout](docs/plans/phase-5-closeout.md) |
 | 6 Launch (release packaging, yurt art) | 📋 [#10](https://github.com/duketopceo/kurultai/issues/10) |
+
+Deferred ops (not Phase 5 product exit): [#20](https://github.com/duketopceo/kurultai/issues/20) ARC · [#29](https://github.com/duketopceo/kurultai/issues/29) env hardening · [#35](https://github.com/duketopceo/kurultai/issues/35) GlitchTip — see [phase-5-complete.md](docs/plans/phase-5-complete.md).
 
 Upstream notes: [docs/upstream-inspiration.md](docs/upstream-inspiration.md).
 
