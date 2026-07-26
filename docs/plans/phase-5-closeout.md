@@ -7,6 +7,14 @@ Agent tokens often **cannot** edit milestones / issues (403). A maintainer runs 
 
 ---
 
+## Landing vehicle
+
+Merge **[#97](https://github.com/duketopceo/kurultai/pull/97)** (`cursor/phase5-lfg-closeout-7a74`) to put this file, `phase-5-complete.md`, `scripts/phase-5-closeout.sh`, and the README Phase 5 ✅ roadmap table on `main` (coexists with the v0.3.0 README rewrite from [#98](https://github.com/duketopceo/kurultai/pull/98)).
+
+Maintainer sequence: merge #97 → `./scripts/phase-5-closeout.sh` → close Milestone 5.
+
+---
+
 ## Remilestone (deferred ops — leave open)
 
 After the closeout PR is on `main`:

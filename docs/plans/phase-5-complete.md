@@ -60,6 +60,7 @@ configured sources → daemon HTTP + poll (+ notify watch)
 
 ## Tracker closeout
 
+Landing PR: [#97](https://github.com/duketopceo/kurultai/pull/97).  
 Maintainer: [phase-5-closeout.md](phase-5-closeout.md) / `scripts/phase-5-closeout.sh`  
 (Agent token often lacks issue/milestone write.)
 

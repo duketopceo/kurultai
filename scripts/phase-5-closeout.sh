@@ -52,6 +52,11 @@ if ! echo "$readme" | grep -Eq '\]\([^)]*phase-4-complete\.md\)'; then
   echo "Abort: README.md on $REPO@main has no Markdown link targeting phase-4-complete.md." >&2
   exit 1
 fi
+# Product-exit signal: Phase 5 complete link must appear with ✅ on the same line
+if ! echo "$readme" | grep -E '✅.*phase-5-complete|phase-5-complete.*✅' >/dev/null; then
+  echo "Abort: README.md on $REPO@main has no Phase 5 ✅ product-exit signal (expected ✅ … phase-5-complete on one line)." >&2
+  exit 1
+fi
 
 echo "Remilestoning deferred ops #20/#29/#35 to Milestone $MILESTONE_6 on $REPO…"
 failed=0
