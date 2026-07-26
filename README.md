@@ -127,6 +127,9 @@ poll_interval_secs = 300
 # nightly_full_sync_hour = 3
 # inactivity_threshold_hours = 6
 # reranker_model = "openai/gpt-4o-mini"
+
+[cli]
+# banner = "auto"   # true | false | "auto" (TTY only); suppressed by --plain / NO_COLOR / KURULTAI_PLAIN
 ```
 
 Overrides: `KURULTAI_ENV=dev`, `kurultai --env staging status`. API keys via env only — never in config files.
@@ -176,6 +179,8 @@ Multi-user model: [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md). Co
 - Plans / Agent Zero drafts: [`docs/plans/`](docs/plans/) · [`docs/agent-zero/`](docs/agent-zero/)
 
 Roadmap: developer → solo → team → company ([#25](https://github.com/duketopceo/kurultai/issues/25), [#27](https://github.com/duketopceo/kurultai/issues/27)).
+
+**Phase 6 (in progress):** Open Source Launch ([#10](https://github.com/duketopceo/kurultai/issues/10)) — first polish slice is Yurt terminal art ([#22](https://github.com/duketopceo/kurultai/issues/22)).
 
 ## License
 
