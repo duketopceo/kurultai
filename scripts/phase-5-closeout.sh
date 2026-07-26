@@ -54,11 +54,21 @@ if ! echo "$readme" | grep -Eq '\]\([^)]*phase-4-complete\.md\)'; then
 fi
 
 echo "Remilestoning deferred ops #20/#29/#35 to Milestone $MILESTONE_6 on $REPO…"
+failed=0
 for issue in 20 29 35; do
-  gh api -X PATCH "repos/${REPO}/issues/${issue}" -f milestone="$MILESTONE_6" >/dev/null
-  gh issue comment "$issue" --repo "$REPO" --body "$DEFER_COMMENT"
-  echo "  #$issue → milestone $MILESTONE_6"
+  if gh api -X PATCH "repos/${REPO}/issues/${issue}" -f milestone="$MILESTONE_6" >/dev/null \
+    && gh issue comment "$issue" --repo "$REPO" --body "$DEFER_COMMENT" >/dev/null; then
+    echo "  #$issue → milestone $MILESTONE_6"
+  else
+    echo "  FAILED: #$issue (milestone PATCH and/or comment)" >&2
+    failed=1
+  fi
 done
+
+if [[ "$failed" -ne 0 ]]; then
+  echo "Abort: one or more remilestone/comment steps failed; Milestone 5 not clear yet. Re-run after fixing access/errors." >&2
+  exit 1
+fi
 
 echo "Reminder: #9 already closed (product exit via #65/#66/#83/#84)."
 echo "Then close Milestone 5 when clear:"
