@@ -1,5 +1,6 @@
 pub mod activity;
 pub mod app;
+pub mod art;
 pub mod brain;
 pub mod config;
 pub mod connectors;
