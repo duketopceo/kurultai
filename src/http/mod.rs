@@ -907,6 +907,27 @@ mod tests {
         ) -> crate::Result<Vec<crate::memory::GraphNode>> {
             Ok(vec![])
         }
+        async fn record_ingestion_start(
+            &self,
+            _batch_id: &str,
+            _source: &str,
+            _file_path: &str,
+        ) -> crate::Result<i64> {
+            Ok(0)
+        }
+        async fn record_ingestion_finish(
+            &self,
+            _job_id: i64,
+            _atoms_count: Option<i64>,
+            _error_message: Option<&str>,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn list_pending_ingestion_jobs(
+            &self,
+        ) -> crate::Result<Vec<crate::store::IngestionJob>> {
+            Ok(vec![])
+        }
     }
 
     #[tokio::test]
