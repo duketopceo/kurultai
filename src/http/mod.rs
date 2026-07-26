@@ -19,11 +19,27 @@ use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
+use uuid::Uuid;
 
 #[derive(Clone)]
 struct AppState {
     brain: Arc<BrainService>,
     status: Arc<DaemonStatus>,
+}
+
+fn json_error(
+    status: StatusCode,
+    message: impl Into<String>,
+    request_id: &str,
+) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        status,
+        Json(serde_json::json!({
+            "ok": false,
+            "error": message.into(),
+            "request_id": request_id,
+        })),
+    )
 }
 
 /// Serve search/ask/cite/who_knows on `127.0.0.1:port` until cancelled.
@@ -72,6 +88,8 @@ async fn health() -> Json<serde_json::Value> {
 async fn api_status(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_status", request_id=%request_id);
     match state.brain.atom_count().await {
         Ok(atoms) => match state.brain.lane_counts().await {
             Ok((trusted, quarantine, merge_pending)) => {
@@ -87,6 +105,7 @@ async fn api_status(
                     "ok": true,
                     "service": "kurultai",
                     "atoms": atoms,
+                    "request_id": &request_id,
                     "brain": {
                         "trusted_count": trusted,
                         "quarantine_count": quarantine,
@@ -96,14 +115,10 @@ async fn api_status(
                     "scheduler": state.status.snapshot(),
                 })))
             }
-            Err(e) => Err((
+            Err(e) => Err(json_error(
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(serde_json::json!({
-                    "ok": false,
-                    "service": "kurultai",
-                    "atoms": atoms,
-                    "error": e.to_string(),
-                })),
+                e.to_string(),
+                &request_id,
             )),
         },
         Err(e) => Err((
@@ -113,6 +128,7 @@ async fn api_status(
                 "service": "kurultai",
                 "atoms": null,
                 "error": e.to_string(),
+                "request_id": &request_id,
                 "scheduler": state.status.snapshot(),
             })),
         )),
@@ -122,7 +138,9 @@ async fn api_status(
 async fn api_atoms(
     State(state): State<AppState>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<Vec<crate::types::SearchResult>>, (StatusCode, String)> {
+) -> Result<Json<Vec<crate::types::SearchResult>>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_atoms", request_id=%request_id);
     state.status.touch_client_activity();
     let limit: usize = params
         .get("limit")
@@ -151,13 +169,21 @@ async fn api_atoms(
                     .collect(),
             )
         })
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| {
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            )
+        })
 }
 
 async fn api_graph(
     State(state): State<AppState>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_graph", request_id=%request_id);
     state.status.touch_client_activity();
     let limit: usize = params
         .get("limit")
@@ -169,9 +195,10 @@ async fn api_graph(
         .and_then(|s| crate::memory::MemoryTier::parse(s));
     if let Some(raw) = params.get("tier") {
         if tier.is_none() && !raw.is_empty() {
-            return Err((
+            return Err(json_error(
                 StatusCode::BAD_REQUEST,
                 format!("invalid tier '{raw}' (want hot|warm|cold)"),
+                &request_id,
             ));
         }
     }
@@ -183,9 +210,16 @@ async fn api_graph(
         .brain
         .list_graph_nodes(tier, limit, include_quarantine)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| {
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            )
+        })?;
     Ok(Json(serde_json::json!({
         "ok": true,
+        "request_id": &request_id,
         "tier": tier.map(|t| t.as_str()),
         "count": nodes.len(),
         "nodes": nodes,
@@ -200,15 +234,26 @@ struct TouchBody {
 async fn api_touch(
     State(state): State<AppState>,
     Json(body): Json<TouchBody>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_touch", request_id=%request_id);
     state.status.touch_client_activity();
     match state.brain.touch_access(&body.atom_id).await {
         Ok(Some(atom)) => Ok(Json(serde_json::json!({
             "ok": true,
+            "request_id": &request_id,
             "atom": atom,
         }))),
-        Ok(None) => Err((StatusCode::NOT_FOUND, "atom not found".into())),
-        Err(e) => Err((StatusCode::BAD_REQUEST, e.to_string())),
+        Ok(None) => Err(json_error(
+            StatusCode::NOT_FOUND,
+            "atom not found",
+            &request_id,
+        )),
+        Err(e) => Err(json_error(
+            StatusCode::BAD_REQUEST,
+            e.to_string(),
+            &request_id,
+        )),
     }
 }
 
@@ -222,7 +267,9 @@ struct PromoteBody {
 async fn api_promote(
     State(state): State<AppState>,
     Json(body): Json<PromoteBody>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_promote", request_id=%request_id);
     state.status.touch_client_activity();
     match state
         .brain
@@ -231,10 +278,15 @@ async fn api_promote(
     {
         Ok(res) => Ok(Json(serde_json::json!({
             "ok": true,
+            "request_id": &request_id,
             "atom_id": res.atom_id,
             "actor": res.actor,
         }))),
-        Err(e) => Err((StatusCode::BAD_REQUEST, e.to_string())),
+        Err(e) => Err(json_error(
+            StatusCode::BAD_REQUEST,
+            e.to_string(),
+            &request_id,
+        )),
     }
 }
 
@@ -283,27 +335,43 @@ struct SearchBody {
 async fn search_post(
     State(state): State<AppState>,
     Json(body): Json<SearchBody>,
-) -> Result<Json<Vec<SearchResult>>, (StatusCode, String)> {
+) -> Result<Json<Vec<SearchResult>>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("search_post", request_id=%request_id);
     state.status.touch_client_activity();
     state
         .brain
         .search_filtered(&body.query, body.limit, body.include_quarantine)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| {
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            )
+        })
 }
 
 async fn search_get(
     State(state): State<AppState>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, (StatusCode, String)> {
+) -> Result<Json<Vec<SearchResult>>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("search_get", request_id=%request_id);
     state.status.touch_client_activity();
     state
         .brain
         .search_filtered(&query.q, query.limit, query.include_quarantine)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| {
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            )
+        })
 }
 
 #[derive(Debug, Deserialize)]
@@ -314,27 +382,43 @@ struct AskBody {
 async fn ask_post(
     State(state): State<AppState>,
     Json(body): Json<AskBody>,
-) -> Result<Json<Answer>, (StatusCode, String)> {
+) -> Result<Json<Answer>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("ask_post", request_id=%request_id);
     state.status.touch_client_activity();
     state
         .brain
         .ask(&body.question)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| {
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            )
+        })
 }
 
 async fn ask_get(
     State(state): State<AppState>,
     Query(query): Query<AskQuery>,
-) -> Result<Json<Answer>, (StatusCode, String)> {
+) -> Result<Json<Answer>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("ask_get", request_id=%request_id);
     state.status.touch_client_activity();
     state
         .brain
         .ask(&query.question)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| {
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            )
+        })
 }
 
 #[derive(Debug, Deserialize)]
@@ -346,13 +430,21 @@ struct CiteBody {
 async fn cite_post(
     State(state): State<AppState>,
     Json(body): Json<CiteBody>,
-) -> Result<Json<Option<Citation>>, (StatusCode, String)> {
+) -> Result<Json<Option<Citation>>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("cite_post", request_id=%request_id);
     state
         .brain
         .cite(&body.source, &body.source_id)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| {
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            )
+        })
 }
 
 #[derive(Debug, Deserialize)]
@@ -365,13 +457,21 @@ struct WhoKnowsBody {
 async fn who_knows_post(
     State(state): State<AppState>,
     Json(body): Json<WhoKnowsBody>,
-) -> Result<Json<Vec<WhoKnowsEntry>>, (StatusCode, String)> {
+) -> Result<Json<Vec<WhoKnowsEntry>>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("who_knows_post", request_id=%request_id);
     state
         .brain
         .who_knows(&body.topic, body.limit)
         .await
         .map(Json)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        .map_err(|e| {
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            )
+        })
 }
 
 async fn api_open(
@@ -936,6 +1036,11 @@ mod tests {
         assert!(v["memory"]["warm"].is_number());
         assert!(v["memory"]["cold"].is_number());
         assert!(v["scheduler"]["last_client_activity_unix"].is_number());
+        let rid = v["request_id"].as_str().unwrap_or("");
+        assert!(
+            !rid.is_empty(),
+            "success request_id must be present and non-empty"
+        );
     }
 
     #[tokio::test]
@@ -969,6 +1074,11 @@ mod tests {
         assert_eq!(v["ok"], false);
         assert!(v["atoms"].is_null());
         assert!(v["error"].as_str().unwrap_or("").contains("count failed"));
+        let rid = v["request_id"].as_str().unwrap_or("");
+        assert!(
+            !rid.is_empty(),
+            "error request_id must be present and non-empty"
+        );
     }
 
     #[tokio::test]
@@ -1231,5 +1341,28 @@ mod tests {
             )
             .unwrap();
         assert!(audit_n >= 1);
+    }
+    #[tokio::test]
+    async fn api_graph_invalid_tier_includes_request_id() {
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/graph?tier=invalid")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let rid = v["request_id"].as_str().unwrap_or("");
+        assert!(!rid.is_empty(), "request_id must be present and non-empty");
     }
 }
