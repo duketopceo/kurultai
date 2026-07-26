@@ -49,3 +49,7 @@ Cut non-data “and then” waits: fan-out independent nodes with typed I/O, fan
 Single product dashboard for the local brain: daemon `GET /ui`, assets under `ui/` embedded into the binary. Not a parallel Vite/`website/` product and not the Clerk `web/` auth portal.
 
 See: [docs/solutions/architecture-patterns/one-brain-ui-daemon-ui-only.md](docs/solutions/architecture-patterns/one-brain-ui-daemon-ui-only.md)
+
+### Yurt
+
+CLI / brand mascot (⌂) for Kurultai. Terminal art variants live in `src/art.rs` and appear only on human TTY surfaces when banner policy allows — never on MCP stdio or plain/NO_COLOR paths.
