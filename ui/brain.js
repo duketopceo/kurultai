@@ -327,6 +327,7 @@
     }
 
     function update(atoms) {
+      clearHover();
       disposeGroup(nodes);
       disposeGroup(edges);
       nodes.clear(); edges.clear();
