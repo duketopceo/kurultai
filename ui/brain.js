@@ -209,7 +209,6 @@ document.addEventListener("DOMContentLoaded", () => {
             activeAtom = keep || listSlice[0] || currentAtoms[0];
             inspectAtom(activeAtom);
             if (rebuildBrain) updateMainBrain(currentAtoms);
-            else focusCameraOnAtom(activeAtom);
             refreshGraphPaint();
         } else {
             activeAtom = null;
@@ -244,7 +243,6 @@ document.addEventListener("DOMContentLoaded", () => {
         activeAtom = atom;
         renderAtomsList(atomsForList());
         inspectAtom(atom);
-        focusCameraOnAtom(atom);
         refreshGraphPaint();
         if (scrollList) {
             const el = listContainer.querySelector(".atom-item.active");
@@ -314,7 +312,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ? `<div class="detail-label" style="text-align:right;">ID: ${escapeHtml(atom.id)}</div>`
             : "";
         const openFileBtn = isTechnical && atom.file_path
-            ? `<button onclick="openFileInEditor('${escapeHtml(atom.file_path)}')" style="padding:4px 12px;font-size:0.75rem;border-radius:9999px;background:rgba(255,255,255,0.08);border:1px solid rgba(160,200,255,0.4);color:#fff;cursor:pointer;font-family:var(--font-mono);">Open File</button>`
+            ? `<button onclick="openFileInEditor('${escapeHtml(atom.file_path)}')" style="padding:4px 12px;font-size:0.75rem;border-radius:9999px;background:rgba(255,255,255,0.08);border:1px solid rgba(167,139,250,0.45);color:#fff;cursor:pointer;font-family:var(--font-mono);">Open File</button>`
             : "";
         const routingRow = isTechnical && atom.question
             ? `<div class="detail-row"><div class="detail-label">Routing Queries</div><div class="detail-val"><strong>Q:</strong> ${escapeHtml(atom.question)}<br/><strong>A:</strong> ${escapeHtml(atom.resolution || "")}</div></div>`
@@ -410,6 +408,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (controls) controls.autoRotate = false;
             applyFormationLayout(mode, { animate: true });
             startFormationSpin();
+            setTimeout(frameWholeBrain, 450);
             if (hint) {
                 hint.textContent = "brain formation · slow spin · organic to release";
             }
@@ -493,7 +492,7 @@ document.addEventListener("DOMContentLoaded", () => {
         Graph.d3ReheatSimulation();
         if (animate) {
             setTimeout(() => {
-                try { Graph.zoomToFit(900, 70); } catch (_) {}
+                try { Graph.zoomToFit(0, 160); } catch (_) {}
             }, 400);
         }
     }
@@ -502,7 +501,7 @@ document.addEventListener("DOMContentLoaded", () => {
         stopFormationSpin();
         formationSpinTimer = setInterval(() => {
             if (!Graph || layoutMode !== "brain") return;
-            formationAngle += 0.008; // slow spin
+            formationAngle += 0.003; // slow spin
             const nodes = Graph.graphData().nodes || [];
             const n = nodes.length;
             const radius = FORMATION_RADIUS * Math.min(1.35, 0.55 + Math.sqrt(n) / 28);
@@ -674,17 +673,17 @@ document.addEventListener("DOMContentLoaded", () => {
         const haloR = coreR * (tier === "hot" ? 3.2 : tier === "cold" ? 2.2 : 2.6);
 
         const coreMat = new THREE.MeshBasicMaterial({
-            color: tier === "hot" ? 0xeaf2ff : tier === "cold" ? 0x6a7890 : 0xb8c8e0,
+            color: tier === "hot" ? 0xffffff : tier === "cold" ? 0x666666 : 0xcccccc,
             transparent: true,
-            opacity: tier === "cold" ? 0.55 : 0.92
+            opacity: tier === "cold" ? 0.5 : 0.92
         });
         const core = new THREE.Mesh(new THREE.SphereGeometry(coreR, 10, 10), coreMat);
         group.add(core);
 
         const haloMat = new THREE.MeshBasicMaterial({
-            color: tier === "hot" ? 0x9ec4ff : 0x5a6a88,
+            color: tier === "hot" ? 0xa78bfa : 0xffffff,
             transparent: true,
-            opacity: tier === "hot" ? 0.16 : 0.07,
+            opacity: tier === "hot" ? 0.14 : 0.06,
             depthWrite: false
         });
         const halo = new THREE.Mesh(new THREE.SphereGeometry(haloR, 12, 12), haloMat);
@@ -702,44 +701,44 @@ document.addEventListener("DOMContentLoaded", () => {
             .nodeLabel(node => {
                 const tags = (node.tags || []).map(t => escapeHtml(t)).join(", ");
                 return `
-                    <div style="background:rgba(0,0,0,0.92);border:1px solid rgba(160,200,255,0.4);border-radius:10px;padding:12px 14px;font-family:Share Tech Mono,monospace;font-size:0.8rem;color:#fff;box-shadow:0 0 28px rgba(120,170,255,0.2);">
+                    <div style="background:rgba(0,0,0,0.92);border:1px solid rgba(255,255,255,0.25);border-radius:10px;padding:12px 14px;font-family:Share Tech Mono,monospace;font-size:0.8rem;color:#fff;box-shadow:0 0 20px rgba(167,139,250,0.15);">
                         <strong style="font-size:0.9rem;">${escapeHtml(node.title)}</strong><br/>
-                        <span style="color:#8899aa;">${escapeHtml(node.source)}/${escapeHtml(node.source_id)}</span>
-                        ${node.tier ? `<br/><span style="color:#b8d0ff;text-transform:uppercase;letter-spacing:0.08em;font-size:0.68rem;">${escapeHtml(node.tier)}</span>` : ""}
-                        ${tags ? `<br/><span style="color:#ccd;">${tags}</span>` : ""}
+                        <span style="color:#888;">${escapeHtml(node.source)}/${escapeHtml(node.source_id)}</span>
+                        ${node.tier ? `<br/><span style="color:#a78bfa;text-transform:uppercase;letter-spacing:0.08em;font-size:0.68rem;">${escapeHtml(node.tier)}</span>` : ""}
+                        ${tags ? `<br/><span style="color:#bbb;">${tags}</span>` : ""}
                     </div>`;
             })
             .linkColor(link => {
-                if (linkIsHovered(link)) return "rgba(220, 235, 255, 0.98)";
-                if (isHoverActive()) return "rgba(100, 140, 200, 0.04)";
-                if (linkIsSim(link) || inZapBurst()) return "rgba(190, 220, 255, 0.85)";
-                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return "rgba(140, 180, 255, 0.28)";
-                return "rgba(90, 120, 170, 0.12)";
+                if (linkIsHovered(link)) return "rgba(255, 255, 255, 0.95)";
+                if (isHoverActive()) return "rgba(255, 255, 255, 0.04)";
+                if (linkIsSim(link) || inZapBurst()) return "rgba(167, 139, 250, 0.75)";
+                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return "rgba(255, 255, 255, 0.22)";
+                return "rgba(255, 255, 255, 0.08)";
             })
             .linkWidth(link => {
-                if (linkIsHovered(link)) return 1.7;
-                if (linkIsSim(link)) return 1.35;
-                if (inZapBurst() && linkAmbientIndex(link) < 0.35) return 0.9;
-                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return 0.45;
-                return 0.22;
+                if (linkIsHovered(link)) return 1.5;
+                if (linkIsSim(link)) return 1.1;
+                if (inZapBurst() && linkAmbientIndex(link) < 0.35) return 0.7;
+                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return 0.35;
+                return 0.18;
             })
-            .linkOpacity(0.75)
+            .linkOpacity(0.7)
             .linkDirectionalParticles(link => {
-                if (linkIsHovered(link)) return 7;
-                if (linkIsSim(link)) return 5;
-                if (inZapBurst() && linkAmbientIndex(link) < 0.4) return 3;
-                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return 2;
+                if (linkIsHovered(link)) return 5;
+                if (linkIsSim(link)) return 3;
+                if (inZapBurst() && linkAmbientIndex(link) < 0.4) return 2;
+                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return 1;
                 return 0;
             })
             .linkDirectionalParticleSpeed(link => {
-                if (linkIsHovered(link) || linkIsSim(link)) return 0.012;
-                if (inZapBurst()) return 0.01;
-                return 0.0045;
+                if (linkIsHovered(link) || linkIsSim(link)) return 0.006;
+                if (inZapBurst()) return 0.005;
+                return 0.002;
             })
-            .linkDirectionalParticleWidth(link => (linkIsSim(link) || linkIsHovered(link) ? 2.4 : 1.6))
+            .linkDirectionalParticleWidth(link => (linkIsSim(link) || linkIsHovered(link) ? 1.8 : 1.2))
             .linkDirectionalParticleColor(link => {
-                if (linkIsSim(link) || linkIsHovered(link)) return "#eaf2ff";
-                return "#00d8e8"; // synaptic cyan (neural patch accent)
+                if (linkIsSim(link) || linkIsHovered(link)) return "#ffffff";
+                return "#a78bfa";
             })
             .onNodeHover(node => {
                 if (!node) {
@@ -784,20 +783,20 @@ document.addEventListener("DOMContentLoaded", () => {
             let halo = baseHalo * (1 + 0.35 * Math.sin(ambientPulse + (n.val || 0)));
             let coreOp = tier === "cold" ? 0.55 : 0.92;
             if (selected || hovered) {
-                halo = Math.min(0.42, halo + 0.22);
+                halo = Math.min(0.38, halo + 0.18);
                 coreOp = 1;
                 if (coreMat) coreMat.color.setHex(0xffffff);
             } else if (neigh || firing) {
-                halo = Math.min(0.32, halo + 0.14);
-                if (coreMat) coreMat.color.setHex(0xeaf2ff);
+                halo = Math.min(0.28, halo + 0.12);
+                if (coreMat) coreMat.color.setHex(0xa78bfa);
             } else if (isHoverActive()) {
                 halo *= 0.35;
                 coreOp *= 0.35;
                 if (coreMat) {
-                    coreMat.color.setHex(tier === "hot" ? 0x4a5870 : 0x2a3040);
+                    coreMat.color.setHex(tier === "hot" ? 0x555555 : 0x333333);
                 }
             } else if (coreMat) {
-                coreMat.color.setHex(tier === "hot" ? 0xeaf2ff : tier === "cold" ? 0x6a7890 : 0xb8c8e0);
+                coreMat.color.setHex(tier === "hot" ? 0xffffff : tier === "cold" ? 0x666666 : 0xcccccc);
             }
             haloMat.opacity = halo;
             if (coreMat) coreMat.opacity = coreOp;
@@ -842,10 +841,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const walk = randomWalkPath(8);
         simNodeIds = new Set(walk.nodes);
         simLinkKeys = new Set(walk.linkKeys);
-        zapBurstUntil = performance.now() + 420;
+        zapBurstUntil = performance.now() + 280;
         refreshGraphPaint();
 
-        const holdMs = 900 + Math.floor(Math.random() * 1400);
+        const holdMs = 1600 + Math.floor(Math.random() * 2200);
         if (simClearTimer) clearTimeout(simClearTimer);
         simClearTimer = setTimeout(() => {
             clearSimOverlay();
@@ -855,14 +854,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function scheduleNextSim() {
         if (simTimer) clearTimeout(simTimer);
-        // Storm cadence — frequent but irregular
-        const delay = 900 + Math.floor(Math.random() * 2200);
+        // Calm cadence — infrequent irregular flashes
+        const delay = 4500 + Math.floor(Math.random() * 5500);
         simTimer = setTimeout(pulseSimActivity, delay);
     }
 
     function startSimActivity() {
         if (simTimer) clearTimeout(simTimer);
-        simTimer = setTimeout(pulseSimActivity, 700);
+        simTimer = setTimeout(pulseSimActivity, 4000);
     }
 
     function stageSize() {
@@ -873,23 +872,12 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     }
 
-    function focusCameraOnAtom(atom) {
-        if (!Graph || !atom) return;
-        const nodes = Graph.graphData().nodes || [];
-        const node = nodes.find(n => n.id === atom.id);
-        if (!node || node.x == null) return;
-        const dist = 160;
-        const cam = Graph.cameraPosition();
-        const len = Math.hypot(cam.x || 1, cam.y || 1, cam.z || 1) || 1;
-        Graph.cameraPosition(
-            {
-                x: node.x + (cam.x / len) * dist,
-                y: node.y + (cam.y / len) * dist,
-                z: node.z + (cam.z / len) * dist
-            },
-            { x: node.x, y: node.y, z: node.z },
-            850
-        );
+    /** Instant whole-brain framing — no fly-in / zoom animation. */
+    function frameWholeBrain() {
+        if (!Graph) return;
+        try {
+            Graph.zoomToFit(0, 160);
+        } catch (_) {}
     }
 
     function updateMainBrain(atoms) {
@@ -907,27 +895,30 @@ document.addEventListener("DOMContentLoaded", () => {
             Graph = ForceGraph3D()(stage);
             applyGraphStyle(Graph);
             Graph.width(w).height(h);
+            // Start far enough that the whole cloud is visible before fit.
+            Graph.cameraPosition({ x: 0, y: 40, z: 520 }, { x: 0, y: 0, z: 0 }, 0);
             Graph.graphData({ nodes, links: baseLinks.slice() });
             ensureStarfield(Graph);
 
             const controls = Graph.controls();
             if (controls) {
                 controls.autoRotate = true;
-                controls.autoRotateSpeed = 0.4;
+                controls.autoRotateSpeed = 0.12;
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.07;
+                controls.dampingFactor = 0.05;
             }
 
             window.addEventListener("resize", () => {
                 if (!Graph || !stage) return;
                 const s = stageSize();
                 Graph.width(s.w).height(s.h);
+                frameWholeBrain();
             });
 
             setInterval(() => {
-                ambientPulse += 0.1;
+                ambientPulse += 0.04;
                 if (Graph) refreshGraphPaint();
-            }, 70);
+            }, 120);
 
             stage.addEventListener("pointerdown", () => {
                 const c = Graph && Graph.controls();
@@ -938,14 +929,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (c) c.autoRotate = true;
             });
 
-            setTimeout(() => {
-                try { Graph.zoomToFit(1000, 70); } catch (_) {}
-            }, 1000);
+            // Wait for force layout to settle, then snap whole brain into view (no zoom tween).
+            setTimeout(frameWholeBrain, 200);
+            setTimeout(frameWholeBrain, 900);
             startSimActivity();
             graphBuiltForSig = sig;
             if (layoutMode !== "force") {
                 applyFormationLayout(layoutMode, { animate: false });
                 startFormationSpin();
+                setTimeout(frameWholeBrain, 250);
             }
             return;
         }
@@ -953,15 +945,12 @@ document.addEventListener("DOMContentLoaded", () => {
         if (sig !== graphBuiltForSig) {
             Graph.graphData({ nodes, links: baseLinks.slice() });
             graphBuiltForSig = sig;
-            setTimeout(() => {
-                try { Graph.zoomToFit(850, 60); } catch (_) {}
-            }, 500);
+            setTimeout(frameWholeBrain, 300);
         } else {
             refreshGraphPaint();
         }
         startSimActivity();
         if (layoutMode !== "force") applyFormationLayout(layoutMode, { animate: false });
-        if (activeAtom) setTimeout(() => focusCameraOnAtom(activeAtom), 650);
     }
 
     let starfieldAdded = false;
@@ -984,9 +973,9 @@ document.addEventListener("DOMContentLoaded", () => {
         geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
         const mat = new THREE.PointsMaterial({
             size: 1.1,
-            color: 0x8fa8bd,
+            color: 0xffffff,
             transparent: true,
-            opacity: 0.55,
+            opacity: 0.35,
             depthWrite: false,
             sizeAttenuation: true
         });
