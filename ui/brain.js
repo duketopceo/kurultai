@@ -7,7 +7,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const stage = document.getElementById("3d-synapse-graph");
     const hint = document.getElementById("brain-hud-hint");
     const layoutForceBtn = document.getElementById("layout-force");
-    const layoutCircleBtn = document.getElementById("layout-circle");
     const layoutBrainBtn = document.getElementById("layout-brain");
 
     const LIST_HOT_CAP = 400;
@@ -15,14 +14,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const BRAIN_MAX_NODES = 1400;
     const AMBIENT_PARTICLE_LINKS = 0.18;
     const FORMATION_RADIUS = 92;
-    const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
     let currentAtoms = [];
     let activeAtom = null;
     let Graph = null;
     let graphBuiltForSig = "";
     let isSearchMode = false;
-    let layoutMode = "force"; // force | circle | brain
+    let layoutMode = "force"; // force | brain
     let formationAngle = 0;
     let formationSpinTimer = null;
 
@@ -391,12 +389,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function setLayoutMode(mode) {
         layoutMode = mode;
-        [layoutForceBtn, layoutCircleBtn, layoutBrainBtn].forEach(btn => {
+        [layoutForceBtn, layoutBrainBtn].forEach(btn => {
             if (!btn) return;
             const id = btn.id;
             const active =
                 (id === "layout-force" && mode === "force") ||
-                (id === "layout-circle" && mode === "circle") ||
                 (id === "layout-brain" && mode === "brain");
             btn.classList.toggle("active", active);
             btn.setAttribute("aria-pressed", String(active));
@@ -414,16 +411,12 @@ document.addEventListener("DOMContentLoaded", () => {
             applyFormationLayout(mode, { animate: true });
             startFormationSpin();
             if (hint) {
-                hint.textContent =
-                    mode === "circle"
-                        ? "circle formation · slow spin · organic to release"
-                        : "brain formation · slow spin · organic to release";
+                hint.textContent = "brain formation · slow spin · organic to release";
             }
         }
     }
 
     if (layoutForceBtn) layoutForceBtn.addEventListener("click", () => setLayoutMode("force"));
-    if (layoutCircleBtn) layoutCircleBtn.addEventListener("click", () => setLayoutMode("circle"));
     if (layoutBrainBtn) layoutBrainBtn.addEventListener("click", () => setLayoutMode("brain"));
 
     function hash01(i) {
@@ -434,32 +427,25 @@ document.addEventListener("DOMContentLoaded", () => {
         return (h >>> 0) / 4294967296;
     }
 
-    function circlePoint(i, n, radius) {
-        const t = (i / Math.max(1, n)) * Math.PI * 2;
-        return {
-            x: Math.cos(t) * radius,
-            y: Math.sin(t) * radius * 0.22,
-            z: Math.sin(t) * radius
-        };
-    }
-
-    /** Two-hemisphere cloud — reads as a brain in 3D. */
+    /** Two-hemisphere cloud with cortical folding — from neural patch. */
     function brainPoint(i, n, radius) {
-        const y = n <= 1 ? 0 : 1 - (i / (n - 1)) * 2;
-        const r = Math.sqrt(Math.max(0, 1 - y * y));
-        const theta = i * GOLDEN_ANGLE;
-        let x = Math.cos(theta) * r;
-        let z = Math.sin(theta) * r;
-        const hemi = i % 2 === 0 ? -1 : 1;
-        // Offset hemispheres + slight midline cleft
-        x = x * 0.52 + hemi * 0.48;
-        const bulge = 0.88 + 0.12 * Math.sin(theta * 2 + hemi);
-        const sulcus = 1 - 0.08 * Math.abs(Math.sin(theta * 3));
-        const jitter = (hash01(i) - 0.5) * 0.06;
+        const side = i % 2 === 0 ? -1 : 1;
+        const u = hash01(i);
+        const v = hash01(i + 7919);
+        const interior = hash01(i + 104729) < 0.18;
+        const shell = interior ? 0.55 + hash01(i + 3) * 0.4 : 0.97 + hash01(i + 5) * 0.05;
+        const a = 1.0, b = 0.82, c = 1.12;
+        const theta = u * Math.PI * 2;
+        const phi = Math.acos(1 - 2 * Math.min(0.999, Math.max(0.001, v)));
+        const folds = 1 + 0.06 * Math.sin(phi * 9.0) * Math.sin(theta * 7.0);
+        const r = shell * folds;
+        const x = side * 0.42 + side * a * r * Math.sin(phi) * Math.cos(theta) * 0.82;
+        const y = b * r * Math.cos(phi) * 0.92;
+        const z = c * r * Math.sin(phi) * Math.sin(theta) * 0.88;
         return {
-            x: x * radius * bulge * sulcus + jitter * radius,
-            y: y * radius * 0.78 + jitter * radius * 0.4,
-            z: z * radius * 0.72 * sulcus
+            x: x * radius,
+            y: y * radius,
+            z: z * radius
         };
     }
 
@@ -479,13 +465,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function applyFormationLayout(mode, { animate } = { animate: true }) {
-        if (!Graph || mode === "force") return;
+        if (!Graph || mode !== "brain") return;
         const nodes = Graph.graphData().nodes || [];
         const n = nodes.length;
         if (!n) return;
         const radius = FORMATION_RADIUS * Math.min(1.35, 0.55 + Math.sqrt(n) / 28);
         for (let i = 0; i < n; i++) {
-            const p = mode === "brain" ? brainPoint(i, n, radius) : circlePoint(i, n, radius);
+            const p = brainPoint(i, n, radius);
             // Apply current spin angle so layout doesn't jump on refresh
             const c = Math.cos(formationAngle);
             const s = Math.sin(formationAngle);
@@ -515,7 +501,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function startFormationSpin() {
         stopFormationSpin();
         formationSpinTimer = setInterval(() => {
-            if (!Graph || layoutMode === "force") return;
+            if (!Graph || layoutMode !== "brain") return;
             formationAngle += 0.008; // slow spin
             const nodes = Graph.graphData().nodes || [];
             const n = nodes.length;
@@ -523,7 +509,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const c = Math.cos(formationAngle);
             const s = Math.sin(formationAngle);
             for (let i = 0; i < n; i++) {
-                const p = layoutMode === "brain" ? brainPoint(i, n, radius) : circlePoint(i, n, radius);
+                const p = brainPoint(i, n, radius);
                 nodes[i].fx = p.x * c - p.z * s;
                 nodes[i].fy = p.y;
                 nodes[i].fz = p.x * s + p.z * c;
@@ -753,7 +739,7 @@ document.addEventListener("DOMContentLoaded", () => {
             .linkDirectionalParticleWidth(link => (linkIsSim(link) || linkIsHovered(link) ? 2.4 : 1.6))
             .linkDirectionalParticleColor(link => {
                 if (linkIsSim(link) || linkIsHovered(link)) return "#eaf2ff";
-                return "#9ec4ff";
+                return "#00d8e8"; // synaptic cyan (neural patch accent)
             })
             .onNodeHover(node => {
                 if (!node) {
@@ -922,6 +908,7 @@ document.addEventListener("DOMContentLoaded", () => {
             applyGraphStyle(Graph);
             Graph.width(w).height(h);
             Graph.graphData({ nodes, links: baseLinks.slice() });
+            ensureStarfield(Graph);
 
             const controls = Graph.controls();
             if (controls) {
@@ -977,6 +964,110 @@ document.addEventListener("DOMContentLoaded", () => {
         if (activeAtom) setTimeout(() => focusCameraOnAtom(activeAtom), 650);
     }
 
+    let starfieldAdded = false;
+
+    function ensureStarfield(g) {
+        if (starfieldAdded || !g || typeof THREE === "undefined") return;
+        const scene = typeof g.scene === "function" ? g.scene() : null;
+        if (!scene) return;
+        const COUNT = 900;
+        const pos = new Float32Array(COUNT * 3);
+        for (let i = 0; i < COUNT; i++) {
+            const r = 220 + Math.random() * 280;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(1 - 2 * Math.random());
+            pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+            pos[i * 3 + 1] = r * Math.cos(phi);
+            pos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+        const mat = new THREE.PointsMaterial({
+            size: 1.1,
+            color: 0x8fa8bd,
+            transparent: true,
+            opacity: 0.55,
+            depthWrite: false,
+            sizeAttenuation: true
+        });
+        scene.add(new THREE.Points(geo, mat));
+        starfieldAdded = true;
+    }
+
+    // ——— Memory stream + Ask (neural patch, correct API contracts) ———
+
+    const streamFeed = document.getElementById("stream-feed");
+    const liveToggle = document.getElementById("live-toggle");
+    const askInput = document.getElementById("ask-input");
+    const askOutput = document.getElementById("ask-output");
+    const MAX_STREAM = 40;
+    let liveStream = true;
+    let activitySince = 0;
+
+    function pushStream(kind, label, body) {
+        if (!streamFeed) return;
+        const el = document.createElement("div");
+        el.className = `stream-item kind-${kind}`;
+        el.innerHTML = `
+            <div class="s-meta"><span>${escapeHtml(label)}</span><span>${new Date().toLocaleTimeString()}</span></div>
+            <div class="s-body">${escapeHtml(body)}</div>`;
+        streamFeed.prepend(el);
+        while (streamFeed.children.length > MAX_STREAM) streamFeed.lastChild.remove();
+    }
+
+    async function pollActivity() {
+        if (!liveStream) return;
+        try {
+            const r = await fetch(`/api/activity?since=${activitySince}`);
+            if (!r.ok) return;
+            const j = await r.json();
+            const events = Array.isArray(j.events) ? j.events : [];
+            if (typeof j.next_seq === "number") activitySince = j.next_seq;
+            for (const ev of events) {
+                const tool = ev.tool || "memory";
+                const kind = /ask|think/i.test(tool) ? "thought"
+                    : /search|cite|mcp|tool/i.test(tool) ? "tool" : "memory";
+                const body = [ev.query, ev.detail].filter(Boolean).join(" — ")
+                    || (ev.atom_ids && ev.atom_ids.length ? `${ev.atom_ids.length} atoms` : tool);
+                pushStream(kind, tool, body);
+            }
+        } catch (_) { /* daemon offline */ }
+    }
+
+    if (liveToggle) {
+        liveToggle.addEventListener("click", () => {
+            liveStream = !liveStream;
+            liveToggle.setAttribute("aria-pressed", String(liveStream));
+            liveToggle.textContent = liveStream ? "❚❚" : "▶";
+            liveToggle.title = liveStream ? "Pause live stream" : "Resume live stream";
+        });
+    }
+
+    if (askInput) {
+        askInput.addEventListener("keydown", async e => {
+            if (e.key !== "Enter" || !askInput.value.trim()) return;
+            const q = askInput.value.trim();
+            if (askOutput) askOutput.textContent = "thinking…";
+            pushStream("thought", "ask", q);
+            try {
+                const r = await fetch(`/api/ask?question=${encodeURIComponent(q)}`);
+                const j = await r.json();
+                if (!r.ok) {
+                    if (askOutput) askOutput.textContent = j.error || j.message || `ask failed (${r.status})`;
+                    return;
+                }
+                const text = j.answer || j.response || JSON.stringify(j).slice(0, 400);
+                if (askOutput) askOutput.textContent = text;
+                pushStream("thought", "answer", String(text).slice(0, 160));
+            } catch (_) {
+                if (askOutput) askOutput.textContent = "ask failed — daemon offline?";
+            }
+        });
+    }
+
     applyViewMode();
-    loadDashboard();
+    loadDashboard().then(() => {
+        pushStream("memory", "lattice", "synaptic brain online");
+    });
+    setInterval(pollActivity, 2500);
 });
