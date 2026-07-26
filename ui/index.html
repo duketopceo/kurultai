@@ -1,49 +1,77 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kurultai — Synaptic Memory & Code Intelligence Layer for AI Agents</title>
+    <title>Kurultai — Synaptic Memory &amp; Code Intelligence Layer for AI Agents</title>
     <meta name="description" content="A local-first, zero-config code memory index for AI agents (Cursor, Claude). Connects markdown vaults, Git repositories, and agent transcripts into a high-speed synaptic SQLite-vec store.">
+    <meta name="color-scheme" content="dark light">
+    <!-- Apply saved theme before first paint to prevent flash -->
+    <script>
+      (function() {
+        var saved = localStorage.getItem('kurultai-theme');
+        var theme = (saved === 'light' || saved === 'dark')
+          ? saved
+          : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
     <link rel="stylesheet" href="index.css">
     <script src="index.js" defer></script>
 </head>
 <body>
 
     <!-- Interactive Neural Network Canvas Background -->
-    <canvas id="neural-canvas"></canvas>
+    <canvas id="neural-canvas" aria-hidden="true"></canvas>
 
-    <!-- Header Navigation -->
-    <header>
-        <div class="container nav-wrapper">
-            <a href="#" class="logo">
-                <svg height="24" width="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 6px; color: var(--primary);"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/><line x1="12" y1="12" x2="5" y2="5"/></svg>
-                kurultai
-            </a>
-            <nav class="nav-links">
-                <a href="#features">Synapses</a>
-                <a href="#architecture">Circuit Loop</a>
-                <a href="brain.html">Brain Explorer</a>
-                <a href="#quickstart">Developer Setup</a>
-            </nav>
-            <a href="https://github.com/duketopceo/kurultai" class="btn-github" target="_blank">
-                <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: middle;">
-                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+    <!-- ── Unified topbar ── -->
+    <header class="topbar">
+        <a class="brand" href="index.html" aria-label="Kurultai home">
+            <span class="brand-mark" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/>
+                    <circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/>
+                    <line x1="12" y1="12" x2="19" y2="5"/>
+                    <line x1="12" y1="12" x2="5" y2="19"/>
+                    <line x1="12" y1="12" x2="19" y2="19"/>
+                    <line x1="12" y1="12" x2="5" y2="5"/>
                 </svg>
-                GitHub
-            </a>
-        </div>
+            </span>
+            <span>KURULTAI</span>
+            <small>AI MEMORY LAYER</small>
+        </a>
+
+        <nav class="nav-links" aria-label="Site navigation">
+            <a href="#features">Synapses</a>
+            <a href="#architecture">Circuit Loop</a>
+            <a href="brain.html">Brain Explorer</a>
+            <a href="#quickstart">Developer Setup</a>
+        </nav>
+
+        <a href="https://github.com/nicholasgasior/kurultai" class="btn-github" target="_blank" rel="noopener">
+            <svg height="15" width="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+            GitHub
+        </a>
+
+        <button id="theme-toggle" class="icon-button" type="button"
+                aria-label="Switch to light theme" aria-pressed="false">
+            <span aria-hidden="true">◐</span>
+            <span class="button-copy">Theme</span>
+        </button>
     </header>
 
-    <!-- Hero Section -->
+    <!-- ── Hero Section ── -->
     <section class="hero container">
         <span class="badge">Synaptic Memory Layer</span>
         <h1>Where Code Neurons<br>Meet Silicon Speed.</h1>
         <p>A high-speed local memory layer for AI agents. Indexes notes, transcripts, and code dependencies into a queryable SQLite vector database.</p>
-        
+
         <div class="hero-actions">
             <a href="#quickstart" class="btn-primary">Initialize Brain</a>
-            <a href="https://github.com/duketopceo/kurultai" class="btn-secondary" target="_blank">Repository Source</a>
+            <a href="https://github.com/nicholasgasior/kurultai" class="btn-secondary" target="_blank" rel="noopener">Repository Source</a>
         </div>
 
         <!-- Terminal Window Simulator -->
@@ -61,60 +89,46 @@
         </div>
     </section>
 
-    <!-- Neural Technology Banner Image Section -->
+    <!-- ── Neural Technology Banner ── -->
     <section class="container">
         <div class="banner-graphic">
             <img src="neural_tech_banner.jpg" alt="Neurons, Electrons, and Tech Logic Circuit Illustration">
         </div>
     </section>
 
-    <!-- Core Pipeline Architecture Section -->
+    <!-- ── Core Pipeline Architecture Section ── -->
     <section id="architecture" class="flow-section">
         <div class="container">
             <div class="section-header">
                 <h2>The Neural Circuit Loop</h2>
                 <p>A closed-loop system transferring memory, code structure, and agent actions at the speed of local computing.</p>
             </div>
-            
+
             <div class="flow-container glass-panel">
-                <style>
-                    .circuit-svg { width: 100%; max-width: 880px; height: auto; display: block; margin: 0 auto; }
-                    .circuit-node-label { font-family: var(--font-mono); font-size: 13px; fill: #cccccc; text-anchor: middle; }
-                    .circuit-node-title { font-family: var(--font-heading); font-size: 15px; font-weight: 700; text-anchor: middle; letter-spacing: 0.02em; }
-                    .circuit-edge { stroke: rgba(168,85,247,0.35); stroke-width: 2; fill: none; stroke-dasharray: 8 10; animation: circuitFlow 1.4s linear infinite; }
-                    .circuit-edge.reverse { animation-direction: reverse; }
-                    @keyframes circuitFlow { to { stroke-dashoffset: -36; } }
-                    .circuit-halo { animation: circuitPulse 2.6s ease-in-out infinite; }
-                    .circuit-halo-2 { animation: circuitPulse 2.6s ease-in-out infinite 0.8s; }
-                    .circuit-halo-3 { animation: circuitPulse 2.6s ease-in-out infinite 1.6s; }
-                    @keyframes circuitPulse { 0%,100% { opacity: 0.35; r: 26; } 50% { opacity: 0.9; r: 34; } }
-                    @media (prefers-reduced-motion: reduce) {
-                        .circuit-edge, .circuit-halo, .circuit-halo-2, .circuit-halo-3 { animation: none; }
-                    }
-                </style>
-                <svg class="circuit-svg" viewBox="0 0 900 220" role="img" aria-label="Neural circuit loop: Agent, Kurultai Brain, CodeGraph">
+                <svg class="circuit-svg" viewBox="0 0 900 220" role="img"
+                     aria-label="Neural circuit loop: Agent, Kurultai Brain, CodeGraph">
                     <defs>
                         <filter id="circuit-glow" x="-60%" y="-60%" width="220%" height="220%">
                             <feGaussianBlur stdDeviation="5" result="blur"/>
                             <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
                         </filter>
                         <radialGradient id="circuit-grad-purple">
-                            <stop offset="0%" stop-color="#c084fc" stop-opacity="1"/>
+                            <stop offset="0%"  stop-color="#c084fc" stop-opacity="1"/>
                             <stop offset="100%" stop-color="#a855f7" stop-opacity="0.2"/>
                         </radialGradient>
                         <radialGradient id="circuit-grad-white">
-                            <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+                            <stop offset="0%"  stop-color="#ffffff" stop-opacity="1"/>
                             <stop offset="100%" stop-color="#ffffff" stop-opacity="0.15"/>
                         </radialGradient>
                     </defs>
 
                     <!-- Edges: bidirectional flowing electrons -->
                     <path id="edge-ab" class="circuit-edge" d="M150,110 Q300,60 430,110"/>
-                    <path class="circuit-edge reverse" d="M150,110 Q300,160 430,110"/>
+                    <path class="circuit-edge reverse"      d="M150,110 Q300,160 430,110"/>
                     <path id="edge-bc" class="circuit-edge" d="M470,110 Q620,60 750,110"/>
-                    <path class="circuit-edge reverse" d="M470,110 Q620,160 750,110"/>
+                    <path class="circuit-edge reverse"      d="M470,110 Q620,160 750,110"/>
 
-                    <!-- Electron particles traveling the edges -->
+                    <!-- Electron particles -->
                     <circle r="3.5" fill="#c084fc" filter="url(#circuit-glow)">
                         <animateMotion dur="1.8s" repeatCount="indefinite"><mpath href="#edge-ab"/></animateMotion>
                     </circle>
@@ -129,7 +143,7 @@
                     </circle>
 
                     <!-- Node A: Agent -->
-                    <circle class="circuit-halo" cx="130" cy="110" r="30" fill="url(#circuit-grad-white)" opacity="0.5"/>
+                    <circle class="circuit-halo"   cx="130" cy="110" r="30" fill="url(#circuit-grad-white)"  opacity="0.5"/>
                     <circle cx="130" cy="110" r="20" fill="#ffffff" filter="url(#circuit-glow)"/>
                     <text class="circuit-node-title" x="130" y="170" fill="#ffffff">Agent</text>
                     <text class="circuit-node-label" x="130" y="190">Cursor · Claude · Codex · Hermes</text>
@@ -141,19 +155,19 @@
                     <text class="circuit-node-label" x="450" y="190">SQLite-vec · FTS5 · RRF</text>
 
                     <!-- Node C: CodeGraph / DB -->
-                    <circle class="circuit-halo-3" cx="770" cy="110" r="30" fill="url(#circuit-grad-white)" opacity="0.5"/>
+                    <circle class="circuit-halo-3" cx="770" cy="110" r="30" fill="url(#circuit-grad-white)"  opacity="0.5"/>
                     <circle cx="770" cy="110" r="20" fill="#ffffff" filter="url(#circuit-glow)"/>
                     <text class="circuit-node-title" x="770" y="170" fill="#ffffff">CodeGraph / DB</text>
                     <text class="circuit-node-label" x="770" y="190">Markdown · Dayflow · Pond</text>
                 </svg>
-                <p style="margin-top: 32px; font-size: 0.95rem; text-align: center; max-width: 600px; margin-left:auto; margin-right:auto;">
+                <p style="margin-top: 2rem; font-size: 0.92rem; text-align: center; max-width: 600px; margin-left: auto; margin-right: auto; color: var(--text-muted);">
                     When your coding agent asks <em>"What did we change in the SQL database?"</em>, Kurultai coordinates neural context: querying CodeGraph for symbol diffs, Pond for execution logs, and Markdown for design specs.
                 </p>
             </div>
         </div>
     </section>
 
-    <!-- Features Section -->
+    <!-- ── Features Section ── -->
     <section id="features" class="features">
         <div class="container">
             <div class="section-header">
@@ -162,34 +176,30 @@
             </div>
 
             <div class="grid">
-                <!-- Card 1 -->
                 <div class="feature-card glass-panel">
                     <div class="feature-icon">
-                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/><line x1="12" y1="12" x2="5" y2="5"/></svg>
+                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/><line x1="12" y1="12" x2="5" y2="5"/></svg>
                     </div>
                     <h3>Index-Time Heavy</h3>
-                    <p>Calculates embedding synapses and distills context tags when indexing—not when the agent queries. Optimized RRF (Reciprocal Rank Fusion) fuses FTS and vector results in under 5ms.</p>
+                    <p>Calculates embedding synapses and distills context tags when indexing — not when the agent queries. Optimized RRF fuses FTS and vector results in under 5ms.</p>
                 </div>
-                <!-- Card 2 -->
                 <div class="feature-card glass-panel">
                     <div class="feature-icon">
-                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                     </div>
                     <h3>Read-Time Light</h3>
                     <p>Agent requests return dense, token-efficient citation views (~400 characters) containing exact code definitions and section offsets, preventing context window saturation.</p>
                 </div>
-                <!-- Card 3 -->
                 <div class="feature-card glass-panel">
                     <div class="feature-icon">
-                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="2" ry="2"/><line x1="6" y1="21" x2="6" y2="17"/><line x1="10" y1="21" x2="10" y2="17"/><line x1="14" y1="21" x2="14" y2="17"/><line x1="18" y1="21" x2="18" y2="17"/></svg>
+                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="10" rx="2" ry="2"/><line x1="6" y1="21" x2="6" y2="17"/><line x1="10" y1="21" x2="10" y2="17"/><line x1="14" y1="21" x2="14" y2="17"/><line x1="18" y1="21" x2="18" y2="17"/></svg>
                     </div>
                     <h3>Write-Time Minimal</h3>
                     <p>The <code>remember</code> tool allows agents to write distilled facts and summaries back into the index, keeping records clean, deduplicated, and structured.</p>
                 </div>
-                <!-- Card 4 -->
                 <div class="feature-card glass-panel">
                     <div class="feature-icon">
-                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                        <svg height="20" width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     </div>
                     <h3>Deep Tech Integrations</h3>
                     <p>Connects natively with Obsidian Vaults, Dayflow timeline logs, Pond agent sessions, local GitHub directories, and CodeGraph symbol trees.</p>
@@ -198,7 +208,7 @@
         </div>
     </section>
 
-    <!-- Quick Start Instructions -->
+    <!-- ── Quick Start ── -->
     <section id="quickstart" class="code-example-section">
         <div class="container">
             <div class="section-header">
@@ -209,36 +219,32 @@
             <div class="code-container">
                 <div class="code-header">
                     <span>1. Install and Initialize</span>
-                    <button class="btn-copy" data-target="code-install">Copy Command</button>
+                    <button class="btn-copy" data-target="code-install">Copy</button>
                 </div>
                 <div class="code-block">
-                    <code id="code-install">
-# Build local binaries
+                    <code id="code-install"># Build local binaries
 cargo build --release
 
 # Wire config + Cursor MCP
-kurultai init --agent cursor
-                    </code>
+kurultai init --agent cursor</code>
                 </div>
-                
-                <div class="code-header" style="margin-top: 40px;">
+
+                <div class="code-header" style="margin-top: 2.5rem;">
                     <span>2. Index Sources and Run Daemon</span>
-                    <button class="btn-copy" data-target="code-daemon">Copy Command</button>
+                    <button class="btn-copy" data-target="code-daemon">Copy</button>
                 </div>
                 <div class="code-block">
-                    <code id="code-daemon">
-# Trigger full initial sync
+                    <code id="code-daemon"># Trigger full initial sync
 kurultai index --full
 
 # Start the background watcher and API server
-kurultai daemon --port 8421
-                    </code>
+kurultai daemon --port 8421</code>
                 </div>
             </div>
         </div>
     </section>
 
-    <!-- Footer Call to Action -->
+    <!-- ── CTA ── -->
     <section class="cta">
         <div class="container">
             <h2>Wired for Agentic Memory</h2>
@@ -247,13 +253,14 @@ kurultai daemon --port 8421
         </div>
     </section>
 
-    <!-- Footer -->
+    <!-- ── Footer ── -->
     <footer>
         <div class="container footer-wrapper">
             <p>© 2026 Kurultai. MIT Licensed.</p>
             <div class="footer-links">
-                <a href="https://github.com/duketopceo/kurultai" target="_blank">GitHub</a>
-                <a href="https://openrouter.ai" target="_blank">OpenRouter</a>
+                <a href="https://github.com/nicholasgasior/kurultai" target="_blank" rel="noopener">GitHub</a>
+                <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a>
+                <a href="brain.html">Brain Explorer</a>
             </div>
         </div>
     </footer>

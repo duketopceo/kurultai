@@ -1,6 +1,7 @@
 use crate::connectors::appflowy::AppFlowyConnector;
 use crate::connectors::dayflow::DayflowConnector;
 use crate::connectors::github::GitHubConnector;
+use crate::connectors::json::JsonConnector;
 use crate::connectors::markdown::MarkdownConnector;
 use crate::connectors::pond::PondConnector;
 use crate::connectors::Connector;
@@ -79,6 +80,7 @@ fn build_connector(kind: &SourceKind) -> Result<Box<dyn Connector>> {
         SourceKind::Dayflow => Box::new(DayflowConnector::new()),
         SourceKind::Pond => Box::new(PondConnector::new()),
         SourceKind::GitHub => Box::new(GitHubConnector::new()),
+        SourceKind::Json => Box::new(JsonConnector::new()),
         SourceKind::TechTracker => {
             return Err(KurultaiError::connector(
                 format!("{kind:?}"),

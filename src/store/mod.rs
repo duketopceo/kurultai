@@ -31,6 +31,20 @@ impl Default for SearchFilter {
     }
 }
 
+/// A row from the `ingestion_jobs` staging table.
+#[derive(Debug, Clone)]
+pub struct IngestionJob {
+    pub id: i64,
+    pub batch_id: String,
+    pub source: String,
+    pub file_path: String,
+    pub status: String,
+    pub atoms_count: Option<i64>,
+    pub error_message: Option<String>,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
 /// Storage backend for knowledge atoms and their embeddings.
 #[async_trait::async_trait]
 pub trait Store: Send + Sync {
@@ -168,6 +182,30 @@ pub trait Store: Send + Sync {
         filter: SearchFilter,
         policy: TierPolicy,
     ) -> Result<Vec<GraphNode>>;
+
+    // ── Ingestion staging ────────────────────────────────────────────────────
+
+    /// Record the start of an ingestion job; returns the new job `id`.
+    async fn record_ingestion_start(
+        &self,
+        batch_id: &str,
+        source: &str,
+        file_path: &str,
+    ) -> Result<i64>;
+
+    /// Mark an ingestion job as completed (success) or failed.
+    ///
+    /// When `error_message` is `Some`, status is set to `'failed'`;
+    /// otherwise status is set to `'completed'` and `atoms_count` is recorded.
+    async fn record_ingestion_finish(
+        &self,
+        job_id: i64,
+        atoms_count: Option<i64>,
+        error_message: Option<&str>,
+    ) -> Result<()>;
+
+    /// Return all ingestion jobs with `status = 'pending'`.
+    async fn list_pending_ingestion_jobs(&self) -> Result<Vec<IngestionJob>>;
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -975,6 +1013,33 @@ impl Store for SqliteVecStore {
         }
         Ok(out)
     }
+
+    // ── Ingestion staging ────────────────────────────────────────────────
+
+    async fn record_ingestion_start(
+        &self,
+        batch_id: &str,
+        source: &str,
+        file_path: &str,
+    ) -> Result<i64> {
+        let conn = self.lock()?;
+        Self::record_ingestion_start_sync(&conn, batch_id, source, file_path)
+    }
+
+    async fn record_ingestion_finish(
+        &self,
+        job_id: i64,
+        atoms_count: Option<i64>,
+        error_message: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.lock()?;
+        Self::record_ingestion_finish_sync(&conn, job_id, atoms_count, error_message)
+    }
+
+    async fn list_pending_ingestion_jobs(&self) -> Result<Vec<IngestionJob>> {
+        let conn = self.lock()?;
+        Self::list_pending_ingestion_jobs_sync(&conn)
+    }
 }
 
 /// Hydrate ranked `(id, score)` pairs into atoms, skipping missing ids.
@@ -1104,6 +1169,79 @@ fn parse_dt(s: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(s)
         .map(|d| d.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now())
+}
+
+// ── Ingestion staging implementations ──────────────────────────────────────
+
+impl SqliteVecStore {
+    /// Record a new ingestion job with status `'pending'`; returns new row `id`.
+    fn record_ingestion_start_sync(
+        conn: &Connection,
+        batch_id: &str,
+        source: &str,
+        file_path: &str,
+    ) -> Result<i64> {
+        conn.execute(
+            "INSERT INTO ingestion_jobs (batch_id, source, file_path, status) \
+             VALUES (?1, ?2, ?3, 'pending')",
+            params![batch_id, source, file_path],
+        )
+        .map_err(|e| KurultaiError::Store(format!("record_ingestion_start insert: {e}")))?;
+        let id = conn.last_insert_rowid();
+        Ok(id)
+    }
+
+    /// Mark job completed or failed; sets `completed_at = datetime('now')`.
+    fn record_ingestion_finish_sync(
+        conn: &Connection,
+        job_id: i64,
+        atoms_count: Option<i64>,
+        error_message: Option<&str>,
+    ) -> Result<()> {
+        let (status, err_msg) = match error_message {
+            Some(msg) => ("failed", Some(msg)),
+            None => ("completed", None),
+        };
+        conn.execute(
+            "UPDATE ingestion_jobs \
+             SET status = ?1, atoms_count = ?2, error_message = ?3, \
+                 completed_at = datetime('now') \
+             WHERE id = ?4",
+            params![status, atoms_count, err_msg, job_id],
+        )
+        .map_err(|e| KurultaiError::Store(format!("record_ingestion_finish update: {e}")))?;
+        Ok(())
+    }
+
+    /// Query all rows with `status = 'pending'`.
+    fn list_pending_ingestion_jobs_sync(conn: &Connection) -> Result<Vec<IngestionJob>> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, batch_id, source, file_path, status, atoms_count, \
+                        error_message, created_at, completed_at \
+                 FROM ingestion_jobs WHERE status = 'pending' ORDER BY id ASC",
+            )
+            .map_err(|e| {
+                KurultaiError::Store(format!("list_pending_ingestion_jobs prepare: {e}"))
+            })?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(IngestionJob {
+                    id: row.get(0)?,
+                    batch_id: row.get(1)?,
+                    source: row.get(2)?,
+                    file_path: row.get(3)?,
+                    status: row.get(4)?,
+                    atoms_count: row.get(5)?,
+                    error_message: row.get(6)?,
+                    created_at: row.get(7)?,
+                    completed_at: row.get(8)?,
+                })
+            })
+            .map_err(|e| KurultaiError::Store(format!("list_pending_ingestion_jobs query: {e}")))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| KurultaiError::Store(format!("list_pending_ingestion_jobs collect: {e}")))
+    }
 }
 
 #[cfg(test)]
