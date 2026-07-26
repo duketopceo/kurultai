@@ -167,6 +167,7 @@ fn parse_source_kind(kind: &str) -> SourceKind {
         "dayflow" => SourceKind::Dayflow,
         "tech_tracker" | "techtracker" => SourceKind::TechTracker,
         "github" => SourceKind::GitHub,
+        "json" => SourceKind::Json,
         other => SourceKind::Custom(other.to_string()),
     }
 }
@@ -213,6 +214,28 @@ root_path = "/tmp/notes"
             cfg.sources[0].extra.get("root_path").map(String::as_str),
             Some("/tmp/notes")
         );
+    }
+
+    #[test]
+    fn loads_json_source_kind() {
+        let dir = tempfile_dir("cfg-json");
+        let path = dir.join("config.toml");
+        let toml = r#"
+environment = "dev"
+[storage]
+path = "/tmp/kurultai-loader-json.db"
+[embed]
+model = "openai/text-embedding-3-large"
+dimension = 4
+[sources.data]
+kind = "json"
+enabled = true
+root_path = "/tmp/data"
+"#;
+        std::fs::write(&path, toml).unwrap();
+        let cfg = load_config_from(&path).unwrap();
+        assert_eq!(cfg.sources.len(), 1);
+        assert_eq!(cfg.sources[0].kind, SourceKind::Json);
     }
 
     #[test]
