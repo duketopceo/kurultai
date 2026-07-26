@@ -23,8 +23,9 @@ per its `mcp_<server>_<tool>` convention.
 ## Install
 
 ```bash
-# 1. Install kurultai (no binary release yet — build from source)
-cargo install --git https://github.com/duketopceo/kurultai --locked
+# 1. Install kurultai
+curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.sh | bash
+# or: cargo install --git https://github.com/duketopceo/kurultai --tag v0.2.0 --locked
 
 # 2. Wire the kurultai MCP server into your agent
 kurultai init --agent hermes      # or: cursor | claude | codex | all

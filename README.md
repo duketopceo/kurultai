@@ -21,21 +21,25 @@ A local knowledge brain for agents and humans: index notes, agent chats, Dayflow
 
 ## Install
 
-No GitHub Release / `v*` tag yet — install from source with Cargo ([rustup](https://rustup.rs)):
-
-```bash
-cargo install --git https://github.com/duketopceo/kurultai --locked
-```
-
-Optional wrapper (same cargo path until binaries ship):
+One line (macOS / Linux — prefers the latest GitHub Release binary, otherwise cargo):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.sh | bash
 ```
 
-Windows (when a release exists): `irm …/scripts/install.ps1 | iex` — until then, use `cargo install --git` as above.
+Windows:
 
-Tagged binary releases: workflow is ready (`.github/workflows/release.yml`); **not published yet**.
+```powershell
+irm https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.ps1 | iex
+```
+
+Or install from source with [Rust](https://rustup.rs):
+
+```bash
+cargo install --git https://github.com/duketopceo/kurultai --tag v0.2.0 --locked
+```
+
+Release: [v0.2.0](https://github.com/duketopceo/kurultai/releases/tag/v0.2.0) · binaries via `.github/workflows/release.yml`.
 
 ## Website & team login
 

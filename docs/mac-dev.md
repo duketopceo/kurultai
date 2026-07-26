@@ -4,19 +4,19 @@ Stay on **dev** until you deliberately move to staging/prod.
 
 ## Install
 
-No binary release is published yet. Use cargo:
-
-```bash
-cargo install --git https://github.com/duketopceo/kurultai --locked
-```
-
-Or the wrapper (same cargo path until a `v*` release exists):
+One line (binary from GitHub Releases when present; otherwise cargo):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.sh | bash
 ```
 
-Needs [Rust](https://rustup.rs). Ensure `~/.cargo/bin` is on `PATH`.
+Or pin a tag with cargo ([rustup](https://rustup.rs)):
+
+```bash
+cargo install --git https://github.com/duketopceo/kurultai --tag v0.2.0 --locked
+```
+
+Ensure `~/.local/bin` or `~/.cargo/bin` is on `PATH`.
 
 ## Shell env
 

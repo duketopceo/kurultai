@@ -1,27 +1,26 @@
 #!/usr/bin/env bash
-# Kurultai installer — cargo-first until GitHub Releases exist.
-# Usage: curl -fsSL …/scripts/install.sh | bash
+# Kurultai one-line installer.
+# Usage: curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.sh | bash
+#
+# Prefers a GitHub Release binary when available for this OS/arch.
+# Falls back to: cargo install --git … --tag <latest> --locked
 set -euo pipefail
 
 REPO="${KURULTAI_REPO:-duketopceo/kurultai}"
 INSTALL_DIR="${KURULTAI_INSTALL_DIR:-$HOME/.local/bin}"
 GIT_URL="https://github.com/${REPO}"
+API="https://api.github.com/repos/${REPO}/releases/latest"
 
-need_cargo() {
-  if ! command -v cargo >/dev/null 2>&1; then
-    echo "error: cargo not found (needed until binary releases ship)." >&2
-    echo "Install Rust: https://rustup.rs  then re-run this installer." >&2
+need_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "error: required command not found: $1" >&2
     exit 1
-  fi
+  }
 }
 
-install_via_cargo() {
-  need_cargo
-  echo "Installing kurultai via cargo (git)…"
-  cargo install --git "$GIT_URL" --locked
-  echo "Done. Ensure ~/.cargo/bin is on your PATH."
-}
-
+need_cmd curl
+need_cmd tar
+need_cmd uname
 mkdir -p "$INSTALL_DIR"
 
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -32,26 +31,60 @@ case "$OS-$ARCH" in
   darwin-x86_64) ASSET_NAME="kurultai-macos-amd64.tar.gz" ;;
   linux-x86_64|linux-amd64) ASSET_NAME="kurultai-linux-amd64.tar.gz" ;;
   *)
-    install_via_cargo
-    exit 0
+    ASSET_NAME=""
     ;;
 esac
 
-DOWNLOAD_URL=""
-if DOWNLOAD_URL="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
-  | grep -oE "https://[^\"]+/${ASSET_NAME}" | head -n1)"; then
+RELEASE_JSON=""
+if RELEASE_JSON="$(curl -fsSL "$API" 2>/dev/null)"; then
   :
 else
-  DOWNLOAD_URL=""
+  RELEASE_JSON=""
 fi
 
+TAG=""
+if [ -n "$RELEASE_JSON" ]; then
+  TAG="$(printf '%s' "$RELEASE_JSON" | grep -oE '"tag_name":[[:space:]]*"[^"]+"' | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')"
+fi
+
+DOWNLOAD_URL=""
+if [ -n "$RELEASE_JSON" ] && [ -n "$ASSET_NAME" ]; then
+  DOWNLOAD_URL="$(printf '%s' "$RELEASE_JSON" \
+    | grep -oE "\"browser_download_url\":[[:space:]]*\"[^\"]+/${ASSET_NAME}\"" \
+    | head -n1 \
+    | sed -E 's/.*"([^"]+)".*/\1/')"
+fi
+
+install_via_cargo() {
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "error: no release binary for this platform and cargo was not found." >&2
+    echo "Install Rust from https://rustup.rs then re-run this installer," >&2
+    echo "or: cargo install --git ${GIT_URL} --locked" >&2
+    exit 1
+  fi
+  if [ -n "${TAG}" ]; then
+    echo "Installing kurultai ${TAG} via cargo…"
+    cargo install --git "$GIT_URL" --tag "$TAG" --locked --force
+  else
+    echo "Installing kurultai via cargo (main)…"
+    cargo install --git "$GIT_URL" --locked --force
+  fi
+  echo "Done. Ensure ~/.cargo/bin is on your PATH."
+  echo "  kurultai --version"
+  echo "  kurultai init && kurultai daemon --port 8421"
+}
+
 if [ -z "${DOWNLOAD_URL}" ]; then
-  # No published release asset yet — expected for pre-v0.1 public builds.
+  if [ -n "$ASSET_NAME" ]; then
+    echo "No ${ASSET_NAME} on latest GitHub Release — falling back to cargo."
+  else
+    echo "No prebuilt binary for ${OS}-${ARCH} — falling back to cargo."
+  fi
   install_via_cargo
   exit 0
 fi
 
-echo "Downloading ${ASSET_NAME}…"
+echo "Downloading ${ASSET_NAME}${TAG:+ (${TAG})}…"
 TEMP_TAR="$(mktemp)"
 cleanup() { rm -f "$TEMP_TAR"; }
 trap cleanup EXIT
@@ -61,7 +94,9 @@ tar -xzf "$TEMP_TAR" -C "$INSTALL_DIR" kurultai
 chmod +x "$INSTALL_DIR/kurultai"
 
 echo "Installed $INSTALL_DIR/kurultai"
+"$INSTALL_DIR/kurultai" --version 2>/dev/null || true
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
   *) echo "Add to PATH: export PATH=\"$INSTALL_DIR:\$PATH\"" ;;
 esac
+echo "Next: kurultai init && kurultai daemon --port 8421"
