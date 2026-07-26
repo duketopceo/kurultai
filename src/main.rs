@@ -34,7 +34,7 @@ struct Cli {
 enum Commands {
     /// Write default config and wire MCP into an agent
     Init {
-        /// Agent to wire: cursor
+        /// Agent to wire: cursor, claude, codex, or all
         #[arg(long, default_value = "cursor")]
         agent: AgentTarget,
     },
@@ -95,10 +95,12 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Init { agent } => {
             let config_path = ensure_default_config()?;
-            let mcp_path = wire_agent(agent)?;
+            let mcp_paths = wire_agent(agent)?;
             println!("Config: {}", config_path.display());
-            println!("MCP wired: {}", mcp_path.display());
-            println!("Restart Cursor to load the kurultai MCP server.");
+            for path in &mcp_paths {
+                println!("MCP wired: {}", path.display());
+            }
+            println!("Restart the agent(s) to load the kurultai MCP server.");
         }
         Commands::Mcp => {
             let app = bootstrap_app(&cli).await?;
