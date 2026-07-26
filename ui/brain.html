@@ -1,660 +1,200 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en" data-theme="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kurultai — Brain Synapse & Ingested Data View</title>
-    <meta name="description" content="Explore the active working memory and living synaptic map of the Kurultai brain.">
-    <link rel="stylesheet" href="index.css">
-    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-    <script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
-    <style>
-        .brain-header {
-            margin-top: 40px;
-            margin-bottom: 28px;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 20px;
-            margin-bottom: 36px;
-        }
-
-        .stat-card {
-            padding: 20px;
-            text-align: center;
-        }
-
-        .stat-val {
-            font-size: 2rem;
-            font-weight: 800;
-            background: var(--grad-glow);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-top: 8px;
-        }
-
-        .db-layout {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 32px;
-            align-items: start;
-        }
-
-        .atoms-list {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            max-height: 600px;
-            overflow-y: auto;
-            padding-right: 8px;
-        }
-
-        .atom-item {
-            padding: 16px 20px;
-            cursor: pointer;
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--border-color);
-            transition: var(--transition-smooth);
-        }
-
-        .atom-item:hover, .atom-item.active {
-            border-color: rgba(255, 255, 255, 0.55);
-            background: rgba(255, 255, 255, 0.06);
-            box-shadow: 0 0 22px rgba(167, 139, 250, 0.12);
-        }
-
-        .atom-item h4 {
-            font-size: 1.05rem;
-            margin-bottom: 6px;
-        }
-
-        .atom-meta {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .atom-details {
-            min-height: 500px;
-            padding: 32px;
-        }
-
-        .detail-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 20px;
-            margin-bottom: 24px;
-        }
-
-        .detail-title {
-            font-size: 1.6rem;
-            font-weight: 700;
-        }
-
-        .detail-row { margin-bottom: 20px; }
-
-        .detail-label {
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-muted);
-            margin-bottom: 6px;
-            font-weight: 600;
-        }
-
-        .detail-val {
-            font-size: 0.95rem;
-            color: var(--text-secondary);
-            background: rgba(0, 0, 0, 0.35);
-            padding: 12px 16px;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-            white-space: pre-wrap;
-        }
-
-        .tag-pill {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            color: var(--text-secondary);
-            font-size: 0.8rem;
-            margin-right: 6px;
-            font-family: var(--font-mono);
-        }
-
-        .tier-chip {
-            display: inline-block;
-            padding: 1px 7px;
-            margin-left: 6px;
-            border-radius: 4px;
-            font-size: 0.65rem;
-            font-family: var(--font-mono);
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            vertical-align: middle;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: var(--text-muted);
-        }
-        .tier-chip.tier-hot {
-            color: #ffffff;
-            border-color: rgba(255, 255, 255, 0.55);
-            background: rgba(167, 139, 250, 0.12);
-            box-shadow: 0 0 10px rgba(167, 139, 250, 0.2);
-        }
-        .tier-chip.tier-warm { color: #b8b8c0; }
-        .tier-chip.tier-cold { color: #6a6a74; }
-
-        .search-box {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 24px;
-            align-items: stretch;
-        }
-
-        .search-input {
-            flex: 1;
-            background: rgba(0, 0, 0, 0.65);
-            border: 1px solid var(--border-color);
-            padding: 14px 20px;
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-family: var(--font-body);
-            font-size: 1rem;
-            outline: none;
-            transition: var(--transition-smooth);
-        }
-
-        .search-input:focus {
-            border-color: rgba(255, 255, 255, 0.5);
-            box-shadow: 0 0 18px rgba(167, 139, 250, 0.15);
-        }
-
-        .search-clear-btn {
-            padding: 0 18px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.35);
-            background: rgba(167, 139, 250, 0.08);
-            color: #ffffff;
-            font-family: var(--font-mono);
-            font-size: 0.8rem;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            cursor: pointer;
-            white-space: nowrap;
-            transition: var(--transition-smooth);
-        }
-
-        .search-clear-btn:hover {
-            border-color: rgba(255, 255, 255, 0.6);
-            background: rgba(167, 139, 250, 0.16);
-            box-shadow: 0 0 16px rgba(167, 139, 250, 0.15);
-        }
-
-        .search-clear-btn[hidden] {
-            display: none !important;
-        }
-
-        .brain-layout-controls {
-            position: absolute;
-            top: 14px;
-            right: 14px;
-            z-index: 4;
-            display: flex;
-            gap: 8px;
-        }
-
-        .layout-btn {
-            width: 40px;
-            height: 40px;
-            border-radius: 999px;
-            border: 1px solid rgba(255, 255, 255, 0.35);
-            background: rgba(0, 0, 0, 0.65);
-            color: rgba(255, 255, 255, 0.85);
-            cursor: pointer;
-            display: grid;
-            place-items: center;
-            backdrop-filter: blur(12px);
-            transition: transform 0.45s cubic-bezier(0.32, 0.72, 0, 1),
-                        border-color 0.45s cubic-bezier(0.32, 0.72, 0, 1),
-                        box-shadow 0.45s cubic-bezier(0.32, 0.72, 0, 1),
-                        background 0.45s cubic-bezier(0.32, 0.72, 0, 1);
-        }
-
-        .layout-btn:hover {
-            border-color: rgba(255, 255, 255, 0.65);
-            box-shadow: 0 0 18px rgba(167, 139, 250, 0.2);
-            transform: translateY(-1px);
-        }
-
-        .layout-btn.active {
-            border-color: rgba(255, 255, 255, 0.85);
-            background: rgba(167, 139, 250, 0.2);
-            box-shadow: 0 0 22px rgba(167, 139, 250, 0.28);
-        }
-
-        .layout-btn:active {
-            transform: scale(0.96);
-        }
-
-        .layout-btn svg {
-            width: 18px;
-            height: 18px;
-            fill: none;
-            stroke: currentColor;
-            stroke-width: 1.6;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-        }
-
-        .view-toggle-row {
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 24px;
-            font-family: var(--font-mono);
-            font-size: 0.85rem;
-        }
-
-        .view-toggle-row .toggle-hint { color: var(--text-muted); }
-
-        .view-toggle-btn {
-            padding: 8px 18px;
-            border-radius: 9999px;
-            border: 1px solid var(--border-color);
-            background: rgba(255, 255, 255, 0.04);
-            color: var(--text-primary);
-            font-family: var(--font-mono);
-            font-size: 0.85rem;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            transition: var(--transition-smooth);
-        }
-
-        .view-toggle-btn:hover {
-            border-color: rgba(255, 255, 255, 0.5);
-            box-shadow: 0 0 14px rgba(167, 139, 250, 0.12);
-        }
-
-        .view-toggle-btn.technical {
-            border-color: rgba(255, 255, 255, 0.55);
-            background: rgba(167, 139, 250, 0.12);
-            color: #ffffff;
-            box-shadow: 0 0 16px rgba(167, 139, 250, 0.15);
-        }
-
-        /* Hero brain — focal point */
-        .brain-hero {
-            margin-top: 12px;
-            margin-bottom: 72px;
-        }
-
-        .brain-hero .section-header h2 {
-            font-size: 2rem;
-        }
-
-        .brain-frame {
-            position: relative;
-            border-radius: 20px;
-            padding: 3px;
-            background:
-                linear-gradient(135deg, rgba(255, 255, 255, 0.22), rgba(0, 0, 0, 0.4) 45%, rgba(167, 139, 250, 0.2));
-            box-shadow:
-                0 0 40px rgba(167, 139, 250, 0.08),
-                0 0 80px rgba(255, 255, 255, 0.03);
-        }
-
-        .brain-frame-inner {
-            position: relative;
-            border-radius: 17px;
-            overflow: hidden;
-            background: #000;
-        }
-
-        #3d-synapse-graph {
-            width: 100%;
-            height: min(72vh, 720px);
-            background: #000000;
-        }
-
-        .brain-vignette {
-            pointer-events: none;
-            position: absolute;
-            inset: 0;
-            border-radius: 17px;
-            box-shadow:
-                inset 0 0 100px 30px rgba(0, 0, 0, 0.75),
-                inset 0 0 40px rgba(167, 139, 250, 0.06);
-            z-index: 2;
-        }
-
-        .brain-shimmer {
-            pointer-events: none;
-            position: absolute;
-            inset: -20%;
-            z-index: 1;
-            background:
-                radial-gradient(ellipse 45% 35% at 50% 42%, rgba(255, 255, 255, 0.06) 0%, transparent 55%),
-                radial-gradient(ellipse 30% 25% at 30% 60%, rgba(167, 139, 250, 0.05) 0%, transparent 50%),
-                radial-gradient(ellipse 25% 20% at 70% 35%, rgba(255, 255, 255, 0.03) 0%, transparent 50%);
-            animation: storm-drift 14s ease-in-out infinite alternate;
-        }
-
-        .brain-legend {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 16px 22px;
-            justify-content: center;
-            margin-top: 14px;
-            font-family: var(--font-mono);
-            font-size: 0.72rem;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            color: var(--text-muted);
-        }
-
-        .brain-legend .key {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .brain-legend .swatch {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            box-shadow: 0 0 10px currentColor;
-        }
-
-        .brain-legend .swatch.core { background: #ffffff; color: #ffffff; }
-        .brain-legend .swatch.syn { background: #a78bfa; color: #a78bfa; }
-        .brain-legend .swatch.hot { background: #ffffff; color: #a78bfa; box-shadow: 0 0 10px #a78bfa; }
-
-        .neural-hud {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin: 28px 0 48px;
-        }
-
-        .neural-panel {
-            padding: 18px 20px;
-            border-radius: 14px;
-            border: 1px solid rgba(167, 139, 250, 0.14);
-            background: rgba(0, 0, 0, 0.45);
-            min-height: 220px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .neural-panel-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 12px;
-            font-family: var(--font-mono);
-            font-size: 0.75rem;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: rgba(255, 255, 255, 0.55);
-        }
-
-        .neural-panel-header .tl-btn {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            border: 1px solid rgba(167, 139, 250, 0.25);
-            background: rgba(167, 139, 250, 0.06);
-            color: #d7e3ea;
-            cursor: pointer;
-            font-family: var(--font-mono);
-            font-size: 0.7rem;
-        }
-
-        .stream-feed {
-            flex: 1;
-            overflow-y: auto;
-            max-height: 260px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .stream-item {
-            padding: 10px 12px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            background: rgba(255, 255, 255, 0.02);
-        }
-
-        .stream-item .s-meta {
-            display: flex;
-            justify-content: space-between;
-            gap: 8px;
-            font-family: var(--font-mono);
-            font-size: 0.68rem;
-            color: var(--text-muted);
-            margin-bottom: 4px;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-        }
-
-        .stream-item .s-body {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            word-break: break-word;
-        }
-
-        .stream-item.kind-tool { border-color: rgba(255, 255, 255, 0.22); }
-        .stream-item.kind-thought { border-color: rgba(167, 139, 250, 0.35); }
-        .stream-item.kind-memory { border-color: rgba(255, 255, 255, 0.12); }
-
-        .ask-wrap {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            flex: 1;
-        }
-
-        .ask-wrap input {
-            width: 100%;
-            background: rgba(0, 0, 0, 0.65);
-            border: 1px solid rgba(167, 139, 250, 0.2);
-            padding: 12px 14px;
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-family: var(--font-mono);
-            font-size: 0.9rem;
-            outline: none;
-        }
-
-        .ask-wrap input:focus {
-            border-color: rgba(167, 139, 250, 0.45);
-            box-shadow: 0 0 16px rgba(167, 139, 250, 0.12);
-        }
-
-        #ask-output {
-            flex: 1;
-            font-size: 0.85rem;
-            color: var(--text-dim, var(--text-muted));
-            white-space: pre-wrap;
-            overflow-y: auto;
-            max-height: 200px;
-            line-height: 1.45;
-        }
-
-        @keyframes storm-drift {
-            0% { transform: translate3d(-2%, -1%, 0) scale(1); opacity: 0.85; }
-            50% { transform: translate3d(2%, 1.5%, 0) scale(1.04); opacity: 1; }
-            100% { transform: translate3d(1%, -2%, 0) scale(1.02); opacity: 0.9; }
-        }
-
-        #brain-hud-hint {
-            position: absolute;
-            left: 50%;
-            bottom: 16px;
-            transform: translateX(-50%);
-            z-index: 3;
-            font-family: var(--font-mono);
-            font-size: 0.72rem;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: rgba(255, 255, 255, 0.45);
-            pointer-events: none;
-            text-align: center;
-            white-space: nowrap;
-        }
-
-        @media (max-width: 992px) {
-            .db-layout { grid-template-columns: 1fr; }
-            .neural-hud { grid-template-columns: 1fr; }
-            #3d-synapse-graph { height: 56vh; }
-            #brain-hud-hint { white-space: normal; max-width: 90%; }
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Kurultai — your local AI knowledge brain. A spatial lattice of your code, notes, and agent memory.">
+  <title>Kurultai — Brain</title>
+  <link rel="stylesheet" href="index.css">
+  <!-- Three.js from CDN; brain.js loads a static SVG fallback if this fails -->
+  <script src="https://unpkg.com/three@0.158.0/build/three.min.js" defer></script>
+  <script src="brain.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#workspace">Skip to workspace</a>
 
-    <canvas id="neural-canvas"></canvas>
+  <!-- ── Unified topbar ── -->
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="Kurultai home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/>
+          <circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/>
+          <line x1="12" y1="12" x2="19" y2="5"/>
+          <line x1="12" y1="12" x2="5" y2="19"/>
+          <line x1="12" y1="12" x2="19" y2="19"/>
+          <line x1="12" y1="12" x2="5" y2="5"/>
+        </svg>
+      </span>
+      <span>KURULTAI</span>
+      <small>LOCAL BRAIN</small>
+    </a>
 
-    <header>
-        <div class="container nav-wrapper">
-            <a href="index.html" class="logo">
-                <svg height="24" width="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 6px; color: var(--primary);"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="5" r="2"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/><line x1="12" y1="12" x2="5" y2="5"/></svg>
-                kurultai
-            </a>
-            <nav class="nav-links">
-                <a href="index.html">Home</a>
-                <a href="#brain">Brain</a>
-                <a href="#stats">Stats</a>
-                <a href="#data">Atom Explorer</a>
-            </nav>
-            <a href="https://github.com/duketopceo/kurultai" class="btn-github" target="_blank">GitHub</a>
+    <nav class="topbar-nav" aria-label="Site navigation">
+      <a href="index.html">Home</a>
+      <a href="brain.html" class="active">Brain Explorer</a>
+    </nav>
+
+    <div class="topbar-status" aria-live="polite">
+      <span class="status-dot"></span>
+      <span id="daemon-status">connecting</span>
+    </div>
+
+    <button id="theme-toggle" class="icon-button" type="button"
+            aria-label="Switch to light theme" aria-pressed="false">
+      <span aria-hidden="true">◐</span>
+      <span class="button-copy">Theme</span>
+    </button>
+  </header>
+
+  <main id="workspace">
+    <!-- ── Brain hero / 3D lattice ── -->
+    <section id="brain" class="brain-hero" aria-labelledby="brain-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Knowledge, Made Spatial</p>
+        <h1 id="brain-title">Your <em>living</em> memory.</h1>
+        <p class="hero-description">A local lattice of the things you know, weighted by relevance and time.</p>
+      </div>
+
+      <div id="brain-stage" class="brain-stage" tabindex="0" role="application"
+           aria-label="Interactive three-dimensional memory lattice. Drag to orbit, scroll to zoom, hover a node to inspect connections.">
+
+        <!-- Static SVG fallback — visible when Three.js CDN is blocked -->
+        <div id="lattice-fallback" class="lattice-fallback" aria-hidden="true">
+          <svg class="fallback-svg" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid slice">
+            <!-- background glow -->
+            <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%"  stop-color="#a855f7" stop-opacity=".12"/>
+              <stop offset="100%" stop-color="#050508" stop-opacity="0"/>
+            </radialGradient>
+            <rect width="800" height="400" fill="url(#bgGlow)"/>
+
+            <!-- edges -->
+            <line class="fallback-edge" x1="400" y1="200" x2="200" y2="100"/>
+            <line class="fallback-edge" x1="400" y1="200" x2="600" y2="100"/>
+            <line class="fallback-edge" x1="400" y1="200" x2="600" y2="300"/>
+            <line class="fallback-edge" x1="400" y1="200" x2="200" y2="300"/>
+            <line class="fallback-edge" x1="200" y1="100" x2="600" y2="100"/>
+            <line class="fallback-edge" x1="600" y1="100" x2="600" y2="300"/>
+            <line class="fallback-edge" x1="600" y1="300" x2="200" y2="300"/>
+            <line class="fallback-edge" x1="200" y1="300" x2="200" y2="100"/>
+            <line class="fallback-edge" x1="400" y1="200" x2="400" y2="60"/>
+            <line class="fallback-edge" x1="400" y1="200" x2="400" y2="340"/>
+            <line class="fallback-edge" x1="400" y1="200" x2="100" y2="200"/>
+            <line class="fallback-edge" x1="400" y1="200" x2="700" y2="200"/>
+            <!-- satellite edges -->
+            <line class="fallback-edge" x1="200" y1="100" x2="100" y2="60"/>
+            <line class="fallback-edge" x1="600" y1="100" x2="700" y2="60"/>
+            <line class="fallback-edge" x1="600" y1="300" x2="700" y2="340"/>
+            <line class="fallback-edge" x1="200" y1="300" x2="100" y2="340"/>
+
+            <!-- satellite nodes -->
+            <circle class="fallback-node" cx="100" cy="60"  r="5"/>
+            <circle class="fallback-node" cx="700" cy="60"  r="5"/>
+            <circle class="fallback-node" cx="700" cy="340" r="5"/>
+            <circle class="fallback-node" cx="100" cy="340" r="5"/>
+            <circle class="fallback-node" cx="400" cy="60"  r="5"/>
+            <circle class="fallback-node" cx="400" cy="340" r="5"/>
+            <circle class="fallback-node" cx="100" cy="200" r="5"/>
+            <circle class="fallback-node" cx="700" cy="200" r="5"/>
+
+            <!-- ring nodes (white) -->
+            <circle class="fallback-node-white" cx="200" cy="100" r="7"/>
+            <circle class="fallback-node-white" cx="600" cy="100" r="7"/>
+            <circle class="fallback-node-white" cx="600" cy="300" r="7"/>
+            <circle class="fallback-node-white" cx="200" cy="300" r="7"/>
+
+            <!-- centre node (bright purple) -->
+            <circle cx="400" cy="200" r="12" fill="#a855f7" filter="url(#centreGlow)"/>
+            <filter id="centreGlow" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="5" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </svg>
         </div>
-    </header>
 
-    <section class="container brain-header">
-        <span class="badge">Working Memory Explorer</span>
-        <h1 style="font-size: 3rem; margin-bottom: 12px;">Active Brain Data</h1>
-        <p>Neurons, synapses, and electrons — the living map of what Kurultai knows.</p>
+        <div id="brain-canvas" aria-hidden="true"></div>
+        <div class="brain-overlay" aria-hidden="true">
+          <span>DRAG / ORBIT</span>
+          <span>SCROLL / ZOOM</span>
+        </div>
+        <div id="node-tooltip" class="node-tooltip" role="status" aria-live="polite" hidden></div>
+        <div class="brain-caption">
+          <span class="pulse-ring" aria-hidden="true"></span>
+          <span id="brain-caption">initializing local lattice</span>
+        </div>
+      </div>
     </section>
 
-    <section class="container">
-        <div class="view-toggle-row">
-            <span class="toggle-hint">View Mode:</span>
-            <button id="view-mode-btn" class="view-toggle-btn" aria-pressed="false">Technical View</button>
-        </div>
+    <!-- ── Search + timeline ── -->
+    <section class="command-strip" aria-label="Brain controls">
+      <label class="search-control" for="brain-search">
+        <span aria-hidden="true">⌕</span>
+        <input id="brain-search" type="search" autocomplete="off" placeholder="Search your memory">
+        <kbd>⌘ K</kbd>
+      </label>
+      <div id="search-dropdown" class="search-dropdown" role="listbox" aria-label="Search results" hidden></div>
+      <div class="timeline-control">
+        <button id="timeline-play" class="icon-button" type="button"
+                aria-label="Play timeline" aria-pressed="false">▶</button>
+        <label for="timeline-range">Memory horizon</label>
+        <input id="timeline-range" type="range" min="0" max="100" value="100">
+        <output id="timeline-output">all time</output>
+      </div>
     </section>
 
-    <!-- Focal: synaptic brain -->
-    <section id="brain" class="container brain-hero">
-        <div class="section-header" style="margin-bottom: 20px;">
-            <h2>Synaptic Brain</h2>
-            <p>Whole-brain force graph — hot memory first. Hover to light connections; watch synaptic fire arc through the network.</p>
+    <!-- ── Dashboard panels ── -->
+    <section class="dashboard-grid" aria-label="Brain dashboard">
+      <aside class="panel stream-panel" aria-labelledby="stream-heading">
+        <div class="panel-heading">
+          <p class="eyebrow">Pulse</p>
+          <h2 id="stream-heading">Memory stream</h2>
+          <button id="stream-toggle" class="quiet-button" type="button" aria-pressed="true">live</button>
         </div>
-        <div class="brain-frame">
-            <div class="brain-frame-inner">
-                <div class="brain-shimmer" aria-hidden="true"></div>
-                <div id="3d-synapse-graph" aria-label="Synaptic brain network"></div>
-                <div class="brain-vignette" aria-hidden="true"></div>
-                <div class="brain-layout-controls" role="group" aria-label="Synapse formation">
-                    <button type="button" class="layout-btn active" id="layout-force" title="Organic force" aria-pressed="true">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="8" r="2"/><circle cx="16" cy="7" r="2"/><circle cx="12" cy="16" r="2"/><path d="M8.5 9.2 14.5 8.2M8.2 9.8 11 14.5M14.8 8.8 12.8 14.2"/></svg>
-                    </button>
-                    <button type="button" class="layout-btn" id="layout-brain" title="Brain formation" aria-pressed="false">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 4.8c-2.2.2-3.7 2.2-3.5 4.3-.9.6-1.4 1.7-1.2 2.9.3 1.6 1.7 2.7 3.3 2.7h.2c.2 1.6 1.5 2.9 3.1 2.9.7 0 1.3-.2 1.8-.6.5.4 1.2.6 1.9.6 1.7 0 3-1.3 3.1-2.9h.1c1.6 0 3-1.1 3.3-2.7.3-1.3-.2-2.4-1.1-3 .1-2.1-1.3-4-3.5-4.2-1-.9-2.4-1.2-3.6-.8-1.1-.5-2.5-.3-3.9.8z"/><path d="M12 5.5v12.2"/><path d="M8.2 9.2c1.2.4 2.1 1.4 2.3 2.6M15.8 9.2c-1.2.4-2.1 1.4-2.3 2.6"/></svg>
-                    </button>
-                </div>
-                <div id="brain-hud-hint">loading neurons…</div>
-            </div>
+        <div id="activity-stream" class="activity-stream" aria-live="polite">
+          <p class="empty-state">Listening for local activity…</p>
         </div>
-        <div class="brain-legend" aria-hidden="true">
-            <span class="key"><span class="swatch core"></span>neuron</span>
-            <span class="key"><span class="swatch syn"></span>accent</span>
-            <span class="key"><span class="swatch hot"></span>hot</span>
+      </aside>
+
+      <section class="panel inspector-panel" aria-labelledby="inspector-heading">
+        <div class="panel-heading">
+          <p class="eyebrow">Focus</p>
+          <h2 id="inspector-heading">Node inspector</h2>
         </div>
+        <div id="node-inspector" class="node-inspector" aria-live="polite">
+          <p class="empty-state">Hover or select a memory node to reveal its place in the lattice.</p>
+        </div>
+      </section>
+
+      <section class="panel ask-panel" aria-labelledby="ask-heading">
+        <div class="panel-heading">
+          <p class="eyebrow">Synthesize</p>
+          <h2 id="ask-heading">Ask the brain</h2>
+        </div>
+        <form id="ask-form" class="ask-form">
+          <label class="sr-only" for="ask-input">Ask a question about your memory</label>
+          <textarea id="ask-input" rows="3" placeholder="What connects these memories?"></textarea>
+          <button type="submit" class="primary-button">Ask <span aria-hidden="true">↗</span></button>
+        </form>
+        <div id="ask-output" class="ask-output" aria-live="polite">Answers stay on your local daemon.</div>
+      </section>
+
+      <section class="panel signal-panel" aria-labelledby="signal-heading">
+        <div class="panel-heading">
+          <p class="eyebrow">Signal</p>
+          <h2 id="signal-heading">Brain state</h2>
+        </div>
+        <dl class="stats">
+          <div><dt>memories</dt><dd id="stat-atoms">—</dd></div>
+          <div><dt>hot / warm / cold</dt><dd id="stat-tiers">—</dd></div>
+          <div><dt>trusted</dt><dd id="stat-trusted">—</dd></div>
+        </dl>
+      </section>
     </section>
+  </main>
 
-    <section class="container neural-hud" aria-label="Neural interface panels">
-        <div class="neural-panel glass-panel">
-            <div class="neural-panel-header">
-                <span>Memory stream</span>
-                <button type="button" id="live-toggle" class="tl-btn" aria-pressed="true" title="Pause live stream">❚❚</button>
-            </div>
-            <div id="stream-feed" class="stream-feed" aria-live="polite"></div>
-        </div>
-        <div class="neural-panel glass-panel">
-            <div class="neural-panel-header"><span>Ask the brain</span></div>
-            <div class="ask-wrap">
-                <input id="ask-input" type="search" placeholder="ask the brain…" autocomplete="off" aria-label="Ask the brain">
-                <div id="ask-output">Press Enter to ask. Answers use the local daemon.</div>
-            </div>
-        </div>
-    </section>
-
-    <section id="stats" class="container">
-        <div class="stats-grid">
-            <div class="stat-card glass-panel">
-                <div class="detail-label">Daemon Status</div>
-                <div id="stat-status" class="stat-val" style="font-size: 1.4rem; margin-top: 16px;">connecting…</div>
-            </div>
-            <div class="stat-card glass-panel">
-                <div id="label-atoms" class="detail-label">Stored Memories</div>
-                <div id="stat-atoms" class="stat-val">—</div>
-            </div>
-            <div class="stat-card glass-panel">
-                <div class="detail-label">Memory Tiers</div>
-                <div id="stat-memory" class="stat-val" style="font-size: 1.1rem; margin-top: 16px;">—</div>
-                <div class="detail-label" style="margin-top: 8px; opacity: 0.7;">hot / warm / cold</div>
-            </div>
-            <div class="stat-card glass-panel">
-                <div id="label-sources" class="detail-label">Data Sources</div>
-                <div id="stat-sources" class="stat-val">—</div>
-            </div>
-            <div class="stat-card glass-panel">
-                <div id="label-env" class="detail-label">Server Mode</div>
-                <div id="stat-env" class="stat-val" style="font-size: 1.4rem; margin-top: 16px; text-transform: uppercase;">—</div>
-            </div>
-        </div>
-    </section>
-
-    <section id="data" class="container" style="margin-bottom: 80px;">
-        <div class="search-box">
-            <input type="text" id="brain-search" class="search-input" placeholder="Search FTS / Vector space (e.g. 'postgres', 'lente', 'revenue')..." autocomplete="off">
-            <button type="button" id="search-clear" class="search-clear-btn" hidden aria-label="Clear search">Clear</button>
-        </div>
-
-        <div class="db-layout">
-            <div class="atoms-list" id="atoms-list-container"></div>
-            <div class="atom-details glass-panel" id="atom-inspector">
-                <div style="text-align: center; color: var(--text-muted); padding-top: 100px;">
-                    <p>Select an atom to inspect its structure</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <footer>
-        <div class="container footer-wrapper">
-            <p>© 2026 Kurultai. MIT Licensed.</p>
-            <div class="footer-links">
-                <a href="https://github.com/duketopceo/kurultai" target="_blank">GitHub</a>
-                <a href="index.html">Home</a>
-            </div>
-        </div>
-    </footer>
-
-    <script src="index.js" defer></script>
-    <script src="brain.js" defer></script>
+  <footer>Kurultai runs locally. Your knowledge remains yours.</footer>
 </body>
 </html>

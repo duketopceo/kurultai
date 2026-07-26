@@ -1,1062 +1,583 @@
-// brain.js — dashboard + whole-brain synaptic storm (neurons / electrons / zaps).
-document.addEventListener("DOMContentLoaded", () => {
-    const listContainer = document.getElementById("atoms-list-container");
-    const inspector = document.getElementById("atom-inspector");
-    const searchInput = document.getElementById("brain-search");
-    const searchClearBtn = document.getElementById("search-clear");
-    const stage = document.getElementById("3d-synapse-graph");
-    const hint = document.getElementById("brain-hud-hint");
-    const layoutForceBtn = document.getElementById("layout-force");
-    const layoutBrainBtn = document.getElementById("layout-brain");
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
 
-    const LIST_HOT_CAP = 400;
-    const GRAPH_TIER_LIMIT = 20000;
-    const BRAIN_MAX_NODES = 1400;
-    const AMBIENT_PARTICLE_LINKS = 0.18;
-    const FORMATION_RADIUS = 92;
+  const state = {
+    atoms: [], visible: [], selected: null,
+    query: "", since: 0, live: true,
+    playing: false, timer: null, graph: null
+  };
 
-    let currentAtoms = [];
-    let activeAtom = null;
-    let Graph = null;
-    let graphBuiltForSig = "";
-    let isSearchMode = false;
-    let layoutMode = "force"; // force | brain
-    let formationAngle = 0;
-    let formationSpinTimer = null;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    const viewModeBtn = document.getElementById("view-mode-btn");
-    let isTechnical = localStorage.getItem("kurultai-brain-view") === "technical";
+  const elements = {
+    status:         $("daemon-status"),
+    caption:        $("brain-caption"),
+    canvas:         $("brain-canvas"),
+    fallback:       $("lattice-fallback"),
+    stage:          $("brain-stage"),
+    tooltip:        $("node-tooltip"),
+    inspector:      $("node-inspector"),
+    activity:       $("activity-stream"),
+    streamToggle:   $("stream-toggle"),
+    search:         $("brain-search"),
+    dropdown:       $("search-dropdown"),
+    timeline:       $("timeline-range"),
+    timelineOutput: $("timeline-output"),
+    play:           $("timeline-play"),
+    askForm:        $("ask-form"),
+    askInput:       $("ask-input"),
+    askOutput:      $("ask-output"),
+    theme:          $("theme-toggle")
+  };
 
-    function applyViewMode() {
-        if (!viewModeBtn) return;
-        viewModeBtn.textContent = isTechnical ? "Simple View" : "Technical View";
-        viewModeBtn.classList.toggle("technical", isTechnical);
-        viewModeBtn.setAttribute("aria-pressed", String(isTechnical));
-        const lAtoms = document.getElementById("label-atoms");
-        const lSources = document.getElementById("label-sources");
-        const lEnv = document.getElementById("label-env");
-        if (lAtoms) lAtoms.textContent = isTechnical ? "Indexed Atoms" : "Stored Memories";
-        if (lSources) lSources.textContent = isTechnical ? "Active Sources" : "Data Sources";
-        if (lEnv) lEnv.textContent = isTechnical ? "Environment" : "Server Mode";
-        if (activeAtom) inspectAtom(activeAtom);
-    }
-
-    if (viewModeBtn) {
-        viewModeBtn.addEventListener("click", () => {
-            isTechnical = !isTechnical;
-            localStorage.setItem("kurultai-brain-view", isTechnical ? "technical" : "simple");
-            applyViewMode();
-        });
-    }
-
-    function renderMemoryStats(memory) {
-        const el = document.getElementById("stat-memory");
-        if (!el || !memory) return;
-        el.textContent = `${memory.hot ?? 0} / ${memory.warm ?? 0} / ${memory.cold ?? 0}`;
-    }
-
-    async function loadDashboard() {
-        const statusPromise = fetch("/api/status")
-            .then(async r => {
-                const j = await r.json();
-                document.getElementById("stat-status").textContent = j.ok ? "Online" : "Offline";
-                document.getElementById("stat-atoms").textContent = j.atoms ?? "—";
-                document.getElementById("stat-env").textContent =
-                    (j.scheduler && j.scheduler.env) || "dev";
-                if (j.memory) renderMemoryStats(j.memory);
-            })
-            .catch(e => {
-                document.getElementById("stat-status").textContent = "Daemon unreachable";
-                console.error("status fetch failed:", e);
-            });
-        await Promise.all([statusPromise, triggerLoadAtoms()]);
-    }
-
-    async function fetchGraphTier(tier) {
-        const r = await fetch(`/api/graph?tier=${tier}&limit=${GRAPH_TIER_LIMIT}`);
-        if (!r.ok) throw new Error(`graph ${tier} failed: ${r.status}`);
-        return r.json();
-    }
-
-    async function triggerLoadAtoms() {
-        isSearchMode = false;
-        updateSearchClearVisibility();
-        try {
-            const hot = await fetchGraphTier("hot");
-            mergeGraphNodes(hot.nodes || [], { replace: true });
-            if (hint) hint.textContent = `hot ${hot.count ?? 0} · loading warm / cold…`;
-            const [warm, cold] = await Promise.all([
-                fetchGraphTier("warm"),
-                fetchGraphTier("cold")
-            ]);
-            mergeGraphNodes([...(warm.nodes || []), ...(cold.nodes || [])], { replace: false });
-            if (hint) {
-                hint.textContent =
-                    `hot ${hot.count ?? 0} · warm ${warm.count ?? 0} · cold ${cold.count ?? 0} · drag · scroll · click a neuron`;
-            }
-            if (layoutMode !== "force") applyFormationLayout(layoutMode, { animate: false });
-        } catch (e) {
-            console.error("graph fetch failed:", e);
-            if (hint) hint.textContent = "could not reach /api/graph";
-            listContainer.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:20px;">Could not reach the local daemon.</div>`;
-        }
-    }
-
-    function updateSearchClearVisibility() {
-        if (!searchClearBtn) return;
-        const show = isSearchMode || !!(searchInput && searchInput.value.trim());
-        searchClearBtn.hidden = !show;
-    }
-
-    async function clearSearch() {
-        if (searchInput) searchInput.value = "";
-        isSearchMode = false;
-        updateSearchClearVisibility();
-        await triggerLoadAtoms();
-    }
-
-    async function triggerSearch(query) {
-        if (!query) return clearSearch();
-        isSearchMode = true;
-        updateSearchClearVisibility();
-        try {
-            const r = await fetch("/api/search?q=" + encodeURIComponent(query) + "&limit=25");
-            const results = await r.json();
-            processResults(results);
-            if (layoutMode !== "force") applyFormationLayout(layoutMode, { animate: false });
-        } catch (e) {
-            console.error("search fetch failed:", e);
-            listContainer.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:20px;">Search request failed.</div>`;
-        }
-    }
-
-    function graphNodeToAtom(n) {
-        return {
-            id: n.id || Math.random().toString(36).slice(2, 11),
-            title: n.title || "(untitled)",
-            source: n.source || "",
-            source_id: n.source_id || "",
-            summary: n.summary || "",
-            content: "",
-            question: "",
-            resolution: "",
-            tags: [],
-            file_path: null,
-            source_updated_at: "",
-            indexed_at: n.indexed_at || "",
-            last_accessed_at: n.last_accessed_at || "",
-            tier: n.tier || "warm",
-            stub: n.tier !== "hot",
-            score: undefined
-        };
-    }
-
-    function mergeGraphNodes(nodes, { replace }) {
-        const mapped = (nodes || []).map(graphNodeToAtom);
-        if (replace) currentAtoms = mapped;
-        else {
-            const byId = new Map(currentAtoms.map(a => [a.id, a]));
-            for (const a of mapped) {
-                if (!byId.has(a.id)) byId.set(a.id, a);
-            }
-            currentAtoms = Array.from(byId.values());
-        }
-        refreshFromCurrentAtoms({ rebuildBrain: true });
-    }
-
-    function processResults(results) {
-        currentAtoms = (results || []).map(r => {
-            const a = r.atom || r;
-            const meta = a.metadata || {};
-            return {
-                id: a.id || Math.random().toString(36).slice(2, 11),
-                title: a.title || "(untitled)",
-                source: a.source || "",
-                source_id: a.source_id || "",
-                summary: a.summary || "",
-                content: a.content || "",
-                question: a.question || "",
-                resolution: a.resolution || "",
-                tags: a.tags || [],
-                file_path: meta.file_path || meta.rel_path || null,
-                source_updated_at: a.source_updated_at || "",
-                indexed_at: a.indexed_at || "",
-                last_accessed_at: a.last_accessed_at || "",
-                tier: "hot",
-                stub: false,
-                score: r.score
-            };
-        });
-        refreshFromCurrentAtoms({ rebuildBrain: true });
-    }
-
-    function atomsForList() {
-        const hot = currentAtoms.filter(a => a.tier === "hot");
-        const pool = hot.length ? hot : currentAtoms;
-        return pool.slice(0, LIST_HOT_CAP);
-    }
-
-    function refreshFromCurrentAtoms({ rebuildBrain } = { rebuildBrain: false }) {
-        const sources = new Set(currentAtoms.map(a => a.source).filter(Boolean));
-        const sourcesEl = document.getElementById("stat-sources");
-        if (sourcesEl) sourcesEl.textContent = sources.size || "—";
-
-        const listSlice = atomsForList();
-        renderAtomsList(listSlice);
-
-        if (currentAtoms.length > 0) {
-            const keep = activeAtom && currentAtoms.find(a => a.id === activeAtom.id);
-            activeAtom = keep || listSlice[0] || currentAtoms[0];
-            inspectAtom(activeAtom);
-            if (rebuildBrain) updateMainBrain(currentAtoms);
-            refreshGraphPaint();
-        } else {
-            activeAtom = null;
-            if (Graph) Graph.graphData({ nodes: [], links: [] });
-        }
-    }
-
-    function hydrateFromServerAtom(a) {
-        const meta = a.metadata || {};
-        return {
-            id: a.id,
-            title: a.title || "(untitled)",
-            source: a.source || "",
-            source_id: a.source_id || "",
-            summary: a.summary || "",
-            content: a.content || "",
-            question: a.question || "",
-            resolution: a.resolution || "",
-            tags: a.tags || [],
-            file_path: meta.file_path || meta.rel_path || null,
-            source_updated_at: a.source_updated_at || "",
-            indexed_at: a.indexed_at || "",
-            last_accessed_at: a.last_accessed_at || "",
-            tier: "hot",
-            stub: false,
-            score: undefined
-        };
-    }
-
-    async function selectAtom(atom, { scrollList } = {}) {
-        if (!atom) return;
-        activeAtom = atom;
-        renderAtomsList(atomsForList());
-        inspectAtom(atom);
-        refreshGraphPaint();
-        if (scrollList) {
-            const el = listContainer.querySelector(".atom-item.active");
-            if (el) el.scrollIntoView({ block: "nearest" });
-        }
-        try {
-            const r = await fetch("/api/touch", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ atom_id: atom.id })
-            });
-            if (!r.ok) return;
-            const j = await r.json();
-            if (!j.atom) return;
-            const full = hydrateFromServerAtom(j.atom);
-            const idx = currentAtoms.findIndex(a => a.id === full.id);
-            if (idx >= 0) currentAtoms[idx] = { ...currentAtoms[idx], ...full };
-            else currentAtoms.push(full);
-            if (activeAtom && activeAtom.id === full.id) {
-                activeAtom = currentAtoms.find(a => a.id === full.id) || full;
-                inspectAtom(activeAtom);
-                renderAtomsList(atomsForList());
-                refreshGraphPaint();
-            }
-        } catch (e) {
-            console.error("touch failed:", e);
-        }
-    }
-
-    function renderAtomsList(atoms) {
-        listContainer.innerHTML = "";
-        if (!atoms || atoms.length === 0) {
-            listContainer.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:20px;">No atoms in the local store.</div>`;
-            return;
-        }
-        atoms.forEach(atom => {
-            const div = document.createElement("div");
-            div.className = `atom-item ${activeAtom && activeAtom.id === atom.id ? "active" : ""}`;
-            const tier = atom.tier
-                ? `<span class="tier-chip tier-${escapeHtml(atom.tier)}">${escapeHtml(atom.tier)}</span>`
-                : "";
-            div.innerHTML = `
-                <h4>${escapeHtml(atom.title)} ${tier}</h4>
-                <div class="atom-meta">
-                    <span>${escapeHtml(atom.source)}/${escapeHtml(atom.source_id)}</span>
-                    <span>${atom.score !== undefined ? atom.score.toFixed(3) : atom.id.slice(0, 8)}</span>
-                </div>
-            `;
-            div.addEventListener("click", () => selectAtom(atom));
-            listContainer.appendChild(div);
-        });
-    }
-
-    function inspectAtom(atom) {
-        if (!atom) {
-            inspector.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding-top:100px;"><p>Select an atom to inspect its structure</p></div>`;
-            return;
-        }
-        const tagPills = (atom.tags || []).map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("");
-        const sourceLabel = isTechnical ? "Source Context" : "Memory Origin";
-        const contentLabel = isTechnical ? "Raw Database Content (content)" : "Excerpt / Content";
-        const summaryLabel = isTechnical ? "LLM-Distilled Summary (summary)" : "Summary";
-        const updatedSuffix = isTechnical && atom.source_updated_at
-            ? ` (updated: ${escapeHtml(atom.source_updated_at)})`
-            : "";
-        const idHeader = isTechnical
-            ? `<div class="detail-label" style="text-align:right;">ID: ${escapeHtml(atom.id)}</div>`
-            : "";
-        const openFileBtn = isTechnical && atom.file_path
-            ? `<button onclick="openFileInEditor('${escapeHtml(atom.file_path)}')" style="padding:4px 12px;font-size:0.75rem;border-radius:9999px;background:rgba(255,255,255,0.08);border:1px solid rgba(167,139,250,0.45);color:#fff;cursor:pointer;font-family:var(--font-mono);">Open File</button>`
-            : "";
-        const routingRow = isTechnical && atom.question
-            ? `<div class="detail-row"><div class="detail-label">Routing Queries</div><div class="detail-val"><strong>Q:</strong> ${escapeHtml(atom.question)}<br/><strong>A:</strong> ${escapeHtml(atom.resolution || "")}</div></div>`
-            : "";
-        const body = atom.content || atom.summary || "(stub — click again after focus to hydrate)";
-
-        inspector.innerHTML = `
-            <div class="detail-header">
-                <div>
-                    <h3 class="detail-title">${escapeHtml(atom.title)}</h3>
-                    <div style="margin-top:8px;">${tagPills}</div>
-                </div>
-                ${idHeader}
-            </div>
-            <div class="detail-layout">
-                <div class="detail-row">
-                    <div class="detail-label">${sourceLabel}</div>
-                    <div class="detail-val" style="font-family:var(--font-mono);display:flex;justify-content:space-between;align-items:center;gap:12px;">
-                        <span>${escapeHtml(atom.source)} / ${escapeHtml(atom.source_id)}${updatedSuffix}</span>
-                        ${openFileBtn}
-                    </div>
-                </div>
-                <div class="detail-row">
-                    <div class="detail-label">${contentLabel}</div>
-                    <div class="detail-val">${escapeHtml(body)}</div>
-                </div>
-                <div class="detail-row">
-                    <div class="detail-label">${summaryLabel}</div>
-                    <div class="detail-val">${escapeHtml(atom.summary || "—")}</div>
-                </div>
-                ${routingRow}
-            </div>
-        `;
-    }
-
-    window.openFileInEditor = async function (filePath) {
-        try {
-            await fetch("/api/open?file=" + encodeURIComponent(filePath));
-        } catch (e) {
-            console.error("Failed to trigger file open API:", e);
-        }
+  /* ── Utilities ─────────────────────────────────────────────── */
+  function text(value, fallback = "—") {
+    return value == null || value === "" ? fallback : String(value);
+  }
+  function dateValue(atom) {
+    const d = Date.parse(atom.indexed_at || atom.source_updated_at || "");
+    return Number.isFinite(d) ? d : 0;
+  }
+  function normalize(result) {
+    const atom = result && result.atom ? result.atom : result || {};
+    const meta = atom.metadata || {};
+    return {
+      id:             text(atom.id, crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)),
+      title:          text(atom.title, "Untitled memory"),
+      summary:        text(atom.summary || atom.content || meta.summary, "No local summary available."),
+      source:         text(atom.source),
+      sourceId:       text(atom.source_id),
+      tags:           Array.isArray(atom.tags) ? atom.tags : Array.isArray(meta.tags) ? meta.tags : [],
+      file:           atom.file_path || meta.file_path || "",
+      indexed_at:     atom.indexed_at || meta.indexed_at || "",
+      last_accessed_at: atom.last_accessed_at || meta.last_accessed_at || "",
+      score:          Number(result && result.score) || 0,
+      tier:           atom.tier || meta.tier || "warm"
     };
+  }
+  async function getJson(path) {
+    const r = await fetch(path, { headers: { Accept: "application/json" } });
+    if (!r.ok) throw new Error(`${path} failed (${r.status})`);
+    return r.json();
+  }
+  function setStatus(value, online) {
+    elements.status.textContent = value;
+    document.querySelector(".status-dot").style.background =
+      online ? "var(--electric-dim)" : "var(--danger)";
+  }
 
-    function escapeHtml(text) {
-        if (!text) return "";
-        return String(text)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
+  /* ── Theme ──────────────────────────────────────────────────── */
+  function initialTheme() {
+    const saved = localStorage.getItem("kurultai-theme");
+    if (saved === "light" || saved === "dark") return saved;
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  }
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    const light = theme === "light";
+    elements.theme.setAttribute("aria-pressed", String(light));
+    elements.theme.setAttribute("aria-label", `Switch to ${light ? "dark" : "light"} theme`);
+    localStorage.setItem("kurultai-theme", theme);
+    if (state.graph) state.graph.recolor();
+  }
 
-    let searchTimeout = null;
-    if (searchInput) {
-        searchInput.addEventListener("input", e => {
-            clearTimeout(searchTimeout);
-            const q = e.target.value.trim();
-            updateSearchClearVisibility();
-            searchTimeout = setTimeout(() => triggerSearch(q), 300);
+  /* ── Graph relationships ────────────────────────────────────── */
+  function buildRelationships(atoms) {
+    const links = new Map();
+    atoms.forEach((a, i) => atoms.slice(i + 1).forEach((b) => {
+      const shared = a.tags.filter((tag) => b.tags.includes(tag));
+      if (shared.length || (a.source && a.source === b.source)) {
+        links.set([a.id, b.id].sort().join("|"), {
+          a: a.id, b: b.id,
+          strength: shared.length + (a.source === b.source ? 1 : 0)
         });
-        searchInput.addEventListener("keydown", e => {
-            if (e.key === "Escape") {
-                e.preventDefault();
-                clearSearch();
-            }
-        });
+      }
+    }));
+    return [...links.values()];
+  }
+
+  function filteredAtoms() {
+    const horizon = Number(elements.timeline.value) / 100;
+    if (horizon >= 1 || !state.atoms.length) return state.atoms;
+    const dates = state.atoms.map(dateValue).filter(Boolean);
+    const min   = Math.min(...dates, Date.now());
+    const cutoff = min + (Date.now() - min) * (1 - horizon);
+    return state.atoms.filter((atom) => !dateValue(atom) || dateValue(atom) >= cutoff);
+  }
+
+  function refreshLattice() {
+    state.visible = filteredAtoms();
+    if (state.graph) state.graph.update(state.visible);
+    elements.caption.textContent = `${state.visible.length} memories · hover to trace connections`;
+  }
+
+  /* ── Inspector ──────────────────────────────────────────────── */
+  function renderInspector(atom) {
+    state.selected = atom;
+    if (!atom) {
+      elements.inspector.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = "empty-state";
+      p.textContent = "Hover or select a memory node to reveal its place in the lattice.";
+      elements.inspector.append(p);
+      return;
     }
-    if (searchClearBtn) {
-        searchClearBtn.addEventListener("click", () => clearSearch());
-    }
-
-    function setLayoutMode(mode) {
-        layoutMode = mode;
-        [layoutForceBtn, layoutBrainBtn].forEach(btn => {
-            if (!btn) return;
-            const id = btn.id;
-            const active =
-                (id === "layout-force" && mode === "force") ||
-                (id === "layout-brain" && mode === "brain");
-            btn.classList.toggle("active", active);
-            btn.setAttribute("aria-pressed", String(active));
-        });
-        const controls = Graph && Graph.controls();
-        if (mode === "force") {
-            clearFormationPins();
-            stopFormationSpin();
-            if (controls) controls.autoRotate = true;
-            if (hint) {
-                hint.textContent = "organic force · drag · scroll · click a neuron";
-            }
-        } else {
-            if (controls) controls.autoRotate = false;
-            applyFormationLayout(mode, { animate: true });
-            startFormationSpin();
-            setTimeout(frameWholeBrain, 450);
-            if (hint) {
-                hint.textContent = "brain formation · slow spin · organic to release";
-            }
-        }
-    }
-
-    if (layoutForceBtn) layoutForceBtn.addEventListener("click", () => setLayoutMode("force"));
-    if (layoutBrainBtn) layoutBrainBtn.addEventListener("click", () => setLayoutMode("brain"));
-
-    function hash01(i) {
-        let h = (i * 2654435761) >>> 0;
-        h ^= h >>> 16;
-        h = Math.imul(h, 2246822507);
-        h ^= h >>> 13;
-        return (h >>> 0) / 4294967296;
-    }
-
-    /** Two-hemisphere cloud with cortical folding — from neural patch. */
-    function brainPoint(i, n, radius) {
-        const side = i % 2 === 0 ? -1 : 1;
-        const u = hash01(i);
-        const v = hash01(i + 7919);
-        const interior = hash01(i + 104729) < 0.18;
-        const shell = interior ? 0.55 + hash01(i + 3) * 0.4 : 0.97 + hash01(i + 5) * 0.05;
-        const a = 1.0, b = 0.82, c = 1.12;
-        const theta = u * Math.PI * 2;
-        const phi = Math.acos(1 - 2 * Math.min(0.999, Math.max(0.001, v)));
-        const folds = 1 + 0.06 * Math.sin(phi * 9.0) * Math.sin(theta * 7.0);
-        const r = shell * folds;
-        const x = side * 0.42 + side * a * r * Math.sin(phi) * Math.cos(theta) * 0.82;
-        const y = b * r * Math.cos(phi) * 0.92;
-        const z = c * r * Math.sin(phi) * Math.sin(theta) * 0.88;
-        return {
-            x: x * radius,
-            y: y * radius,
-            z: z * radius
-        };
-    }
-
-    function clearFormationPins() {
-        if (!Graph) return;
-        const nodes = Graph.graphData().nodes || [];
-        for (const node of nodes) {
-            node.fx = undefined;
-            node.fy = undefined;
-            node.fz = undefined;
-        }
-        const charge = Graph.d3Force("charge");
-        if (charge) charge.strength(-38);
-        const linkF = Graph.d3Force("link");
-        if (linkF) linkF.distance(40);
-        Graph.d3ReheatSimulation();
-    }
-
-    function applyFormationLayout(mode, { animate } = { animate: true }) {
-        if (!Graph || mode !== "brain") return;
-        const nodes = Graph.graphData().nodes || [];
-        const n = nodes.length;
-        if (!n) return;
-        const radius = FORMATION_RADIUS * Math.min(1.35, 0.55 + Math.sqrt(n) / 28);
-        for (let i = 0; i < n; i++) {
-            const p = brainPoint(i, n, radius);
-            // Apply current spin angle so layout doesn't jump on refresh
-            const c = Math.cos(formationAngle);
-            const s = Math.sin(formationAngle);
-            const x = p.x * c - p.z * s;
-            const z = p.x * s + p.z * c;
-            nodes[i].fx = x;
-            nodes[i].fy = p.y;
-            nodes[i].fz = z;
-            if (!animate) {
-                nodes[i].x = x;
-                nodes[i].y = p.y;
-                nodes[i].z = z;
-            }
-        }
-        const charge = Graph.d3Force("charge");
-        if (charge) charge.strength(-2);
-        const linkF = Graph.d3Force("link");
-        if (linkF) linkF.distance(18);
-        Graph.d3ReheatSimulation();
-        if (animate) {
-            setTimeout(() => {
-                try { Graph.zoomToFit(0, 160); } catch (_) {}
-            }, 400);
-        }
-    }
-
-    function startFormationSpin() {
-        stopFormationSpin();
-        formationSpinTimer = setInterval(() => {
-            if (!Graph || layoutMode !== "brain") return;
-            formationAngle += 0.003; // slow spin
-            const nodes = Graph.graphData().nodes || [];
-            const n = nodes.length;
-            const radius = FORMATION_RADIUS * Math.min(1.35, 0.55 + Math.sqrt(n) / 28);
-            const c = Math.cos(formationAngle);
-            const s = Math.sin(formationAngle);
-            for (let i = 0; i < n; i++) {
-                const p = brainPoint(i, n, radius);
-                nodes[i].fx = p.x * c - p.z * s;
-                nodes[i].fy = p.y;
-                nodes[i].fz = p.x * s + p.z * c;
-            }
-        }, 40);
-    }
-
-    function stopFormationSpin() {
-        if (formationSpinTimer) {
-            clearInterval(formationSpinTimer);
-            formationSpinTimer = null;
-        }
-    }
-
-    // ——— Synaptic brain (neurons + lightning zaps) ———
-
-    let baseLinks = [];
-    let adjacency = new Map();
-    let hoverNodeId = null;
-    let hoverNeighborIds = new Set();
-    let simNodeIds = new Set();
-    let simLinkKeys = new Set();
-    let simTimer = null;
-    let simClearTimer = null;
-    let ambientPulse = 0;
-    let zapBurstUntil = 0;
-
-    function linkId(end) {
-        return typeof end === "object" && end ? end.id : end;
-    }
-
-    function sortedLinkKey(a, b) {
-        return a < b ? `${a}|${b}` : `${b}|${a}`;
-    }
-
-    function rebuildAdjacency(links) {
-        adjacency = new Map();
-        for (const link of links) {
-            const s = linkId(link.source);
-            const t = linkId(link.target);
-            if (!s || !t) continue;
-            if (!adjacency.has(s)) adjacency.set(s, new Set());
-            if (!adjacency.has(t)) adjacency.set(t, new Set());
-            adjacency.get(s).add(t);
-            adjacency.get(t).add(s);
-        }
-    }
-
-    function pickBrainAtoms(atoms) {
-        const hot = atoms.filter(a => a.tier === "hot");
-        const warm = atoms.filter(a => a.tier === "warm");
-        const cold = atoms.filter(a => a.tier === "cold");
-        const out = [];
-        const pushCap = arr => {
-            for (const a of arr) {
-                if (out.length >= BRAIN_MAX_NODES) break;
-                out.push(a);
-            }
-        };
-        pushCap(hot);
-        pushCap(warm);
-        pushCap(cold);
-        return out;
-    }
-
-    function atomsToNodes(atoms) {
-        return atoms.map(atom => {
-            const tags = Array.isArray(atom.tags) ? atom.tags : [];
-            const tier = atom.tier || "warm";
-            let val = tier === "hot" ? 4 : tier === "cold" ? 1.4 : 2.4;
-            return {
-                id: atom.id,
-                title: atom.title,
-                source: atom.source,
-                source_id: atom.source_id,
-                tags,
-                tier,
-                kind: "atom",
-                val
-            };
-        });
-    }
-
-    function buildBrainLinks(nodes) {
-        const links = [];
-        const seen = new Set();
-        const add = (a, b) => {
-            if (!a || !b || a === b) return;
-            const k = sortedLinkKey(a, b);
-            if (seen.has(k)) return;
-            seen.add(k);
-            links.push({ source: a, target: b });
-        };
-
-        const bySourceId = new Map();
-        const bySource = new Map();
-        for (const n of nodes) {
-            if (n.source_id) {
-                if (!bySourceId.has(n.source_id)) bySourceId.set(n.source_id, []);
-                bySourceId.get(n.source_id).push(n);
-            }
-            if (!bySource.has(n.source)) bySource.set(n.source, []);
-            bySource.get(n.source).push(n);
-        }
-
-        for (const group of bySourceId.values()) {
-            group.sort((a, b) => a.id.localeCompare(b.id));
-            for (let i = 0; i < group.length - 1; i++) add(group[i].id, group[i + 1].id);
-        }
-
-        for (const group of bySource.values()) {
-            const hub = group.find(g => g.tier === "hot") || group[0];
-            if (!hub) continue;
-            const cap = Math.min(group.length, 26);
-            for (let i = 0; i < cap; i++) {
-                if (group[i].id !== hub.id) add(hub.id, group[i].id);
-            }
-            const hots = group.filter(g => g.tier === "hot").slice(0, 14);
-            for (let i = 0; i < hots.length; i++) {
-                add(hots[i].id, hots[(i + 1) % hots.length].id);
-            }
-        }
-        return links;
-    }
-
-    function isHoverActive() {
-        return hoverNodeId != null;
-    }
-
-    function linkIsHovered(link) {
-        if (!isHoverActive()) return false;
-        const s = linkId(link.source);
-        const t = linkId(link.target);
-        return (s === hoverNodeId && hoverNeighborIds.has(t))
-            || (t === hoverNodeId && hoverNeighborIds.has(s));
-    }
-
-    function linkIsSim(link) {
-        const s = linkId(link.source);
-        const t = linkId(link.target);
-        return simLinkKeys.has(sortedLinkKey(s, t));
-    }
-
-    function linkAmbientIndex(link) {
-        const k = sortedLinkKey(linkId(link.source), linkId(link.target));
-        let h = 0;
-        for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) >>> 0;
-        return (h % 1000) / 1000;
-    }
-
-    function inZapBurst() {
-        return performance.now() < zapBurstUntil;
-    }
-
-    /** Small core + soft halo — neuron, not a fat white orb. */
-    function makeNeuronObject(node) {
-        const THREE = window.THREE;
-        const tier = node.tier || "warm";
-        const group = new THREE.Group();
-
-        const coreR = tier === "hot" ? 0.55 : tier === "cold" ? 0.28 : 0.4;
-        const haloR = coreR * (tier === "hot" ? 3.2 : tier === "cold" ? 2.2 : 2.6);
-
-        const coreMat = new THREE.MeshBasicMaterial({
-            color: tier === "hot" ? 0xffffff : tier === "cold" ? 0x666666 : 0xcccccc,
-            transparent: true,
-            opacity: tier === "cold" ? 0.5 : 0.92
-        });
-        const core = new THREE.Mesh(new THREE.SphereGeometry(coreR, 10, 10), coreMat);
-        group.add(core);
-
-        const haloMat = new THREE.MeshBasicMaterial({
-            color: tier === "hot" ? 0xa78bfa : 0xffffff,
-            transparent: true,
-            opacity: tier === "hot" ? 0.14 : 0.06,
-            depthWrite: false
-        });
-        const halo = new THREE.Mesh(new THREE.SphereGeometry(haloR, 12, 12), haloMat);
-        group.add(halo);
-
-        group.userData = { coreMat, haloMat, tier, baseHalo: haloMat.opacity };
-        return group;
-    }
-
-    function applyGraphStyle(g) {
-        g.backgroundColor("#000000")
-            .showNavInfo(false)
-            .nodeThreeObject(node => makeNeuronObject(node))
-            .nodeThreeObjectExtend(false)
-            .nodeLabel(node => {
-                const tags = (node.tags || []).map(t => escapeHtml(t)).join(", ");
-                return `
-                    <div style="background:rgba(0,0,0,0.92);border:1px solid rgba(255,255,255,0.25);border-radius:10px;padding:12px 14px;font-family:Share Tech Mono,monospace;font-size:0.8rem;color:#fff;box-shadow:0 0 20px rgba(167,139,250,0.15);">
-                        <strong style="font-size:0.9rem;">${escapeHtml(node.title)}</strong><br/>
-                        <span style="color:#888;">${escapeHtml(node.source)}/${escapeHtml(node.source_id)}</span>
-                        ${node.tier ? `<br/><span style="color:#a78bfa;text-transform:uppercase;letter-spacing:0.08em;font-size:0.68rem;">${escapeHtml(node.tier)}</span>` : ""}
-                        ${tags ? `<br/><span style="color:#bbb;">${tags}</span>` : ""}
-                    </div>`;
-            })
-            .linkColor(link => {
-                if (linkIsHovered(link)) return "rgba(255, 255, 255, 0.95)";
-                if (isHoverActive()) return "rgba(255, 255, 255, 0.04)";
-                if (linkIsSim(link) || inZapBurst()) return "rgba(167, 139, 250, 0.75)";
-                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return "rgba(255, 255, 255, 0.22)";
-                return "rgba(255, 255, 255, 0.08)";
-            })
-            .linkWidth(link => {
-                if (linkIsHovered(link)) return 1.5;
-                if (linkIsSim(link)) return 1.1;
-                if (inZapBurst() && linkAmbientIndex(link) < 0.35) return 0.7;
-                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return 0.35;
-                return 0.18;
-            })
-            .linkOpacity(0.7)
-            .linkDirectionalParticles(link => {
-                if (linkIsHovered(link)) return 5;
-                if (linkIsSim(link)) return 3;
-                if (inZapBurst() && linkAmbientIndex(link) < 0.4) return 2;
-                if (linkAmbientIndex(link) < AMBIENT_PARTICLE_LINKS) return 1;
-                return 0;
-            })
-            .linkDirectionalParticleSpeed(link => {
-                if (linkIsHovered(link) || linkIsSim(link)) return 0.006;
-                if (inZapBurst()) return 0.005;
-                return 0.002;
-            })
-            .linkDirectionalParticleWidth(link => (linkIsSim(link) || linkIsHovered(link) ? 1.8 : 1.2))
-            .linkDirectionalParticleColor(link => {
-                if (linkIsSim(link) || linkIsHovered(link)) return "#ffffff";
-                return "#a78bfa";
-            })
-            .onNodeHover(node => {
-                if (!node) {
-                    hoverNodeId = null;
-                    hoverNeighborIds = new Set();
-                } else {
-                    hoverNodeId = node.id;
-                    hoverNeighborIds = new Set(adjacency.get(node.id) || []);
-                }
-                refreshGraphPaint();
-            })
-            .onNodeClick(node => {
-                const atom = currentAtoms.find(a => a.id === node.id);
-                if (atom) selectAtom(atom, { scrollList: true });
-            });
-
-        const charge = g.d3Force("charge");
-        if (charge) charge.strength(-38);
-        const linkF = g.d3Force("link");
-        if (linkF) linkF.distance(40);
-    }
-
-    function refreshGraphPaint() {
-        if (!Graph) return;
-        Graph.linkColor(Graph.linkColor());
-        Graph.linkWidth(Graph.linkWidth());
-        Graph.linkDirectionalParticles(Graph.linkDirectionalParticles());
-        Graph.linkDirectionalParticleSpeed(Graph.linkDirectionalParticleSpeed());
-        Graph.linkDirectionalParticleColor(Graph.linkDirectionalParticleColor());
-
-        // Pulse neuron halos
-        const nodes = Graph.graphData().nodes || [];
-        for (const n of nodes) {
-            const obj = n.__threeObj;
-            if (!obj || !obj.userData || !obj.userData.haloMat) continue;
-            const { haloMat, coreMat, tier, baseHalo } = obj.userData;
-            const selected = activeAtom && n.id === activeAtom.id;
-            const hovered = isHoverActive() && n.id === hoverNodeId;
-            const neigh = isHoverActive() && hoverNeighborIds.has(n.id);
-            const firing = simNodeIds.has(n.id);
-
-            let halo = baseHalo * (1 + 0.35 * Math.sin(ambientPulse + (n.val || 0)));
-            let coreOp = tier === "cold" ? 0.55 : 0.92;
-            if (selected || hovered) {
-                halo = Math.min(0.38, halo + 0.18);
-                coreOp = 1;
-                if (coreMat) coreMat.color.setHex(0xffffff);
-            } else if (neigh || firing) {
-                halo = Math.min(0.28, halo + 0.12);
-                if (coreMat) coreMat.color.setHex(0xa78bfa);
-            } else if (isHoverActive()) {
-                halo *= 0.35;
-                coreOp *= 0.35;
-                if (coreMat) {
-                    coreMat.color.setHex(tier === "hot" ? 0x555555 : 0x333333);
-                }
-            } else if (coreMat) {
-                coreMat.color.setHex(tier === "hot" ? 0xffffff : tier === "cold" ? 0x666666 : 0xcccccc);
-            }
-            haloMat.opacity = halo;
-            if (coreMat) coreMat.opacity = coreOp;
-        }
-    }
-
-    function clearSimOverlay() {
-        simNodeIds = new Set();
-        simLinkKeys = new Set();
-        if (simClearTimer) {
-            clearTimeout(simClearTimer);
-            simClearTimer = null;
-        }
-        refreshGraphPaint();
-    }
-
-    function randomWalkPath(maxHops) {
-        const nodeIds = [...adjacency.keys()];
-        if (nodeIds.length < 2) return { nodes: [], linkKeys: [] };
-        const start = nodeIds[Math.floor(Math.random() * nodeIds.length)];
-        const pathNodes = [start];
-        const pathLinks = [];
-        let current = start;
-        const hops = 4 + Math.floor(Math.random() * Math.max(1, maxHops - 3));
-        for (let i = 0; i < hops; i++) {
-            const neighbors = [...(adjacency.get(current) || [])];
-            if (!neighbors.length) break;
-            const next = neighbors[Math.floor(Math.random() * neighbors.length)];
-            pathLinks.push(sortedLinkKey(current, next));
-            pathNodes.push(next);
-            current = next;
-        }
-        return { nodes: pathNodes, linkKeys: pathLinks };
-    }
-
-    function pulseSimActivity() {
-        if (!Graph || adjacency.size < 2) {
-            scheduleNextSim();
-            return;
-        }
-        // Lightning burst: one primary bolt + brief ambient shimmer
-        const walk = randomWalkPath(8);
-        simNodeIds = new Set(walk.nodes);
-        simLinkKeys = new Set(walk.linkKeys);
-        zapBurstUntil = performance.now() + 280;
-        refreshGraphPaint();
-
-        const holdMs = 1600 + Math.floor(Math.random() * 2200);
-        if (simClearTimer) clearTimeout(simClearTimer);
-        simClearTimer = setTimeout(() => {
-            clearSimOverlay();
-            scheduleNextSim();
-        }, holdMs);
-    }
-
-    function scheduleNextSim() {
-        if (simTimer) clearTimeout(simTimer);
-        // Calm cadence — infrequent irregular flashes
-        const delay = 4500 + Math.floor(Math.random() * 5500);
-        simTimer = setTimeout(pulseSimActivity, delay);
-    }
-
-    function startSimActivity() {
-        if (simTimer) clearTimeout(simTimer);
-        simTimer = setTimeout(pulseSimActivity, 4000);
-    }
-
-    function stageSize() {
-        if (!stage) return { w: 800, h: 560 };
-        return {
-            w: stage.clientWidth || 800,
-            h: stage.clientHeight || 560
-        };
-    }
-
-    /** Instant whole-brain framing — no fly-in / zoom animation. */
-    function frameWholeBrain() {
-        if (!Graph) return;
-        try {
-            Graph.zoomToFit(0, 160);
-        } catch (_) {}
-    }
-
-    function updateMainBrain(atoms) {
-        if (!stage || typeof ForceGraph3D === "undefined" || typeof THREE === "undefined") return;
-        const picked = pickBrainAtoms(atoms);
-        const nodes = atomsToNodes(picked);
-        const sig = nodes.map(n => n.id).sort().join("|").slice(0, 2000);
-        baseLinks = buildBrainLinks(nodes);
-        rebuildAdjacency(baseLinks);
-        clearSimOverlay();
-
-        const { w, h } = stageSize();
-
-        if (!Graph) {
-            Graph = ForceGraph3D()(stage);
-            applyGraphStyle(Graph);
-            Graph.width(w).height(h);
-            // Start far enough that the whole cloud is visible before fit.
-            Graph.cameraPosition({ x: 0, y: 40, z: 520 }, { x: 0, y: 0, z: 0 }, 0);
-            Graph.graphData({ nodes, links: baseLinks.slice() });
-            ensureStarfield(Graph);
-
-            const controls = Graph.controls();
-            if (controls) {
-                controls.autoRotate = true;
-                controls.autoRotateSpeed = 0.12;
-                controls.enableDamping = true;
-                controls.dampingFactor = 0.05;
-            }
-
-            window.addEventListener("resize", () => {
-                if (!Graph || !stage) return;
-                const s = stageSize();
-                Graph.width(s.w).height(s.h);
-                frameWholeBrain();
-            });
-
-            setInterval(() => {
-                ambientPulse += 0.04;
-                if (Graph) refreshGraphPaint();
-            }, 120);
-
-            stage.addEventListener("pointerdown", () => {
-                const c = Graph && Graph.controls();
-                if (c) c.autoRotate = false;
-            });
-            stage.addEventListener("pointerleave", () => {
-                const c = Graph && Graph.controls();
-                if (c) c.autoRotate = true;
-            });
-
-            // Wait for force layout to settle, then snap whole brain into view (no zoom tween).
-            setTimeout(frameWholeBrain, 200);
-            setTimeout(frameWholeBrain, 900);
-            startSimActivity();
-            graphBuiltForSig = sig;
-            if (layoutMode !== "force") {
-                applyFormationLayout(layoutMode, { animate: false });
-                startFormationSpin();
-                setTimeout(frameWholeBrain, 250);
-            }
-            return;
-        }
-
-        if (sig !== graphBuiltForSig) {
-            Graph.graphData({ nodes, links: baseLinks.slice() });
-            graphBuiltForSig = sig;
-            setTimeout(frameWholeBrain, 300);
-        } else {
-            refreshGraphPaint();
-        }
-        startSimActivity();
-        if (layoutMode !== "force") applyFormationLayout(layoutMode, { animate: false });
-    }
-
-    let starfieldAdded = false;
-
-    function ensureStarfield(g) {
-        if (starfieldAdded || !g || typeof THREE === "undefined") return;
-        const scene = typeof g.scene === "function" ? g.scene() : null;
-        if (!scene) return;
-        const COUNT = 900;
-        const pos = new Float32Array(COUNT * 3);
-        for (let i = 0; i < COUNT; i++) {
-            const r = 220 + Math.random() * 280;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(1 - 2 * Math.random());
-            pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-            pos[i * 3 + 1] = r * Math.cos(phi);
-            pos[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-        }
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-        const mat = new THREE.PointsMaterial({
-            size: 1.1,
-            color: 0xffffff,
-            transparent: true,
-            opacity: 0.35,
-            depthWrite: false,
-            sizeAttenuation: true
-        });
-        scene.add(new THREE.Points(geo, mat));
-        starfieldAdded = true;
-    }
-
-    // ——— Memory stream + Ask (neural patch, correct API contracts) ———
-
-    const streamFeed = document.getElementById("stream-feed");
-    const liveToggle = document.getElementById("live-toggle");
-    const askInput = document.getElementById("ask-input");
-    const askOutput = document.getElementById("ask-output");
-    const MAX_STREAM = 40;
-    let liveStream = true;
-    let activitySince = 0;
-
-    function pushStream(kind, label, body) {
-        if (!streamFeed) return;
-        const el = document.createElement("div");
-        el.className = `stream-item kind-${kind}`;
-        el.innerHTML = `
-            <div class="s-meta"><span>${escapeHtml(label)}</span><span>${new Date().toLocaleTimeString()}</span></div>
-            <div class="s-body">${escapeHtml(body)}</div>`;
-        streamFeed.prepend(el);
-        while (streamFeed.children.length > MAX_STREAM) streamFeed.lastChild.remove();
-    }
-
-    async function pollActivity() {
-        if (!liveStream) return;
-        try {
-            const r = await fetch(`/api/activity?since=${activitySince}`);
-            if (!r.ok) return;
-            const j = await r.json();
-            const events = Array.isArray(j.events) ? j.events : [];
-            if (typeof j.next_seq === "number") activitySince = j.next_seq;
-            for (const ev of events) {
-                const tool = ev.tool || "memory";
-                const kind = /ask|think/i.test(tool) ? "thought"
-                    : /search|cite|mcp|tool/i.test(tool) ? "tool" : "memory";
-                const body = [ev.query, ev.detail].filter(Boolean).join(" — ")
-                    || (ev.atom_ids && ev.atom_ids.length ? `${ev.atom_ids.length} atoms` : tool);
-                pushStream(kind, tool, body);
-            }
-        } catch (_) { /* daemon offline */ }
-    }
-
-    if (liveToggle) {
-        liveToggle.addEventListener("click", () => {
-            liveStream = !liveStream;
-            liveToggle.setAttribute("aria-pressed", String(liveStream));
-            liveToggle.textContent = liveStream ? "❚❚" : "▶";
-            liveToggle.title = liveStream ? "Pause live stream" : "Resume live stream";
-        });
-    }
-
-    if (askInput) {
-        askInput.addEventListener("keydown", async e => {
-            if (e.key !== "Enter" || !askInput.value.trim()) return;
-            const q = askInput.value.trim();
-            if (askOutput) askOutput.textContent = "thinking…";
-            pushStream("thought", "ask", q);
-            try {
-                const r = await fetch(`/api/ask?question=${encodeURIComponent(q)}`);
-                const j = await r.json();
-                if (!r.ok) {
-                    if (askOutput) askOutput.textContent = j.error || j.message || `ask failed (${r.status})`;
-                    return;
-                }
-                const text = j.answer || j.response || JSON.stringify(j).slice(0, 400);
-                if (askOutput) askOutput.textContent = text;
-                pushStream("thought", "answer", String(text).slice(0, 160));
-            } catch (_) {
-                if (askOutput) askOutput.textContent = "ask failed — daemon offline?";
-            }
-        });
-    }
-
-    applyViewMode();
-    loadDashboard().then(() => {
-        pushStream("memory", "lattice", "synaptic brain online");
+    elements.inspector.innerHTML = "";
+    const title = document.createElement("h3");
+    title.className = "inspector-title";
+    title.textContent = atom.title;
+    const summary = document.createElement("p");
+    summary.className = "inspector-summary";
+    summary.textContent = atom.summary;
+    const metrics = document.createElement("div");
+    metrics.className = "node-metrics";
+    const relationCount = buildRelationships(state.visible)
+      .filter((link) => link.a === atom.id || link.b === atom.id).length;
+    [["weight", atom.score.toFixed(2)], ["recency", atom.last_accessed_at || atom.indexed_at || "unknown"],
+     ["relations", relationCount], ["tier", atom.tier]].forEach(([name, value]) => {
+      const metric = document.createElement("span");
+      metric.className = "metric";
+      const label = document.createTextNode(`${name} `);
+      const strong = document.createElement("b");
+      strong.textContent = value;
+      metric.append(label, strong);
+      metrics.append(metric);
     });
-    setInterval(pollActivity, 2500);
-});
+    elements.inspector.append(title, summary, metrics);
+    if (atom.tags.length) {
+      const tags = document.createElement("p");
+      tags.className = "inspector-summary";
+      tags.textContent = atom.tags.map((tag) => `#${tag}`).join(" ");
+      elements.inspector.append(tags);
+    }
+    if (atom.file) {
+      const open = document.createElement("button");
+      open.className = "open-button";
+      open.type = "button";
+      open.textContent = "Open source file ↗";
+      open.addEventListener("click", () => openFile(atom.file));
+      elements.inspector.append(open);
+    }
+  }
+
+  async function openFile(file) {
+    try {
+      const r = await fetch(`/api/open?file=${encodeURIComponent(file)}`);
+      if (!r.ok) throw new Error("open failed");
+    } catch (_) {
+      elements.askOutput.textContent = "Could not ask the daemon to open that file.";
+    }
+  }
+
+  /* ── Search ─────────────────────────────────────────────────── */
+  function renderSearchResults(results) {
+    elements.dropdown.innerHTML = "";
+    if (!results.length) { elements.dropdown.hidden = true; return; }
+    results.slice(0, 6).forEach((atom) => {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = "search-result";
+      option.setAttribute("role", "option");
+      const title = document.createElement("strong");
+      title.textContent = atom.title;
+      const detail = document.createElement("span");
+      detail.textContent = atom.summary;
+      option.append(title, detail);
+      option.addEventListener("click", () => {
+        elements.search.value = atom.title;
+        elements.dropdown.hidden = true;
+        state.atoms = results;
+        refreshLattice();
+        renderInspector(atom);
+      });
+      elements.dropdown.append(option);
+    });
+    elements.dropdown.hidden = false;
+  }
+
+  let searchDelay;
+  async function search(query) {
+    if (!query.trim()) { state.query = ""; await loadAtoms(); return; }
+    try {
+      const results = (await getJson(`/api/search?q=${encodeURIComponent(query)}&limit=80`)).map(normalize);
+      state.query = query;
+      state.atoms = results;
+      renderSearchResults(results);
+      refreshLattice();
+    } catch (_) {
+      renderSearchResults([]);
+      elements.caption.textContent = "Search is unavailable while the daemon is offline.";
+    }
+  }
+
+  /* ── Activity ───────────────────────────────────────────────── */
+  function addActivity(event) {
+    if (elements.activity.querySelector(".empty-state")) elements.activity.innerHTML = "";
+    const row = document.createElement("article");
+    row.className = "activity-item";
+    const meta = document.createElement("div");
+    meta.className = "activity-meta";
+    const tool = document.createElement("span");
+    tool.textContent = text(event.tool, "memory");
+    const time = document.createElement("time");
+    time.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    meta.append(tool, time);
+    const body = document.createElement("p");
+    body.textContent = text(event.query || event.detail || (event.atom_ids || []).join(", "), "local activity");
+    row.append(meta, body);
+    elements.activity.prepend(row);
+    while (elements.activity.children.length > 30) elements.activity.lastElementChild.remove();
+  }
+
+  async function pollActivity() {
+    if (!state.live) return;
+    try {
+      const data = await getJson(`/api/activity?since=${state.since}`);
+      state.since = Number(data.next_seq) || state.since;
+      (data.events || []).forEach(addActivity);
+    } catch (_) { /* Offline — represented in header. */ }
+  }
+
+  /* ── 3-D graph (Three.js) ───────────────────────────────────── */
+  /*
+   * Node colour palette: white = hovered/selected, purple = base.
+   * Edge colour:         dim purple at rest, bright on hover highlight.
+   * No floating background particles (avoided per AGENTS.md clean aesthetic).
+   * Graph stays compact (radius ≤ 8) to prevent far-out dots.
+   */
+  const COLOUR = {
+    nodeBase:    0xa855f7,   // electric purple
+    nodeHot:     0xffffff,   // white on hover
+    nodeUnfocus: 0x5b2b8a,   // dimmed purple when another node is hovered
+    edgeRest:    0x6d28d9,   // dim purple edge
+    edgeActive:  0xc084fc,   // bright purple on hover connection
+    edgeDim:     0x2a1050,   // near-invisible when unfocused
+    pointLight:  0xa855f7
+  };
+
+  function makeGraph() {
+    if (!window.THREE || !elements.canvas) return null;
+    const THREE = window.THREE;
+    const host = elements.canvas;
+    const stage = elements.stage;
+
+    const scene    = new THREE.Scene();
+    const camera   = new THREE.PerspectiveCamera(44, 1, .1, 1000);
+    camera.position.set(0, 0, 24);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    host.append(renderer.domElement);
+
+    const nodes = new THREE.Group();
+    const edges = new THREE.Group();
+    scene.add(nodes, edges);
+
+    const pointLight = new THREE.PointLight(COLOUR.pointLight, 1.6, 80);
+    pointLight.position.set(0, 0, 12);
+    scene.add(pointLight);
+
+    const raycaster = new THREE.Raycaster();
+    const pointer   = new THREE.Vector2();
+    let objects = [], nodeMap = new Map(), links = [];
+    let hover = null, dragging = false, last = null;
+    let yaw = 0, pitch = 0, distance = 24;
+
+    function nodeMaterial(active) {
+      return new THREE.MeshBasicMaterial({
+        color:       active ? COLOUR.nodeHot : COLOUR.nodeBase,
+        transparent: true,
+        opacity:     active ? 1 : .82
+      });
+    }
+
+    function resize() {
+      const rect = stage.getBoundingClientRect();
+      camera.aspect = rect.width / rect.height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(rect.width, rect.height, false);
+    }
+
+    /* Fibonacci-sphere layout capped to a tight radius (8.5 max) */
+    function positionFor(index, total) {
+      const phi   = Math.acos(1 - 2 * (index + .5) / Math.max(total, 1));
+      const theta = Math.PI * (1 + Math.sqrt(5)) * index;
+      const r     = 6.5 * (0.7 + .28 * Math.sin(phi) ** 1.4);
+      return new THREE.Vector3(
+        r * Math.cos(theta) * Math.sin(phi),
+        4.8 * Math.cos(phi),
+        r * Math.sin(theta) * Math.sin(phi) * .68
+      );
+    }
+
+    function update(atoms) {
+      nodes.clear(); edges.clear();
+      objects = []; nodeMap = new Map();
+      links = buildRelationships(atoms);
+
+      atoms.slice(0, 450).forEach((atom, index) => {
+        const size = .12 + Math.min(atom.score, 1) * .10;
+        const mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(size, 9, 9),
+          nodeMaterial(false)
+        );
+        mesh.position.copy(positionFor(index, Math.min(atoms.length, 450)));
+        mesh.userData.atom = atom;
+        nodes.add(mesh);
+        objects.push(mesh);
+        nodeMap.set(atom.id, mesh);
+      });
+
+      links.forEach((link) => {
+        const a = nodeMap.get(link.a);
+        const b = nodeMap.get(link.b);
+        if (!a || !b) return;
+        const geo = new THREE.BufferGeometry().setFromPoints([a.position, b.position]);
+        const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+          color: COLOUR.edgeRest, transparent: true, opacity: .18
+        }));
+        line.userData = link;
+        edges.add(line);
+      });
+
+      /* Hide fallback once nodes are loaded */
+      if (elements.fallback) {
+        elements.fallback.style.opacity = atoms.length ? "0" : "1";
+      }
+    }
+
+    function recolor() {
+      renderer.setClearColor(0x000000, 0);
+    }
+
+    /* Hover: highlight hovered node + connected edges/nodes */
+    function showHover(mesh, event) {
+      hover = mesh;
+      const hoveredId = mesh.userData.atom.id;
+      const connectedIds = new Set();
+      links.forEach((link) => {
+        if (link.a === hoveredId) connectedIds.add(link.b);
+        else if (link.b === hoveredId) connectedIds.add(link.a);
+      });
+
+      objects.forEach((node) => {
+        if (node === mesh) {
+          node.material.color.setHex(COLOUR.nodeHot);
+          node.material.opacity = 1;
+        } else if (connectedIds.has(node.userData.atom.id)) {
+          node.material.color.setHex(COLOUR.nodeBase);
+          node.material.opacity = .9;
+        } else {
+          node.material.color.setHex(COLOUR.nodeUnfocus);
+          node.material.opacity = .3;
+        }
+      });
+
+      edges.children.forEach((line) => {
+        const linked = line.userData.a === hoveredId || line.userData.b === hoveredId;
+        line.material.opacity = linked ? .9 : .04;
+        line.material.color.setHex(linked ? COLOUR.edgeActive : COLOUR.edgeDim);
+      });
+
+      const atom = mesh.userData.atom;
+      elements.tooltip.hidden = false;
+      elements.tooltip.innerHTML = "";
+      const titleEl = document.createElement("strong");
+      titleEl.textContent = atom.title;
+      const metaEl = document.createElement("span");
+      metaEl.textContent = `${atom.tags.length} tags · ${atom.tier}`;
+      elements.tooltip.append(titleEl, metaEl);
+
+      const rect = stage.getBoundingClientRect();
+      elements.tooltip.style.left = `${Math.min(event.clientX - rect.left + 12, rect.width - 190)}px`;
+      elements.tooltip.style.top  = `${Math.min(event.clientY - rect.top  + 12, rect.height - 56)}px`;
+      renderInspector(atom);
+    }
+
+    function clearHover() {
+      hover = null;
+      elements.tooltip.hidden = true;
+      objects.forEach((node) => {
+        node.material.color.setHex(COLOUR.nodeBase);
+        node.material.opacity = .82;
+      });
+      edges.children.forEach((line) => {
+        line.material.opacity = .18;
+        line.material.color.setHex(COLOUR.edgeRest);
+      });
+    }
+
+    function hit(event) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width)  *  2 - 1;
+      pointer.y = -((event.clientY - rect.top)  / rect.height) *  2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      return raycaster.intersectObjects(objects)[0]?.object || null;
+    }
+
+    renderer.domElement.addEventListener("pointermove", (e) => {
+      if (dragging && last) {
+        yaw   += (e.clientX - last.x) * .008;
+        pitch  = Math.max(-.8, Math.min(.8, pitch + (e.clientY - last.y) * .008));
+        last   = { x: e.clientX, y: e.clientY };
+        return;
+      }
+      const obj = hit(e);
+      if (obj)        showHover(obj, e);
+      else if (hover) clearHover();
+    });
+    renderer.domElement.addEventListener("pointerdown", (e) => {
+      dragging = true; last = { x: e.clientX, y: e.clientY };
+    });
+    window.addEventListener("pointerup", () => { dragging = false; last = null; });
+    renderer.domElement.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      distance = Math.max(12, Math.min(50, distance + e.deltaY * .015));
+    }, { passive: false });
+    renderer.domElement.addEventListener("click", (e) => {
+      const obj = hit(e);
+      if (obj) renderInspector(obj.userData.atom);
+    });
+    stage.addEventListener("keydown", (e) => { if (e.key === "Escape") clearHover(); });
+
+    function frame(now) {
+      camera.position.set(
+        Math.sin(yaw) * distance,
+        Math.sin(pitch) * distance * .48,
+        Math.cos(yaw) * distance
+      );
+      camera.lookAt(0, 0, 0);
+      renderer.render(scene, camera);
+      requestAnimationFrame(frame);
+    }
+
+    new ResizeObserver(resize).observe(stage);
+    resize(); recolor();
+    requestAnimationFrame(frame);
+    return { update, recolor };
+  }
+
+  /* ── CDN Three.js load guard ────────────────────────────────── */
+  /*
+   * If Three.js fails to load (e.g. unpkg.com blocked), window.THREE will be
+   * undefined and makeGraph() returns null. In that case we keep the static
+   * SVG fallback fully visible and skip the 3-D canvas entirely.
+   */
+  function initGraph() {
+    if (!window.THREE) {
+      // CDN blocked — keep fallback at full opacity, just update caption
+      if (elements.fallback) elements.fallback.style.opacity = "1";
+      if (elements.canvas)  elements.canvas.style.display   = "none";
+      elements.caption.textContent = "3-D graph offline (CDN blocked) — static view active";
+      return null;
+    }
+    return makeGraph();
+  }
+
+  /* ── API calls ──────────────────────────────────────────────── */
+  async function loadStatus() {
+    try {
+      const data = await getJson("/api/status");
+      setStatus(data.ok ? "daemon online" : "daemon recovering", Boolean(data.ok));
+      $("stat-atoms").textContent    = text(data.atoms);
+      const memory = data.memory || {};
+      $("stat-tiers").textContent   = `${memory.hot ?? 0} / ${memory.warm ?? 0} / ${memory.cold ?? 0}`;
+      $("stat-trusted").textContent  = text(data.brain && data.brain.trusted_count);
+    } catch (_) {
+      setStatus("daemon offline", false);
+    }
+  }
+
+  async function loadAtoms() {
+    try {
+      const data   = await getJson("/api/atoms?limit=450");
+      state.atoms  = data.map(normalize);
+      refreshLattice();
+    } catch (_) {
+      state.atoms  = [];
+      refreshLattice();
+      elements.caption.textContent = "Local daemon unavailable — lattice standby.";
+    }
+  }
+
+  async function ask(event) {
+    event.preventDefault();
+    const question = elements.askInput.value.trim();
+    if (!question) return;
+    elements.askOutput.textContent = "Thinking locally…";
+    try {
+      const answer = await getJson(`/api/ask?question=${encodeURIComponent(question)}`);
+      elements.askOutput.textContent = text(
+        answer.answer || answer.response || answer.text,
+        "The daemon returned an empty answer."
+      );
+      addActivity({ tool: "ask", query: question });
+    } catch (_) {
+      elements.askOutput.textContent = "The local daemon could not answer right now.";
+    }
+  }
+
+  function setTimelineLabel() {
+    const value = Number(elements.timeline.value);
+    elements.timelineOutput.value =
+      value === 100 ? "all time" : value > 66 ? "recent" : value > 33 ? "focused" : "now";
+    refreshLattice();
+  }
+
+  function togglePlayback() {
+    state.playing = !state.playing;
+    elements.play.setAttribute("aria-pressed", String(state.playing));
+    elements.play.textContent = state.playing ? "Ⅱ" : "▶";
+    elements.play.setAttribute("aria-label", state.playing ? "Pause timeline" : "Play timeline");
+    clearInterval(state.timer);
+    if (state.playing) {
+      state.timer = setInterval(() => {
+        const value = Number(elements.timeline.value);
+        elements.timeline.value = value >= 100 ? 0 : value + 2;
+        setTimelineLabel();
+      }, reducedMotion ? 1500 : 650);
+    }
+  }
+
+  /* ── Event bindings ─────────────────────────────────────────── */
+  function bind() {
+    elements.theme.addEventListener("click", () =>
+      applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")
+    );
+    elements.streamToggle.addEventListener("click", () => {
+      state.live = !state.live;
+      elements.streamToggle.setAttribute("aria-pressed", String(state.live));
+      elements.streamToggle.textContent = state.live ? "live" : "paused";
+    });
+    elements.timeline.addEventListener("input", setTimelineLabel);
+    elements.play.addEventListener("click", togglePlayback);
+    elements.askForm.addEventListener("submit", ask);
+    elements.search.addEventListener("input", () => {
+      clearTimeout(searchDelay);
+      searchDelay = setTimeout(() => search(elements.search.value), 200);
+    });
+    elements.search.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") e.preventDefault();
+      if (e.key === "Escape") elements.dropdown.hidden = true;
+    });
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        elements.search.focus();
+      }
+    });
+  }
+
+  /* ── Bootstrap ──────────────────────────────────────────────── */
+  async function init() {
+    applyTheme(initialTheme());
+    bind();
+    state.graph = initGraph();
+    await Promise.all([loadStatus(), loadAtoms(), pollActivity()]);
+    window.setInterval(loadStatus,   20000);
+    window.setInterval(pollActivity,  2500);
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();
