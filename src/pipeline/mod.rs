@@ -134,19 +134,17 @@ impl IndexPipeline {
 
         // Gate each atom; track in-batch content hashes so exact dupes in the
         // same connector batch quarantine even before commit.
-        let mut batch_trusted_hashes = std::collections::HashSet::new();
+        let mut batch_seen_hashes = std::collections::HashSet::new();
         for atom in &mut enriched {
             let hash = sha256_hex(&atom.content);
-            let outcome = if batch_trusted_hashes.contains(&hash) {
+            let outcome = if batch_seen_hashes.contains(&hash) {
                 crate::quality::GateOutcome::Quarantine {
                     reason: format!("exact_duplicate:batch:{hash}"),
                 }
             } else {
                 evaluate(self.store.as_ref(), atom).await?
             };
-            if matches!(outcome, crate::quality::GateOutcome::Trusted) {
-                batch_trusted_hashes.insert(hash);
-            }
+            batch_seen_hashes.insert(hash);
             apply_gate(atom, outcome);
         }
 
