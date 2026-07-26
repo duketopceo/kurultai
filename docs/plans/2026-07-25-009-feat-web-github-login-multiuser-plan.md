@@ -121,7 +121,7 @@ promote atoms ──opt-in──►   shared index                    ◄── 
 
 ## Verification Contract
 
-- `git ls-files -- 'web/node_modules/**' '.next/**'` must be empty  
+- `git ls-files -- 'web/node_modules/**' 'web/.next/**'` must be empty  
 - `rg Clerk web/`  
 - `cargo test`  
 - `cargo clippy --all-targets -- -D warnings`  
