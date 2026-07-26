@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   ClerkProvider,
   Show,
@@ -23,9 +24,9 @@ export default function RootLayout({
       <html lang="en">
         <body>
           <header className="site-header">
-            <a href="/" className="brand">
+            <Link href="/" className="brand">
               kurultai
-            </a>
+            </Link>
             <nav className="auth-nav">
               <Show when="signed-out">
                 <SignInButton mode="modal">
@@ -40,9 +41,9 @@ export default function RootLayout({
                 </SignUpButton>
               </Show>
               <Show when="signed-in">
-                <a href="/dashboard" className="nav-link">
+                <Link href="/dashboard" className="nav-link">
                   Dashboard
-                </a>
+                </Link>
                 <UserButton />
               </Show>
             </nav>

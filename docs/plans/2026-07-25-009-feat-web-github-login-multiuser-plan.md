@@ -73,7 +73,7 @@ origin: "Fast path Clerk+Kiranism pattern; #81 GitHub login; #80 sync deferred d
 
 ### Multi-user model (design — ship as doc)
 
-```
+```text
 Personal kernel (device)     Team Kurultai (one deploy)      Company
 ─────────────────────       ──────────────────────────      ────────
 local store.db              shared store + daemon           multi-tenant orgs
@@ -97,7 +97,7 @@ promote atoms ──opt-in──►   shared index                    ◄── 
 
 ### U1. Lean `web/` Clerk + GitHub
 
-**Files:** `web/package.json`, `web/app/…`, `web/middleware.ts`, `web/.env.example`, `web/README.md`
+**Files:** `web/package.json`, `web/src/app/…`, `web/src/proxy.ts`, `web/.env.example`, `web/README.md`
 
 **Work:** Minimal Next App Router; `@clerk/nextjs`; sign-in/sign-up routes; home shows user when signed in; GitHub as social (Clerk dashboard). Inspired by Kiranism pattern — do not copy entire starter.
 
@@ -121,9 +121,10 @@ promote atoms ──opt-in──►   shared index                    ◄── 
 
 ## Verification Contract
 
-- `test ! -d web/node_modules` in git  
+- `git ls-files -- 'web/node_modules/**' '.next/**'` must be empty  
 - `rg Clerk web/`  
-- `cargo test -q --lib` smoke (or fmt check)  
+- `cargo test`  
+- `cargo clippy --all-targets -- -D warnings`  
 - Manual: `cd web && npm install && npm run build` if network allows  
 
 ---
