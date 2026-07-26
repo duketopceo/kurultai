@@ -131,6 +131,11 @@ impl BrainService {
     pub async fn atom_count(&self) -> Result<u64> {
         self.store.count().await
     }
+
+    /// Return up to `limit` atoms ordered newest-first (dashboard default view).
+    pub async fn list_atoms(&self, limit: usize) -> Result<Vec<KnowledgeAtom>> {
+        self.store.list_atoms(limit).await
+    }
 }
 
 fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Citation {

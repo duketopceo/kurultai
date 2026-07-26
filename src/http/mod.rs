@@ -45,6 +45,7 @@ fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/api/status", get(api_status))
+        .route("/api/atoms", get(api_atoms))
         .route("/api/search", get(search_get).post(search_post))
         .route("/api/open", get(api_open))
         .route("/ui", get(ui_dashboard))
@@ -89,6 +90,35 @@ async fn ui_dashboard() -> impl IntoResponse {
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
         Html(DASHBOARD_HTML),
     )
+}
+
+async fn api_atoms(
+    State(state): State<AppState>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<Vec<crate::types::SearchResult>>, (StatusCode, String)> {
+    let limit: usize = params
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(500);
+    state
+        .brain
+        .list_atoms(limit)
+        .await
+        .map(|atoms| {
+            Json(
+                atoms
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, atom)| crate::types::SearchResult {
+                        atom,
+                        score: 1.0,
+                        rank: i,
+                        matched_by: vec!["list".to_string()],
+                    })
+                    .collect(),
+            )
+        })
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
 const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
@@ -337,12 +367,98 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
             background-color: #030712;
         }
 
+        .pill-btn-group {
+            display: flex;
+            gap: 6px;
+        }
+
+        .pill-btn {
+            padding: 6px 18px;
+            border-radius: 9999px;
+            border: 1px solid var(--border-color);
+            background: rgba(255,255,255,0.04);
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            transition: var(--transition-smooth);
+        }
+
+        .pill-btn:hover {
+            border-color: var(--primary);
+            color: var(--text-primary);
+        }
+
+        .pill-btn.active {
+            background: var(--primary);
+            color: #000000;
+            border-color: var(--primary);
+            font-weight: 700;
+        }
+
+        .info-btn {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 9999px;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            flex-shrink: 0;
+        }
+
+        .info-btn:hover .tooltip {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(-4px);
+        }
+
+        .tooltip {
+            position: absolute;
+            bottom: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%) translateY(0);
+            width: 240px;
+            background: #111111;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            z-index: 100;
+            white-space: normal;
+            text-align: left;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: var(--border-color);
+        }
+
         @media (max-width: 992px) {
             .db-layout {
                 grid-template-columns: 1fr;
             }
         }
-    </style>
 </head>
 <body>
 
@@ -387,10 +503,22 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
             <div class="search-box" style="margin-bottom: 0;">
                 <input type="text" id="brain-search" class="search-input" placeholder="Query the local brain (FTS + Vector search)...">
             </div>
-            <div class="glass-panel" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; border-radius: 9999px; font-family: var(--font-mono); font-size: 0.85rem;">
+            <div class="glass-panel" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-radius: 9999px; font-family: var(--font-mono); font-size: 0.85rem;">
                 <span style="color: var(--text-muted);">Connection Threshold</span>
-                <input type="range" id="threshold-slider" min="0.0" max="1.0" step="0.05" value="0.0" style="flex: 1; margin: 0 20px; accent-color: var(--primary); cursor: pointer;">
-                <span id="threshold-val" style="color: var(--primary); min-width: 32px; text-align: right;">0.00</span>
+                <div class="pill-btn-group">
+                    <button class="pill-btn active" data-threshold="0.0" id="thresh-low">Low</button>
+                    <button class="pill-btn" data-threshold="0.5" id="thresh-med">Med</button>
+                    <button class="pill-btn" data-threshold="0.8" id="thresh-high">High</button>
+                </div>
+                <div class="info-btn">
+                    i
+                    <div class="tooltip">
+                        <strong>Connection strength:</strong><br>
+                        <b>Low</b> — show all links (same tag or source)<br>
+                        <b>Med</b> — shared tags only (score ≥ 0.5)<br>
+                        <b>High</b> — shared source + tag (score ≥ 0.8)
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -424,9 +552,8 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
             const inspector = document.getElementById("atom-inspector");
             const searchInput = document.getElementById("brain-search");
             const graphContainer = document.getElementById("3d-synapse-graph");
-            const slider = document.getElementById("threshold-slider");
-            const sliderVal = document.getElementById("threshold-val");
             const viewModeBtn = document.getElementById("view-mode-btn");
+            const threshPills = document.querySelectorAll(".pill-btn[data-threshold]");
 
             let currentAtoms = [];
             let activeAtom = null;
@@ -463,40 +590,53 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                     console.error("Failed to load status details:", e);
                 }
 
-                // 2. Fetch Initial Search (all atoms)
-                await triggerSearch("");
+                // 2. Fetch Initial Atoms (all atoms, no query required)
+                await triggerLoadAtoms();
+            }
+
+            async function triggerLoadAtoms() {
+                try {
+                    const res = await fetch("/api/atoms?limit=50");
+                    const results = await res.json();
+                    processResults(results);
+                } catch (e) {
+                    console.error("Failed to fetch initial atoms:", e);
+                }
             }
 
             async function triggerSearch(query) {
+                if (!query) return triggerLoadAtoms();
                 try {
                     const searchRes = await fetch("/api/search?q=" + encodeURIComponent(query) + "&limit=25");
                     const results = await searchRes.json();
-                    
-                    currentAtoms = results.map(r => ({
-                        id: r.atom.id || r.title_hash || Math.random().toString(36).substr(2, 9),
-                        title: r.atom.title || r.title,
-                        source: r.atom.source || r.source,
-                        source_id: r.atom.source_id || r.source_id,
-                        summary: r.atom.summary || r.excerpt,
-                        content: r.atom.content || r.excerpt,
-                        question: r.atom.question || "",
-                        resolution: r.atom.resolution || "",
-                        tags: r.atom.tags || [],
-                        source_updated_at: r.atom.source_updated_at || "",
-                        file_path: r.file_path || r.atom.file_path || r.atom.metadata?.file_path || "",
-                        score: r.score
-                    }));
-
-                    renderAtomsList(currentAtoms);
-                    if (currentAtoms.length > 0 && !activeAtom) {
-                        activeAtom = currentAtoms[0];
-                        inspectAtom(activeAtom);
-                    }
-                    update3DGraph(currentAtoms);
+                    processResults(results);
                 } catch (e) {
                     console.error("Failed search query execution:", e);
                     listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Failed to fetch active atoms from server.</div>`;
                 }
+            }
+
+            function processResults(results) {
+                currentAtoms = results.map(r => ({
+                    id: r.atom.id || r.title_hash || Math.random().toString(36).substr(2, 9),
+                    title: r.atom.title || r.title,
+                    source: r.atom.source || r.source,
+                    source_id: r.atom.source_id || r.source_id,
+                    summary: r.atom.summary || r.excerpt,
+                    content: r.atom.content || r.excerpt,
+                    question: r.atom.question || "",
+                    resolution: r.atom.resolution || "",
+                    tags: r.atom.tags || [],
+                    source_updated_at: r.atom.source_updated_at || "",
+                    score: r.score
+                }));
+
+                renderAtomsList(currentAtoms);
+                if (currentAtoms.length > 0 && !activeAtom) {
+                    activeAtom = currentAtoms[0];
+                    inspectAtom(activeAtom);
+                }
+                update3DGraph(currentAtoms);
             }
 
             function renderAtomsList(atoms) {
@@ -591,11 +731,14 @@ const DASHBOARD_HTML: &str = r##"<!DOCTYPE html>
                 }, 300);
             });
 
-            // Threshold Range Change Listener
-            slider.addEventListener("input", (e) => {
-                currentThreshold = parseFloat(e.target.value);
-                sliderVal.textContent = currentThreshold.toFixed(2);
-                update3DGraph(currentAtoms);
+            // Threshold Pill Handlers
+            threshPills.forEach(btn => {
+                btn.addEventListener("click", () => {
+                    threshPills.forEach(b => b.classList.remove("active"));
+                    btn.classList.add("active");
+                    currentThreshold = parseFloat(btn.dataset.threshold);
+                    update3DGraph(currentAtoms);
+                });
             });
 
             // 3D Graph Instance Handler

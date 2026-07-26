@@ -68,6 +68,9 @@ pub trait Store: Send + Sync {
 
     /// True when atom `id` already has `content_hash` and a stored vector (hash-skip re-embed).
     async fn has_fresh_embedding(&self, id: &str, content_hash: &str) -> Result<bool>;
+
+    /// Return up to `limit` atoms ordered newest-first (no query required).
+    async fn list_atoms(&self, limit: usize) -> Result<Vec<KnowledgeAtom>>;
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -112,6 +115,29 @@ impl SqliteVecStore {
     pub fn get_by_id(&self, id: &str) -> Result<Option<KnowledgeAtom>> {
         let conn = self.lock()?;
         load_atom_by_id(&conn, id)
+    }
+
+    /// Return up to `limit` atoms ordered by indexed_at DESC (newest first).
+    pub fn list_atoms(&self, limit: usize) -> Result<Vec<KnowledgeAtom>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT id, source, source_id, title, summary, content,
+                       question, resolution, tags_json,
+                       source_updated_at, indexed_at, metadata_json
+                FROM knowledge_atoms
+                ORDER BY indexed_at DESC
+                LIMIT ?1
+                "#,
+            )
+            .map_err(|e| KurultaiError::Store(format!("list_atoms prepare: {e}")))?;
+        let atoms = stmt
+            .query_map([limit as i64], row_to_atom)
+            .map_err(|e| KurultaiError::Store(format!("list_atoms query: {e}")))?;
+        atoms
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| KurultaiError::Store(format!("list_atoms collect: {e}")))
     }
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
@@ -474,6 +500,10 @@ impl Store for SqliteVecStore {
             .optional()
             .map_err(|e| KurultaiError::Store(format!("has_fresh_embedding: {e}")))?;
         Ok(found.is_some())
+    }
+
+    async fn list_atoms(&self, limit: usize) -> Result<Vec<KnowledgeAtom>> {
+        self.list_atoms(limit)
     }
 }
 
