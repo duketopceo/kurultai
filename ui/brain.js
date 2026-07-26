@@ -45,7 +45,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 document.getElementById("stat-atoms").textContent = j.atoms ?? "—";
                 document.getElementById("stat-env").textContent =
                     (j.scheduler && j.scheduler.env) || "dev";
-                // sources: derived from atom list below (daemon status doesn't expose source count directly)
             })
             .catch(e => {
                 document.getElementById("stat-status").textContent = "Daemon unreachable";
@@ -99,7 +98,6 @@ document.addEventListener("DOMContentLoaded", () => {
             };
         });
 
-        // distinct source count for the stat card
         const sources = new Set(currentAtoms.map(a => a.source).filter(Boolean));
         const sourcesEl = document.getElementById("stat-sources");
         if (sourcesEl) sourcesEl.textContent = sources.size || "—";
@@ -154,7 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const updatedSuffix = isTechnical && atom.source_updated_at ? ` (updated: ${escapeHtml(atom.source_updated_at)})` : "";
         const idHeader = isTechnical ? `<div class="detail-label" style="text-align: right;">ID: ${escapeHtml(atom.id)}</div>` : "";
         const openFileBtn = isTechnical && atom.file_path
-            ? `<button onclick="openFileInEditor('${escapeHtml(atom.file_path)}')" style="padding: 4px 12px; font-size: 0.75rem; border-radius: 9999px; background: rgba(168,85,247,0.1); border: 1px solid #c084fc; color: #c084fc; cursor: pointer; font-family: var(--font-mono);">Open File</button>`
+            ? `<button onclick="openFileInEditor('${escapeHtml(atom.file_path)}')" style="padding: 4px 12px; font-size: 0.75rem; border-radius: 9999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.35); color: #ffffff; cursor: pointer; font-family: var(--font-mono);">Open File</button>`
             : "";
         const routingRow = isTechnical && atom.question ? `
             <div class="detail-row">
@@ -220,35 +218,38 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // 7. 3D synapse graph — stock ForceGraph3D styling + pathway overlays
-    const AGENT_NODE_ID = "__mcp_agent__";
+    // 7. 3D synapse graph — white/electric styling, hover focus, simulated activity
     let baseLinks = [];
-    let pathwayIds = new Set();
-    let pathwayClearTimer = null;
-    let liveSince = 0;
-    let liveTimer = null;
-    let showcaseBusy = false;
+    let adjacency = new Map(); // id -> Set of neighbor ids
 
-    const pathwayStatusEl = document.getElementById("pathway-status");
-    const answerChip = document.getElementById("answer-chip");
-    const answerChipText = document.getElementById("answer-chip-text");
-    const showcaseBtn = document.getElementById("showcase-btn");
-    const liveBtn = document.getElementById("live-btn");
+    let hoverNodeId = null;
+    let hoverNeighborIds = new Set();
 
-    function setPathwayStatus(text, active) {
-        if (!pathwayStatusEl) return;
-        pathwayStatusEl.textContent = text;
-        pathwayStatusEl.classList.toggle("active", !!active);
+    // Simulated algorithm overlays (visual only — never hits the API)
+    let simNodeIds = new Set();
+    let simLinkKeys = new Set();
+    let simTimer = null;
+    let simClearTimer = null;
+
+    function linkId(end) {
+        return typeof end === "object" && end ? end.id : end;
     }
 
-    function showAnswerChip(text) {
-        if (!answerChip || !answerChipText) return;
-        answerChipText.textContent = text || "";
-        answerChip.classList.toggle("visible", !!text);
+    function sortedLinkKey(a, b) {
+        return a < b ? `${a}|${b}` : `${b}|${a}`;
     }
 
-    function sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+    function rebuildAdjacency(links) {
+        adjacency = new Map();
+        for (const link of links) {
+            const s = linkId(link.source);
+            const t = linkId(link.target);
+            if (!s || !t) continue;
+            if (!adjacency.has(s)) adjacency.set(s, new Set());
+            if (!adjacency.has(t)) adjacency.set(t, new Set());
+            adjacency.get(s).add(t);
+            adjacency.get(t).add(s);
+        }
     }
 
     function buildStructuralLinks(nodes) {
@@ -258,7 +259,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const sharesSource = nodes[i].source_id === nodes[j].source_id;
                 const sharesTag = nodes[i].tags.some(t => nodes[j].tags.includes(t));
                 if (sharesSource || sharesTag) {
-                    links.push({ source: nodes[i].id, target: nodes[j].id, path: false });
+                    links.push({ source: nodes[i].id, target: nodes[j].id });
                 }
             }
         }
@@ -275,40 +276,88 @@ document.addEventListener("DOMContentLoaded", () => {
                 source_id: atom.source_id,
                 tags,
                 kind: "atom",
-                color: tags.length > 0 ? "#c084fc" : "#ffffff",
                 val: Math.max(2, Math.min(6, tags.length + 2))
             };
         });
     }
 
+    function isHoverActive() {
+        return hoverNodeId != null;
+    }
+
+    function linkIsHovered(link) {
+        if (!isHoverActive()) return false;
+        const s = linkId(link.source);
+        const t = linkId(link.target);
+        return (s === hoverNodeId && hoverNeighborIds.has(t))
+            || (t === hoverNodeId && hoverNeighborIds.has(s));
+    }
+
+    function linkIsSim(link) {
+        const s = linkId(link.source);
+        const t = linkId(link.target);
+        return simLinkKeys.has(sortedLinkKey(s, t));
+    }
+
     function applyGraphStyle(g) {
         g.backgroundColor("#000000")
             .nodeColor(node => {
-                if (node.id === AGENT_NODE_ID) return "#22c55e";
-                if (pathwayIds.has(node.id)) return "#fbbf24";
-                if (pathwayIds.size > 0 && node.kind === "atom") return "#444444";
-                return node.color || "#ffffff";
+                if (isHoverActive()) {
+                    if (node.id === hoverNodeId) return "#ffffff";
+                    if (hoverNeighborIds.has(node.id)) return "#e8e8e8";
+                    return "#1a1a1a";
+                }
+                if (simNodeIds.has(node.id)) return "#f5f5f5";
+                return "#ffffff";
             })
             .nodeRelSize(4)
-            .nodeVal(node => (pathwayIds.has(node.id) || node.id === AGENT_NODE_ID ? 10 : node.val || 3))
+            .nodeVal(node => {
+                if (isHoverActive() && node.id === hoverNodeId) return 11;
+                if (isHoverActive() && hoverNeighborIds.has(node.id)) return 8;
+                if (simNodeIds.has(node.id)) return 7;
+                return node.val || 3;
+            })
             .nodeOpacity(0.95)
             .nodeLabel(node => {
                 const tags = (node.tags || []).map(t => escapeHtml(t)).join(", ");
                 return `
-                    <div style="background: rgba(0, 0, 0, 0.9); border: 1px solid #c084fc; border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 0.85rem; color: #ffffff; pointer-events: none;">
-                        <strong style="color: #c084fc; font-size: 0.9rem;">${escapeHtml(node.title)}</strong><br/>
+                    <div style="background: rgba(0, 0, 0, 0.92); border: 1px solid rgba(255,255,255,0.35); border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 0.85rem; color: #ffffff; pointer-events: none; box-shadow: 0 0 18px rgba(255,255,255,0.12);">
+                        <strong style="color: #ffffff; font-size: 0.9rem;">${escapeHtml(node.title)}</strong><br/>
                         <span style="color: #888888;">Source: ${escapeHtml(node.source)}/${escapeHtml(node.source_id)}</span><br/>
-                        <span style="color: #c084fc;">Tags: ${tags}</span>
+                        <span style="color: #cccccc;">Tags: ${tags}</span>
                     </div>`;
             })
-            .linkColor(link => (link.path ? "rgba(251, 191, 36, 0.85)" : "rgba(168, 85, 247, 0.22)"))
-            .linkWidth(link => (link.path ? 1.8 : 0.45))
-            .linkDirectionalParticles(link => (link.path ? 3 : 0))
-            .linkDirectionalParticleSpeed(0.006)
-            .linkDirectionalParticleWidth(2)
-            .linkDirectionalParticleColor(() => "#fbbf24")
+            .linkColor(link => {
+                if (linkIsHovered(link)) return "rgba(255, 255, 255, 0.92)";
+                if (isHoverActive()) return "rgba(255, 255, 255, 0.04)";
+                if (linkIsSim(link)) return "rgba(255, 255, 255, 0.55)";
+                return "rgba(255, 255, 255, 0.14)";
+            })
+            .linkWidth(link => {
+                if (linkIsHovered(link)) return 1.6;
+                if (linkIsSim(link)) return 1.1;
+                return 0.35;
+            })
+            .linkOpacity(0.65)
+            .linkDirectionalParticles(link => {
+                if (linkIsHovered(link)) return 4;
+                if (linkIsSim(link)) return 2;
+                return 0;
+            })
+            .linkDirectionalParticleSpeed(0.005)
+            .linkDirectionalParticleWidth(1.8)
+            .linkDirectionalParticleColor(() => "#ffffff")
+            .onNodeHover(node => {
+                if (!node) {
+                    hoverNodeId = null;
+                    hoverNeighborIds = new Set();
+                } else {
+                    hoverNodeId = node.id;
+                    hoverNeighborIds = new Set(adjacency.get(node.id) || []);
+                }
+                refreshGraphPaint();
+            })
             .onNodeClick(node => {
-                if (node.id === AGENT_NODE_ID) return;
                 const atom = currentAtoms.find(a => a.id === node.id);
                 if (atom) {
                     activeAtom = atom;
@@ -331,64 +380,69 @@ document.addEventListener("DOMContentLoaded", () => {
         Graph.linkDirectionalParticles(Graph.linkDirectionalParticles());
     }
 
-    function clearPathway(keepStatus) {
-        pathwayIds = new Set();
-        if (pathwayClearTimer) {
-            clearTimeout(pathwayClearTimer);
-            pathwayClearTimer = null;
+    function clearSimOverlay() {
+        simNodeIds = new Set();
+        simLinkKeys = new Set();
+        if (simClearTimer) {
+            clearTimeout(simClearTimer);
+            simClearTimer = null;
         }
-        if (!Graph) return;
-        const data = Graph.graphData();
-        const nodes = data.nodes.filter(n => n.id !== AGENT_NODE_ID);
-        Graph.graphData({ nodes, links: baseLinks.slice() });
         refreshGraphPaint();
-        if (!keepStatus) {
-            setPathwayStatus("idle", false);
-            showAnswerChip("");
-        }
     }
 
-    async function playPathway({ atomIds, mode, holdMs, agentId }) {
-        if (!Graph || !atomIds || !atomIds.length) return;
-        const present = new Set(Graph.graphData().nodes.map(n => n.id));
-        const ids = atomIds.filter(id => present.has(id));
-        if (!ids.length) return;
+    function randomWalkPath(maxHops) {
+        const nodeIds = [...adjacency.keys()];
+        if (nodeIds.length < 2) return { nodes: [], linkKeys: [] };
 
-        pathwayIds = new Set(ids);
+        const start = nodeIds[Math.floor(Math.random() * nodeIds.length)];
+        const pathNodes = [start];
         const pathLinks = [];
-        if (agentId && present.has(agentId)) {
-            pathLinks.push({ source: agentId, target: ids[0], path: true });
+        let current = start;
+        const hops = 2 + Math.floor(Math.random() * Math.max(1, maxHops - 1));
+
+        for (let i = 0; i < hops; i++) {
+            const neighbors = [...(adjacency.get(current) || [])];
+            if (!neighbors.length) break;
+            const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+            pathLinks.push(sortedLinkKey(current, next));
+            pathNodes.push(next);
+            current = next;
         }
-        for (let i = 0; i < ids.length - 1; i++) {
-            pathLinks.push({ source: ids[i], target: ids[i + 1], path: true });
+
+        return { nodes: pathNodes, linkKeys: pathLinks };
+    }
+
+    function pulseSimActivity() {
+        if (!Graph || adjacency.size < 2) {
+            scheduleNextSim();
+            return;
         }
-        const data = Graph.graphData();
-        Graph.graphData({
-            nodes: data.nodes,
-            links: baseLinks.concat(pathLinks)
-        });
+
+        // Soft delayed "algorithm" traversal — visual only
+        const walk = randomWalkPath(5);
+        simNodeIds = new Set(walk.nodes);
+        simLinkKeys = new Set(walk.linkKeys);
         refreshGraphPaint();
 
-        try {
-            const focusNodes = data.nodes.filter(n => pathwayIds.has(n.id) || n.id === agentId);
-            if (focusNodes.length) Graph.zoomToFit(800, 60, n => pathwayIds.has(n.id) || n.id === agentId);
-        } catch (e) { /* ignore */ }
+        const holdMs = 1600 + Math.floor(Math.random() * 1400);
+        if (simClearTimer) clearTimeout(simClearTimer);
+        simClearTimer = setTimeout(() => {
+            clearSimOverlay();
+            scheduleNextSim();
+        }, holdMs);
+    }
 
-        const hold = holdMs != null ? holdMs : (mode === "live" ? 2200 : 1600);
-        if (pathwayClearTimer) clearTimeout(pathwayClearTimer);
-        if (mode === "live") {
-            pathwayClearTimer = setTimeout(() => {
-                pathwayIds = new Set();
-                if (!Graph) return;
-                const d = Graph.graphData();
-                Graph.graphData({
-                    nodes: d.nodes.filter(n => n.id !== AGENT_NODE_ID),
-                    links: baseLinks.slice()
-                });
-                refreshGraphPaint();
-            }, hold);
-        }
-        await sleep(hold);
+    function scheduleNextSim() {
+        if (simTimer) clearTimeout(simTimer);
+        // Delayed / staggered so activity feels like queued potential algorithms, not spam
+        const delay = 2800 + Math.floor(Math.random() * 5200);
+        simTimer = setTimeout(pulseSimActivity, delay);
+    }
+
+    function startSimActivity() {
+        if (simTimer) clearTimeout(simTimer);
+        // First pulse after a short settle so the graph can layout
+        simTimer = setTimeout(pulseSimActivity, 2200);
     }
 
     function update3DGraph(atoms) {
@@ -396,240 +450,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const nodes = atomsToNodes(atoms);
         baseLinks = buildStructuralLinks(nodes);
+        rebuildAdjacency(baseLinks);
+        clearSimOverlay();
 
         if (!Graph) {
             Graph = ForceGraph3D()(graphContainer);
             applyGraphStyle(Graph);
             Graph.graphData({ nodes, links: baseLinks.slice() });
             Graph.width(graphContainer.clientWidth);
-            Graph.height(500);
+            Graph.height(560);
             window.addEventListener("resize", () => {
                 if (!Graph || !graphContainer) return;
                 Graph.width(graphContainer.clientWidth);
-                if (!graphContainer.classList.contains("fullscreen")) {
-                    Graph.height(500);
-                }
+                Graph.height(560);
             });
             setTimeout(() => { try { Graph.zoomToFit(1000, 80); } catch (e) {} }, 1400);
+            startSimActivity();
         } else {
-            const agent = Graph.graphData().nodes.find(n => n.id === AGENT_NODE_ID);
-            const nextNodes = agent ? nodes.concat([agent]) : nodes;
-            Graph.graphData({ nodes: nextNodes, links: baseLinks.slice() });
+            Graph.graphData({ nodes, links: baseLinks.slice() });
             refreshGraphPaint();
+            startSimActivity();
         }
-    }
-
-    // 8. Fullscreen + Suggested
-    const fullscreenBtn = document.getElementById("fullscreen-btn");
-    const suggestBtn = document.getElementById("suggest-btn");
-
-    if (fullscreenBtn) {
-        fullscreenBtn.addEventListener("click", () => {
-            if (!graphContainer) return;
-            const isFs = graphContainer.classList.toggle("fullscreen");
-            fullscreenBtn.textContent = isFs ? "Exit Fullscreen" : "Fullscreen";
-            fullscreenBtn.classList.toggle("primary", isFs);
-            requestAnimationFrame(() => {
-                if (!Graph) return;
-                Graph.width(graphContainer.clientWidth);
-                Graph.height(graphContainer.clientHeight);
-            });
-        });
-    }
-
-    function suggestAtoms() {
-        if (!currentAtoms.length || !Graph) return;
-        const scoreMap = new Map();
-        for (const a of currentAtoms) {
-            let score = 0;
-            for (const b of currentAtoms) {
-                if (a.id === b.id) continue;
-                const sharesSource = a.source_id && a.source_id === b.source_id;
-                const sharesTag = (a.tags || []).some(t => (b.tags || []).includes(t));
-                if (sharesSource || sharesTag) score++;
-            }
-            scoreMap.set(a.id, score);
-        }
-        const top = [...currentAtoms]
-            .sort((a, b) => (scoreMap.get(b.id) || 0) - (scoreMap.get(a.id) || 0))
-            .slice(0, 2);
-        if (!top.length) return;
-        playPathway({ atomIds: top.map(a => a.id), mode: "live", holdMs: 2500 });
-        activeAtom = top[0];
-        renderAtomsList(currentAtoms);
-        inspectAtom(top[0]);
-    }
-
-    if (suggestBtn) {
-        suggestBtn.addEventListener("click", suggestAtoms);
-    }
-
-    // 9. Showcase MCP walk
-    async function runShowcase() {
-        if (showcaseBusy || !Graph) return;
-        showcaseBusy = true;
-        if (showcaseBtn) showcaseBtn.disabled = true;
-        showAnswerChip("");
-        clearPathway(true);
-
-        const q = (searchInput && searchInput.value.trim()) || "kurultai";
-        setPathwayStatus(`showcase · entering · ${q}`, true);
-
-        const data = Graph.graphData();
-        const agentNode = {
-            id: AGENT_NODE_ID,
-            title: "MCP agent",
-            source: "mcp",
-            source_id: "showcase",
-            tags: [],
-            kind: "agent",
-            color: "#22c55e",
-            val: 12,
-            x: 80,
-            y: 80,
-            z: 80
-        };
-        Graph.graphData({ nodes: data.nodes.concat([agentNode]), links: baseLinks.slice() });
-        refreshGraphPaint();
-        await sleep(600);
-
-        let searchIds = [];
-        try {
-            setPathwayStatus(`showcase · search · ${q}`, true);
-            const r = await fetch("/api/search?q=" + encodeURIComponent(q) + "&limit=8");
-            const results = await r.json();
-            searchIds = (results || []).map(row => (row.atom || row).id).filter(Boolean);
-            await playPathway({
-                atomIds: searchIds,
-                mode: "showcase",
-                holdMs: 1400,
-                agentId: AGENT_NODE_ID
-            });
-        } catch (e) {
-            console.error("showcase search failed:", e);
-            setPathwayStatus("showcase · search failed", true);
-        }
-
-        try {
-            setPathwayStatus(`showcase · ask · ${q}`, true);
-            const r = await fetch("/api/ask", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ question: q })
-            });
-            const answer = await r.json();
-            const citeIds = searchIds.slice(0, 5);
-            showAnswerChip(answer.answer || "(no answer)");
-            await playPathway({
-                atomIds: citeIds,
-                mode: "showcase",
-                holdMs: 1800,
-                agentId: AGENT_NODE_ID
-            });
-            setPathwayStatus("showcase · answered", true);
-        } catch (e) {
-            console.error("showcase ask failed:", e);
-            setPathwayStatus("showcase · ask failed", true);
-        }
-
-        await sleep(700);
-        setPathwayStatus("showcase · leaving", true);
-        const after = Graph.graphData();
-        Graph.graphData({
-            nodes: after.nodes.filter(n => n.id !== AGENT_NODE_ID),
-            links: baseLinks.slice()
-        });
-        pathwayIds = new Set();
-        refreshGraphPaint();
-        await sleep(400);
-        setPathwayStatus("idle", false);
-
-        showcaseBusy = false;
-        if (showcaseBtn) showcaseBtn.disabled = false;
-    }
-
-    if (showcaseBtn) {
-        showcaseBtn.addEventListener("click", () => { runShowcase(); });
-    }
-
-    // 10. Live toggle — poll /api/activity
-    async function handleLiveEvent(ev) {
-        const tool = ev.tool || "";
-        const q = ev.query || "";
-        if (tool === "search_hop") {
-            setPathwayStatus(`live · hop · ${q}`, true);
-            await playPathway({ atomIds: ev.atom_ids || [], mode: "live", holdMs: 900 });
-            return;
-        }
-        if (tool === "search") {
-            setPathwayStatus(`live · search · ${q}`, true);
-            await playPathway({ atomIds: ev.atom_ids || [], mode: "live", holdMs: 2000 });
-            return;
-        }
-        if (tool === "ask") {
-            setPathwayStatus(`live · ask · ${q}`, true);
-            if (ev.detail) showAnswerChip(ev.detail);
-            await playPathway({ atomIds: ev.atom_ids || [], mode: "live", holdMs: 2400 });
-            return;
-        }
-        if (tool === "remember") {
-            setPathwayStatus(`live · remembered id=${(ev.atom_ids || [])[0] || "?"}`, true);
-            await triggerLoadAtoms();
-            await playPathway({ atomIds: ev.atom_ids || [], mode: "live", holdMs: 2600 });
-            return;
-        }
-        if (tool === "cite" || tool === "who_knows") {
-            setPathwayStatus(`live · ${tool} · ${q}`, true);
-            await playPathway({ atomIds: ev.atom_ids || [], mode: "live", holdMs: 1600 });
-        }
-    }
-
-    async function pollLive() {
-        try {
-            const r = await fetch("/api/activity?since=" + liveSince);
-            const j = await r.json();
-            liveSince = j.next_seq ?? liveSince;
-            const events = j.events || [];
-            for (const ev of events) {
-                await handleLiveEvent(ev);
-            }
-        } catch (e) {
-            console.error("live poll failed:", e);
-        }
-    }
-
-    function setLive(on) {
-        if (liveBtn) {
-            liveBtn.classList.toggle("live-on", on);
-            liveBtn.setAttribute("aria-pressed", String(on));
-            liveBtn.textContent = on ? "Live · ON" : "Live";
-        }
-        if (liveTimer) {
-            clearInterval(liveTimer);
-            liveTimer = null;
-        }
-        if (on) {
-            setPathwayStatus("live · watching", true);
-            // Seed since to current tip so we only see new traffic
-            fetch("/api/activity?since=0")
-                .then(r => r.json())
-                .then(j => {
-                    liveSince = j.next_seq || 0;
-                    liveTimer = setInterval(pollLive, 400);
-                })
-                .catch(() => {
-                    liveTimer = setInterval(pollLive, 400);
-                });
-        } else {
-            clearPathway(false);
-        }
-    }
-
-    if (liveBtn) {
-        liveBtn.addEventListener("click", () => {
-            const on = liveBtn.getAttribute("aria-pressed") !== "true";
-            setLive(on);
-        });
     }
 
     // Kick off

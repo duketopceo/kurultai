@@ -104,8 +104,8 @@ p {
 }
 
 .glass-panel:hover {
-    border-color: rgba(168, 85, 247, 0.25);
-    box-shadow: 0 12px 45px 0 rgba(168, 85, 247, 0.08);
+    border-color: rgba(255, 255, 255, 0.22);
+    box-shadow: 0 12px 45px 0 rgba(255, 255, 255, 0.06);
 }
 
 /* Layout Utilities */
@@ -195,15 +195,15 @@ header {
     display: inline-block;
     padding: 6px 14px;
     border-radius: 9999px;
-    background: rgba(168, 85, 247, 0.08);
-    border: 1px solid rgba(168, 85, 247, 0.15);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.18);
     color: var(--primary);
     font-size: 0.8rem;
     font-weight: 600;
     margin-bottom: 24px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    box-shadow: 0 0 15px rgba(168, 85, 247, 0.05);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.06);
 }
 
 .hero h1 {
