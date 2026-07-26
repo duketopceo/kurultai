@@ -63,7 +63,8 @@
 
         .atom-item:hover, .atom-item.active {
             border-color: var(--primary);
-            background: rgba(168, 85, 247, 0.08);
+            background: rgba(255, 255, 255, 0.06);
+            box-shadow: 0 0 18px rgba(255, 255, 255, 0.06);
         }
 
         .atom-item h4 {
@@ -113,7 +114,7 @@
         .detail-val {
             font-size: 0.95rem;
             color: var(--text-secondary);
-            background: rgba(0, 0, 0, 0.2);
+            background: rgba(0, 0, 0, 0.35);
             padding: 12px 16px;
             border-radius: 8px;
             border: 1px solid var(--border-color);
@@ -124,9 +125,9 @@
             display: inline-block;
             padding: 4px 10px;
             border-radius: 6px;
-            background: rgba(168, 85, 247, 0.1);
-            border: 1px solid rgba(168, 85, 247, 0.2);
-            color: var(--secondary);
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: var(--text-secondary);
             font-size: 0.8rem;
             margin-right: 6px;
             font-family: var(--font-mono);
@@ -140,7 +141,7 @@
 
         .search-input {
             flex: 1;
-            background: rgba(17, 24, 39, 0.8);
+            background: rgba(0, 0, 0, 0.65);
             border: 1px solid var(--border-color);
             padding: 14px 20px;
             border-radius: 8px;
@@ -152,8 +153,8 @@
         }
 
         .search-input:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 15px rgba(168, 85, 247, 0.15);
+            border-color: rgba(255, 255, 255, 0.45);
+            box-shadow: 0 0 18px rgba(255, 255, 255, 0.12);
         }
 
         .vector-space-section {
@@ -164,7 +165,7 @@
         #vector-space-canvas {
             width: 100%;
             height: 350px;
-            background: rgba(3, 7, 18, 0.6);
+            background: #000000;
             border-radius: 16px;
             border: 1px solid var(--border-color);
         }
@@ -198,99 +199,27 @@
         }
 
         .view-toggle-btn:hover {
-            border-color: var(--primary);
+            border-color: rgba(255, 255, 255, 0.45);
+            box-shadow: 0 0 14px rgba(255, 255, 255, 0.1);
         }
 
         .view-toggle-btn.technical {
-            border-color: #c084fc;
-            background: rgba(168, 85, 247, 0.12);
-            color: #c084fc;
+            border-color: rgba(255, 255, 255, 0.55);
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            box-shadow: 0 0 16px rgba(255, 255, 255, 0.12);
         }
 
-        .graph-controls {
-            display: flex;
-            justify-content: flex-end;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .graph-btn {
-            padding: 8px 18px;
-            border-radius: 9999px;
+        #3d-synapse-graph {
+            width: 100%;
+            height: 560px;
+            border-radius: 16px;
             border: 1px solid var(--border-color);
-            background: rgba(255, 255, 255, 0.04);
-            color: var(--text-primary);
-            font-family: var(--font-mono);
-            font-size: 0.8rem;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            transition: var(--transition-smooth);
-        }
-
-        .graph-btn:hover {
-            border-color: #c084fc;
-            color: #c084fc;
-        }
-
-        .graph-btn.primary {
-            border-color: #c084fc;
-            background: rgba(168, 85, 247, 0.12);
-            color: #c084fc;
-        }
-
-        #3d-synapse-graph.fullscreen {
-            position: fixed;
-            inset: 0;
-            z-index: 9999;
-            width: 100vw;
-            height: 100vh;
-            border-radius: 0;
-            border: none;
-        }
-
-        .pathway-status {
-            font-family: var(--font-mono);
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            letter-spacing: 0.04em;
-            margin-bottom: 12px;
-            min-height: 1.2em;
-        }
-
-        .pathway-status.active {
-            color: #c084fc;
-        }
-
-        .answer-chip {
-            display: none;
-            margin-bottom: 16px;
-            padding: 14px 18px;
-            border: 1px solid #c084fc;
-            border-radius: 12px;
-            background: rgba(168, 85, 247, 0.1);
-            font-family: var(--font-mono);
-            font-size: 0.85rem;
-            color: var(--text-primary);
-            line-height: 1.45;
-        }
-
-        .answer-chip.visible {
-            display: block;
-        }
-
-        .answer-chip .chip-label {
-            color: #c084fc;
-            text-transform: uppercase;
-            font-size: 0.7rem;
-            letter-spacing: 0.08em;
-            margin-bottom: 6px;
-        }
-
-        .graph-btn.live-on {
-            border-color: #22c55e;
-            background: rgba(34, 197, 94, 0.12);
-            color: #22c55e;
+            overflow: hidden;
+            background: #000000;
+            box-shadow:
+                inset 0 0 80px rgba(255, 255, 255, 0.03),
+                0 0 40px rgba(255, 255, 255, 0.04);
         }
 
         @media (max-width: 992px) {
@@ -312,7 +241,7 @@
                 kurultai
             </a>
             <nav class="nav-links">
-                <a href="index.html">Showcase</a>
+                <a href="index.html">Home</a>
                 <a href="#stats">Brain Stats</a>
                 <a href="#data">Atom Explorer</a>
                 <a href="#vectors">Vector Mapping</a>
@@ -383,20 +312,9 @@
     <section id="vectors" class="container vector-space-section">
         <div class="section-header" style="margin-bottom: 32px;">
             <h2>3D Synaptic Network</h2>
-            <p>Interactive 3D force-directed node-link graph mapping vector coordinates and call graphs. Nodes represent indexed atoms; pulsing particles represent electron transmission.</p>
+            <p>Interactive force-directed graph of indexed atoms. Hover a node to light its connections; soft pulses show delayed algorithm activity across the network.</p>
         </div>
-        <div class="graph-controls">
-            <button id="showcase-btn" class="graph-btn primary" title="Animate an MCP search → ask walk on this graph">Showcase MCP</button>
-            <button id="live-btn" class="graph-btn" title="Poll daemon activity and light pathways as agents search" aria-pressed="false">Live</button>
-            <button id="suggest-btn" class="graph-btn primary" title="Surface the 2 most-connected atoms and fly the camera to them">Suggested</button>
-            <button id="fullscreen-btn" class="graph-btn" title="Toggle fullscreen 3D view">Fullscreen</button>
-        </div>
-        <div id="pathway-status" class="pathway-status">idle</div>
-        <div id="answer-chip" class="answer-chip" aria-live="polite">
-            <div class="chip-label">Answer</div>
-            <div id="answer-chip-text"></div>
-        </div>
-        <div id="3d-synapse-graph" class="glass-panel" style="width: 100%; height: 500px; border-radius: 16px; border: 1px solid var(--border-color); overflow: hidden;"></div>
+        <div id="3d-synapse-graph" class="glass-panel"></div>
     </section>
 
     <!-- Footer -->
@@ -405,12 +323,12 @@
             <p>© 2026 Kurultai. MIT Licensed.</p>
             <div class="footer-links">
                 <a href="https://github.com/duketopceo/kurultai" target="_blank">GitHub</a>
-                <a href="index.html">Showcase</a>
+                <a href="index.html">Home</a>
             </div>
         </div>
     </footer>
 
-    <!-- brain.js fetches live atoms from the local kurultai daemon (/api/* proxied to 127.0.0.1:8421) -->
+    <!-- brain.js fetches atoms from the local kurultai daemon (/api/* proxied to 127.0.0.1:8421) -->
     <script src="brain.js" defer></script>
 
 </body>
