@@ -339,6 +339,64 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    // 8. Fullscreen toggle + Suggested-atoms action
+    const fullscreenBtn = document.getElementById("fullscreen-btn");
+    const suggestBtn = document.getElementById("suggest-btn");
+
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener("click", () => {
+            if (!graphContainer) return;
+            const isFs = graphContainer.classList.toggle("fullscreen");
+            fullscreenBtn.textContent = isFs ? "Exit Fullscreen" : "Fullscreen";
+            fullscreenBtn.classList.toggle("primary", isFs);
+            // Let the layout settle, then resize the graph to the new box
+            requestAnimationFrame(() => {
+                if (!Graph) return;
+                Graph.width(graphContainer.clientWidth);
+                Graph.height(graphContainer.clientHeight);
+            });
+        });
+    }
+
+    function suggestAtoms() {
+        if (!currentAtoms.length || !Graph) return;
+        // Client-side frequency/connectivity score: how many other loaded atoms
+        // share a tag or source_id with each atom. Pulls from the brain via /api/atoms.
+        const scoreMap = new Map();
+        for (const a of currentAtoms) {
+            let score = 0;
+            for (const b of currentAtoms) {
+                if (a.id === b.id) continue;
+                const sharesSource = a.source_id && a.source_id === b.source_id;
+                const sharesTag = (a.tags || []).some(t => (b.tags || []).includes(t));
+                if (sharesSource || sharesTag) score++;
+            }
+            scoreMap.set(a.id, score);
+        }
+        const top = [...currentAtoms]
+            .sort((a, b) => (scoreMap.get(b.id) || 0) - (scoreMap.get(a.id) || 0))
+            .slice(0, 2);
+
+        if (!top.length) return;
+
+        // Animate the map to focus the top suggestion
+        const gnodes = Graph.graphData().nodes;
+        const focus = gnodes.find(n => n.id === top[0].id);
+        if (focus && typeof focus.x === "number") {
+            Graph.centerAt(focus.x, focus.y, focus.z, 1000);
+        }
+        setTimeout(() => { try { Graph.zoomToFit(1000, 80); } catch (e) {} }, 1150);
+
+        // Select the top suggestion in the list + inspector
+        activeAtom = top[0];
+        renderAtomsList(currentAtoms);
+        inspectAtom(top[0]);
+    }
+
+    if (suggestBtn) {
+        suggestBtn.addEventListener("click", suggestAtoms);
+    }
+
     // Kick off
     applyViewMode();
     loadDashboard();

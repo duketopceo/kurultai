@@ -206,6 +206,48 @@
             color: #c084fc;
         }
 
+        .graph-controls {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .graph-btn {
+            padding: 8px 18px;
+            border-radius: 9999px;
+            border: 1px solid var(--border-color);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            transition: var(--transition-smooth);
+        }
+
+        .graph-btn:hover {
+            border-color: #c084fc;
+            color: #c084fc;
+        }
+
+        .graph-btn.primary {
+            border-color: #c084fc;
+            background: rgba(168, 85, 247, 0.12);
+            color: #c084fc;
+        }
+
+        #3d-synapse-graph.fullscreen {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            width: 100vw;
+            height: 100vh;
+            border-radius: 0;
+            border: none;
+        }
+
         @media (max-width: 992px) {
             .db-layout {
                 grid-template-columns: 1fr;
@@ -297,6 +339,10 @@
         <div class="section-header" style="margin-bottom: 32px;">
             <h2>3D Synaptic Network</h2>
             <p>Interactive 3D force-directed node-link graph mapping vector coordinates and call graphs. Nodes represent indexed atoms; pulsing particles represent electron transmission.</p>
+        </div>
+        <div class="graph-controls">
+            <button id="suggest-btn" class="graph-btn primary" title="Surface the 2 most-connected atoms and fly the camera to them">Suggested</button>
+            <button id="fullscreen-btn" class="graph-btn" title="Toggle fullscreen 3D view">Fullscreen</button>
         </div>
         <div id="3d-synapse-graph" class="glass-panel" style="width: 100%; height: 500px; border-radius: 16px; border: 1px solid var(--border-color); overflow: hidden;"></div>
     </section>
