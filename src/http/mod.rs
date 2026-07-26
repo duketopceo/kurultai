@@ -6,6 +6,7 @@
 mod ui;
 
 use crate::daemon::DaemonStatus;
+use crate::error::KurultaiError;
 use crate::mcp::brain::BrainService;
 use crate::mcp::interface::AgentRead;
 use crate::synthesize::WhoKnowsEntry;
@@ -252,13 +253,13 @@ async fn api_touch(
             &request_id,
         )),
         Err(e) => {
-            let msg = e.to_string();
-            let status = if msg.contains("atom not found") {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::BAD_REQUEST
+            let status = match &e {
+                KurultaiError::Store(msg) if msg.contains("atom not found") => {
+                    StatusCode::NOT_FOUND
+                }
+                _ => StatusCode::BAD_REQUEST,
             };
-            Err(json_error(status, msg, &request_id))
+            Err(json_error(status, e.to_string(), &request_id))
         }
     }
 }

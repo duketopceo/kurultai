@@ -200,8 +200,7 @@
   async function search(query) {
     if (!query.trim()) {
       state.query = "";
-      elements.dropdown.hidden = true;
-      elements.dropdown.innerHTML = "";
+      renderSearchResults([]);
       await loadAtoms();
       return;
     }
@@ -287,7 +286,7 @@
     const raycaster = new THREE.Raycaster();
     const pointer   = new THREE.Vector2();
     let objects = [], nodeMap = new Map(), links = [];
-    let hover = null, hoveredId = null, dragging = false, last = null;
+    let hover = null, dragging = false, last = null;
     let yaw = 0, pitch = 0, distance = 24;
 
     function disposeGroup(group) {
@@ -377,17 +376,16 @@
     }
 
     function showHover(mesh, event) {
-      const nextId = mesh.userData.atom.id;
-      if (hoveredId === nextId) {
+      if (hover === mesh) {
         placeTooltip(event);
         return;
       }
       hover = mesh;
-      hoveredId = nextId;
+      const nextId = mesh.userData.atom.id;
       const connectedIds = new Set();
       links.forEach((link) => {
-        if (link.a === hoveredId) connectedIds.add(link.b);
-        else if (link.b === hoveredId) connectedIds.add(link.a);
+        if (link.a === nextId) connectedIds.add(link.b);
+        else if (link.b === nextId) connectedIds.add(link.a);
       });
 
       objects.forEach((node) => {
@@ -404,7 +402,7 @@
       });
 
       edges.children.forEach((line) => {
-        const linked = line.userData.a === hoveredId || line.userData.b === hoveredId;
+        const linked = line.userData.a === nextId || line.userData.b === nextId;
         line.material.opacity = linked ? .9 : .04;
         line.material.color.setHex(linked ? COLOUR.edgeActive : COLOUR.edgeDim);
       });
@@ -423,7 +421,6 @@
 
     function clearHover() {
       hover = null;
-      hoveredId = null;
       elements.tooltip.hidden = true;
       objects.forEach((node) => {
         node.material.color.setHex(COLOUR.nodeBase);

@@ -244,11 +244,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&tmp)
-            .map_err(|e| KurultaiError::Other(anyhow::anyhow!("stat temp config: {e}")))?
-            .permissions();
-        perms.set_mode(0o600);
-        fs::set_permissions(&tmp, perms)
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))
             .map_err(|e| KurultaiError::Other(anyhow::anyhow!("chmod temp config: {e}")))?;
     }
     fs::rename(&tmp, path)?;

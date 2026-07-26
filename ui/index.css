@@ -374,7 +374,7 @@ button, input, textarea { font: inherit; }
 }
 .search-control:focus-within {
   border-color: var(--electric);
-  outline: 2px solid var(--electric-dim, var(--electric));
+  outline: 2px solid var(--electric-dim);
   outline-offset: 2px;
 }
 .search-control input {
