@@ -46,3 +46,7 @@ web/.env.*.local
 .harness/workspace/
 .harness/offloads/
 .harness/threads/
+
+# Agent workspace directories
+.harness/
+.a0proj/
