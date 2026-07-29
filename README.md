@@ -152,6 +152,8 @@ Same stdio server (`kurultai mcp`) for every client. `init` only writes the host
 | `hermes` | `~/.hermes/config.yaml` |
 | `all` | all four |
 
+**Copy-paste setup prompt for any agent:** [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) · full text in [`docs/AGENT_SETUP_PROMPT.md`](docs/AGENT_SETUP_PROMPT.md).
+
 Portable skill: [`skills/kurultai-brain/SKILL.md`](skills/kurultai-brain/SKILL.md). Restart the agent after `init` so tools reload.
 
 ## Other surfaces
