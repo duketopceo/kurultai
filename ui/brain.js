@@ -596,6 +596,7 @@
     /* Cheap InstancedMesh preview of not-yet-loaded atoms (no fetch, no edges). */
     function showGhostPreview(loadedCount, totalCount) {
       clearGhostPreview();
+      if (layoutMode === "solar") return;
       const extra = Math.max(0, (totalCount || 0) - (loadedCount || 0));
       if (extra <= 0 || !window.THREE) return;
       const count = Math.min(extra, GHOST_PREVIEW_CAP);
@@ -622,6 +623,7 @@
     }
 
     function update(atoms, renderCap = DEFAULT_ATOM_LIMIT) {
+      transition = null;
       clearHover();
       clearGhostPreview();
       disposeGroup(nodes);
@@ -855,6 +857,8 @@
           pos.setXYZ(0, a.position.x, a.position.y, a.position.z);
           pos.setXYZ(1, b.position.x, b.position.y, b.position.z);
           pos.needsUpdate = true;
+          line.computeLineDistances();
+          delete line.userData.baseLineDistances;
         });
         if (t >= 1) transition = null;
       } else if (layoutMode === "solar" && !reducedMotion && objects.length) {
@@ -873,6 +877,8 @@
           pos.setXYZ(0, a.position.x, a.position.y, a.position.z);
           pos.setXYZ(1, b.position.x, b.position.y, b.position.z);
           pos.needsUpdate = true;
+          line.computeLineDistances();
+          delete line.userData.baseLineDistances;
         });
       }
 
