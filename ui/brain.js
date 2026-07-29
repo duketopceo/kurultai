@@ -858,12 +858,21 @@
         });
         if (t >= 1) transition = null;
       } else if (layoutMode === "solar" && !reducedMotion && objects.length) {
-        const cos = Math.cos(0.0022), sin = Math.sin(0.0022);
+        const angle = 0.13 * deltaSeconds;
+        const cos = Math.cos(angle), sin = Math.sin(angle);
         objects.forEach((mesh) => {
           if (mesh.userData.atom && mesh.userData.atom.id === _solarSunId) return;
           const x = mesh.position.x, z = mesh.position.z;
           mesh.position.x = x * cos - z * sin;
           mesh.position.z = x * sin + z * cos;
+        });
+        edges.children.forEach((line) => {
+          const a = nodeMap.get(line.userData.a), b = nodeMap.get(line.userData.b);
+          if (!a || !b) return;
+          const pos = line.geometry.attributes.position;
+          pos.setXYZ(0, a.position.x, a.position.y, a.position.z);
+          pos.setXYZ(1, b.position.x, b.position.y, b.position.z);
+          pos.needsUpdate = true;
         });
       }
 
@@ -1068,12 +1077,15 @@
     }
     if (elements.layoutToggle) {
       const syncLayoutToggle = () => {
-        const mode = state.graph ? state.graph.getLayout() : "lattice";
+        const mode = state.graph
+          ? state.graph.getLayout()
+          : (localStorage.getItem("kurultai-layout") === "solar" ? "solar" : "lattice");
         elements.layoutToggle.setAttribute("aria-pressed", String(mode === "solar"));
         elements.layoutToggle.setAttribute("aria-label",
           mode === "solar" ? "Switch memory layout to lattice" : "Switch memory layout to solar system");
       };
       syncLayoutToggle();
+      state._syncLayoutToggle = syncLayoutToggle;
       elements.layoutToggle.addEventListener("click", () => {
         if (!state.graph) return;
         const next = state.graph.getLayout() === "solar" ? "lattice" : "solar";
@@ -1107,6 +1119,7 @@
     applyMaxToggleUi();
     bind();
     state.graph = initGraph();
+    if (state._syncLayoutToggle) state._syncLayoutToggle();
     await Promise.all([loadStatus(), loadAtoms(), pollActivity()]);
     window.setInterval(loadStatus,   20000);
     window.setInterval(pollActivity,  2500);
