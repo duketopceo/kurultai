@@ -222,3 +222,128 @@ fn cli_who_knows_fixture() {
         .success()
         .stdout(predicate::str::contains("notes"));
 }
+
+#[test]
+fn export_import_replace_preserves_search() {
+    let src = tempfile::tempdir().unwrap();
+    let cfg = fixture_config(&src);
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "index", "--full"])
+        .assert()
+        .success();
+
+    let pack = src.path().join("brain.kurultai");
+    bin()
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "export",
+            "-o",
+            pack.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Exported"));
+
+    let dest = tempfile::tempdir().unwrap();
+    let dest_db = dest.path().join("store.db");
+    let dest_cfg = dest.path().join("config.toml");
+    let vault = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
+    fs::write(
+        &dest_cfg,
+        format!(
+            r#"environment = "dev"
+[storage]
+path = "{db}"
+[embed]
+model = "openai/text-embedding-3-large"
+dimension = 4
+[runtime]
+poll_interval_secs = 300
+[sources.notes]
+kind = "markdown"
+enabled = true
+root_path = "{vault}"
+"#,
+            db = dest_db.display(),
+            vault = vault.display()
+        ),
+    )
+    .unwrap();
+
+    bin()
+        .args([
+            "--config",
+            dest_cfg.to_str().unwrap(),
+            "import",
+            pack.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Imported"));
+
+    bin()
+        .args([
+            "--config",
+            dest_cfg.to_str().unwrap(),
+            "search",
+            "KNOWN_PHRASE_KURULTAI_42",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("KNOWN_PHRASE_KURULTAI_42"));
+}
+
+#[test]
+fn export_import_combine_keeps_both_brains() {
+    let a = tempfile::tempdir().unwrap();
+    let b = tempfile::tempdir().unwrap();
+    let cfg_a = fixture_config(&a);
+    let cfg_b = fixture_config(&b);
+
+    bin()
+        .args(["--config", cfg_a.to_str().unwrap(), "index", "--full"])
+        .assert()
+        .success();
+
+    // Seed destination with its own index first.
+    bin()
+        .args(["--config", cfg_b.to_str().unwrap(), "index", "--full"])
+        .assert()
+        .success();
+
+    let pack = a.path().join("a.kurultai");
+    bin()
+        .args([
+            "--config",
+            cfg_a.to_str().unwrap(),
+            "export",
+            "-o",
+            pack.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "--config",
+            cfg_b.to_str().unwrap(),
+            "import",
+            "--combine",
+            pack.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("combine"));
+
+    bin()
+        .args([
+            "--config",
+            cfg_b.to_str().unwrap(),
+            "search",
+            "KNOWN_PHRASE_KURULTAI_42",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("KNOWN_PHRASE_KURULTAI_42"));
+}

@@ -282,6 +282,92 @@ impl SqliteVecStore {
             .map_err(|e| KurultaiError::Store(format!("list_atoms collect: {e}")))
     }
 
+    /// Paginated atom list (`ORDER BY id` for stable export/combine walks).
+    pub fn list_atoms_page_sync(
+        &self,
+        offset: usize,
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<KnowledgeAtom>> {
+        let conn = self.lock()?;
+        let sql = if filter.trusted_only {
+            format!(
+                "SELECT {} FROM knowledge_atoms WHERE trust_lane = 'trusted' \
+                 ORDER BY id LIMIT ?1 OFFSET ?2",
+                ATOM_COLUMNS
+            )
+        } else {
+            format!(
+                "SELECT {} FROM knowledge_atoms ORDER BY id LIMIT ?1 OFFSET ?2",
+                ATOM_COLUMNS
+            )
+        };
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| KurultaiError::Store(format!("list_atoms_page prepare: {e}")))?;
+        let atoms = stmt
+            .query_map(params![limit as i64, offset as i64], row_to_atom)
+            .map_err(|e| KurultaiError::Store(format!("list_atoms_page query: {e}")))?;
+        atoms
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| KurultaiError::Store(format!("list_atoms_page collect: {e}")))
+    }
+
+    /// Load the sqlite-vec embedding for an atom id, if present.
+    pub fn load_embedding_sync(&self, id: &str) -> Result<Option<Vec<f32>>> {
+        let conn = self.lock()?;
+        let rowid: Option<i64> = conn
+            .query_row(
+                "SELECT rowid FROM knowledge_atoms WHERE id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("rowid lookup: {e}")))?;
+        let Some(rowid) = rowid else {
+            return Ok(None);
+        };
+        let blob: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT embedding FROM atoms_vec WHERE rowid = ?1",
+                [rowid],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("embedding load: {e}")))?;
+        let Some(bytes) = blob else {
+            return Ok(None);
+        };
+        if bytes.len() % 4 != 0 {
+            return Err(KurultaiError::Store(format!(
+                "embedding blob length {} not divisible by 4 for atom {id}",
+                bytes.len()
+            )));
+        }
+        let mut out = Vec::with_capacity(bytes.len() / 4);
+        for chunk in bytes.chunks_exact(4) {
+            out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+        }
+        Ok(Some(out))
+    }
+
+    /// Atom count (sync).
+    pub fn count_sync(&self) -> Result<u64> {
+        let conn = self.lock()?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM knowledge_atoms", [], |row| row.get(0))
+            .map_err(|e| KurultaiError::Store(format!("count failed: {e}")))?;
+        Ok(count as u64)
+    }
+
+    /// Online backup of this store to `dst` (safe while the connection is open).
+    pub fn backup_to_path(&self, dst: &std::path::Path) -> Result<()> {
+        let src = self.lock()?;
+        src.backup(rusqlite::DatabaseName::Main, dst, None)
+            .map_err(|e| KurultaiError::Store(format!("sqlite backup to {}: {e}", dst.display())))?;
+        Ok(())
+    }
+
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
         self.conn
             .lock()

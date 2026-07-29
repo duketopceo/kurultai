@@ -60,6 +60,12 @@ kurultai ask "what deployments are we running?"
 
 kurultai mcp                     # stdio MCP for agents
 kurultai daemon --port 8421      # HTTP API + Brain UI
+
+# Multi-device: pack this brain and restore elsewhere
+kurultai export -o brain.kurultai
+# …copy file…
+kurultai import brain.kurultai            # new device (empty store)
+kurultai import brain.kurultai --combine  # merge into an existing store
 ```
 
 **Brain UI:** open [`http://127.0.0.1:8421/ui/`](http://127.0.0.1:8421/ui/) (trailing slash matters). Assets live in `ui/` and are embedded in the daemon binary — that is the only Brain dashboard. Do not add a parallel brain under `website/` or `web/`.
@@ -72,7 +78,7 @@ Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md). Concepts: [CONCEPTS.md](CO
 
 | Layer | Reality |
 |-------|---------|
-| **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `mcp`, `daemon` |
+| **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon` |
 | **Connectors** | Markdown · JSON/NDJSON · Dayflow · Pond · GitHub (local checkout). AppFlowy deferred ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
 | **Store** | SQLite + FTS5 + sqlite-vec · hot / warm / cold memory · ingestion staging |
 | **Search** | FTS ∥ vector → RRF → optional rerank |

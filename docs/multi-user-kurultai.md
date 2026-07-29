@@ -11,7 +11,7 @@ Related: GitHub login [#81](https://github.com/duketopceo/kurultai/issues/81) ·
 | Personal kernel (`cargo install`, local `store.db`) | **Shipped** |
 | `web/` Clerk + GitHub sign-in shell | **Shipped** (this PR) |
 | One team deploy + one Clerk Organization | **Design + partial UI** — auth only; shared store/API enforcement not in this PR |
-| Promote-to-shared-index, device sync (#80) | **Roadmap** |
+| Promote-to-shared-index, device sync (#80) | **Partial** — offline `.kurultai` export/import shipped; encrypted/live sync still roadmap |
 | Multi-tenant / VPC, many Orgs / RBAC, audit, retention | **Roadmap / design only** — not shipped |
 
 ## Three layers
@@ -42,10 +42,30 @@ Do **not** share one SQLite file via Dropbox/iCloud. That corrupts WAL and races
 
 ## Multiple devices (same person)
 
-Until [#80](https://github.com/duketopceo/kurultai/issues/80) ships:
+**Shipped (thin slice):** offline `.kurultai` pack via CLI:
+
+```bash
+# Device A
+kurultai export -o brain.kurultai
+
+# copy brain.kurultai to Device B (AirDrop / scp / USB) — not Dropbox live sync of store.db
+
+# Device B — new empty Kurultai
+kurultai import brain.kurultai          # or: kurultai import brain.kurultai --write-config
+# Device B — already has a brain
+kurultai import brain.kurultai --combine
+
+# Then remap [sources.*.root_path], set API keys in env, re-wire agents:
+kurultai init --agent all
+kurultai status
+```
+
+Pack contents: `manifest.json` + `config.toml` (secrets redacted) + `store.db` (SQLite backup). Replace refuses a non-empty destination store unless `--force`. Combine upserts atoms (vectors when embed dims match).
+
+Until full [#80](https://github.com/duketopceo/kurultai/issues/80) encrypted sync:
 
 1. **Same Clerk user** on the website from any browser/device  
-2. **Local kernels** per machine stay separate — export/backup `store.db` or re-index sources  
+2. **Local kernels** per machine — use `export` / `import` (above) or re-index sources  
 3. **Promote** important atoms to the team instance (future: distillation gate + API)
 
 Later (#80): opt-in encrypted sync personal ↔ team / device ↔ device.
@@ -54,8 +74,9 @@ Later (#80): opt-in encrypted sync personal ↔ team / device ↔ device.
 
 | Option | When | Notes |
 |--------|------|-------|
+| **`.kurultai` pack** | **Shipped** | Offline export/import / combine |
 | Promote-only | Team (future) | Push selected atoms to shared index |
-| Backup blob | #80 thin slice | Encrypted `store.db` / pack upload |
+| Backup blob upload | #80 | Encrypted pack to hosted storage |
 | Incremental sync | #80 later | Atom-level push/pull + conflict policy |
 | Managed bind | Company (future) | Local daemon mirrors hosted Kurultai |
 

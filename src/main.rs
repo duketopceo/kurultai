@@ -3,9 +3,10 @@ use kurultai::app::App;
 use kurultai::art::{
     effective_plain, env_no_color_set, print_banner_stdout, ArtVariant, BannerMode,
 };
-use kurultai::config::{config_path, load_config_from};
+use kurultai::config::{config_path, load_config_from, load_config_with_env};
 use kurultai::environment::Environment;
 use kurultai::error::Result;
+use kurultai::export::{export_pack, import_pack, resolve_config_file, ImportMode};
 use kurultai::logging;
 use kurultai::mcp::{ensure_default_config, wire_agent, AgentRead, AgentTarget, BrainService};
 use std::path::PathBuf;
@@ -99,6 +100,26 @@ enum Commands {
         /// Disable notify filesystem watch (markdown/github roots)
         #[arg(long)]
         no_watch: bool,
+    },
+    /// Export this Kurultai setup to a `.kurultai` pack (multi-device handoff)
+    Export {
+        /// Output path (default: kurultai-export-YYYYMMDD-HHMMSS.kurultai)
+        #[arg(short = 'o', long)]
+        output: Option<PathBuf>,
+    },
+    /// Import a `.kurultai` pack into a new or existing setup
+    Import {
+        /// Path to a `.kurultai` pack
+        pack: PathBuf,
+        /// Overwrite an existing non-empty store.db
+        #[arg(long, default_value_t = false)]
+        force: bool,
+        /// Merge pack atoms into the current store (instead of replacing the DB file)
+        #[arg(long, default_value_t = false)]
+        combine: bool,
+        /// If destination config.toml is missing, write the pack's config there
+        #[arg(long, default_value_t = false)]
+        write_config: bool,
     },
 }
 
@@ -313,6 +334,44 @@ async fn main() -> Result<()> {
                 },
             )
             .await?;
+        }
+        Commands::Export { output } => {
+            let cfg_file = resolve_config_file(cli.config.as_deref())?;
+            let config = load_config_with_env(cli.config.as_deref(), cli.env.as_deref())?;
+            let report = export_pack(&config, &cfg_file, output.as_deref())?;
+            println!("Exported {}", report.path.display());
+            println!("  Atoms: {}", report.atom_count);
+            println!("  Embed dim: {}", report.embed_dim);
+            println!("Move this file to another device, then: kurultai import {}", report.path.display());
+            println!("On the destination: remap [sources.*.root_path], set API keys in env, run `kurultai init`.");
+        }
+        Commands::Import {
+            pack,
+            force,
+            combine,
+            write_config,
+        } => {
+            if force && combine {
+                return Err(kurultai::KurultaiError::config(
+                    "use either --force (replace store) or --combine (merge atoms), not both",
+                ));
+            }
+            let config = load_config_with_env(cli.config.as_deref(), cli.env.as_deref())?;
+            let mode = if combine {
+                ImportMode::Combine
+            } else {
+                ImportMode::Replace { force }
+            };
+            let report = import_pack(&config, &pack, mode, write_config).await?;
+            println!("Imported {} ({})", pack.display(), report.mode);
+            println!("  Storage: {}", report.storage_path.display());
+            println!("  Atoms upserted: {}", report.atoms_upserted);
+            if report.vectors_skipped {
+                println!("  Vectors: skipped (embed_dim mismatch) — FTS works; re-index or re-embed for vectors");
+            } else if report.mode == "combine" {
+                println!("  Vectors copied: {}", report.vectors_copied);
+            }
+            println!("Next: fix source root_path values if needed, then `kurultai init --agent …` and `kurultai status`.");
         }
     }
 
