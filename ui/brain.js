@@ -1086,9 +1086,11 @@
         const mode = state.graph
           ? state.graph.getLayout()
           : (localStorage.getItem("kurultai-layout") === "solar" ? "solar" : "lattice");
-        elements.layoutToggle.setAttribute("aria-pressed", String(mode === "solar"));
+        const solar = mode === "solar";
+        elements.layoutToggle.setAttribute("aria-pressed", String(solar));
+        elements.layoutToggle.textContent = solar ? "lattice" : "solar";
         elements.layoutToggle.setAttribute("aria-label",
-          mode === "solar" ? "Switch memory layout to lattice" : "Switch memory layout to solar system");
+          solar ? "Switch memory layout to lattice" : "Switch memory layout to solar system");
       };
       syncLayoutToggle();
       state._syncLayoutToggle = syncLayoutToggle;
