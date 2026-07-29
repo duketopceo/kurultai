@@ -37,7 +37,8 @@
     askInput:       $("ask-input"),
     askOutput:      $("ask-output"),
     theme:          $("theme-toggle"),
-    maxToggle:      $("max-toggle")
+    maxToggle:      $("max-toggle"),
+    layoutToggle:   $("layout-toggle")
   };
 
   /* ── Utilities ─────────────────────────────────────────────── */
@@ -465,6 +466,31 @@
     let yaw = 0, pitch = 0, distance = 24;
     let lastFrameAt = 0;
     let ghostMesh = null;
+    let layoutMode = localStorage.getItem("kurultai-layout") === "solar" ? "solar" : "lattice";
+    let lastAtoms = [];
+    let transition = null;
+
+    /* Solar layout cache — refreshed once per data change, O(1) per atom during frame */
+    let _solarSunId   = null;
+    let _solarSources = [];
+    let _solarSiblings = new Map();
+
+    function refreshSolarCache(atoms) {
+      let best = atoms[0], bestScore = -Infinity;
+      atoms.forEach((a) => {
+        const s = Number(a.score) || 0;
+        if (s > bestScore) { bestScore = s; best = a; }
+      });
+      _solarSunId = best ? best.id : null;
+      _solarSources = [];
+      _solarSiblings = new Map();
+      atoms.forEach((a) => {
+        if (!_solarSources.includes(a.source)) _solarSources.push(a.source);
+        if (a.id === _solarSunId) return;
+        if (!_solarSiblings.has(a.source)) _solarSiblings.set(a.source, []);
+        _solarSiblings.get(a.source).push(a.id);
+      });
+    }
 
     function disposeGroup(group) {
       group.traverse((child) => {
@@ -529,7 +555,7 @@
     }
 
     /* Fibonacci-sphere layout capped to a tight radius (8.5 max) */
-    function positionFor(index, total) {
+    function positionLattice(index, total) {
       const phi   = Math.acos(1 - 2 * (index + .5) / Math.max(total, 1));
       const theta = Math.PI * (1 + Math.sqrt(5)) * index;
       const r     = 6.5 * (0.7 + .28 * Math.sin(phi) ** 1.4);
@@ -538,6 +564,25 @@
         4.8 * Math.cos(phi),
         r * Math.sin(theta) * Math.sin(phi) * .68
       );
+    }
+
+    /* Solar: hottest memory as sun, one orbital ring per source */
+    function positionSolar(atom) {
+      if (atom.id === _solarSunId) return new THREE.Vector3(0, 0, 0);
+      const sourceIndex = Math.max(0, _solarSources.indexOf(atom.source));
+      const orbitCount  = Math.max(_solarSources.length, 1);
+      const orbit       = 2.4 + (sourceIndex / Math.max(orbitCount - 1, 1)) * 4.6;
+      const siblings    = _solarSiblings.get(atom.source) || [];
+      const i     = Math.max(0, siblings.indexOf(atom.id));
+      const n     = Math.max(siblings.length, 1);
+      const angle = (i / n) * Math.PI * 2 + sourceIndex * 0.35;
+      const y     = ((i % 5) - 2) * 0.12;
+      return new THREE.Vector3(Math.cos(angle) * orbit, y, Math.sin(angle) * orbit);
+    }
+
+    function positionFor(index, total, atom) {
+      if (layoutMode === "solar" && atom) return positionSolar(atom);
+      return positionLattice(index, total);
     }
 
     function clearGhostPreview() {
@@ -551,6 +596,7 @@
     /* Cheap InstancedMesh preview of not-yet-loaded atoms (no fetch, no edges). */
     function showGhostPreview(loadedCount, totalCount) {
       clearGhostPreview();
+      if (layoutMode === "solar") return;
       const extra = Math.max(0, (totalCount || 0) - (loadedCount || 0));
       if (extra <= 0 || !window.THREE) return;
       const count = Math.min(extra, GHOST_PREVIEW_CAP);
@@ -577,6 +623,7 @@
     }
 
     function update(atoms, renderCap = DEFAULT_ATOM_LIMIT) {
+      transition = null;
       clearHover();
       clearGhostPreview();
       disposeGroup(nodes);
@@ -585,6 +632,8 @@
       objects = []; nodeMap = new Map();
       const cap = Math.max(1, Math.min(Number(renderCap) || DEFAULT_ATOM_LIMIT, MAX_RENDER_CAP));
       const rendered = atoms.slice(0, cap);
+      lastAtoms = rendered.slice();
+      refreshSolarCache(lastAtoms);
       links = buildRelationships(rendered);
 
       rendered.forEach((atom, index) => {
@@ -595,7 +644,7 @@
           new THREE.SphereGeometry(size, 24, 24),
           nodeMaterial(baseColor)
         );
-        mesh.position.copy(positionFor(index, rendered.length));
+        mesh.position.copy(positionFor(index, rendered.length, atom));
         mesh.userData.atom = atom;
         mesh.userData.baseColor = baseColor;
         mesh.userData.pulsePhase = Math.random() * Math.PI * 2;
@@ -796,6 +845,43 @@
         });
       }
 
+      /* Solar layout transition */
+      if (transition) {
+        const t = Math.min(1, (performance.now() - transition.start) / transition.duration);
+        const e = t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        transition.items.forEach((item) => item.mesh.position.lerpVectors(item.from, item.to, e));
+        edges.children.forEach((line) => {
+          const a = nodeMap.get(line.userData.a), b = nodeMap.get(line.userData.b);
+          if (!a || !b) return;
+          const pos = line.geometry.attributes.position;
+          pos.setXYZ(0, a.position.x, a.position.y, a.position.z);
+          pos.setXYZ(1, b.position.x, b.position.y, b.position.z);
+          pos.needsUpdate = true;
+          line.computeLineDistances();
+          delete line.userData.baseLineDistances;
+        });
+        if (t >= 1) transition = null;
+      } else if (layoutMode === "solar" && !reducedMotion && objects.length) {
+        const angle = 0.13 * deltaSeconds;
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        objects.forEach((mesh) => {
+          if (mesh.userData.atom && mesh.userData.atom.id === _solarSunId) return;
+          const x = mesh.position.x, z = mesh.position.z;
+          mesh.position.x = x * cos - z * sin;
+          mesh.position.z = x * sin + z * cos;
+        });
+        edges.children.forEach((line) => {
+          const a = nodeMap.get(line.userData.a), b = nodeMap.get(line.userData.b);
+          if (!a || !b) return;
+          const pos = line.geometry.attributes.position;
+          pos.setXYZ(0, a.position.x, a.position.y, a.position.z);
+          pos.setXYZ(1, b.position.x, b.position.y, b.position.z);
+          pos.needsUpdate = true;
+          line.computeLineDistances();
+          delete line.userData.baseLineDistances;
+        });
+      }
+
       /* B: synapse charge along edges; C: faster zap on hover arcs */
       if (!reducedMotion && edges.children.length) {
         edges.children.forEach((line) => {
@@ -818,10 +904,26 @@
       requestAnimationFrame(frame);
     }
 
+    function setLayout(next) {
+      if (next !== "lattice" && next !== "solar") return;
+      if (layoutMode === next) return;
+      layoutMode = next;
+      localStorage.setItem("kurultai-layout", next);
+      if (!lastAtoms.length || !objects.length) return;
+      refreshSolarCache(lastAtoms);
+      const items = [];
+      lastAtoms.forEach((atom, index) => {
+        const mesh = nodeMap.get(atom.id);
+        if (!mesh) return;
+        items.push({ mesh, from: mesh.position.clone(), to: positionFor(index, lastAtoms.length, atom) });
+      });
+      transition = { start: performance.now(), duration: reducedMotion ? 1 : 850, items };
+    }
+
     new ResizeObserver(resize).observe(stage);
     resize(); recolor();
     requestAnimationFrame(frame);
-    return { update, recolor, showGhostPreview, clearGhostPreview };
+    return { update, recolor, showGhostPreview, clearGhostPreview, setLayout, getLayout: () => layoutMode };
   }
 
   /* ── CDN Three.js load guard ────────────────────────────────── */
@@ -979,6 +1081,26 @@
         setMaxMode(!state.maxMode);
       });
     }
+    if (elements.layoutToggle) {
+      const syncLayoutToggle = () => {
+        const mode = state.graph
+          ? state.graph.getLayout()
+          : (localStorage.getItem("kurultai-layout") === "solar" ? "solar" : "lattice");
+        const solar = mode === "solar";
+        elements.layoutToggle.setAttribute("aria-pressed", String(solar));
+        elements.layoutToggle.textContent = solar ? "lattice" : "solar";
+        elements.layoutToggle.setAttribute("aria-label",
+          solar ? "Switch memory layout to lattice" : "Switch memory layout to solar system");
+      };
+      syncLayoutToggle();
+      state._syncLayoutToggle = syncLayoutToggle;
+      elements.layoutToggle.addEventListener("click", () => {
+        if (!state.graph) return;
+        const next = state.graph.getLayout() === "solar" ? "lattice" : "solar";
+        state.graph.setLayout(next);
+        syncLayoutToggle();
+      });
+    }
     elements.timeline.addEventListener("input", setTimelineLabel);
     elements.play.addEventListener("click", togglePlayback);
     elements.askForm.addEventListener("submit", ask);
@@ -1005,6 +1127,7 @@
     applyMaxToggleUi();
     bind();
     state.graph = initGraph();
+    if (state._syncLayoutToggle) state._syncLayoutToggle();
     await Promise.all([loadStatus(), loadAtoms(), pollActivity()]);
     window.setInterval(loadStatus,   20000);
     window.setInterval(pollActivity,  2500);
