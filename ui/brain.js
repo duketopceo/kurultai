@@ -5,8 +5,16 @@
   const state = {
     atoms: [], visible: [], selected: null,
     query: "", since: 0, live: true,
-    playing: false, timer: null, graph: null
+    playing: false, timer: null, graph: null,
+    maxMode: false, atomTotal: 0,
+    loadGen: 0, loadAbort: null
   };
+
+  const DEFAULT_ATOM_LIMIT = 450;
+  const MAX_GRAPH_LIMIT = 10000;
+  const MAX_RENDER_CAP = 2500;
+  const GHOST_PREVIEW_CAP = 2500;
+  const GRAPH_TIERS = ["hot", "warm", "cold"];
 
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -28,7 +36,8 @@
     askForm:        $("ask-form"),
     askInput:       $("ask-input"),
     askOutput:      $("ask-output"),
-    theme:          $("theme-toggle")
+    theme:          $("theme-toggle"),
+    maxToggle:      $("max-toggle")
   };
 
   /* ── Utilities ─────────────────────────────────────────────── */
@@ -53,11 +62,34 @@
       indexed_at:     atom.indexed_at || meta.indexed_at || "",
       last_accessed_at: atom.last_accessed_at || meta.last_accessed_at || "",
       score:          Number(result && result.score) || 0,
-      tier:           atom.tier || meta.tier || "warm"
+      tier:           atom.tier || meta.tier || "warm",
+      lean:           false
     };
   }
-  async function getJson(path) {
-    const r = await fetch(path, { headers: { Accept: "application/json" } });
+
+  function normalizeGraphNode(node) {
+    const n = node || {};
+    return {
+      id:             text(n.id, crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)),
+      title:          text(n.title, "Untitled memory"),
+      summary:        text(n.summary, n.tier === "hot" ? "No local summary available." : "Lean stub — select to load details."),
+      source:         text(n.source),
+      sourceId:       text(n.source_id),
+      tags:           Array.isArray(n.tags) ? n.tags : [],
+      file:           "",
+      indexed_at:     n.indexed_at || "",
+      last_accessed_at: n.last_accessed_at || "",
+      score:          n.tier === "hot" ? 1 : n.tier === "warm" ? 0.55 : 0.25,
+      tier:           text(n.tier, "warm"),
+      lean:           true
+    };
+  }
+
+  async function getJson(path, signal) {
+    const r = await fetch(path, {
+      headers: { Accept: "application/json" },
+      signal
+    });
     if (!r.ok) throw new Error(`${path} failed (${r.status})`);
     return r.json();
   }
@@ -108,12 +140,78 @@
 
   function refreshLattice() {
     state.visible = filteredAtoms();
-    if (state.graph) state.graph.update(state.visible);
-    elements.caption.textContent = `${state.visible.length} memories · hover to trace connections`;
+    const renderCap = state.maxMode ? MAX_RENDER_CAP : DEFAULT_ATOM_LIMIT;
+    if (state.graph) state.graph.update(state.visible, renderCap);
+    const loaded = state.visible.length;
+    const shown = Math.min(loaded, renderCap);
+    const total = Math.max(state.atomTotal || 0, state.atoms.length);
+    const mode = state.maxMode ? "max" : "standard";
+    if (state.maxMode && loaded > shown) {
+      elements.caption.textContent =
+        `${shown} shown · ${loaded} loaded (cap ${renderCap}) · ${mode}`;
+    } else if (total > loaded && !state.maxMode) {
+      elements.caption.textContent =
+        `${loaded} of ${total} memories · ${mode} · hover max for ghost preview`;
+    } else {
+      elements.caption.textContent =
+        `${shown} memories · ${mode} · hover to trace connections`;
+    }
+  }
+
+  function applyMaxToggleUi() {
+    if (!elements.maxToggle) return;
+    elements.maxToggle.setAttribute("aria-pressed", String(state.maxMode));
+    elements.maxToggle.textContent = "max";
+    elements.maxToggle.setAttribute(
+      "aria-label",
+      state.maxMode
+        ? "Exit max mode and reload the standard memory subset"
+        : "Load up to 10,000 memories via tiered graph. Hover to preview as ghosts."
+    );
+  }
+
+  async function setMaxMode(next) {
+    if (state.maxMode === next) return;
+    state.maxMode = next;
+    localStorage.setItem("kurultai-max-mode", next ? "1" : "0");
+    applyMaxToggleUi();
+    if (state.graph) state.graph.clearGhostPreview();
+    if (elements.maxToggle) elements.maxToggle.classList.remove("is-ghosting");
+    elements.caption.textContent = next
+      ? "loading up to 10,000 memories (hot → warm → cold)…"
+      : "loading standard memory subset…";
+    await loadAtoms();
   }
 
   /* ── Inspector ──────────────────────────────────────────────── */
-  function renderInspector(atom) {
+  async function enrichAtomDetails(atom) {
+    if (!atom || !atom.lean || !atom.id) return atom;
+    try {
+      const r = await fetch("/api/touch", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ atom_id: atom.id })
+      });
+      if (!r.ok) return atom;
+      const data = await r.json();
+      atom.title = text(data.title, atom.title);
+      atom.summary = text(data.summary, atom.summary);
+      atom.source = text(data.source, atom.source);
+      atom.tags = Array.isArray(data.tags) ? data.tags : atom.tags;
+      atom.file = data.file_path || atom.file || "";
+      atom.indexed_at = data.indexed_at || atom.indexed_at;
+      atom.last_accessed_at = data.last_accessed_at || atom.last_accessed_at;
+      atom.lean = false;
+      const idx = state.atoms.findIndex((a) => a.id === atom.id);
+      if (idx >= 0) state.atoms[idx] = atom;
+    } catch (_) { /* keep stub */ }
+    return atom;
+  }
+
+  async function renderInspector(atom) {
     state.selected = atom;
     if (!atom) {
       elements.inspector.innerHTML = "";
@@ -122,6 +220,15 @@
       p.textContent = "Hover or select a memory node to reveal its place in the lattice.";
       elements.inspector.append(p);
       return;
+    }
+    if (atom.lean) {
+      elements.inspector.innerHTML = "";
+      const loading = document.createElement("p");
+      loading.className = "empty-state";
+      loading.textContent = "Loading memory details…";
+      elements.inspector.append(loading);
+      atom = await enrichAtomDetails(atom);
+      if (state.selected && state.selected.id !== atom.id) return;
     }
     elements.inspector.innerHTML = "";
     const title = document.createElement("h3");
@@ -146,9 +253,15 @@
     });
     elements.inspector.append(title, summary, metrics);
     if (atom.tags.length) {
-      const tags = document.createElement("p");
-      tags.className = "inspector-summary";
-      tags.textContent = atom.tags.map((tag) => `#${tag}`).join(" ");
+      const tags = document.createElement("div");
+      tags.className = "inspector-tags";
+      atom.tags.forEach((tag) => {
+        const chip = document.createElement("span");
+        chip.className = "tag-chip";
+        chip.textContent = `#${tag}`;
+        chip.style.background = labelGradientCss(tag);
+        tags.append(chip);
+      });
       elements.inspector.append(tags);
     }
     if (atom.file) {
@@ -244,12 +357,10 @@
     } catch (_) { /* Offline — represented in header. */ }
   }
 
-  /* ── 3-D graph (Three.js) ───────────────────────────────────── */
+  /* ── Purple gradient from labels ────────────────────────────── */
   /*
-   * Soft electric orbs (not faceted cubes) + dashed synapse charge on edges.
-   * Hover: brighter node pulse + faster zap on connected edges only.
-   * Palette: white = hot, purple = base. No background particle field.
-   * Graph stays compact (radius ≤ 8) so the whole lattice fits the camera.
+   * Map each atom's primary tag onto a purple-only spectrum so related
+   * labels share a hue family while staying black/white/purple compliant.
    */
   const COLOUR = {
     nodeBase:    0xa855f7,   // electric purple
@@ -260,6 +371,70 @@
     edgeDim:     0x2a1050,   // near-invisible when unfocused
     pointLight:  0xa855f7
   };
+  const PURPLE_STOPS = [0x4c1d95, 0x6d28d9, 0xa855f7, 0xc084fc, 0xe9d5ff];
+
+  function hashLabel(value) {
+    const s = String(value || "").toLowerCase();
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0) / 4294967295;
+  }
+
+  function lerpChannel(a, b, t) {
+    return Math.round(a + (b - a) * t);
+  }
+
+  function lerpHex(a, b, t) {
+    const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+    const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+    return (lerpChannel(ar, br, t) << 16)
+      | (lerpChannel(ag, bg, t) << 8)
+      | lerpChannel(ab, bb, t);
+  }
+
+  function primaryLabel(atom) {
+    const tags = atom && Array.isArray(atom.tags) ? atom.tags : [];
+    if (tags.length) return String(tags[0]);
+    return text(atom && atom.source, "");
+  }
+
+  function purpleForLabel(label) {
+    if (!label) return COLOUR.nodeBase;
+    const t = hashLabel(label);
+    const scaled = t * (PURPLE_STOPS.length - 1);
+    const i = Math.floor(scaled);
+    const f = scaled - i;
+    const a = PURPLE_STOPS[i];
+    const b = PURPLE_STOPS[Math.min(i + 1, PURPLE_STOPS.length - 1)];
+    return lerpHex(a, b, f);
+  }
+
+  function purpleForAtom(atom) {
+    return purpleForLabel(primaryLabel(atom));
+  }
+
+  function hexToCss(hex) {
+    return `#${(hex >>> 0).toString(16).padStart(6, "0")}`;
+  }
+
+  function labelGradientCss(label) {
+    const mid = purpleForLabel(label);
+    const deep = lerpHex(mid, 0x2e1065, .45);
+    const light = lerpHex(mid, 0xffffff, .28);
+    return `linear-gradient(135deg, ${hexToCss(deep)}, ${hexToCss(mid)} 55%, ${hexToCss(light)})`;
+  }
+
+  /* ── 3-D graph (Three.js) ───────────────────────────────────── */
+  /*
+   * Soft electric orbs (not faceted cubes) + dashed synapse charge on edges.
+   * Node fill sits on a purple gradient keyed by the atom's primary label.
+   * Hover: brighter node pulse + faster zap on connected edges only.
+   * Palette: white = hot, purple family = base. No background particle field.
+   * Graph stays compact (radius ≤ 8) so the whole lattice fits the camera.
+   */
 
   function makeGraph() {
     if (!window.THREE || !elements.canvas) return null;
@@ -289,6 +464,7 @@
     let hover = null, hoverConnected = new Set(), dragging = false, last = null;
     let yaw = 0, pitch = 0, distance = 24;
     let lastFrameAt = 0;
+    let ghostMesh = null;
 
     function disposeGroup(group) {
       group.traverse((child) => {
@@ -300,17 +476,17 @@
       });
     }
 
-    function nodeMaterial(active) {
+    function nodeMaterial(hex) {
       return new THREE.MeshBasicMaterial({
-        color:       active ? COLOUR.nodeHot : COLOUR.nodeBase,
+        color:       hex == null ? COLOUR.nodeBase : hex,
         transparent: true,
-        opacity:     active ? 1 : .82
+        opacity:     .82
       });
     }
 
-    function haloMaterial() {
+    function haloMaterial(hex) {
       return new THREE.MeshBasicMaterial({
-        color:       COLOUR.nodeBase,
+        color:       hex == null ? COLOUR.nodeBase : hex,
         transparent: true,
         opacity:     .2,
         depthWrite:  false,
@@ -364,29 +540,70 @@
       );
     }
 
-    function update(atoms) {
+    function clearGhostPreview() {
+      if (!ghostMesh) return;
+      scene.remove(ghostMesh);
+      if (ghostMesh.geometry) ghostMesh.geometry.dispose();
+      if (ghostMesh.material) ghostMesh.material.dispose();
+      ghostMesh = null;
+    }
+
+    /* Cheap InstancedMesh preview of not-yet-loaded atoms (no fetch, no edges). */
+    function showGhostPreview(loadedCount, totalCount) {
+      clearGhostPreview();
+      const extra = Math.max(0, (totalCount || 0) - (loadedCount || 0));
+      if (extra <= 0 || !window.THREE) return;
+      const count = Math.min(extra, GHOST_PREVIEW_CAP);
+      const geo = new THREE.SphereGeometry(0.07, 8, 8);
+      const mat = new THREE.MeshBasicMaterial({
+        color: COLOUR.edgeActive,
+        transparent: true,
+        opacity: reducedMotion ? .1 : .14,
+        depthWrite: false
+      });
+      const mesh = new THREE.InstancedMesh(geo, mat, count);
+      mesh.raycast = () => {};
+      const dummy = new THREE.Object3D();
+      const totalForLayout = Math.max(totalCount, loadedCount + count);
+      for (let i = 0; i < count; i++) {
+        const index = loadedCount + i;
+        dummy.position.copy(positionFor(index, totalForLayout));
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      scene.add(mesh);
+      ghostMesh = mesh;
+    }
+
+    function update(atoms, renderCap = DEFAULT_ATOM_LIMIT) {
       clearHover();
+      clearGhostPreview();
       disposeGroup(nodes);
       disposeGroup(edges);
       nodes.clear(); edges.clear();
       objects = []; nodeMap = new Map();
-      links = buildRelationships(atoms);
+      const cap = Math.max(1, Math.min(Number(renderCap) || DEFAULT_ATOM_LIMIT, MAX_RENDER_CAP));
+      const rendered = atoms.slice(0, cap);
+      links = buildRelationships(rendered);
 
-      atoms.slice(0, 450).forEach((atom, index) => {
+      rendered.forEach((atom, index) => {
         const size = .12 + Math.min(atom.score, 1) * .10;
+        const baseColor = purpleForAtom(atom);
         /* A: smooth orb (24 segments) — avoids faceted “cube” look from 9×9 */
         const mesh = new THREE.Mesh(
           new THREE.SphereGeometry(size, 24, 24),
-          nodeMaterial(false)
+          nodeMaterial(baseColor)
         );
-        mesh.position.copy(positionFor(index, Math.min(atoms.length, 450)));
+        mesh.position.copy(positionFor(index, rendered.length));
         mesh.userData.atom = atom;
+        mesh.userData.baseColor = baseColor;
         mesh.userData.pulsePhase = Math.random() * Math.PI * 2;
         mesh.userData.baseOpacity = .82;
 
         const halo = new THREE.Mesh(
           new THREE.SphereGeometry(size * 2.15, 16, 16),
-          haloMaterial()
+          haloMaterial(baseColor)
         );
         halo.raycast = () => {};
         halo.userData.isHalo = true;
@@ -411,7 +628,7 @@
 
       /* Hide fallback once nodes are loaded */
       if (elements.fallback) {
-        elements.fallback.style.opacity = atoms.length ? "0" : "1";
+        elements.fallback.style.opacity = rendered.length ? "0" : "1";
       }
     }
 
@@ -461,6 +678,7 @@
 
       objects.forEach((node) => {
         const halo = node.userData.halo;
+        const base = node.userData.baseColor ?? COLOUR.nodeBase;
         if (node === mesh) {
           node.material.color.setHex(COLOUR.nodeHot);
           node.material.opacity = 1;
@@ -469,14 +687,14 @@
             halo.material.opacity = .5;
           }
         } else if (hoverConnected.has(node.userData.atom.id)) {
-          node.material.color.setHex(COLOUR.nodeBase);
+          node.material.color.setHex(base);
           node.material.opacity = .92;
           if (halo) {
-            halo.material.color.setHex(COLOUR.edgeActive);
+            halo.material.color.setHex(lerpHex(base, COLOUR.edgeActive, .35));
             halo.material.opacity = .32;
           }
         } else {
-          node.material.color.setHex(COLOUR.nodeUnfocus);
+          node.material.color.setHex(lerpHex(base, COLOUR.nodeUnfocus, .7));
           node.material.opacity = .3;
           if (halo) {
             halo.material.color.setHex(COLOUR.nodeUnfocus);
@@ -507,12 +725,13 @@
       hoverConnected = new Set();
       elements.tooltip.hidden = true;
       objects.forEach((node) => {
-        node.material.color.setHex(COLOUR.nodeBase);
+        const base = node.userData.baseColor ?? COLOUR.nodeBase;
+        node.material.color.setHex(base);
         node.material.opacity = node.userData.baseOpacity ?? .82;
         node.scale.setScalar(1);
         const halo = node.userData.halo;
         if (halo) {
-          halo.material.color.setHex(COLOUR.nodeBase);
+          halo.material.color.setHex(base);
           halo.material.opacity = .2;
         }
       });
@@ -602,7 +821,7 @@
     new ResizeObserver(resize).observe(stage);
     resize(); recolor();
     requestAnimationFrame(frame);
-    return { update, recolor };
+    return { update, recolor, showGhostPreview, clearGhostPreview };
   }
 
   /* ── CDN Three.js load guard ────────────────────────────────── */
@@ -627,22 +846,59 @@
     try {
       const data = await getJson("/api/status");
       setStatus(data.ok ? "daemon online" : "daemon recovering", Boolean(data.ok));
+      const total = Number(data.atoms);
+      state.atomTotal = Number.isFinite(total) ? total : state.atomTotal;
       $("stat-atoms").textContent    = text(data.atoms);
       const memory = data.memory || {};
       $("stat-tiers").textContent   = `${memory.hot ?? 0} / ${memory.warm ?? 0} / ${memory.cold ?? 0}`;
       $("stat-trusted").textContent  = text(data.brain && data.brain.trusted_count);
+      if (!state.maxMode) refreshLattice();
     } catch (_) {
       setStatus("daemon offline", false);
     }
   }
 
   async function loadAtoms() {
+    const gen = ++state.loadGen;
+    if (state.loadAbort) state.loadAbort.abort();
+    const controller = new AbortController();
+    state.loadAbort = controller;
+    const { signal } = controller;
+    const wantedMax = state.maxMode;
+
     try {
-      const data   = await getJson("/api/atoms?limit=450");
-      state.atoms  = data.map(normalize);
-      refreshLattice();
-    } catch (_) {
-      state.atoms  = [];
+      if (!wantedMax) {
+        const data = await getJson(`/api/atoms?limit=${DEFAULT_ATOM_LIMIT}`, signal);
+        if (gen !== state.loadGen || state.maxMode !== wantedMax) return;
+        state.atoms = data.map(normalize);
+        if (state.atoms.length > state.atomTotal) state.atomTotal = state.atoms.length;
+        refreshLattice();
+        return;
+      }
+
+      /* Max mode: progressive lean graph tiers — full details only on inspect. */
+      const byId = new Map();
+      for (const tier of GRAPH_TIERS) {
+        if (gen !== state.loadGen || state.maxMode !== wantedMax) return;
+        const data = await getJson(
+          `/api/graph?tier=${tier}&limit=${MAX_GRAPH_LIMIT}`,
+          signal
+        );
+        if (gen !== state.loadGen || state.maxMode !== wantedMax) return;
+        (data.nodes || []).forEach((node) => {
+          const atom = normalizeGraphNode(node);
+          if (!byId.has(atom.id)) byId.set(atom.id, atom);
+        });
+        state.atoms = Array.from(byId.values());
+        if (state.atoms.length > state.atomTotal) state.atomTotal = state.atoms.length;
+        elements.caption.textContent =
+          `loading ${tier} · ${state.atoms.length} memories so far (≤${MAX_GRAPH_LIMIT})…`;
+        refreshLattice();
+      }
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      if (gen !== state.loadGen) return;
+      state.atoms = [];
       refreshLattice();
       elements.caption.textContent = "Local daemon unavailable — lattice standby.";
     }
@@ -697,6 +953,32 @@
       elements.streamToggle.setAttribute("aria-pressed", String(state.live));
       elements.streamToggle.textContent = state.live ? "live" : "paused";
     });
+    if (elements.maxToggle) {
+      elements.maxToggle.addEventListener("mouseenter", () => {
+        if (state.maxMode || !state.graph) return;
+        const loaded = state.atoms.length;
+        const total = Math.max(state.atomTotal || 0, loaded);
+        if (total <= loaded) return;
+        elements.maxToggle.classList.add("is-ghosting");
+        state.graph.showGhostPreview(loaded, total);
+        elements.caption.textContent =
+          `ghost preview · ~${Math.min(total - loaded, GHOST_PREVIEW_CAP)} more of ${total} (click max to load)`;
+      });
+      elements.maxToggle.addEventListener("mouseleave", () => {
+        elements.maxToggle.classList.remove("is-ghosting");
+        if (state.graph) state.graph.clearGhostPreview();
+        if (!state.maxMode) refreshLattice();
+      });
+      elements.maxToggle.addEventListener("focus", () => {
+        elements.maxToggle.dispatchEvent(new Event("mouseenter"));
+      });
+      elements.maxToggle.addEventListener("blur", () => {
+        elements.maxToggle.dispatchEvent(new Event("mouseleave"));
+      });
+      elements.maxToggle.addEventListener("click", () => {
+        setMaxMode(!state.maxMode);
+      });
+    }
     elements.timeline.addEventListener("input", setTimelineLabel);
     elements.play.addEventListener("click", togglePlayback);
     elements.askForm.addEventListener("submit", ask);
@@ -718,7 +1000,9 @@
 
   /* ── Bootstrap ──────────────────────────────────────────────── */
   async function init() {
+    state.maxMode = localStorage.getItem("kurultai-max-mode") === "1";
     applyTheme(initialTheme());
+    applyMaxToggleUi();
     bind();
     state.graph = initGraph();
     await Promise.all([loadStatus(), loadAtoms(), pollActivity()]);
