@@ -136,6 +136,29 @@ async fn api_status(
     }
 }
 
+/// Full-atom list ceiling — large Brain loads must use `/api/graph` tiers instead.
+const ATOMS_LIST_CEILING: usize = 500;
+/// Lean graph node ceiling for max-mode progressive loads.
+const GRAPH_LIST_CEILING: usize = 10_000;
+
+fn parse_atoms_limit(raw: Option<&str>) -> usize {
+    match raw {
+        Some(s) => s.parse::<usize>().unwrap_or(500).clamp(1, ATOMS_LIST_CEILING),
+        None => 500,
+    }
+}
+
+fn parse_graph_limit(raw: Option<&str>) -> usize {
+    match raw {
+        Some("max") | Some("all") => GRAPH_LIST_CEILING,
+        Some(s) => s
+            .parse::<usize>()
+            .unwrap_or(GRAPH_LIST_CEILING)
+            .clamp(1, 50_000),
+        None => GRAPH_LIST_CEILING,
+    }
+}
+
 async fn api_atoms(
     State(state): State<AppState>,
     Query(params): Query<std::collections::HashMap<String, String>>,
@@ -143,11 +166,7 @@ async fn api_atoms(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("api_atoms", request_id=%request_id);
     state.status.touch_client_activity();
-    let limit: usize = match params.get("limit").map(String::as_str) {
-        Some("max") | Some("all") => 10_000,
-        Some(raw) => raw.parse::<usize>().unwrap_or(500).clamp(1, 10_000),
-        None => 500,
-    };
+    let limit = parse_atoms_limit(params.get("limit").map(String::as_str));
     let include_quarantine = params
         .get("include_quarantine")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -186,11 +205,7 @@ async fn api_graph(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("api_graph", request_id=%request_id);
     state.status.touch_client_activity();
-    let limit: usize = params
-        .get("limit")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(10_000)
-        .min(50_000);
+    let limit = parse_graph_limit(params.get("limit").map(String::as_str));
     let tier = params
         .get("tier")
         .and_then(|s| crate::memory::MemoryTier::parse(s));
@@ -240,13 +255,25 @@ async fn api_touch(
     let _span = tracing::info_span!("api_touch", request_id=%request_id);
     state.status.touch_client_activity();
     match state.brain.touch_access(&body.atom_id).await {
-        Ok(Some(atom)) => Ok(Json(serde_json::json!({
-            "ok": true,
-            "request_id": &request_id,
-            "atom_id": atom.id,
-            "title": atom.title,
-            "source": atom.source,
-        }))),
+        Ok(Some(atom)) => {
+            let file_path = atom
+                .metadata
+                .get("file_path")
+                .cloned()
+                .filter(|s| !s.is_empty());
+            Ok(Json(serde_json::json!({
+                "ok": true,
+                "request_id": &request_id,
+                "atom_id": atom.id,
+                "title": atom.title,
+                "source": atom.source,
+                "summary": atom.summary,
+                "tags": atom.tags,
+                "file_path": file_path,
+                "indexed_at": atom.indexed_at,
+                "last_accessed_at": atom.last_accessed_at,
+            })))
+        }
         Ok(None) => Err(json_error(
             StatusCode::NOT_FOUND,
             "atom not found",
@@ -827,7 +854,8 @@ mod tests {
         let results: Vec<SearchResult> = serde_json::from_slice(&bytes).unwrap();
         assert!(!results.is_empty());
 
-        // limit=max raises the ceiling (still returns fixture set)
+        // Invalid / symbolic limits fall back to the full-atom ceiling (500),
+        // not a bulk dump — max-mode clients must use /api/graph instead.
         let resp = app
             .clone()
             .oneshot(
@@ -843,7 +871,19 @@ mod tests {
             .await
             .unwrap();
         let max_results: Vec<SearchResult> = serde_json::from_slice(&bytes).unwrap();
-        assert!(max_results.len() >= results.len());
+        assert_eq!(max_results.len(), results.len());
+    }
+
+    #[test]
+    fn parse_graph_limit_max_uses_ten_thousand_ceiling() {
+        assert_eq!(parse_graph_limit(Some("max")), 10_000);
+        assert_eq!(parse_graph_limit(Some("all")), 10_000);
+        assert_eq!(parse_graph_limit(None), 10_000);
+        assert_eq!(parse_graph_limit(Some("2500")), 2500);
+        assert_eq!(parse_graph_limit(Some("999999")), 50_000);
+        assert_eq!(parse_atoms_limit(Some("max")), 500);
+        assert_eq!(parse_atoms_limit(Some("9000")), 500);
+        assert_eq!(parse_atoms_limit(Some("12")), 12);
     }
 
     #[tokio::test]

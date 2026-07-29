@@ -6,11 +6,15 @@
     atoms: [], visible: [], selected: null,
     query: "", since: 0, live: true,
     playing: false, timer: null, graph: null,
-    maxMode: false, atomTotal: 0
+    maxMode: false, atomTotal: 0,
+    loadGen: 0, loadAbort: null
   };
 
   const DEFAULT_ATOM_LIMIT = 450;
+  const MAX_GRAPH_LIMIT = 10000;
+  const MAX_RENDER_CAP = 2500;
   const GHOST_PREVIEW_CAP = 2500;
+  const GRAPH_TIERS = ["hot", "warm", "cold"];
 
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -58,11 +62,34 @@
       indexed_at:     atom.indexed_at || meta.indexed_at || "",
       last_accessed_at: atom.last_accessed_at || meta.last_accessed_at || "",
       score:          Number(result && result.score) || 0,
-      tier:           atom.tier || meta.tier || "warm"
+      tier:           atom.tier || meta.tier || "warm",
+      lean:           false
     };
   }
-  async function getJson(path) {
-    const r = await fetch(path, { headers: { Accept: "application/json" } });
+
+  function normalizeGraphNode(node) {
+    const n = node || {};
+    return {
+      id:             text(n.id, crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)),
+      title:          text(n.title, "Untitled memory"),
+      summary:        text(n.summary, n.tier === "hot" ? "No local summary available." : "Lean stub — select to load details."),
+      source:         text(n.source),
+      sourceId:       text(n.source_id),
+      tags:           Array.isArray(n.tags) ? n.tags : [],
+      file:           "",
+      indexed_at:     n.indexed_at || "",
+      last_accessed_at: n.last_accessed_at || "",
+      score:          n.tier === "hot" ? 1 : n.tier === "warm" ? 0.55 : 0.25,
+      tier:           text(n.tier, "warm"),
+      lean:           true
+    };
+  }
+
+  async function getJson(path, signal) {
+    const r = await fetch(path, {
+      headers: { Accept: "application/json" },
+      signal
+    });
     if (!r.ok) throw new Error(`${path} failed (${r.status})`);
     return r.json();
   }
@@ -113,16 +140,21 @@
 
   function refreshLattice() {
     state.visible = filteredAtoms();
-    if (state.graph) state.graph.update(state.visible);
+    const renderCap = state.maxMode ? MAX_RENDER_CAP : DEFAULT_ATOM_LIMIT;
+    if (state.graph) state.graph.update(state.visible, renderCap);
     const loaded = state.visible.length;
+    const shown = Math.min(loaded, renderCap);
     const total = Math.max(state.atomTotal || 0, state.atoms.length);
     const mode = state.maxMode ? "max" : "standard";
-    if (total > loaded && !state.maxMode) {
+    if (state.maxMode && loaded > shown) {
+      elements.caption.textContent =
+        `${shown} shown · ${loaded} loaded (cap ${renderCap}) · ${mode}`;
+    } else if (total > loaded && !state.maxMode) {
       elements.caption.textContent =
         `${loaded} of ${total} memories · ${mode} · hover max for ghost preview`;
     } else {
       elements.caption.textContent =
-        `${loaded} memories · ${mode} · hover to trace connections`;
+        `${shown} memories · ${mode} · hover to trace connections`;
     }
   }
 
@@ -134,7 +166,7 @@
       "aria-label",
       state.maxMode
         ? "Exit max mode and reload the standard memory subset"
-        : "Load all memories. Hover to preview as ghosts."
+        : "Load up to 10,000 memories via tiered graph. Hover to preview as ghosts."
     );
   }
 
@@ -146,13 +178,40 @@
     if (state.graph) state.graph.clearGhostPreview();
     if (elements.maxToggle) elements.maxToggle.classList.remove("is-ghosting");
     elements.caption.textContent = next
-      ? "loading all memories…"
+      ? "loading up to 10,000 memories (hot → warm → cold)…"
       : "loading standard memory subset…";
     await loadAtoms();
   }
 
   /* ── Inspector ──────────────────────────────────────────────── */
-  function renderInspector(atom) {
+  async function enrichAtomDetails(atom) {
+    if (!atom || !atom.lean || !atom.id) return atom;
+    try {
+      const r = await fetch("/api/touch", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ atom_id: atom.id })
+      });
+      if (!r.ok) return atom;
+      const data = await r.json();
+      atom.title = text(data.title, atom.title);
+      atom.summary = text(data.summary, atom.summary);
+      atom.source = text(data.source, atom.source);
+      atom.tags = Array.isArray(data.tags) ? data.tags : atom.tags;
+      atom.file = data.file_path || atom.file || "";
+      atom.indexed_at = data.indexed_at || atom.indexed_at;
+      atom.last_accessed_at = data.last_accessed_at || atom.last_accessed_at;
+      atom.lean = false;
+      const idx = state.atoms.findIndex((a) => a.id === atom.id);
+      if (idx >= 0) state.atoms[idx] = atom;
+    } catch (_) { /* keep stub */ }
+    return atom;
+  }
+
+  async function renderInspector(atom) {
     state.selected = atom;
     if (!atom) {
       elements.inspector.innerHTML = "";
@@ -161,6 +220,15 @@
       p.textContent = "Hover or select a memory node to reveal its place in the lattice.";
       elements.inspector.append(p);
       return;
+    }
+    if (atom.lean) {
+      elements.inspector.innerHTML = "";
+      const loading = document.createElement("p");
+      loading.className = "empty-state";
+      loading.textContent = "Loading memory details…";
+      elements.inspector.append(loading);
+      atom = await enrichAtomDetails(atom);
+      if (state.selected && state.selected.id !== atom.id) return;
     }
     elements.inspector.innerHTML = "";
     const title = document.createElement("h3");
@@ -329,8 +397,8 @@
 
   function primaryLabel(atom) {
     const tags = atom && Array.isArray(atom.tags) ? atom.tags : [];
-    if (!tags.length) return "";
-    return String(tags[0]);
+    if (tags.length) return String(tags[0]);
+    return text(atom && atom.source, "");
   }
 
   function purpleForLabel(label) {
@@ -508,16 +576,18 @@
       ghostMesh = mesh;
     }
 
-    function update(atoms) {
+    function update(atoms, renderCap = DEFAULT_ATOM_LIMIT) {
       clearHover();
       clearGhostPreview();
       disposeGroup(nodes);
       disposeGroup(edges);
       nodes.clear(); edges.clear();
       objects = []; nodeMap = new Map();
-      links = buildRelationships(atoms);
+      const cap = Math.max(1, Math.min(Number(renderCap) || DEFAULT_ATOM_LIMIT, MAX_RENDER_CAP));
+      const rendered = atoms.slice(0, cap);
+      links = buildRelationships(rendered);
 
-      atoms.slice(0, 450).forEach((atom, index) => {
+      rendered.forEach((atom, index) => {
         const size = .12 + Math.min(atom.score, 1) * .10;
         const baseColor = purpleForAtom(atom);
         /* A: smooth orb (24 segments) — avoids faceted “cube” look from 9×9 */
@@ -525,7 +595,7 @@
           new THREE.SphereGeometry(size, 24, 24),
           nodeMaterial(baseColor)
         );
-        mesh.position.copy(positionFor(index, Math.min(atoms.length, 450)));
+        mesh.position.copy(positionFor(index, rendered.length));
         mesh.userData.atom = atom;
         mesh.userData.baseColor = baseColor;
         mesh.userData.pulsePhase = Math.random() * Math.PI * 2;
@@ -558,7 +628,7 @@
 
       /* Hide fallback once nodes are loaded */
       if (elements.fallback) {
-        elements.fallback.style.opacity = atoms.length ? "0" : "1";
+        elements.fallback.style.opacity = rendered.length ? "0" : "1";
       }
     }
 
@@ -789,16 +859,46 @@
   }
 
   async function loadAtoms() {
+    const gen = ++state.loadGen;
+    if (state.loadAbort) state.loadAbort.abort();
+    const controller = new AbortController();
+    state.loadAbort = controller;
+    const { signal } = controller;
+    const wantedMax = state.maxMode;
+
     try {
-      const path = state.maxMode
-        ? "/api/atoms?limit=max"
-        : `/api/atoms?limit=${DEFAULT_ATOM_LIMIT}`;
-      const data   = await getJson(path);
-      state.atoms  = data.map(normalize);
-      if (state.atoms.length > state.atomTotal) state.atomTotal = state.atoms.length;
-      refreshLattice();
-    } catch (_) {
-      state.atoms  = [];
+      if (!wantedMax) {
+        const data = await getJson(`/api/atoms?limit=${DEFAULT_ATOM_LIMIT}`, signal);
+        if (gen !== state.loadGen || state.maxMode !== wantedMax) return;
+        state.atoms = data.map(normalize);
+        if (state.atoms.length > state.atomTotal) state.atomTotal = state.atoms.length;
+        refreshLattice();
+        return;
+      }
+
+      /* Max mode: progressive lean graph tiers — full details only on inspect. */
+      const byId = new Map();
+      for (const tier of GRAPH_TIERS) {
+        if (gen !== state.loadGen || state.maxMode !== wantedMax) return;
+        const data = await getJson(
+          `/api/graph?tier=${tier}&limit=${MAX_GRAPH_LIMIT}`,
+          signal
+        );
+        if (gen !== state.loadGen || state.maxMode !== wantedMax) return;
+        (data.nodes || []).forEach((node) => {
+          const atom = normalizeGraphNode(node);
+          if (!byId.has(atom.id)) byId.set(atom.id, atom);
+        });
+        state.atoms = Array.from(byId.values());
+        if (state.atoms.length > state.atomTotal) state.atomTotal = state.atoms.length;
+        elements.caption.textContent =
+          `loading ${tier} · ${state.atoms.length} memories so far (≤${MAX_GRAPH_LIMIT})…`;
+        refreshLattice();
+      }
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      if (gen !== state.loadGen) return;
+      state.atoms = [];
       refreshLattice();
       elements.caption.textContent = "Local daemon unavailable — lattice standby.";
     }

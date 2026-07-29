@@ -86,6 +86,9 @@ pub struct GraphNode {
     pub tier: MemoryTier,
     pub indexed_at: DateTime<Utc>,
     pub last_accessed_at: DateTime<Utc>,
+    /// Labels only — enough for Brain colouring / edges without full content.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout_x: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -112,6 +115,7 @@ impl GraphNode {
             tier,
             indexed_at: atom.indexed_at,
             last_accessed_at: atom.last_accessed_at,
+            tags: atom.tags.clone(),
             layout_x,
             layout_y,
             summary: if include_summary {
