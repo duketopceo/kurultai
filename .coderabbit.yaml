@@ -1,0 +1,16 @@
+# Disable automatic CodeRabbit reviews to conserve quota.
+# Opt in manually with a PR comment: `@coderabbitai review`
+# Or permanently skip a PR by keeping `@coderabbitai ignore` in the description.
+language: "en-US"
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: false
+  poem: false
+  review_status: false
+  auto_review:
+    enabled: false
+    drafts: false
+    auto_incremental_review: false
+chat:
+  auto_reply: false

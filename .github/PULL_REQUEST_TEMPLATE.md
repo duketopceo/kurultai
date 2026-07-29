@@ -1,6 +1,9 @@
 ## Description
 Brief description of changes made in this PR.
 
+<!-- Skip automatic CodeRabbit reviews (quota). Remove to opt in, or comment `@coderabbitai review`. -->
+@coderabbitai ignore
+
 ## Type of Change
 - [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
