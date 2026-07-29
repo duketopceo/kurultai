@@ -143,7 +143,10 @@ const GRAPH_LIST_CEILING: usize = 10_000;
 
 fn parse_atoms_limit(raw: Option<&str>) -> usize {
     match raw {
-        Some(s) => s.parse::<usize>().unwrap_or(500).clamp(1, ATOMS_LIST_CEILING),
+        Some(s) => s
+            .parse::<usize>()
+            .unwrap_or(500)
+            .clamp(1, ATOMS_LIST_CEILING),
         None => 500,
     }
 }
