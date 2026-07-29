@@ -143,11 +143,11 @@ async fn api_atoms(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("api_atoms", request_id=%request_id);
     state.status.touch_client_activity();
-    let limit: usize = params
-        .get("limit")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(500)
-        .min(500);
+    let limit: usize = match params.get("limit").map(String::as_str) {
+        Some("max") | Some("all") => 10_000,
+        Some(raw) => raw.parse::<usize>().unwrap_or(500).clamp(1, 10_000),
+        None => 500,
+    };
     let include_quarantine = params
         .get("include_quarantine")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -826,6 +826,24 @@ mod tests {
             .unwrap();
         let results: Vec<SearchResult> = serde_json::from_slice(&bytes).unwrap();
         assert!(!results.is_empty());
+
+        // limit=max raises the ceiling (still returns fixture set)
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/atoms?limit=max")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let max_results: Vec<SearchResult> = serde_json::from_slice(&bytes).unwrap();
+        assert!(max_results.len() >= results.len());
     }
 
     #[tokio::test]

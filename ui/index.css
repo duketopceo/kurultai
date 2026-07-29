@@ -358,9 +358,10 @@ button, input, textarea { font: inherit; }
   margin: 0 auto;
   padding: 0 clamp(1rem, 4vw, 3rem) 2.2rem;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 1rem;
   position: relative;
+  align-items: center;
 }
 .search-control {
   height: 48px;
@@ -424,6 +425,15 @@ button, input, textarea { font: inherit; }
   white-space: nowrap;
 }
 .timeline-control input { accent-color: var(--electric-dim); width: 130px; }
+.max-toggle[aria-pressed="true"] {
+  border-color: var(--electric);
+  color: var(--electric-strong);
+  box-shadow: 0 0 18px var(--glow);
+}
+.max-toggle.is-ghosting {
+  border-color: rgba(192, 132, 252, .7);
+  box-shadow: 0 0 22px rgba(168, 85, 247, .35);
+}
 
 /* ── Dashboard grid ──────────────────────────────────────────── */
 .dashboard-grid {

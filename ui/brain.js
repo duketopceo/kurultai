@@ -5,8 +5,12 @@
   const state = {
     atoms: [], visible: [], selected: null,
     query: "", since: 0, live: true,
-    playing: false, timer: null, graph: null
+    playing: false, timer: null, graph: null,
+    maxMode: false, atomTotal: 0
   };
+
+  const DEFAULT_ATOM_LIMIT = 450;
+  const GHOST_PREVIEW_CAP = 2500;
 
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -28,7 +32,8 @@
     askForm:        $("ask-form"),
     askInput:       $("ask-input"),
     askOutput:      $("ask-output"),
-    theme:          $("theme-toggle")
+    theme:          $("theme-toggle"),
+    maxToggle:      $("max-toggle")
   };
 
   /* ── Utilities ─────────────────────────────────────────────── */
@@ -109,7 +114,41 @@
   function refreshLattice() {
     state.visible = filteredAtoms();
     if (state.graph) state.graph.update(state.visible);
-    elements.caption.textContent = `${state.visible.length} memories · hover to trace connections`;
+    const loaded = state.visible.length;
+    const total = Math.max(state.atomTotal || 0, state.atoms.length);
+    const mode = state.maxMode ? "max" : "standard";
+    if (total > loaded && !state.maxMode) {
+      elements.caption.textContent =
+        `${loaded} of ${total} memories · ${mode} · hover max for ghost preview`;
+    } else {
+      elements.caption.textContent =
+        `${loaded} memories · ${mode} · hover to trace connections`;
+    }
+  }
+
+  function applyMaxToggleUi() {
+    if (!elements.maxToggle) return;
+    elements.maxToggle.setAttribute("aria-pressed", String(state.maxMode));
+    elements.maxToggle.textContent = "max";
+    elements.maxToggle.setAttribute(
+      "aria-label",
+      state.maxMode
+        ? "Exit max mode and reload the standard memory subset"
+        : "Load all memories. Hover to preview as ghosts."
+    );
+  }
+
+  async function setMaxMode(next) {
+    if (state.maxMode === next) return;
+    state.maxMode = next;
+    localStorage.setItem("kurultai-max-mode", next ? "1" : "0");
+    applyMaxToggleUi();
+    if (state.graph) state.graph.clearGhostPreview();
+    if (elements.maxToggle) elements.maxToggle.classList.remove("is-ghosting");
+    elements.caption.textContent = next
+      ? "loading all memories…"
+      : "loading standard memory subset…";
+    await loadAtoms();
   }
 
   /* ── Inspector ──────────────────────────────────────────────── */
@@ -357,6 +396,7 @@
     let hover = null, hoverConnected = new Set(), dragging = false, last = null;
     let yaw = 0, pitch = 0, distance = 24;
     let lastFrameAt = 0;
+    let ghostMesh = null;
 
     function disposeGroup(group) {
       group.traverse((child) => {
@@ -432,8 +472,45 @@
       );
     }
 
+    function clearGhostPreview() {
+      if (!ghostMesh) return;
+      scene.remove(ghostMesh);
+      if (ghostMesh.geometry) ghostMesh.geometry.dispose();
+      if (ghostMesh.material) ghostMesh.material.dispose();
+      ghostMesh = null;
+    }
+
+    /* Cheap InstancedMesh preview of not-yet-loaded atoms (no fetch, no edges). */
+    function showGhostPreview(loadedCount, totalCount) {
+      clearGhostPreview();
+      const extra = Math.max(0, (totalCount || 0) - (loadedCount || 0));
+      if (extra <= 0 || !window.THREE) return;
+      const count = Math.min(extra, GHOST_PREVIEW_CAP);
+      const geo = new THREE.SphereGeometry(0.07, 8, 8);
+      const mat = new THREE.MeshBasicMaterial({
+        color: COLOUR.edgeActive,
+        transparent: true,
+        opacity: reducedMotion ? .1 : .14,
+        depthWrite: false
+      });
+      const mesh = new THREE.InstancedMesh(geo, mat, count);
+      mesh.raycast = () => {};
+      const dummy = new THREE.Object3D();
+      const totalForLayout = Math.max(totalCount, loadedCount + count);
+      for (let i = 0; i < count; i++) {
+        const index = loadedCount + i;
+        dummy.position.copy(positionFor(index, totalForLayout));
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      scene.add(mesh);
+      ghostMesh = mesh;
+    }
+
     function update(atoms) {
       clearHover();
+      clearGhostPreview();
       disposeGroup(nodes);
       disposeGroup(edges);
       nodes.clear(); edges.clear();
@@ -674,7 +751,7 @@
     new ResizeObserver(resize).observe(stage);
     resize(); recolor();
     requestAnimationFrame(frame);
-    return { update, recolor };
+    return { update, recolor, showGhostPreview, clearGhostPreview };
   }
 
   /* ── CDN Three.js load guard ────────────────────────────────── */
@@ -699,10 +776,13 @@
     try {
       const data = await getJson("/api/status");
       setStatus(data.ok ? "daemon online" : "daemon recovering", Boolean(data.ok));
+      const total = Number(data.atoms);
+      state.atomTotal = Number.isFinite(total) ? total : state.atomTotal;
       $("stat-atoms").textContent    = text(data.atoms);
       const memory = data.memory || {};
       $("stat-tiers").textContent   = `${memory.hot ?? 0} / ${memory.warm ?? 0} / ${memory.cold ?? 0}`;
       $("stat-trusted").textContent  = text(data.brain && data.brain.trusted_count);
+      if (!state.maxMode) refreshLattice();
     } catch (_) {
       setStatus("daemon offline", false);
     }
@@ -710,8 +790,12 @@
 
   async function loadAtoms() {
     try {
-      const data   = await getJson("/api/atoms?limit=450");
+      const path = state.maxMode
+        ? "/api/atoms?limit=max"
+        : `/api/atoms?limit=${DEFAULT_ATOM_LIMIT}`;
+      const data   = await getJson(path);
       state.atoms  = data.map(normalize);
+      if (state.atoms.length > state.atomTotal) state.atomTotal = state.atoms.length;
       refreshLattice();
     } catch (_) {
       state.atoms  = [];
@@ -769,6 +853,32 @@
       elements.streamToggle.setAttribute("aria-pressed", String(state.live));
       elements.streamToggle.textContent = state.live ? "live" : "paused";
     });
+    if (elements.maxToggle) {
+      elements.maxToggle.addEventListener("mouseenter", () => {
+        if (state.maxMode || !state.graph) return;
+        const loaded = state.atoms.length;
+        const total = Math.max(state.atomTotal || 0, loaded);
+        if (total <= loaded) return;
+        elements.maxToggle.classList.add("is-ghosting");
+        state.graph.showGhostPreview(loaded, total);
+        elements.caption.textContent =
+          `ghost preview · ~${Math.min(total - loaded, GHOST_PREVIEW_CAP)} more of ${total} (click max to load)`;
+      });
+      elements.maxToggle.addEventListener("mouseleave", () => {
+        elements.maxToggle.classList.remove("is-ghosting");
+        if (state.graph) state.graph.clearGhostPreview();
+        if (!state.maxMode) refreshLattice();
+      });
+      elements.maxToggle.addEventListener("focus", () => {
+        elements.maxToggle.dispatchEvent(new Event("mouseenter"));
+      });
+      elements.maxToggle.addEventListener("blur", () => {
+        elements.maxToggle.dispatchEvent(new Event("mouseleave"));
+      });
+      elements.maxToggle.addEventListener("click", () => {
+        setMaxMode(!state.maxMode);
+      });
+    }
     elements.timeline.addEventListener("input", setTimelineLabel);
     elements.play.addEventListener("click", togglePlayback);
     elements.askForm.addEventListener("submit", ask);
@@ -790,7 +900,9 @@
 
   /* ── Bootstrap ──────────────────────────────────────────────── */
   async function init() {
+    state.maxMode = localStorage.getItem("kurultai-max-mode") === "1";
     applyTheme(initialTheme());
+    applyMaxToggleUi();
     bind();
     state.graph = initGraph();
     await Promise.all([loadStatus(), loadAtoms(), pollActivity()]);
