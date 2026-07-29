@@ -313,21 +313,16 @@ impl SqliteVecStore {
             if with_embeddings {
                 let blob: Option<Vec<u8>> = row.get(15)?;
                 if let Some(bytes) = blob {
-                    if !bytes.len().is_multiple_of(4) {
-                        return Err(rusqlite::Error::FromSqlConversionFailure(
+                    atom.embedding = Some(embedding_f32s_from_blob(&bytes).map_err(|e| {
+                        rusqlite::Error::FromSqlConversionFailure(
                             15,
                             rusqlite::types::Type::Blob,
                             Box::new(std::io::Error::new(
                                 std::io::ErrorKind::InvalidData,
-                                format!("embedding blob length {} not divisible by 4", bytes.len()),
+                                e.to_string(),
                             )),
-                        ));
-                    }
-                    let mut out = Vec::with_capacity(bytes.len() / 4);
-                    for chunk in bytes.chunks_exact(4) {
-                        out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
-                    }
-                    atom.embedding = Some(out);
+                        )
+                    })?);
                 }
             }
             Ok(atom)

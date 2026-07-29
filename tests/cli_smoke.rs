@@ -395,7 +395,37 @@ fn export_import_replace_refuses_nonempty_store() {
     let src = tempfile::tempdir().unwrap();
     let dest = tempfile::tempdir().unwrap();
     let cfg_src = fixture_config(&src);
-    let cfg_dest = fixture_config(&dest);
+
+    let dest_vault = dest.path().join("vault");
+    fs::create_dir_all(dest_vault.join("ops")).unwrap();
+    fs::write(
+        dest_vault.join("ops/keep.md"),
+        "---\ntags: [keep]\n---\n\nDEST_REFUSE_MARKER_KURULTAI_77 must survive a refused replace.\n",
+    )
+    .unwrap();
+    let dest_db = dest.path().join("store.db");
+    let cfg_dest = dest.path().join("config.toml");
+    fs::write(
+        &cfg_dest,
+        format!(
+            r#"environment = "dev"
+[storage]
+path = "{db}"
+[embed]
+model = "openai/text-embedding-3-large"
+dimension = 4
+[runtime]
+poll_interval_secs = 300
+[sources.notes]
+kind = "markdown"
+enabled = true
+root_path = "{vault}"
+"#,
+            db = dest_db.display(),
+            vault = dest_vault.display()
+        ),
+    )
+    .unwrap();
 
     bin()
         .args(["--config", cfg_src.to_str().unwrap(), "index", "--full"])
@@ -428,4 +458,15 @@ fn export_import_replace_refuses_nonempty_store() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("--force").or(predicate::str::contains("--combine")));
+
+    bin()
+        .args([
+            "--config",
+            cfg_dest.to_str().unwrap(),
+            "search",
+            "DEST_REFUSE_MARKER_KURULTAI_77",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("DEST_REFUSE_MARKER_KURULTAI_77"));
 }

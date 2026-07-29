@@ -11,7 +11,7 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use tar::{Archive, Builder};
 
@@ -21,6 +21,8 @@ pub const PACK_FORMAT_VERSION: u32 = 1;
 const MANIFEST_NAME: &str = "manifest.json";
 const CONFIG_NAME: &str = "config.toml";
 const STORE_NAME: &str = "store.db";
+/// Soft ceiling on decompressed pack size (gzip-bomb / runaway unpack guard).
+const MAX_PACK_EXPANDED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// On-disk manifest embedded in a `.kurultai` pack, recording format/schema
 /// compatibility and provenance for the exported store.
@@ -246,12 +248,16 @@ fn unpack_kurultai(path: &Path) -> Result<UnpackedPack> {
     let file = File::open(path)
         .map_err(|e| KurultaiError::config(format!("open pack {}: {e}", path.display())))?;
     let dec = GzDecoder::new(file);
-    let mut archive = Archive::new(dec);
+    let limited = dec.take(MAX_PACK_EXPANDED_BYTES);
+    let mut archive = Archive::new(limited);
     let dir =
         tempfile::tempdir().map_err(|e| KurultaiError::Store(format!("import temp dir: {e}")))?;
-    archive
-        .unpack(dir.path())
-        .map_err(|e| KurultaiError::Store(format!("unpack {}: {e}", path.display())))?;
+    archive.unpack(dir.path()).map_err(|e| {
+        KurultaiError::Store(format!(
+            "unpack {}: {e} (packs larger than {MAX_PACK_EXPANDED_BYTES} expanded bytes are rejected)",
+            path.display()
+        ))
+    })?;
 
     let manifest_path = dir.path().join(MANIFEST_NAME);
     let store_path = dir.path().join(STORE_NAME);
