@@ -328,6 +328,22 @@
       });
     }
 
+    function animateEdgeCharge(line, speed) {
+      if (!line.geometry.attributes.lineDistance) line.computeLineDistances();
+      const distances = line.geometry.attributes.lineDistance;
+      if (!line.userData.baseLineDistances || line.userData.baseLineDistances.length !== distances.array.length) {
+        line.userData.baseLineDistances = Array.from(distances.array);
+        line.userData.dashPhase = 0;
+      }
+
+      const cycle = line.material.dashSize + line.material.gapSize;
+      line.userData.dashPhase = ((line.userData.dashPhase || 0) + speed) % cycle;
+      distances.array.forEach((_, index) => {
+        distances.array[index] = line.userData.baseLineDistances[index] - line.userData.dashPhase;
+      });
+      distances.needsUpdate = true;
+    }
+
     function resize() {
       const rect = stage.getBoundingClientRect();
       camera.aspect = rect.width / rect.height;
@@ -560,12 +576,11 @@
       /* B: synapse charge along edges; C: faster zap on hover arcs */
       if (!reducedMotion && edges.children.length) {
         edges.children.forEach((line) => {
-          if (line.material.dashOffset === undefined) return;
           const hot = hover && (
             line.userData.a === hover.userData.atom.id ||
             line.userData.b === hover.userData.atom.id
           );
-          line.material.dashOffset -= hot ? .055 : .014;
+          animateEdgeCharge(line, hot ? .055 : .014);
         });
       }
 
