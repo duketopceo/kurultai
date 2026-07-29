@@ -288,6 +288,7 @@
     let objects = [], nodeMap = new Map(), links = [];
     let hover = null, hoverConnected = new Set(), dragging = false, last = null;
     let yaw = 0, pitch = 0, distance = 24;
+    let lastFrameAt = 0;
 
     function disposeGroup(group) {
       group.traverse((child) => {
@@ -328,7 +329,7 @@
       });
     }
 
-    function animateEdgeCharge(line, speed) {
+    function animateEdgeCharge(line, speed, deltaSeconds) {
       if (!line.geometry.attributes.lineDistance) line.computeLineDistances();
       const distances = line.geometry.attributes.lineDistance;
       if (!line.userData.baseLineDistances || line.userData.baseLineDistances.length !== distances.array.length) {
@@ -337,7 +338,7 @@
       }
 
       const cycle = line.material.dashSize + line.material.gapSize;
-      line.userData.dashPhase = ((line.userData.dashPhase || 0) + speed) % cycle;
+      line.userData.dashPhase = ((line.userData.dashPhase || 0) + speed * deltaSeconds) % cycle;
       distances.array.forEach((_, index) => {
         distances.array[index] = line.userData.baseLineDistances[index] - line.userData.dashPhase;
       });
@@ -552,6 +553,9 @@
     stage.addEventListener("keydown", (e) => { if (e.key === "Escape") clearHover(); });
 
     function frame(now) {
+      const deltaSeconds = lastFrameAt ? Math.min(Math.max((now - lastFrameAt) / 1000, 0), .05) : 0;
+      lastFrameAt = now;
+
       /* A: soft heartbeat on orbs; C: hotter pulse on hover + neighbors */
       if (!reducedMotion && objects.length) {
         objects.forEach((mesh) => {
@@ -580,7 +584,8 @@
             line.userData.a === hover.userData.atom.id ||
             line.userData.b === hover.userData.atom.id
           );
-          animateEdgeCharge(line, hot ? .055 : .014);
+          /* Per-second equivalents of the original 60fps frame-step rates. */
+          animateEdgeCharge(line, hot ? 3.3 : .84, deltaSeconds);
         });
       }
 
