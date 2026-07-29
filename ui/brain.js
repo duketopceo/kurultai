@@ -146,9 +146,15 @@
     });
     elements.inspector.append(title, summary, metrics);
     if (atom.tags.length) {
-      const tags = document.createElement("p");
-      tags.className = "inspector-summary";
-      tags.textContent = atom.tags.map((tag) => `#${tag}`).join(" ");
+      const tags = document.createElement("div");
+      tags.className = "inspector-tags";
+      atom.tags.forEach((tag) => {
+        const chip = document.createElement("span");
+        chip.className = "tag-chip";
+        chip.textContent = `#${tag}`;
+        chip.style.background = labelGradientCss(tag);
+        tags.append(chip);
+      });
       elements.inspector.append(tags);
     }
     if (atom.file) {
@@ -244,12 +250,10 @@
     } catch (_) { /* Offline — represented in header. */ }
   }
 
-  /* ── 3-D graph (Three.js) ───────────────────────────────────── */
+  /* ── Purple gradient from labels ────────────────────────────── */
   /*
-   * Soft electric orbs (not faceted cubes) + dashed synapse charge on edges.
-   * Hover: brighter node pulse + faster zap on connected edges only.
-   * Palette: white = hot, purple = base. No background particle field.
-   * Graph stays compact (radius ≤ 8) so the whole lattice fits the camera.
+   * Map each atom's primary tag onto a purple-only spectrum so related
+   * labels share a hue family while staying black/white/purple compliant.
    */
   const COLOUR = {
     nodeBase:    0xa855f7,   // electric purple
@@ -260,6 +264,70 @@
     edgeDim:     0x2a1050,   // near-invisible when unfocused
     pointLight:  0xa855f7
   };
+  const PURPLE_STOPS = [0x4c1d95, 0x6d28d9, 0xa855f7, 0xc084fc, 0xe9d5ff];
+
+  function hashLabel(value) {
+    const s = String(value || "").toLowerCase();
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0) / 4294967295;
+  }
+
+  function lerpChannel(a, b, t) {
+    return Math.round(a + (b - a) * t);
+  }
+
+  function lerpHex(a, b, t) {
+    const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+    const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+    return (lerpChannel(ar, br, t) << 16)
+      | (lerpChannel(ag, bg, t) << 8)
+      | lerpChannel(ab, bb, t);
+  }
+
+  function primaryLabel(atom) {
+    const tags = atom && Array.isArray(atom.tags) ? atom.tags : [];
+    if (!tags.length) return "";
+    return String(tags[0]);
+  }
+
+  function purpleForLabel(label) {
+    if (!label) return COLOUR.nodeBase;
+    const t = hashLabel(label);
+    const scaled = t * (PURPLE_STOPS.length - 1);
+    const i = Math.floor(scaled);
+    const f = scaled - i;
+    const a = PURPLE_STOPS[i];
+    const b = PURPLE_STOPS[Math.min(i + 1, PURPLE_STOPS.length - 1)];
+    return lerpHex(a, b, f);
+  }
+
+  function purpleForAtom(atom) {
+    return purpleForLabel(primaryLabel(atom));
+  }
+
+  function hexToCss(hex) {
+    return `#${(hex >>> 0).toString(16).padStart(6, "0")}`;
+  }
+
+  function labelGradientCss(label) {
+    const mid = purpleForLabel(label);
+    const deep = lerpHex(mid, 0x2e1065, .45);
+    const light = lerpHex(mid, 0xffffff, .28);
+    return `linear-gradient(135deg, ${hexToCss(deep)}, ${hexToCss(mid)} 55%, ${hexToCss(light)})`;
+  }
+
+  /* ── 3-D graph (Three.js) ───────────────────────────────────── */
+  /*
+   * Soft electric orbs (not faceted cubes) + dashed synapse charge on edges.
+   * Node fill sits on a purple gradient keyed by the atom's primary label.
+   * Hover: brighter node pulse + faster zap on connected edges only.
+   * Palette: white = hot, purple family = base. No background particle field.
+   * Graph stays compact (radius ≤ 8) so the whole lattice fits the camera.
+   */
 
   function makeGraph() {
     if (!window.THREE || !elements.canvas) return null;
@@ -300,17 +368,17 @@
       });
     }
 
-    function nodeMaterial(active) {
+    function nodeMaterial(hex) {
       return new THREE.MeshBasicMaterial({
-        color:       active ? COLOUR.nodeHot : COLOUR.nodeBase,
+        color:       hex == null ? COLOUR.nodeBase : hex,
         transparent: true,
-        opacity:     active ? 1 : .82
+        opacity:     .82
       });
     }
 
-    function haloMaterial() {
+    function haloMaterial(hex) {
       return new THREE.MeshBasicMaterial({
-        color:       COLOUR.nodeBase,
+        color:       hex == null ? COLOUR.nodeBase : hex,
         transparent: true,
         opacity:     .2,
         depthWrite:  false,
@@ -374,19 +442,21 @@
 
       atoms.slice(0, 450).forEach((atom, index) => {
         const size = .12 + Math.min(atom.score, 1) * .10;
+        const baseColor = purpleForAtom(atom);
         /* A: smooth orb (24 segments) — avoids faceted “cube” look from 9×9 */
         const mesh = new THREE.Mesh(
           new THREE.SphereGeometry(size, 24, 24),
-          nodeMaterial(false)
+          nodeMaterial(baseColor)
         );
         mesh.position.copy(positionFor(index, Math.min(atoms.length, 450)));
         mesh.userData.atom = atom;
+        mesh.userData.baseColor = baseColor;
         mesh.userData.pulsePhase = Math.random() * Math.PI * 2;
         mesh.userData.baseOpacity = .82;
 
         const halo = new THREE.Mesh(
           new THREE.SphereGeometry(size * 2.15, 16, 16),
-          haloMaterial()
+          haloMaterial(baseColor)
         );
         halo.raycast = () => {};
         halo.userData.isHalo = true;
@@ -461,6 +531,7 @@
 
       objects.forEach((node) => {
         const halo = node.userData.halo;
+        const base = node.userData.baseColor ?? COLOUR.nodeBase;
         if (node === mesh) {
           node.material.color.setHex(COLOUR.nodeHot);
           node.material.opacity = 1;
@@ -469,14 +540,14 @@
             halo.material.opacity = .5;
           }
         } else if (hoverConnected.has(node.userData.atom.id)) {
-          node.material.color.setHex(COLOUR.nodeBase);
+          node.material.color.setHex(base);
           node.material.opacity = .92;
           if (halo) {
-            halo.material.color.setHex(COLOUR.edgeActive);
+            halo.material.color.setHex(lerpHex(base, COLOUR.edgeActive, .35));
             halo.material.opacity = .32;
           }
         } else {
-          node.material.color.setHex(COLOUR.nodeUnfocus);
+          node.material.color.setHex(lerpHex(base, COLOUR.nodeUnfocus, .7));
           node.material.opacity = .3;
           if (halo) {
             halo.material.color.setHex(COLOUR.nodeUnfocus);
@@ -507,12 +578,13 @@
       hoverConnected = new Set();
       elements.tooltip.hidden = true;
       objects.forEach((node) => {
-        node.material.color.setHex(COLOUR.nodeBase);
+        const base = node.userData.baseColor ?? COLOUR.nodeBase;
+        node.material.color.setHex(base);
         node.material.opacity = node.userData.baseOpacity ?? .82;
         node.scale.setScalar(1);
         const halo = node.userData.halo;
         if (halo) {
-          halo.material.color.setHex(COLOUR.nodeBase);
+          halo.material.color.setHex(base);
           halo.material.opacity = .2;
         }
       });
