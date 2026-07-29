@@ -430,6 +430,11 @@ button, input, textarea { font: inherit; }
   color: var(--electric-strong);
   box-shadow: 0 0 18px var(--glow);
 }
+.layout-toggle[aria-pressed="true"] {
+  border-color: var(--electric);
+  color: var(--electric-strong);
+  box-shadow: 0 0 18px var(--glow);
+}
 .max-toggle.is-ghosting {
   border-color: rgba(192, 132, 252, .7);
   box-shadow: 0 0 22px rgba(168, 85, 247, .35);

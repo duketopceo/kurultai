@@ -115,7 +115,7 @@
           </svg>
         </div>
 
-        <div id="brain-canvas" aria-hidden="true"></div>
+        <div id="brain-canvas" aria-label="Interactive three-dimensional memory graph. Drag to orbit, scroll to zoom, hover a node to inspect connections. Use the solar control to switch layouts."></div>
         <div class="brain-overlay" aria-hidden="true">
           <span>DRAG / ORBIT</span>
           <span>SCROLL / ZOOM</span>
@@ -143,6 +143,10 @@
         <input id="timeline-range" type="range" min="0" max="100" value="100">
         <output id="timeline-output">all time</output>
       </div>
+      <button id="layout-toggle" class="quiet-button layout-toggle" type="button"
+              aria-pressed="false" aria-label="Switch memory layout to solar system">
+        solar
+      </button>
       <button id="max-toggle" class="quiet-button max-toggle" type="button"
               aria-pressed="false"
               aria-label="Load up to 10,000 memories via tiered graph. Hover to preview as ghosts."
