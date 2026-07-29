@@ -246,10 +246,10 @@
 
   /* ── 3-D graph (Three.js) ───────────────────────────────────── */
   /*
-   * Node colour palette: white = hovered/selected, purple = base.
-   * Edge colour:         dim purple at rest, bright on hover highlight.
-   * No floating background particles (avoided per AGENTS.md clean aesthetic).
-   * Graph stays compact (radius ≤ 8) to prevent far-out dots.
+   * Soft electric orbs (not faceted cubes) + dashed synapse charge on edges.
+   * Hover: brighter node pulse + faster zap on connected edges only.
+   * Palette: white = hot, purple = base. No background particle field.
+   * Graph stays compact (radius ≤ 8) so the whole lattice fits the camera.
    */
   const COLOUR = {
     nodeBase:    0xa855f7,   // electric purple
@@ -286,7 +286,7 @@
     const raycaster = new THREE.Raycaster();
     const pointer   = new THREE.Vector2();
     let objects = [], nodeMap = new Map(), links = [];
-    let hover = null, dragging = false, last = null;
+    let hover = null, hoverConnected = new Set(), dragging = false, last = null;
     let yaw = 0, pitch = 0, distance = 24;
 
     function disposeGroup(group) {
@@ -304,6 +304,27 @@
         color:       active ? COLOUR.nodeHot : COLOUR.nodeBase,
         transparent: true,
         opacity:     active ? 1 : .82
+      });
+    }
+
+    function haloMaterial() {
+      return new THREE.MeshBasicMaterial({
+        color:       COLOUR.nodeBase,
+        transparent: true,
+        opacity:     .2,
+        depthWrite:  false,
+        blending:    THREE.AdditiveBlending
+      });
+    }
+
+    function edgeMaterial(active) {
+      return new THREE.LineDashedMaterial({
+        color:       active ? COLOUR.edgeActive : COLOUR.edgeRest,
+        transparent: true,
+        opacity:     active ? .9 : .22,
+        dashSize:    active ? .18 : .11,
+        gapSize:     active ? .06 : .1,
+        scale:       1
       });
     }
 
@@ -336,12 +357,25 @@
 
       atoms.slice(0, 450).forEach((atom, index) => {
         const size = .12 + Math.min(atom.score, 1) * .10;
+        /* A: smooth orb (24 segments) — avoids faceted “cube” look from 9×9 */
         const mesh = new THREE.Mesh(
-          new THREE.SphereGeometry(size, 9, 9),
+          new THREE.SphereGeometry(size, 24, 24),
           nodeMaterial(false)
         );
         mesh.position.copy(positionFor(index, Math.min(atoms.length, 450)));
         mesh.userData.atom = atom;
+        mesh.userData.pulsePhase = Math.random() * Math.PI * 2;
+        mesh.userData.baseOpacity = .82;
+
+        const halo = new THREE.Mesh(
+          new THREE.SphereGeometry(size * 2.15, 16, 16),
+          haloMaterial()
+        );
+        halo.raycast = () => {};
+        halo.userData.isHalo = true;
+        mesh.add(halo);
+        mesh.userData.halo = halo;
+
         nodes.add(mesh);
         objects.push(mesh);
         nodeMap.set(atom.id, mesh);
@@ -352,9 +386,8 @@
         const b = nodeMap.get(link.b);
         if (!a || !b) return;
         const geo = new THREE.BufferGeometry().setFromPoints([a.position, b.position]);
-        const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
-          color: COLOUR.edgeRest, transparent: true, opacity: .18
-        }));
+        const line = new THREE.Line(geo, edgeMaterial(false));
+        line.computeLineDistances();
         line.userData = link;
         edges.add(line);
       });
@@ -376,6 +409,26 @@
       elements.tooltip.style.top  = `${Math.min(event.clientY - rect.top  + 12, rect.height - 56)}px`;
     }
 
+    function styleEdge(line, mode) {
+      /* mode: 'rest' | 'active' | 'dim' */
+      if (mode === "active") {
+        line.material.color.setHex(COLOUR.edgeActive);
+        line.material.opacity = .95;
+        line.material.dashSize = .2;
+        line.material.gapSize = .05;
+      } else if (mode === "dim") {
+        line.material.color.setHex(COLOUR.edgeDim);
+        line.material.opacity = .04;
+        line.material.dashSize = .08;
+        line.material.gapSize = .14;
+      } else {
+        line.material.color.setHex(COLOUR.edgeRest);
+        line.material.opacity = .22;
+        line.material.dashSize = .11;
+        line.material.gapSize = .1;
+      }
+    }
+
     function showHover(mesh, event) {
       if (hover === mesh) {
         placeTooltip(event);
@@ -383,29 +436,41 @@
       }
       hover = mesh;
       const nextId = mesh.userData.atom.id;
-      const connectedIds = new Set();
+      hoverConnected = new Set();
       links.forEach((link) => {
-        if (link.a === nextId) connectedIds.add(link.b);
-        else if (link.b === nextId) connectedIds.add(link.a);
+        if (link.a === nextId) hoverConnected.add(link.b);
+        else if (link.b === nextId) hoverConnected.add(link.a);
       });
 
       objects.forEach((node) => {
+        const halo = node.userData.halo;
         if (node === mesh) {
           node.material.color.setHex(COLOUR.nodeHot);
           node.material.opacity = 1;
-        } else if (connectedIds.has(node.userData.atom.id)) {
+          if (halo) {
+            halo.material.color.setHex(COLOUR.nodeHot);
+            halo.material.opacity = .5;
+          }
+        } else if (hoverConnected.has(node.userData.atom.id)) {
           node.material.color.setHex(COLOUR.nodeBase);
-          node.material.opacity = .9;
+          node.material.opacity = .92;
+          if (halo) {
+            halo.material.color.setHex(COLOUR.edgeActive);
+            halo.material.opacity = .32;
+          }
         } else {
           node.material.color.setHex(COLOUR.nodeUnfocus);
           node.material.opacity = .3;
+          if (halo) {
+            halo.material.color.setHex(COLOUR.nodeUnfocus);
+            halo.material.opacity = .06;
+          }
         }
       });
 
       edges.children.forEach((line) => {
         const linked = line.userData.a === nextId || line.userData.b === nextId;
-        line.material.opacity = linked ? .9 : .04;
-        line.material.color.setHex(linked ? COLOUR.edgeActive : COLOUR.edgeDim);
+        styleEdge(line, linked ? "active" : "dim");
       });
 
       const atom = mesh.userData.atom;
@@ -422,15 +487,19 @@
 
     function clearHover() {
       hover = null;
+      hoverConnected = new Set();
       elements.tooltip.hidden = true;
       objects.forEach((node) => {
         node.material.color.setHex(COLOUR.nodeBase);
-        node.material.opacity = .82;
+        node.material.opacity = node.userData.baseOpacity ?? .82;
+        node.scale.setScalar(1);
+        const halo = node.userData.halo;
+        if (halo) {
+          halo.material.color.setHex(COLOUR.nodeBase);
+          halo.material.opacity = .2;
+        }
       });
-      edges.children.forEach((line) => {
-        line.material.opacity = .18;
-        line.material.color.setHex(COLOUR.edgeRest);
-      });
+      edges.children.forEach((line) => styleEdge(line, "rest"));
     }
 
     function hit(event) {
@@ -438,7 +507,7 @@
       pointer.x = ((event.clientX - rect.left) / rect.width)  *  2 - 1;
       pointer.y = -((event.clientY - rect.top)  / rect.height) *  2 + 1;
       raycaster.setFromCamera(pointer, camera);
-      return raycaster.intersectObjects(objects)[0]?.object || null;
+      return raycaster.intersectObjects(objects, false)[0]?.object || null;
     }
 
     renderer.domElement.addEventListener("pointermove", (e) => {
@@ -467,6 +536,39 @@
     stage.addEventListener("keydown", (e) => { if (e.key === "Escape") clearHover(); });
 
     function frame(now) {
+      /* A: soft heartbeat on orbs; C: hotter pulse on hover + neighbors */
+      if (!reducedMotion && objects.length) {
+        objects.forEach((mesh) => {
+          const phase = mesh.userData.pulsePhase || 0;
+          const isHot = hover === mesh;
+          const isLinked = hover && hoverConnected.has(mesh.userData.atom.id);
+          const amp = isHot ? .16 : isLinked ? .1 : .055;
+          const speed = isHot ? .0042 : .0028;
+          const t = Math.sin(now * speed + phase) * .5 + .5;
+          mesh.scale.setScalar(1 + t * amp);
+          const halo = mesh.userData.halo;
+          if (halo && !hover) {
+            halo.material.opacity = .14 + t * .12;
+          } else if (halo && isHot) {
+            halo.material.opacity = .38 + t * .22;
+          } else if (halo && isLinked) {
+            halo.material.opacity = .24 + t * .14;
+          }
+        });
+      }
+
+      /* B: synapse charge along edges; C: faster zap on hover arcs */
+      if (!reducedMotion && edges.children.length) {
+        edges.children.forEach((line) => {
+          if (line.material.dashOffset === undefined) return;
+          const hot = hover && (
+            line.userData.a === hover.userData.atom.id ||
+            line.userData.b === hover.userData.atom.id
+          );
+          line.material.dashOffset -= hot ? .055 : .014;
+        });
+      }
+
       camera.position.set(
         Math.sin(yaw) * distance,
         Math.sin(pitch) * distance * .48,
