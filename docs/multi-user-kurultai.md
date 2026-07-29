@@ -48,7 +48,8 @@ Do **not** share one SQLite file via Dropbox/iCloud. That corrupts WAL and races
 # Device A
 kurultai export -o brain.kurultai
 
-# copy brain.kurultai to Device B (AirDrop / scp / USB) — not Dropbox live sync of store.db
+# copy brain.kurultai to Device B over a trusted channel (AirDrop / scp / USB)
+# — not Dropbox live sync of store.db, and not untrusted cloud uploads
 
 # Device B — new empty Kurultai
 kurultai import brain.kurultai          # or: kurultai import brain.kurultai --write-config
@@ -60,7 +61,10 @@ kurultai init --agent all
 kurultai status
 ```
 
-Pack contents: `manifest.json` + `config.toml` (secrets redacted) + `store.db` (SQLite backup). Replace refuses a non-empty destination store unless `--force`. Combine upserts atoms (vectors when embed dims match).
+Pack contents: `manifest.json` + `config.toml` (API key lines redacted) + `store.db` (SQLite backup).
+**Confidentiality:** the pack is **not encrypted**. Indexed atom text and metadata are readable by anyone with the file. Transfer only over trusted channels, do not commit packs to git or upload them to untrusted services, and delete the pack after a successful import.
+
+Replace refuses a non-empty destination store unless `--force`. Combine upserts atoms (vectors when embed dims match).
 
 Until full [#80](https://github.com/duketopceo/kurultai/issues/80) encrypted sync:
 

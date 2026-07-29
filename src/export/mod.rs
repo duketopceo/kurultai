@@ -10,7 +10,7 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use serde::{Deserialize, Serialize};
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use tar::{Archive, Builder};
@@ -22,6 +22,8 @@ const MANIFEST_NAME: &str = "manifest.json";
 const CONFIG_NAME: &str = "config.toml";
 const STORE_NAME: &str = "store.db";
 
+/// On-disk manifest embedded in a `.kurultai` pack, recording format/schema
+/// compatibility and provenance for the exported store.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PackManifest {
     pub format_version: u32,
@@ -32,6 +34,7 @@ pub struct PackManifest {
     pub created_at: String,
 }
 
+/// Result of a successful `export_pack` call.
 #[derive(Debug, Clone)]
 pub struct ExportReport {
     pub path: PathBuf,
@@ -39,6 +42,7 @@ pub struct ExportReport {
     pub embed_dim: usize,
 }
 
+/// Result of a successful `import_pack` call.
 #[derive(Debug, Clone)]
 pub struct ImportReport {
     pub mode: &'static str,
@@ -51,6 +55,49 @@ pub struct ImportReport {
 fn default_export_path() -> PathBuf {
     let stamp = Utc::now().format("%Y%m%d-%H%M%S");
     PathBuf::from(format!("kurultai-export-{stamp}.kurultai"))
+}
+
+/// Create (or truncate) a file with mode `0o600` before writing sensitive content.
+fn create_private_file(path: &Path) -> Result<File> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)
+            .map_err(|e| {
+                KurultaiError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("{}: {e}", path.display()),
+                ))
+            })
+    }
+    #[cfg(not(unix))]
+    {
+        File::create(path).map_err(|e| {
+            KurultaiError::Io(std::io::Error::new(
+                e.kind(),
+                format!("{}: {e}", path.display()),
+            ))
+        })
+    }
+}
+
+fn copy_private(src: &Path, dest: &Path) -> Result<()> {
+    let mut reader = File::open(src).map_err(|e| {
+        KurultaiError::Io(std::io::Error::new(
+            e.kind(),
+            format!("{}: {e}", src.display()),
+        ))
+    })?;
+    let mut writer = create_private_file(dest)?;
+    std::io::copy(&mut reader, &mut writer).map_err(|e| {
+        KurultaiError::Store(format!("copy {} → {}: {e}", src.display(), dest.display()))
+    })?;
+    Ok(())
 }
 
 /// Export the current config + store into a `.kurultai` gzip tar pack.
@@ -94,21 +141,25 @@ pub fn export_pack(
             KurultaiError::config(format!("read config {}: {e}", config_file.display()))
         })?
     } else {
-        // Synthesize a minimal portable config pointing at default relative storage.
-        br#"# Exported by kurultai export - remap [sources.*.root_path] on the destination.
+        // Synthesize a minimal portable config matching the live embed settings.
+        format!(
+            r#"# Exported by kurultai export - remap [sources.*.root_path] on the destination.
 environment = "dev"
 
 [storage]
 # path omitted - destination uses env-default ~/.local/share/kurultai/.../store.db
 
 [embed]
-model = "openai/text-embedding-3-large"
-dimension = 3072
+model = "{model}"
+dimension = {dim}
 
 [runtime]
 poll_interval_secs = 300
-"#
-        .to_vec()
+"#,
+            model = config.embed_model,
+            dim = config.embed_dim,
+        )
+        .into_bytes()
     };
 
     // Redact accidental inline secrets if a stale config ever had them.
@@ -116,12 +167,6 @@ poll_interval_secs = 300
     let config_safe = redact_secret_keys(&config_text);
 
     write_kurultai_archive(&out_path, &manifest_bytes, config_safe.as_bytes(), &db_snap)?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&out_path, fs::Permissions::from_mode(0o600));
-    }
 
     Ok(ExportReport {
         path: out_path,
@@ -162,12 +207,7 @@ fn write_kurultai_archive(
             fs::create_dir_all(parent)?;
         }
     }
-    let file = File::create(out).map_err(|e| {
-        KurultaiError::Io(std::io::Error::new(
-            e.kind(),
-            format!("{}: {e}", out.display()),
-        ))
-    })?;
+    let file = create_private_file(out)?;
     let enc = GzEncoder::new(file, Compression::default());
     let mut builder = Builder::new(enc);
 
@@ -230,6 +270,12 @@ fn unpack_kurultai(path: &Path) -> Result<UnpackedPack> {
             manifest.format_version
         )));
     }
+    if manifest.schema_version > CURRENT_SCHEMA_VERSION {
+        return Err(KurultaiError::config(format!(
+            "pack schema_version {} is newer than this CLI supports ({CURRENT_SCHEMA_VERSION}) — upgrade kurultai before importing",
+            manifest.schema_version
+        )));
+    }
     Ok(UnpackedPack { dir, manifest })
 }
 
@@ -243,11 +289,15 @@ pub enum ImportMode {
 }
 
 /// Import a `.kurultai` pack into the destination resolved by `config`.
+///
+/// When `write_config_if_missing` is set, `dest_config_path` is where the pack's
+/// `config.toml` is written if that path does not already exist.
 pub async fn import_pack(
     config: &Config,
     pack_path: &Path,
     mode: ImportMode,
     write_config_if_missing: bool,
+    dest_config_path: &Path,
 ) -> Result<ImportReport> {
     let unpacked = unpack_kurultai(pack_path)?;
     let pack_store_path = unpacked.dir.path().join(STORE_NAME);
@@ -267,15 +317,8 @@ pub async fn import_pack(
                     )));
                 }
             }
-            fs::copy(&pack_store_path, &dest).map_err(|e| {
-                KurultaiError::Store(format!("copy store into {}: {e}", dest.display()))
-            })?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = fs::set_permissions(&dest, fs::Permissions::from_mode(0o600));
-            }
-            maybe_write_config(&pack_config_path, write_config_if_missing)?;
+            copy_private(&pack_store_path, &dest)?;
+            maybe_write_config(&pack_config_path, dest_config_path, write_config_if_missing)?;
             Ok(ImportReport {
                 mode: if force { "replace-force" } else { "replace" },
                 atoms_upserted: unpacked.manifest.atom_count,
@@ -298,36 +341,39 @@ pub async fn import_pack(
 
             let mut upserted = 0u64;
             let mut vectors = 0u64;
-            let mut offset = 0usize;
+            let mut after_id: Option<String> = None;
             const PAGE: usize = 200;
             loop {
                 let mut page = src.list_atoms_page_sync(
-                    offset,
+                    after_id.as_deref(),
                     PAGE,
                     SearchFilter {
                         trusted_only: false,
                     },
+                    !skip_vectors,
                 )?;
                 if page.is_empty() {
                     break;
                 }
                 let n = page.len();
+                let last_id = page.last().map(|a| a.id.clone());
                 if !skip_vectors {
                     for atom in &mut page {
-                        if let Some(emb) = src.load_embedding_sync(&atom.id)? {
+                        if let Some(emb) = atom.embedding.as_ref() {
                             if emb.len() == config.embed_dim {
-                                atom.embedding = Some(emb);
                                 vectors += 1;
+                            } else {
+                                atom.embedding = None;
                             }
                         }
                     }
                 }
                 dest_store.upsert_batch(&page).await?;
                 upserted += n as u64;
-                offset += n;
+                after_id = last_id;
             }
 
-            maybe_write_config(&pack_config_path, write_config_if_missing)?;
+            maybe_write_config(&pack_config_path, dest_config_path, write_config_if_missing)?;
             Ok(ImportReport {
                 mode: "combine",
                 atoms_upserted: upserted,
@@ -339,24 +385,21 @@ pub async fn import_pack(
     }
 }
 
-fn maybe_write_config(pack_config: &Path, write_if_missing: bool) -> Result<()> {
+fn maybe_write_config(
+    pack_config: &Path,
+    dest_config: &Path,
+    write_if_missing: bool,
+) -> Result<()> {
     if !write_if_missing {
         return Ok(());
     }
-    let dest = config_path()?;
-    if dest.exists() {
+    if dest_config.exists() {
         return Ok(());
     }
-    if let Some(parent) = dest.parent() {
+    if let Some(parent) = dest_config.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::copy(pack_config, &dest)
-        .map_err(|e| KurultaiError::config(format!("write config {}: {e}", dest.display())))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&dest, fs::Permissions::from_mode(0o600));
-    }
+    copy_private(pack_config, dest_config)?;
     Ok(())
 }
 
@@ -447,6 +490,7 @@ poll_interval_secs = 300
             &pack,
             ImportMode::Replace { force: false },
             false,
+            &dest_cfg,
         )
         .await
         .unwrap();
@@ -455,6 +499,65 @@ poll_interval_secs = 300
         let opened = SqliteVecStore::open(dest_db, 4).unwrap();
         let got = opened.get("a1").await.unwrap().unwrap();
         assert!(got.content.contains("export world"));
+    }
+
+    #[tokio::test]
+    async fn replace_refuses_nonempty_without_force() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src_db = tmp.path().join("src.db");
+        let dst_db = tmp.path().join("dst.db");
+        let src_cfg = tmp.path().join("src.toml");
+        let dst_cfg = tmp.path().join("dst.toml");
+
+        for (cfg, db, id, body) in [
+            (&src_cfg, &src_db, "from-pack", "alpha"),
+            (&dst_cfg, &dst_db, "keep-me", "beta"),
+        ] {
+            fs::write(
+                cfg,
+                format!(
+                    r#"environment = "dev"
+[storage]
+path = "{db}"
+[embed]
+dimension = 4
+model = "x"
+[runtime]
+poll_interval_secs = 300
+"#,
+                    db = db.display()
+                ),
+            )
+            .unwrap();
+            let store = SqliteVecStore::open(db.clone(), 4).unwrap();
+            store.upsert(&sample_atom(id, body)).await.unwrap();
+        }
+
+        let src_config = crate::config::load_config_from(&src_cfg).unwrap();
+        let pack = tmp.path().join("c.kurultai");
+        export_pack(&src_config, &src_cfg, Some(&pack)).unwrap();
+
+        let dst_config = crate::config::load_config_from(&dst_cfg).unwrap();
+        let err = import_pack(
+            &dst_config,
+            &pack,
+            ImportMode::Replace { force: false },
+            false,
+            &dst_cfg,
+        )
+        .await
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--force") || msg.contains("--combine"),
+            "{msg}"
+        );
+        assert!(SqliteVecStore::open(dst_db, 4)
+            .unwrap()
+            .get("keep-me")
+            .await
+            .unwrap()
+            .is_some());
     }
 
     #[tokio::test]
@@ -494,7 +597,7 @@ poll_interval_secs = 300
         export_pack(&src_config, &src_cfg, Some(&pack)).unwrap();
 
         let dst_config = crate::config::load_config_from(&dst_cfg).unwrap();
-        let report = import_pack(&dst_config, &pack, ImportMode::Combine, false)
+        let report = import_pack(&dst_config, &pack, ImportMode::Combine, false, &dst_cfg)
             .await
             .unwrap();
         assert_eq!(report.atoms_upserted, 1);
@@ -510,5 +613,40 @@ poll_interval_secs = 300
         let redacted = redact_secret_keys(raw);
         assert!(!redacted.contains("sk-secret"));
         assert!(redacted.contains("redacted"));
+    }
+
+    #[test]
+    fn synthesized_fallback_uses_live_embed_dim() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = tmp.path().join("store.db");
+        SqliteVecStore::open(db.clone(), 8).unwrap();
+
+        let missing_cfg = tmp.path().join("missing.toml");
+        let config = Config {
+            environment: crate::environment::Environment::Dev,
+            sources: vec![],
+            storage_path: db.to_string_lossy().into_owned(),
+            embed_model: "local/test-model".into(),
+            embed_dim: 8,
+            embed_backend: None,
+            reranker_model: None,
+            poll_interval_secs: 300,
+            nightly_full_sync_hour: None,
+            inactivity_threshold_hours: None,
+            banner: crate::art::BannerMode::Auto,
+        };
+
+        let pack = tmp.path().join("fb.kurultai");
+        export_pack(&config, &missing_cfg, Some(&pack)).unwrap();
+
+        let file = File::open(&pack).unwrap();
+        let dec = GzDecoder::new(file);
+        let mut archive = Archive::new(dec);
+        let dir = tempfile::tempdir().unwrap();
+        archive.unpack(dir.path()).unwrap();
+        let cfg_text = fs::read_to_string(dir.path().join(CONFIG_NAME)).unwrap();
+        assert!(cfg_text.contains("dimension = 8"), "{cfg_text}");
+        assert!(cfg_text.contains("local/test-model"), "{cfg_text}");
+        assert!(!cfg_text.contains("dimension = 3072"));
     }
 }

@@ -63,7 +63,7 @@ kurultai daemon --port 8421      # HTTP API + Brain UI
 
 # Multi-device: pack this brain and restore elsewhere
 kurultai export -o brain.kurultai
-# …copy file…
+# …copy over a trusted channel (pack is unencrypted indexed data; delete after import)…
 kurultai import brain.kurultai            # new device (empty store)
 kurultai import brain.kurultai --combine  # merge into an existing store
 ```

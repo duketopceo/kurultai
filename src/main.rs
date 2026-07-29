@@ -359,13 +359,14 @@ async fn main() -> Result<()> {
                     "use either --force (replace store) or --combine (merge atoms), not both",
                 ));
             }
+            let cfg_file = resolve_config_file(cli.config.as_deref())?;
             let config = load_config_with_env(cli.config.as_deref(), cli.env.as_deref())?;
             let mode = if combine {
                 ImportMode::Combine
             } else {
                 ImportMode::Replace { force }
             };
-            let report = import_pack(&config, &pack, mode, write_config).await?;
+            let report = import_pack(&config, &pack, mode, write_config, &cfg_file).await?;
             println!("Imported {} ({})", pack.display(), report.mode);
             println!("  Storage: {}", report.storage_path.display());
             println!("  Atoms upserted: {}", report.atoms_upserted);

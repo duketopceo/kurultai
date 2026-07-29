@@ -282,35 +282,81 @@ impl SqliteVecStore {
             .map_err(|e| KurultaiError::Store(format!("list_atoms collect: {e}")))
     }
 
-    /// Paginated atom list (`ORDER BY id` for stable export/combine walks).
+    /// Keyset-paginated atom list with optional embeddings (`ORDER BY id`, `id > after_id`).
+    ///
+    /// Used by export/import combine walks — avoids `OFFSET` scan cost on large stores.
     pub fn list_atoms_page_sync(
         &self,
-        offset: usize,
+        after_id: Option<&str>,
         limit: usize,
         filter: SearchFilter,
+        with_embeddings: bool,
     ) -> Result<Vec<KnowledgeAtom>> {
         let conn = self.lock()?;
-        let sql = if filter.trusted_only {
+        let select = if with_embeddings {
             format!(
-                "SELECT {} FROM knowledge_atoms WHERE trust_lane = 'trusted' \
-                 ORDER BY id LIMIT ?1 OFFSET ?2",
+                "SELECT {}, atoms_vec.embedding FROM knowledge_atoms \
+                 LEFT JOIN atoms_vec ON atoms_vec.rowid = knowledge_atoms.rowid",
                 ATOM_COLUMNS
             )
         } else {
-            format!(
-                "SELECT {} FROM knowledge_atoms ORDER BY id LIMIT ?1 OFFSET ?2",
-                ATOM_COLUMNS
-            )
+            format!("SELECT {} FROM knowledge_atoms", ATOM_COLUMNS)
         };
-        let mut stmt = conn
-            .prepare(&sql)
-            .map_err(|e| KurultaiError::Store(format!("list_atoms_page prepare: {e}")))?;
-        let atoms = stmt
-            .query_map(params![limit as i64, offset as i64], row_to_atom)
-            .map_err(|e| KurultaiError::Store(format!("list_atoms_page query: {e}")))?;
-        atoms
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| KurultaiError::Store(format!("list_atoms_page collect: {e}")))
+        let trusted = if filter.trusted_only {
+            "trust_lane = 'trusted'"
+        } else {
+            "1=1"
+        };
+
+        let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<KnowledgeAtom> {
+            let mut atom = row_to_atom(row)?;
+            if with_embeddings {
+                let blob: Option<Vec<u8>> = row.get(15)?;
+                if let Some(bytes) = blob {
+                    if !bytes.len().is_multiple_of(4) {
+                        return Err(rusqlite::Error::FromSqlConversionFailure(
+                            15,
+                            rusqlite::types::Type::Blob,
+                            Box::new(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                format!("embedding blob length {} not divisible by 4", bytes.len()),
+                            )),
+                        ));
+                    }
+                    let mut out = Vec::with_capacity(bytes.len() / 4);
+                    for chunk in bytes.chunks_exact(4) {
+                        out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+                    }
+                    atom.embedding = Some(out);
+                }
+            }
+            Ok(atom)
+        };
+
+        let atoms = match after_id {
+            Some(id) => {
+                let sql = format!("{select} WHERE {trusted} AND id > ?1 ORDER BY id LIMIT ?2");
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .map_err(|e| KurultaiError::Store(format!("list_atoms_page prepare: {e}")))?;
+                let rows = stmt
+                    .query_map(params![id, limit as i64], map_row)
+                    .map_err(|e| KurultaiError::Store(format!("list_atoms_page query: {e}")))?;
+                rows.collect::<std::result::Result<Vec<_>, _>>()
+            }
+            None => {
+                let sql = format!("{select} WHERE {trusted} ORDER BY id LIMIT ?1");
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .map_err(|e| KurultaiError::Store(format!("list_atoms_page prepare: {e}")))?;
+                let rows = stmt
+                    .query_map(params![limit as i64], map_row)
+                    .map_err(|e| KurultaiError::Store(format!("list_atoms_page query: {e}")))?;
+                rows.collect::<std::result::Result<Vec<_>, _>>()
+            }
+        }
+        .map_err(|e| KurultaiError::Store(format!("list_atoms_page collect: {e}")))?;
+        Ok(atoms)
     }
 
     /// Load the sqlite-vec embedding for an atom id, if present.
@@ -338,17 +384,7 @@ impl SqliteVecStore {
         let Some(bytes) = blob else {
             return Ok(None);
         };
-        if bytes.len() % 4 != 0 {
-            return Err(KurultaiError::Store(format!(
-                "embedding blob length {} not divisible by 4 for atom {id}",
-                bytes.len()
-            )));
-        }
-        let mut out = Vec::with_capacity(bytes.len() / 4);
-        for chunk in bytes.chunks_exact(4) {
-            out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
-        }
-        Ok(Some(out))
+        Ok(Some(embedding_f32s_from_blob(&bytes)?))
     }
 
     /// Atom count (sync).
@@ -1212,6 +1248,20 @@ fn load_atom_by_source_id(
     conn.query_row(&sql, params![source, source_id], row_to_atom)
         .optional()
         .map_err(|e| KurultaiError::Store(format!("load_atom_by_source_id: {e}")))
+}
+
+fn embedding_f32s_from_blob(bytes: &[u8]) -> Result<Vec<f32>> {
+    if !bytes.len().is_multiple_of(4) {
+        return Err(KurultaiError::Store(format!(
+            "embedding blob length {} not divisible by 4",
+            bytes.len()
+        )));
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 4);
+    for chunk in bytes.chunks_exact(4) {
+        out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    }
+    Ok(out)
 }
 
 fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {

@@ -299,14 +299,45 @@ fn export_import_combine_keeps_both_brains() {
     let a = tempfile::tempdir().unwrap();
     let b = tempfile::tempdir().unwrap();
     let cfg_a = fixture_config(&a);
-    let cfg_b = fixture_config(&b);
+
+    // Destination gets its own vault with a unique marker so we can prove
+    // combine preserves local atoms alongside imported ones.
+    let dest_vault = b.path().join("vault");
+    fs::create_dir_all(dest_vault.join("ops")).unwrap();
+    fs::write(
+        dest_vault.join("ops/local.md"),
+        "---\ntags: [local]\n---\n\nDEST_ONLY_MARKER_KURULTAI_99 stays on device B.\n",
+    )
+    .unwrap();
+    let dest_db = b.path().join("store.db");
+    let cfg_b = b.path().join("config.toml");
+    fs::write(
+        &cfg_b,
+        format!(
+            r#"environment = "dev"
+[storage]
+path = "{db}"
+[embed]
+model = "openai/text-embedding-3-large"
+dimension = 4
+[runtime]
+poll_interval_secs = 300
+[sources.notes]
+kind = "markdown"
+enabled = true
+root_path = "{vault}"
+"#,
+            db = dest_db.display(),
+            vault = dest_vault.display()
+        ),
+    )
+    .unwrap();
 
     bin()
         .args(["--config", cfg_a.to_str().unwrap(), "index", "--full"])
         .assert()
         .success();
 
-    // Seed destination with its own index first.
     bin()
         .args(["--config", cfg_b.to_str().unwrap(), "index", "--full"])
         .assert()
@@ -346,4 +377,55 @@ fn export_import_combine_keeps_both_brains() {
         .assert()
         .success()
         .stdout(predicate::str::contains("KNOWN_PHRASE_KURULTAI_42"));
+
+    bin()
+        .args([
+            "--config",
+            cfg_b.to_str().unwrap(),
+            "search",
+            "DEST_ONLY_MARKER_KURULTAI_99",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("DEST_ONLY_MARKER_KURULTAI_99"));
+}
+
+#[test]
+fn export_import_replace_refuses_nonempty_store() {
+    let src = tempfile::tempdir().unwrap();
+    let dest = tempfile::tempdir().unwrap();
+    let cfg_src = fixture_config(&src);
+    let cfg_dest = fixture_config(&dest);
+
+    bin()
+        .args(["--config", cfg_src.to_str().unwrap(), "index", "--full"])
+        .assert()
+        .success();
+    bin()
+        .args(["--config", cfg_dest.to_str().unwrap(), "index", "--full"])
+        .assert()
+        .success();
+
+    let pack = src.path().join("brain.kurultai");
+    bin()
+        .args([
+            "--config",
+            cfg_src.to_str().unwrap(),
+            "export",
+            "-o",
+            pack.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "--config",
+            cfg_dest.to_str().unwrap(),
+            "import",
+            pack.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--force").or(predicate::str::contains("--combine")));
 }
