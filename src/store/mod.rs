@@ -364,7 +364,9 @@ impl SqliteVecStore {
     pub fn backup_to_path(&self, dst: &std::path::Path) -> Result<()> {
         let src = self.lock()?;
         src.backup(rusqlite::DatabaseName::Main, dst, None)
-            .map_err(|e| KurultaiError::Store(format!("sqlite backup to {}: {e}", dst.display())))?;
+            .map_err(|e| {
+                KurultaiError::Store(format!("sqlite backup to {}: {e}", dst.display()))
+            })?;
         Ok(())
     }
 

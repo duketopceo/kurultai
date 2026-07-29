@@ -1,6 +1,6 @@
 //! Offline `.kurultai` pack — export / import a setup for multi-device handoff (#80 thin slice).
 
-use crate::config::{config_path, expand_path, ensure_storage_parent};
+use crate::config::{config_path, ensure_storage_parent, expand_path};
 use crate::error::{KurultaiError, Result};
 use crate::store::migrations::CURRENT_SCHEMA_VERSION;
 use crate::store::{SearchFilter, SqliteVecStore, Store};
@@ -69,10 +69,12 @@ pub fn export_pack(
 
     let store = SqliteVecStore::open(storage.clone(), config.embed_dim)?;
     let atom_count = store.count_sync()?;
-    let out_path = out.map(Path::to_path_buf).unwrap_or_else(default_export_path);
+    let out_path = out
+        .map(Path::to_path_buf)
+        .unwrap_or_else(default_export_path);
 
-    let tmp = tempfile::tempdir()
-        .map_err(|e| KurultaiError::Store(format!("export temp dir: {e}")))?;
+    let tmp =
+        tempfile::tempdir().map_err(|e| KurultaiError::Store(format!("export temp dir: {e}")))?;
     let db_snap = tmp.path().join(STORE_NAME);
     store.backup_to_path(&db_snap)?;
 
@@ -113,12 +115,7 @@ poll_interval_secs = 300
     let config_text = String::from_utf8_lossy(&config_bytes);
     let config_safe = redact_secret_keys(&config_text);
 
-    write_kurultai_archive(
-        &out_path,
-        &manifest_bytes,
-        config_safe.as_bytes(),
-        &db_snap,
-    )?;
+    write_kurultai_archive(&out_path, &manifest_bytes, config_safe.as_bytes(), &db_snap)?;
 
     #[cfg(unix)]
     {
@@ -143,7 +140,9 @@ fn redact_secret_keys(toml_text: &str) -> String {
             || lower.starts_with("openrouter_api_key")
             || lower.starts_with("kurultai_api_key")
         {
-            out.push_str("# redacted by kurultai export — set keys via environment on destination\n");
+            out.push_str(
+                "# redacted by kurultai export — set keys via environment on destination\n",
+            );
             continue;
         }
         out.push_str(line);
@@ -163,8 +162,12 @@ fn write_kurultai_archive(
             fs::create_dir_all(parent)?;
         }
     }
-    let file = File::create(out)
-        .map_err(|e| KurultaiError::Io(std::io::Error::new(e.kind(), format!("{}: {e}", out.display()))))?;
+    let file = File::create(out).map_err(|e| {
+        KurultaiError::Io(std::io::Error::new(
+            e.kind(),
+            format!("{}: {e}", out.display()),
+        ))
+    })?;
     let enc = GzEncoder::new(file, Compression::default());
     let mut builder = Builder::new(enc);
 
@@ -200,13 +203,12 @@ struct UnpackedPack {
 }
 
 fn unpack_kurultai(path: &Path) -> Result<UnpackedPack> {
-    let file = File::open(path).map_err(|e| {
-        KurultaiError::config(format!("open pack {}: {e}", path.display()))
-    })?;
+    let file = File::open(path)
+        .map_err(|e| KurultaiError::config(format!("open pack {}: {e}", path.display())))?;
     let dec = GzDecoder::new(file);
     let mut archive = Archive::new(dec);
-    let dir = tempfile::tempdir()
-        .map_err(|e| KurultaiError::Store(format!("import temp dir: {e}")))?;
+    let dir =
+        tempfile::tempdir().map_err(|e| KurultaiError::Store(format!("import temp dir: {e}")))?;
     archive
         .unpack(dir.path())
         .map_err(|e| KurultaiError::Store(format!("unpack {}: {e}", path.display())))?;
@@ -266,10 +268,7 @@ pub async fn import_pack(
                 }
             }
             fs::copy(&pack_store_path, &dest).map_err(|e| {
-                KurultaiError::Store(format!(
-                    "copy store into {}: {e}",
-                    dest.display()
-                ))
+                KurultaiError::Store(format!("copy store into {}: {e}", dest.display()))
             })?;
             #[cfg(unix)]
             {
@@ -351,9 +350,8 @@ fn maybe_write_config(pack_config: &Path, write_if_missing: bool) -> Result<()> 
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::copy(pack_config, &dest).map_err(|e| {
-        KurultaiError::config(format!("write config {}: {e}", dest.display()))
-    })?;
+    fs::copy(pack_config, &dest)
+        .map_err(|e| KurultaiError::config(format!("write config {}: {e}", dest.display())))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -364,9 +362,7 @@ fn maybe_write_config(pack_config: &Path, write_if_missing: bool) -> Result<()> 
 
 /// Resolve the active config file path (CLI `--config` or default).
 pub fn resolve_config_file(cli_config: Option<&Path>) -> Result<PathBuf> {
-    Ok(cli_config
-        .map(Path::to_path_buf)
-        .unwrap_or(config_path()?))
+    Ok(cli_config.map(Path::to_path_buf).unwrap_or(config_path()?))
 }
 
 #[cfg(test)]
@@ -415,7 +411,10 @@ poll_interval_secs = 300
         .unwrap();
 
         let store = SqliteVecStore::open(db.clone(), 4).unwrap();
-        store.upsert(&sample_atom("a1", "hello export world")).await.unwrap();
+        store
+            .upsert(&sample_atom("a1", "hello export world"))
+            .await
+            .unwrap();
 
         let config = crate::config::load_config_from(&cfg_path).unwrap();
         let pack = tmp.path().join("brain.kurultai");

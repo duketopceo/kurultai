@@ -342,7 +342,10 @@ async fn main() -> Result<()> {
             println!("Exported {}", report.path.display());
             println!("  Atoms: {}", report.atom_count);
             println!("  Embed dim: {}", report.embed_dim);
-            println!("Move this file to another device, then: kurultai import {}", report.path.display());
+            println!(
+                "Move this file to another device, then: kurultai import {}",
+                report.path.display()
+            );
             println!("On the destination: remap [sources.*.root_path], set API keys in env, run `kurultai init`.");
         }
         Commands::Import {
