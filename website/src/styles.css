@@ -358,7 +358,7 @@ button, input, textarea { font: inherit; }
   margin: 0 auto;
   padding: 0 clamp(1rem, 4vw, 3rem) 2.2rem;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 1rem;
   position: relative;
   align-items: center;
@@ -426,6 +426,11 @@ button, input, textarea { font: inherit; }
 }
 .timeline-control input { accent-color: var(--electric-dim); width: 130px; }
 .max-toggle[aria-pressed="true"] {
+  border-color: var(--electric);
+  color: var(--electric-strong);
+  box-shadow: 0 0 18px var(--glow);
+}
+.layout-toggle[aria-pressed="true"] {
   border-color: var(--electric);
   color: var(--electric-strong);
   box-shadow: 0 0 18px var(--glow);

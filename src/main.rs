@@ -76,6 +76,12 @@ enum Commands {
     },
     /// List configured sources and status
     Status,
+    /// Delete all atoms for a given source from the knowledge store
+    Delete {
+        /// Source name to delete (e.g. titanic, test-vault)
+        #[arg(long)]
+        source: String,
+    },
     /// Promote a quarantined atom to trusted (re-runs quality gate)
     Promote {
         /// Atom id
@@ -282,6 +288,16 @@ async fn main() -> Result<()> {
                     );
                 }
             }
+        }
+        Commands::Delete { ref source } => {
+            let app = bootstrap_app(&cli).await?;
+            tracing::info!(source = %source, "delete source requested");
+            app.store.delete_source(source).await?;
+            println!("Deleted all atoms for source '{}'.", source);
+            println!(
+                "Run `kurultai search {}` to verify no results remain.",
+                source
+            );
         }
         Commands::Daemon {
             port,

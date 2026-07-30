@@ -741,6 +741,15 @@ impl Store for SqliteVecStore {
 
             conn.execute("DELETE FROM knowledge_atoms WHERE source = ?1", [source])
                 .map_err(|e| KurultaiError::Store(format!("delete_source failed: {e}")))?;
+
+            // Clean up merge_candidates referencing deleted atoms.
+            for (_, id) in &pairs {
+                conn.execute(
+                    "DELETE FROM merge_candidates WHERE atom_a = ?1 OR atom_b = ?1",
+                    [id],
+                )
+                .map_err(|e| KurultaiError::Store(format!("delete merge_candidates: {e}")))?;
+            }
             Ok(())
         })();
 
