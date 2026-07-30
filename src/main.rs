@@ -75,7 +75,14 @@ enum Commands {
         limit: usize,
     },
     /// List configured sources and status
-    Status,
+    Status {
+        /// Print Prometheus metrics from a running local daemon (`GET /api/metrics`)
+        #[arg(long)]
+        metrics: bool,
+        /// Daemon HTTP port when using `--metrics` (default: 8421)
+        #[arg(long, default_value = "8421")]
+        port: u16,
+    },
     /// Promote a quarantined atom to trusted (re-runs quality gate)
     Promote {
         /// Atom id
@@ -227,7 +234,7 @@ async fn main() -> Result<()> {
             let res = brain.promote(atom_id, "cli", reason.as_deref()).await?;
             println!("promoted {} (actor={})", res.atom_id, res.actor);
         }
-        Commands::Status => {
+        Commands::Status { metrics, port } => {
             let app = bootstrap_app(&cli).await?;
             let _ = print_banner_stdout(ArtVariant::Compact, app.config.banner, plain, no_color);
             let atom_count = app.atom_count().await?;
@@ -262,6 +269,31 @@ async fn main() -> Result<()> {
             println!("  Trusted: {}", trusted);
             println!("  Quarantine: {}", quarantine);
             println!("  Merge candidates (pending): {}", merge_pending);
+
+            if metrics {
+                let url = format!("http://127.0.0.1:{port}/api/metrics");
+                match reqwest::Client::new().get(&url).send().await {
+                    Ok(resp) if resp.status().is_success() => {
+                        let body = resp.text().await.unwrap_or_default();
+                        println!();
+                        println!("Daemon metrics ({url}):");
+                        println!("{body}");
+                    }
+                    Ok(resp) => {
+                        println!();
+                        println!(
+                            "Daemon metrics: HTTP {} from {url} (is `kurultai daemon` running?)",
+                            resp.status()
+                        );
+                    }
+                    Err(e) => {
+                        println!();
+                        println!(
+                            "Daemon metrics: unreachable ({e}). Start `kurultai daemon --port {port}` then retry."
+                        );
+                    }
+                }
+            }
 
             if app.connectors.is_empty() {
                 println!("  Sources: (none enabled)");

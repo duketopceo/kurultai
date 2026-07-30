@@ -60,6 +60,8 @@ kurultai ask "what deployments are we running?"
 
 kurultai mcp                     # stdio MCP for agents
 kurultai daemon --port 8421      # HTTP API + Brain UI
+# Live query histograms (Prometheus text): curl http://127.0.0.1:8421/api/metrics
+# Or: kurultai status --metrics [--port 8421]
 
 # Multi-device: pack this brain and restore elsewhere
 kurultai export -o brain.kurultai
@@ -84,7 +86,7 @@ Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md). Concepts: [CONCEPTS.md](CO
 | **Search** | FTS ∥ vector → RRF → optional rerank |
 | **Embeddings** | **FTS-first by default** (`NullEmbedder` when no key). OpenRouter when `OPENROUTER_API_KEY` / `KURULTAI_API_KEY` is set. Opt-in local ONNX: `embed.backend = "local"` + `--features local-embed` |
 | **Agents** | MCP stdio — `search`, `cite`, `ask`, `who_knows`, `remember`, `promote` |
-| **Daemon** | HTTP `/api/*` + poll/watch · Brain UI at `GET /ui/` |
+| **Daemon** | HTTP `/api/*` + poll/watch · Brain UI at `GET /ui/` · `GET /api/metrics` (Prometheus query histograms) |
 
 Without an API key, FTS search / `who-knows` / extractive `ask` all work. Vector recall, reranking, and LLM `ask` stay off until a key (or local embed) is configured. That is expected, not an error.
 
