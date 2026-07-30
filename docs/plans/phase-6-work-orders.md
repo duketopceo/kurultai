@@ -30,7 +30,7 @@ Ship **solo excellence + remote-agent reach** before multi-tenant money path.
 | Order | ID | Work order | Issue | Size | First LFG? |
 |------:|----|------------|-------|------|------------|
 | 0 | P6-0 | Merge CodeRabbit auto-review off (quota) | [#109](https://github.com/duketopceo/kurultai/pull/109) | XS | Human approve only |
-| 1 | **P6-1** | **HTTP/SSE MCP transport** (remote agents / Perplexity-class) | [#104](https://github.com/duketopceo/kurultai/issues/104) | M | **Shipped / in PR** — `POST /mcp` + `GET /mcp/sse` |
+| 1 | **P6-1** | **HTTP/SSE MCP transport** (remote agents / Perplexity-class) | [#104](https://github.com/duketopceo/kurultai/issues/104) | M | **YES — recommended next `/lfg`** |
 | 2 | P6-2 | Built-in metrics + health histograms (thin; GlitchTip later) | [#102](https://github.com/duketopceo/kurultai/issues/102) · ties [#35](https://github.com/duketopceo/kurultai/issues/35) | M | After P6-1 or parallel thin slice |
 | 3 | P6-3 | Soft multi-label scores + vocabulary (keep hard-tag gate) | [#113](https://github.com/duketopceo/kurultai/issues/113) | M | Structure win; feeds Brain colour / search boost |
 | 4 | P6-4 | Cloud Brain UI tunnel (GitHub login → local daemon) | [#101](https://github.com/duketopceo/kurultai/issues/101) | L | Needs P6-1 SSE/auth story |
