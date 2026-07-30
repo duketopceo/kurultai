@@ -13,11 +13,10 @@ use crate::daemon::DaemonStatus;
 use crate::error::KurultaiError;
 use crate::mcp::brain::BrainService;
 use crate::mcp::interface::AgentRead;
-use crate::metrics::{MetricOp, MetricsRegistry, TimedObserve};
 use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
 use axum::extract::{Query, State};
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -31,7 +30,6 @@ use uuid::Uuid;
 struct AppState {
     brain: Arc<BrainService>,
     status: Arc<DaemonStatus>,
-    metrics: Arc<MetricsRegistry>,
 }
 
 /// Options for the localhost HTTP daemon.
@@ -80,7 +78,6 @@ pub async fn serve_with(
     let state = AppState {
         brain: Arc::clone(&brain),
         status,
-        metrics: MetricsRegistry::shared(),
     };
     let mut app = router(state);
     if let Some(secret) = mcp::resolve_mcp_http_secret(opts.mcp_http_secret.as_deref()) {
@@ -106,7 +103,6 @@ fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/api/status", get(api_status))
-        .route("/api/metrics", get(api_metrics))
         .route("/api/atoms", get(api_atoms))
         .route("/api/graph", get(api_graph))
         .route("/api/touch", post(api_touch))
@@ -126,18 +122,6 @@ fn router(state: AppState) -> Router {
 
 async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "ok": true, "service": "kurultai" }))
-}
-
-/// Prometheus text exposition of in-process query histograms (#102 thin).
-async fn api_metrics(State(state): State<AppState>) -> impl IntoResponse {
-    let body = state.metrics.render_prometheus();
-    (
-        [(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
-        )],
-        body,
-    )
 }
 
 async fn api_status(
@@ -168,7 +152,6 @@ async fn api_status(
                     },
                     "memory": memory,
                     "scheduler": state.status.snapshot(),
-                    "metrics": state.metrics.summary_json(),
                 })))
             }
             Err(e) => Err(json_error(
@@ -186,7 +169,6 @@ async fn api_status(
                 "error": e.to_string(),
                 "request_id": &request_id,
                 "scheduler": state.status.snapshot(),
-                "metrics": state.metrics.summary_json(),
             })),
         )),
     }
@@ -277,36 +259,28 @@ async fn api_graph(
             ));
         }
     }
-    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Graph);
     let include_quarantine = params
         .get("include_quarantine")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    match state
+    let nodes = state
         .brain
         .list_graph_nodes(tier, limit, include_quarantine)
         .await
-    {
-        Ok(nodes) => {
-            let count = nodes.len();
-            timer.success(count as u64);
-            Ok(Json(serde_json::json!({
-                "ok": true,
-                "request_id": &request_id,
-                "tier": tier.map(|t| t.as_str()),
-                "count": count,
-                "nodes": nodes,
-            })))
-        }
-        Err(e) => {
-            timer.failure();
-            Err(json_error(
+        .map_err(|e| {
+            json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            ))
-        }
-    }
+            )
+        })?;
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "request_id": &request_id,
+        "tier": tier.map(|t| t.as_str()),
+        "count": nodes.len(),
+        "nodes": nodes,
+    })))
 }
 
 #[derive(Debug, Deserialize)]
@@ -440,25 +414,18 @@ async fn search_post(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("search_post", request_id=%request_id);
     state.status.touch_client_activity();
-    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Search);
-    match state
+    state
         .brain
         .search_filtered(&body.query, body.limit, body.include_quarantine)
         .await
-    {
-        Ok(results) => {
-            timer.success(results.len() as u64);
-            Ok(Json(results))
-        }
-        Err(e) => {
-            timer.failure();
-            Err(json_error(
+        .map(Json)
+        .map_err(|e| {
+            json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            ))
-        }
-    }
+            )
+        })
 }
 
 async fn search_get(
@@ -468,25 +435,18 @@ async fn search_get(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("search_get", request_id=%request_id);
     state.status.touch_client_activity();
-    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Search);
-    match state
+    state
         .brain
         .search_filtered(&query.q, query.limit, query.include_quarantine)
         .await
-    {
-        Ok(results) => {
-            timer.success(results.len() as u64);
-            Ok(Json(results))
-        }
-        Err(e) => {
-            timer.failure();
-            Err(json_error(
+        .map(Json)
+        .map_err(|e| {
+            json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            ))
-        }
-    }
+            )
+        })
 }
 
 #[derive(Debug, Deserialize)]
@@ -501,21 +461,18 @@ async fn ask_post(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("ask_post", request_id=%request_id);
     state.status.touch_client_activity();
-    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Ask);
-    match state.brain.ask(&body.question).await {
-        Ok(answer) => {
-            timer.success(answer.citations.len() as u64);
-            Ok(Json(answer))
-        }
-        Err(e) => {
-            timer.failure();
-            Err(json_error(
+    state
+        .brain
+        .ask(&body.question)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            ))
-        }
-    }
+            )
+        })
 }
 
 async fn ask_get(
@@ -525,21 +482,18 @@ async fn ask_get(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("ask_get", request_id=%request_id);
     state.status.touch_client_activity();
-    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Ask);
-    match state.brain.ask(&query.question).await {
-        Ok(answer) => {
-            timer.success(answer.citations.len() as u64);
-            Ok(Json(answer))
-        }
-        Err(e) => {
-            timer.failure();
-            Err(json_error(
+    state
+        .brain
+        .ask(&query.question)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            ))
-        }
-    }
+            )
+        })
 }
 
 #[derive(Debug, Deserialize)]
@@ -554,21 +508,18 @@ async fn cite_post(
 ) -> Result<Json<Option<Citation>>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("cite_post", request_id=%request_id);
-    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Cite);
-    match state.brain.cite(&body.source, &body.source_id).await {
-        Ok(citation) => {
-            timer.success(u64::from(citation.is_some()));
-            Ok(Json(citation))
-        }
-        Err(e) => {
-            timer.failure();
-            Err(json_error(
+    state
+        .brain
+        .cite(&body.source, &body.source_id)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            ))
-        }
-    }
+            )
+        })
 }
 
 #[derive(Debug, Deserialize)]
@@ -584,21 +535,18 @@ async fn who_knows_post(
 ) -> Result<Json<Vec<WhoKnowsEntry>>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("who_knows_post", request_id=%request_id);
-    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::WhoKnows);
-    match state.brain.who_knows(&body.topic, body.limit).await {
-        Ok(entries) => {
-            timer.success(entries.len() as u64);
-            Ok(Json(entries))
-        }
-        Err(e) => {
-            timer.failure();
-            Err(json_error(
+    state
+        .brain
+        .who_knows(&body.topic, body.limit)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            ))
-        }
-    }
+            )
+        })
 }
 
 async fn api_open(
@@ -650,7 +598,6 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
-            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -670,7 +617,6 @@ mod tests {
         let app = router(AppState {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
-            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .clone()
@@ -715,7 +661,6 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
-            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -776,7 +721,6 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
-            metrics: MetricsRegistry::shared(),
         });
         (app, db_dir)
     }
@@ -995,7 +939,6 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
-            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -1199,7 +1142,6 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
-            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -1241,7 +1183,6 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
-            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -1279,7 +1220,6 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
-            metrics: MetricsRegistry::shared(),
         });
 
         let resp = app
@@ -1366,7 +1306,6 @@ mod tests {
             summary: "HTTPTRUSTTOKEN trusted summary".into(),
             content: "HTTPTRUSTTOKEN trusted content body".into(),
             tags: vec!["ops".into()],
-            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             metadata: HashMap::new(),
@@ -1382,7 +1321,6 @@ mod tests {
             summary: "HTTPTRUSTTOKEN quarantine summary".into(),
             content: "HTTPTRUSTTOKEN quarantine content body".into(),
             tags: vec![],
-            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             metadata: HashMap::new(),
@@ -1401,7 +1339,6 @@ mod tests {
         let app = router(AppState {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
-            metrics: MetricsRegistry::shared(),
         });
 
         // Default list excludes quarantine.
@@ -1537,7 +1474,6 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
-            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -1555,77 +1491,6 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         let rid = v["request_id"].as_str().unwrap_or("");
         assert!(!rid.is_empty(), "request_id must be present and non-empty");
-    }
-
-    #[tokio::test]
-    async fn api_metrics_prometheus_after_search() {
-        let metrics = MetricsRegistry::shared();
-        let app = router(AppState {
-            brain: Arc::new(test_brain()),
-            status: Arc::new(crate::daemon::DaemonStatus::default()),
-            metrics: Arc::clone(&metrics),
-        });
-        let _ = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/search?q=hello&limit=3")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/metrics")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let ct = resp
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        assert!(ct.contains("text/plain"), "content-type={ct}");
-        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
-            .await
-            .unwrap();
-        let body = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(
-            body.contains("kurultai_query_requests_total{op=\"search\"} 1"),
-            "body={body}"
-        );
-        assert!(body.contains("kurultai_query_latency_ms_bucket"));
-    }
-
-    #[tokio::test]
-    async fn api_status_includes_metrics_summary() {
-        let app = router(AppState {
-            brain: Arc::new(test_brain()),
-            status: Arc::new(crate::daemon::DaemonStatus::default()),
-            metrics: MetricsRegistry::shared(),
-        });
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/status")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
-            .await
-            .unwrap();
-        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert!(v["metrics"]["search"]["requests"].is_number());
-        assert!(v["metrics"]["ask"]["requests"].is_number());
     }
 
     #[tokio::test]
@@ -1700,7 +1565,6 @@ mod tests {
         let state = AppState {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
-            metrics: MetricsRegistry::shared(),
         };
         router(state).merge(mcp::routes(mcp::McpHttpState::new(
             brain,
