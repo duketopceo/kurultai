@@ -60,6 +60,10 @@ kurultai ask "what deployments are we running?"
 
 kurultai mcp                     # stdio MCP for agents
 kurultai daemon --port 8421      # HTTP API + Brain UI
+# Optional remote MCP (read-only tools) on the daemon:
+#   export KURULTAI_MCP_HTTP_SECRET='…'
+#   → POST http://127.0.0.1:8421/mcp  (Authorization: Bearer …)
+#   → GET  http://127.0.0.1:8421/mcp/sse
 
 # Multi-device: pack this brain and restore elsewhere
 kurultai export -o brain.kurultai
@@ -83,7 +87,7 @@ Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md). Concepts: [CONCEPTS.md](CO
 | **Store** | SQLite + FTS5 + sqlite-vec · hot / warm / cold memory · ingestion staging |
 | **Search** | FTS ∥ vector → RRF → optional rerank |
 | **Embeddings** | **FTS-first by default** (`NullEmbedder` when no key). OpenRouter when `OPENROUTER_API_KEY` / `KURULTAI_API_KEY` is set. Opt-in local ONNX: `embed.backend = "local"` + `--features local-embed` |
-| **Agents** | MCP stdio — `search`, `cite`, `ask`, `who_knows`, `remember`, `promote` |
+| **Agents** | MCP stdio (full tools) · optional daemon MCP HTTP/SSE read-only (`KURULTAI_MCP_HTTP_SECRET`) |
 | **Daemon** | HTTP `/api/*` + poll/watch · Brain UI at `GET /ui/` |
 
 Without an API key, FTS search / `who-knows` / extractive `ask` all work. Vector recall, reranking, and LLM `ask` stay off until a key (or local embed) is configured. That is expected, not an error.
@@ -142,7 +146,16 @@ Overrides: `KURULTAI_ENV=dev`, `kurultai --env staging status`. API keys via env
 
 ## Agents (MCP)
 
-Same stdio server (`kurultai mcp`) for every client. `init` only writes the host config:
+**Stdio (default):** `kurultai mcp` — full tools including `remember` / `promote`.  
+**HTTP/SSE (opt-in on daemon):** set `KURULTAI_MCP_HTTP_SECRET` (or `[runtime] mcp_http_secret`) then:
+
+- `POST /mcp` — JSON-RPC (`tools/list`, `tools/call`, …)
+- `GET /mcp/sse` — SSE bootstrap (`endpoint` → `/mcp`)
+- Auth: `Authorization: Bearer <secret>`
+- Surface: **read-only** (`search`, `cite`, `ask`, `who_knows`) — no writes over HTTP in this slice
+- Bind stays `127.0.0.1` — do not expose without a tunnel + secret
+
+`init` only writes the host config for stdio MCP:
 
 | `--agent` | Config written |
 |-----------|----------------|
@@ -187,7 +200,7 @@ Multi-user model: [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md). Co
 - Plans / Agent Zero drafts: [`docs/plans/`](docs/plans/) · [`docs/agent-zero/`](docs/agent-zero/)
 
 Roadmap: developer → solo → team → company ([#25](https://github.com/duketopceo/kurultai/issues/25), [#27](https://github.com/duketopceo/kurultai/issues/27)).  
-Phase 6 next work orders (post–v0.4.0): [docs/plans/phase-6-work-orders.md](docs/plans/phase-6-work-orders.md) — next `/lfg` = MCP HTTP/SSE ([#104](https://github.com/duketopceo/kurultai/issues/104)).
+Phase 6 next work orders (post–v0.4.0): [docs/plans/phase-6-work-orders.md](docs/plans/phase-6-work-orders.md) — P6-1 MCP HTTP/SSE ([#104](https://github.com/duketopceo/kurultai/issues/104)).
 
 | Phase | Status |
 |-------|--------|
