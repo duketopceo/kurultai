@@ -3,6 +3,7 @@
 # Or permanently skip a PR by keeping `@coderabbitai ignore` in the description.
 language: "en-US"
 reviews:
+  enabled: false
   profile: chill
   request_changes_workflow: false
   high_level_summary: false
