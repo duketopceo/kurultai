@@ -80,6 +80,7 @@ fn default_config(env: Environment) -> Result<Config> {
         poll_interval_secs: 300,
         nightly_full_sync_hour: None,
         inactivity_threshold_hours: None,
+        mcp_http_secret: None,
         banner: BannerMode::Auto,
     })
 }
@@ -152,6 +153,7 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
             }
         },
         inactivity_threshold_hours: file.runtime.inactivity_threshold_hours,
+        mcp_http_secret: file.runtime.mcp_http_secret,
         banner: file.cli.banner,
     })
 }

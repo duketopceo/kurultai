@@ -639,6 +639,7 @@ poll_interval_secs = 300
             poll_interval_secs: 300,
             nightly_full_sync_hour: None,
             inactivity_threshold_hours: None,
+            mcp_http_secret: None,
             banner: crate::art::BannerMode::Auto,
         };
 

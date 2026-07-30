@@ -1,9 +1,13 @@
 //! Thin local HTTP API mirroring MCP read tools (Phase 3 / #7).
 //!
-//! Bind to localhost only — no auth in this slice.
+//! Bind to localhost only. REST routes stay open on loopback.
+//! MCP HTTP/SSE (`/mcp`, `/mcp/sse`) is **opt-in** when a shared secret is set.
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
+mod mcp;
 mod ui;
+
+pub use mcp::resolve_mcp_http_secret;
 
 use crate::daemon::DaemonStatus;
 use crate::error::KurultaiError;
@@ -28,6 +32,14 @@ struct AppState {
     status: Arc<DaemonStatus>,
 }
 
+/// Options for the localhost HTTP daemon.
+#[derive(Debug, Clone, Default)]
+pub struct ServeOptions {
+    pub port: u16,
+    /// When set, mounts authenticated MCP HTTP/SSE routes.
+    pub mcp_http_secret: Option<String>,
+}
+
 fn json_error(
     status: StatusCode,
     message: impl Into<String>,
@@ -45,12 +57,38 @@ fn json_error(
 
 /// Serve search/ask/cite/who_knows on `127.0.0.1:port` until cancelled.
 pub async fn serve(brain: BrainService, status: Arc<DaemonStatus>, port: u16) -> crate::Result<()> {
+    serve_with(
+        brain,
+        status,
+        ServeOptions {
+            port,
+            mcp_http_secret: None,
+        },
+    )
+    .await
+}
+
+/// Serve HTTP (+ optional MCP HTTP/SSE) on `127.0.0.1`.
+pub async fn serve_with(
+    brain: BrainService,
+    status: Arc<DaemonStatus>,
+    opts: ServeOptions,
+) -> crate::Result<()> {
+    let brain = Arc::new(brain);
     let state = AppState {
-        brain: Arc::new(brain),
+        brain: Arc::clone(&brain),
         status,
     };
-    let app = router(state);
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let mut app = router(state);
+    if let Some(secret) = mcp::resolve_mcp_http_secret(opts.mcp_http_secret.as_deref()) {
+        tracing::info!("mcp HTTP/SSE enabled at POST /mcp and GET /mcp/sse (bearer auth)");
+        app = app.merge(mcp::routes(mcp::McpHttpState::new(brain, secret)));
+    } else {
+        tracing::info!(
+            "mcp HTTP/SSE disabled (set KURULTAI_MCP_HTTP_SECRET or [runtime].mcp_http_secret)"
+        );
+    }
+    let addr = SocketAddr::from(([127, 0, 0, 1], opts.port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("bind {addr}: {e}")))?;
@@ -1520,5 +1558,143 @@ mod tests {
         assert!(v.get("atom").is_none(), "must not dump full atom payload");
         assert!(v.get("content").is_none());
         assert!(!v["request_id"].as_str().unwrap_or("").is_empty());
+    }
+
+    fn mcp_http_app(brain: BrainService, secret: &str) -> Router {
+        let brain = Arc::new(brain);
+        let state = AppState {
+            brain: Arc::clone(&brain),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+        };
+        router(state).merge(mcp::routes(mcp::McpHttpState::new(
+            brain,
+            secret.to_string(),
+        )))
+    }
+
+    #[tokio::test]
+    async fn mcp_http_rejects_missing_bearer() {
+        let app = mcp_http_app(test_brain(), "test-secret");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mcp")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn mcp_http_search_roundtrip_with_bearer() {
+        let brain = {
+            let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
+            let db_dir = tempfile::tempdir().unwrap();
+            let store = Arc::new(SqliteVecStore::open(db_dir.path().join("store.db"), 4).unwrap());
+            let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+            let pipeline =
+                IndexPipeline::new(Arc::clone(&store) as Arc<dyn Store>, Arc::clone(&embedder));
+            let mut connector = MarkdownConnector::new();
+            let mut extra = HashMap::new();
+            extra.insert("root_path".into(), fixture.to_string_lossy().into_owned());
+            connector
+                .init(&SourceConfig {
+                    name: "notes".into(),
+                    kind: SourceKind::Markdown,
+                    enabled: true,
+                    poll_interval_secs: 60,
+                    extra,
+                })
+                .await
+                .unwrap();
+            pipeline
+                .index_connector("notes", &connector, true)
+                .await
+                .unwrap();
+            let brain = BrainService::new(
+                store,
+                embedder,
+                Arc::new(NullReranker::new()),
+                Arc::new(ExtractiveSynthesizer::new()),
+            );
+            std::mem::forget(db_dir);
+            brain
+        };
+        let app = mcp_http_app(brain, "s3cr3t");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mcp")
+                    .header("content-type", "application/json")
+                    .header("authorization", "Bearer s3cr3t")
+                    .body(Body::from(
+                        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"KNOWN_PHRASE_KURULTAI_42","limit":3}}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v.get("result").is_some(), "{v}");
+        let text = v["result"]["content"][0]["text"].as_str().unwrap_or("");
+        assert!(
+            text.contains("KNOWN_PHRASE_KURULTAI_42") || text.contains("notes"),
+            "{text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_http_rejects_remember_on_readonly_surface() {
+        let app = mcp_http_app(test_brain(), "s3cr3t");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mcp")
+                    .header("content-type", "application/json")
+                    .header("authorization", "Bearer s3cr3t")
+                    .body(Body::from(
+                        r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"remember","arguments":{"title":"x","summary":"y","tags":["t"]}}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let msg = v["error"]["message"].as_str().unwrap_or("");
+        assert!(
+            msg.contains("read-only") || msg.contains("not available"),
+            "{v}"
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_sse_requires_auth() {
+        let app = mcp_http_app(test_brain(), "s3cr3t");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/mcp/sse")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

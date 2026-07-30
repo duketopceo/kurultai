@@ -160,7 +160,7 @@ pub async fn run_stdio(brain: BrainService) -> Result<()> {
                     }
                 };
 
-                let Some(response) = handle_message(&brain, msg).await? else {
+                let Some(response) = handle_message(&brain, msg, ToolSurface::Full).await? else {
                     continue;
                 };
                 write_response(&mut stdout, &response).await?;
@@ -171,8 +171,21 @@ pub async fn run_stdio(brain: BrainService) -> Result<()> {
     Ok(())
 }
 
+/// Which MCP tools are exposed on a transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolSurface {
+    /// Stdio — full read/write tool set.
+    Full,
+    /// HTTP/SSE — read tools only (no `remember` / `promote`).
+    ReadOnly,
+}
+
 /// Handle one JSON-RPC message. Returns `None` for notifications (no response).
-pub async fn handle_message(brain: &BrainService, msg: Value) -> Result<Option<Value>> {
+pub async fn handle_message(
+    brain: &BrainService,
+    msg: Value,
+    surface: ToolSurface,
+) -> Result<Option<Value>> {
     let id = msg.get("id").cloned();
     let method = msg.get("method").and_then(|m| m.as_str()).unwrap_or("");
 
@@ -192,10 +205,10 @@ pub async fn handle_message(brain: &BrainService, msg: Value) -> Result<Option<V
             }
         })),
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": tool_defs() })),
+        "tools/list" => Ok(json!({ "tools": tool_defs_for(surface) })),
         "tools/call" => {
             let params = msg.get("params").cloned().unwrap_or(json!({}));
-            call_tool(brain, params).await
+            call_tool(brain, params, surface).await
         }
         _ => {
             error_code = -32601;
@@ -222,9 +235,10 @@ pub async fn handle_message(brain: &BrainService, msg: Value) -> Result<Option<V
     }))
 }
 
-fn tool_defs() -> &'static [Value] {
-    static DEFS: OnceLock<Vec<Value>> = OnceLock::new();
-    DEFS.get_or_init(|| {
+fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
+    static FULL: OnceLock<Vec<Value>> = OnceLock::new();
+    static READ: OnceLock<Vec<Value>> = OnceLock::new();
+    let defs = FULL.get_or_init(|| {
         vec![
             json!({
                 "name": TOOL_SEARCH,
@@ -304,8 +318,26 @@ fn tool_defs() -> &'static [Value] {
                 }
             }),
         ]
-    })
-    .as_slice()
+    });
+    match surface {
+        ToolSurface::Full => defs.as_slice(),
+        ToolSurface::ReadOnly => READ
+            .get_or_init(|| {
+                defs.iter()
+                    .filter(|t| {
+                        matches!(
+                            t.get("name").and_then(|n| n.as_str()),
+                            Some(TOOL_SEARCH)
+                                | Some(TOOL_CITE)
+                                | Some(TOOL_ASK)
+                                | Some(TOOL_WHO_KNOWS)
+                        )
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .as_slice(),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -361,9 +393,18 @@ struct WhoKnowsArgs {
     limit: usize,
 }
 
-async fn call_tool(brain: &BrainService, params: Value) -> Result<Value> {
+async fn call_tool(brain: &BrainService, params: Value, surface: ToolSurface) -> Result<Value> {
     let call: ToolCallParams = serde_json::from_value(params)
         .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad tools/call params: {e}")))?;
+
+    if surface == ToolSurface::ReadOnly
+        && matches!(call.name.as_str(), TOOL_REMEMBER | TOOL_PROMOTE)
+    {
+        return Err(KurultaiError::Other(anyhow::anyhow!(
+            "tool '{}' is not available on HTTP/SSE MCP (read-only surface)",
+            call.name
+        )));
+    }
 
     let text = match call.name.as_str() {
         TOOL_SEARCH => {
@@ -492,7 +533,7 @@ mod tests {
 
     #[test]
     fn tool_defs_expose_phase1_tools() {
-        let names: Vec<&str> = tool_defs()
+        let names: Vec<&str> = tool_defs_for(ToolSurface::Full)
             .iter()
             .filter_map(|t| t.get("name").and_then(|n| n.as_str()))
             .collect();
@@ -502,6 +543,13 @@ mod tests {
         assert!(names.contains(&"ask"));
         assert!(names.contains(&"who_knows"));
         assert!(names.contains(&"promote"));
+        let read_names: Vec<&str> = tool_defs_for(ToolSurface::ReadOnly)
+            .iter()
+            .filter_map(|t| t.get("name").and_then(|n| n.as_str()))
+            .collect();
+        assert!(read_names.contains(&"search"));
+        assert!(!read_names.contains(&"remember"));
+        assert!(!read_names.contains(&"promote"));
     }
 
     #[tokio::test]
@@ -511,6 +559,7 @@ mod tests {
         let list = handle_message(
             &brain,
             json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+            ToolSurface::Full,
         )
         .await
         .unwrap()
@@ -529,6 +578,7 @@ mod tests {
                     "arguments": { "query": "KNOWN_PHRASE_KURULTAI_42", "limit": 3 }
                 }
             }),
+            ToolSurface::Full,
         )
         .await
         .unwrap()
@@ -541,10 +591,14 @@ mod tests {
     #[tokio::test]
     async fn unknown_method_returns_jsonrpc_code() {
         let brain = brain_with_fixture().await;
-        let resp = handle_message(&brain, json!({"jsonrpc":"2.0","id":9,"method":"nope"}))
-            .await
-            .unwrap()
-            .unwrap();
+        let resp = handle_message(
+            &brain,
+            json!({"jsonrpc":"2.0","id":9,"method":"nope"}),
+            ToolSurface::Full,
+        )
+        .await
+        .unwrap()
+        .unwrap();
         assert_eq!(resp["error"]["code"], -32601);
     }
 
@@ -567,6 +621,7 @@ mod tests {
                     }
                 }
             }),
+            ToolSurface::Full,
         )
         .await
         .unwrap()
@@ -586,6 +641,7 @@ mod tests {
                     "arguments": { "source": "agent", "source_id": "missing" }
                 }
             }),
+            ToolSurface::Full,
         )
         .await
         .unwrap()
@@ -610,6 +666,7 @@ mod tests {
                     }
                 }
             }),
+            ToolSurface::Full,
         )
         .await
         .unwrap()
@@ -634,6 +691,7 @@ mod tests {
                     "arguments": { "question": "KNOWN_PHRASE_KURULTAI_42" }
                 }
             }),
+            ToolSurface::Full,
         )
         .await
         .unwrap()
@@ -654,6 +712,7 @@ mod tests {
                     "arguments": { "topic": "KNOWN_PHRASE_KURULTAI_42", "limit": 5 }
                 }
             }),
+            ToolSurface::Full,
         )
         .await
         .unwrap()
