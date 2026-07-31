@@ -150,6 +150,19 @@ const FORCE_REPULSION_MAX_DIST = 1.5; // pairs farther than this don't repel
 const FORCE_REPULSION_EPSILON = 0.01; // guards divide-by-zero on coincident nodes
 const FORCE_CENTER_K = 0.01; // weak pull toward origin
 const FORCE_SETTLE_THRESHOLD = 0.0005; // avg displacement/iter below this ⇒ settled
+// Large-graph iteration cap (U4): at n > FORCE_BIG_GRAPH_N a full
+// FORCE_MAX_ITERATIONS sim is ~25-50s of background slices (n²/2 ≈ 3.1M pair
+// evals/iter at n=2500, ~80-160ms/iter), so the galaxy/cluster shape takes
+// far too long to emerge. 150 iterations still resolves the macro shape, and
+// FORCE_SETTLE_THRESHOLD early-exits warm-started refreshes before either cap.
+const FORCE_BIG_GRAPH_N = 1500;
+const FORCE_MAX_ITERATIONS_BIG_GRAPH = 150;
+
+// Dev-only perf instrumentation (U4): flip to true locally to log setData and
+// force-sim timings. Kept behind a module-level const because the repo
+// tsconfig has no vite/client types (import.meta.env doesn't typecheck); when
+// false the guards are dead-code-eliminated and no timing calls ever run.
+const PERF_DEBUG = false;
 
 export interface BrainViewOptions {
   theme: Theme;
@@ -205,6 +218,11 @@ export class BrainView {
   // camera focus all read from it. Mesh position and the sprite position
   // attribute are both just sinks that mirror this map.
   private atomPositions = new Map<string, THREE.Vector3>();
+  // SetData-time lattice (vertexForRegion) positions, cached so the layout
+  // animation can target them without re-probing/saturating usedVerts every
+  // frame (U4: at 2500 nodes vs ~2.9k mesh verts the probe saturates within
+  // one animation frame, turning the lattice switch into multi-second scans).
+  private latticePositions = new Map<string, THREE.Vector3>();
   // Atom ids currently passing the connectionThreshold filter (both modes).
   private visibleAtomIds = new Set<string>();
   // Shown atom ids in render order (the slice(0, MAX_NODES) result).
@@ -245,6 +263,9 @@ export class BrainView {
   private _forceLinkPairs: { a: number; b: number; strength: number }[] = [];
   private _forceSimHandle: ReturnType<typeof setTimeout> | null = null;
   private _forceIterations = 0;
+  // PERF_DEBUG-only sim timers (never written when PERF_DEBUG is false).
+  private _perfSimT0 = 0;
+  private _perfSimActive = 0;
 
   /* ── Interactive control state ─────────────────────────────── */
   private connectionThreshold = 0;
@@ -425,6 +446,19 @@ export class BrainView {
     return pos.add(normal.multiplyScalar(0.018 + jitter)).addScalar(jitter2 * 0.01);
   }
 
+  /**
+   * Lattice animation target: the atom's setData-time vertex position, cached.
+   * Re-calling vertexForRegion per animation frame would re-probe (and keep
+   * growing) usedVerts — at 2500 nodes the regions saturate almost immediately
+   * and every subsequent frame degenerates into full-region scans (U4 audit),
+   * so the cached position is both faster and stable across frames.
+   */
+  private latticePos(atom: Atom, region: Region): THREE.Vector3 {
+    const cached = this.latticePositions.get(atom.id);
+    if (cached) return cached.clone();
+    return this.vertexForRegion(atom, region);
+  }
+
   private buildParticles(count: number) {
     const geometry = new THREE.BufferGeometry();
 
@@ -478,6 +512,7 @@ export class BrainView {
   }
 
   setData(atoms: Atom[], links: Link[]) {
+    const perfT0 = PERF_DEBUG ? performance.now() : 0;
     this.atomsById = new Map(atoms.map((a) => [a.id, a]));
     this.links = links;
     this.hover = null;
@@ -505,6 +540,7 @@ export class BrainView {
     this.haloMap = new Map();
     this.labelMap = new Map();
     this.atomPositions = new Map();
+    this.latticePositions = new Map();
     this.visibleAtomIds = new Set();
     this._shownIds = [];
     this.spriteRegionOf = new Map();
@@ -548,6 +584,12 @@ export class BrainView {
     // the existing setLayout transition animates to force positions if the
     // user is currently in force mode.
     this.computeForceLayout();
+
+    if (PERF_DEBUG) {
+      console.log(
+        `[brain-perf] setData n=${shown.length} edges=${this.edgeGroup.children.length} sprite=${this.spriteMode}: ${(performance.now() - perfT0).toFixed(1)}ms`,
+      );
+    }
   }
 
   /** Sphere+halo+label mesh path (≤ NODE_SPRITE_CUTOFF nodes). Byte-identical to
@@ -588,6 +630,7 @@ export class BrainView {
       this.haloMap.set(atom.id, halo);
       this.labelMap.set(atom.id, label);
       this.atomPositions.set(atom.id, mesh.position.clone());
+      this.latticePositions.set(atom.id, mesh.position.clone());
     });
   }
 
@@ -619,6 +662,8 @@ export class BrainView {
       alphas[i] = 1;
 
       this.atomPositions.set(atom.id, pos);
+      // Separate instance: atomPositions is mutated by layout animations.
+      this.latticePositions.set(atom.id, pos.clone());
       this.spriteRegionOf.set(atom.id, region);
       this.spriteIndexMap.set(atom.id, i);
       this.spriteIdByIndex.push(atom.id);
@@ -668,7 +713,13 @@ export class BrainView {
           const t = i / (numIntermediate + 1);
           const p = a.clone().lerp(b, t);
 
-          if (this.proxy) {
+          // U4: sprite mode skips the per-edge surface raycast — 4 raycasts
+          // per edge × up to MAX_EDGES edges against the ~5.6k-tri proxy costs
+          // ~1-2ms per raycast (multi-second setData at 2500 nodes), blowing
+          // the 500ms render budget. At sprite densities surface conformity is
+          // invisible (the force/galaxy layouts leave the brain hull anyway),
+          // so fall through to the cheap outward lift.
+          if (this.proxy && !this.spriteMode) {
             // Raycast from brain center through p onto the mesh surface.
             const worldOrigin = new THREE.Vector3();
             this.brainGroup.localToWorld(worldOrigin);
@@ -690,7 +741,7 @@ export class BrainView {
               points.push(outward);
             }
           } else {
-            // No proxy — simple outward lift.
+            // No proxy (or sprite mode) — simple outward lift.
             const lift = p.length() * 0.18;
             points.push(p.add(p.clone().normalize().multiplyScalar(lift)));
           }
@@ -1178,7 +1229,7 @@ export class BrainView {
           const to =
             mode === 'solar' ? this.solarPos(atom)
             : mode === 'force' ? this.forcePos(atom)
-            : this.vertexForRegion(atom, region);
+            : this.latticePos(atom, region);
           const p = this.atomPositions.get(id);
           if (!p) return;
           p.lerpVectors(from, to, e);
@@ -1201,7 +1252,7 @@ export class BrainView {
           const to =
             mode === 'solar' ? this.solarPos(atom)
             : mode === 'force' ? this.forcePos(atom)
-            : this.vertexForRegion(atom, mesh.userData.region as Region);
+            : this.latticePos(atom, mesh.userData.region as Region);
           mesh.position.lerpVectors(from, to, e);
           const halo = this.haloMap.get(atom.id);
           if (halo) halo.position.copy(mesh.position);
@@ -1329,6 +1380,11 @@ export class BrainView {
       }
     }
 
+    if (PERF_DEBUG) {
+      this._perfSimT0 = performance.now();
+      this._perfSimActive = 0;
+    }
+
     // Trivial cases: 0 or 1 node — no sim needed, just center.
     if (n <= 1) {
       if (n === 1) {
@@ -1359,9 +1415,13 @@ export class BrainView {
       return;
     }
 
+    const sliceT0 = PERF_DEBUG ? performance.now() : 0;
     const pos = this._forcePosArr;
     const vel = this._forceVelArr;
     const iters = this.forceItersPerSlice(n);
+    // U4: cap total iterations lower on big graphs — the settle threshold
+    // already early-exits; this only bounds the worst-case wall-clock.
+    const maxIters = n > FORCE_BIG_GRAPH_N ? FORCE_MAX_ITERATIONS_BIG_GRAPH : FORCE_MAX_ITERATIONS;
     const maxD2 = FORCE_REPULSION_MAX_DIST * FORCE_REPULSION_MAX_DIST;
     const eps = FORCE_REPULSION_EPSILON;
 
@@ -1431,18 +1491,25 @@ export class BrainView {
       }
 
       const avgDisp = totalDisp / (n * 3);
-      if (avgDisp < FORCE_SETTLE_THRESHOLD || this._forceIterations >= FORCE_MAX_ITERATIONS) {
+      if (avgDisp < FORCE_SETTLE_THRESHOLD || this._forceIterations >= maxIters) {
+        if (PERF_DEBUG) this._perfSimActive += performance.now() - sliceT0;
         this.finalizeForceLayout();
         return;
       }
     }
 
+    if (PERF_DEBUG) this._perfSimActive += performance.now() - sliceT0;
     this.scheduleForceSlice();
   }
 
   /** Sync flat arrays to the forcePositions map and animate if currently in force mode. */
   private finalizeForceLayout() {
     this.cancelForceSim();
+    if (PERF_DEBUG) {
+      console.log(
+        `[brain-perf] forceSim n=${this._forceIds.length} iters=${this._forceIterations}: wall=${(performance.now() - this._perfSimT0).toFixed(0)}ms active=${this._perfSimActive.toFixed(0)}ms`,
+      );
+    }
     this.forcePositions = new Map();
     for (let i = 0; i < this._forceIds.length; i++) {
       this.forcePositions.set(
