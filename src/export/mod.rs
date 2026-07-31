@@ -429,6 +429,7 @@ mod tests {
             summary: String::new(),
             content: content.into(),
             tags: vec!["export".into()],
+            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             last_accessed_at: Utc::now(),

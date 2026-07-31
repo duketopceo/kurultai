@@ -22,6 +22,7 @@ fn sample_atom(id: &str, title: &str, content: &str, embedding: Option<Vec<f32>>
         question: None,
         resolution: None,
         tags: vec![],
+        soft_labels: vec![],
         source_updated_at: Utc::now(),
         indexed_at: Utc::now(),
         embedding,
