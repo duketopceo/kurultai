@@ -113,11 +113,33 @@ mod tests {
 
     #[tokio::test]
     async fn ui_serves_css_asset() {
+        // Legacy flat assets (index.html/index.js/index.css) redirect to /ui/.
         let app = routes::<()>();
         let resp = app
             .oneshot(
                 Request::builder()
                     .uri("/ui/index.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            resp.status().is_redirection(),
+            "legacy index.css should redirect, got {}",
+            resp.status()
+        );
+
+        // The real CSS bundle lives under assets/ with a content hash — find it.
+        let css_path = UiAssets::iter()
+            .find(|p| p.starts_with("assets/") && p.ends_with(".css"))
+            .map(|p| p.into_owned())
+            .expect("a hashed css bundle must be embedded");
+        let app = routes::<()>();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/ui/{css_path}"))
                     .body(Body::empty())
                     .unwrap(),
             )
