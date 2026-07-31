@@ -70,7 +70,7 @@ kurultai import brain.kurultai --combine  # merge into an existing store
 
 **Brain UI:** open [`http://127.0.0.1:8421/ui/`](http://127.0.0.1:8421/ui/) (trailing slash matters). Assets live in `ui/` and are embedded in the daemon binary — that is the only Brain dashboard. Do not add a parallel brain under `website/` or `web/`.
 
-Markdown atoms need **≥1 tag** (YAML frontmatter `tags:`); untagged writes land in quarantine and are skipped by default search. Promote after fixing: `kurultai promote <atom_id>`.
+Markdown atoms need **≥1 hard tag** (YAML frontmatter `tags:`); untagged writes land in quarantine and are skipped by default search. Soft labels (`soft_labels` with scores) are optional and do **not** satisfy that gate — they boost search when the query matches a vocabulary name/alias. Promote after fixing: `kurultai promote <atom_id>`.
 
 Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md). Concepts: [CONCEPTS.md](CONCEPTS.md).
 
@@ -80,7 +80,7 @@ Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md). Concepts: [CONCEPTS.md](CO
 |-------|---------|
 | **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon` |
 | **Connectors** | Markdown · JSON/NDJSON · Dayflow · Pond · GitHub (local checkout). AppFlowy deferred ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
-| **Store** | SQLite + FTS5 + sqlite-vec · hot / warm / cold memory · ingestion staging |
+| **Store** | SQLite + FTS5 + sqlite-vec · soft-label vocab (#113) · hot / warm / cold · ingestion staging |
 | **Search** | FTS ∥ vector → RRF → optional rerank |
 | **Embeddings** | **FTS-first by default** (`NullEmbedder` when no key). OpenRouter when `OPENROUTER_API_KEY` / `KURULTAI_API_KEY` is set. Opt-in local ONNX: `embed.backend = "local"` + `--features local-embed` |
 | **Agents** | MCP stdio — `search`, `cite`, `ask`, `who_knows`, `remember`, `promote` |

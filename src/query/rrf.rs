@@ -122,6 +122,7 @@ mod tests {
             question: None,
             resolution: None,
             tags: vec![],
+            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             embedding: None,

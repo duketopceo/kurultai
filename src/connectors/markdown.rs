@@ -370,6 +370,7 @@ fn make_atom(
         question: None,
         resolution: None,
         tags: tags.to_vec(),
+        soft_labels: vec![],
         source_updated_at,
         indexed_at: Utc::now(),
         embedding: None,

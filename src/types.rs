@@ -61,6 +61,9 @@ pub struct KnowledgeAtom {
     pub resolution: Option<String>,
     /// Systems, code refs, tags mentioned
     pub tags: Vec<String>,
+    /// Soft multi-label scores (#113) — does **not** satisfy the hard tag trust gate.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub soft_labels: Vec<SoftLabel>,
     /// When the source was last modified
     pub source_updated_at: DateTime<Utc>,
     /// When this atom was indexed
@@ -92,6 +95,7 @@ impl Default for KnowledgeAtom {
             question: None,
             resolution: None,
             tags: Vec::new(),
+            soft_labels: Vec::new(),
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             last_accessed_at: Utc::now(),
@@ -101,6 +105,35 @@ impl Default for KnowledgeAtom {
             quarantine_reason: None,
         }
     }
+}
+
+/// Soft multi-label with confidence (#113). Hard `tags` remain the trust gate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SoftLabel {
+    pub label_id: i64,
+    pub name: String,
+    /// Confidence in `[0.0, 1.0]`.
+    pub score: f32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+}
+
+/// Max soft labels persisted per atom (cardinality clamp).
+pub const SOFT_LABEL_MAX: usize = 16;
+
+/// Clamp score into `[0.0, 1.0]` and truncate to [`SOFT_LABEL_MAX`].
+pub fn normalize_soft_labels(labels: &[SoftLabel]) -> Vec<SoftLabel> {
+    labels
+        .iter()
+        .take(SOFT_LABEL_MAX)
+        .map(|l| SoftLabel {
+            label_id: l.label_id,
+            name: l.name.trim().to_string(),
+            score: l.score.clamp(0.0, 1.0),
+            aliases: l.aliases.clone(),
+        })
+        .filter(|l| !l.name.is_empty())
+        .collect()
 }
 
 /// A search result returned by the query pipeline.

@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 6;
+pub const CURRENT_SCHEMA_VERSION: i32 = 7;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -88,6 +88,24 @@ CREATE TABLE IF NOT EXISTS ingestion_jobs (
 
 CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_status ON ingestion_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_batch ON ingestion_jobs(batch_id);
+"#;
+
+const MIGRATION_007: &str = r#"
+CREATE TABLE IF NOT EXISTS label_vocab (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    aliases_json TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE TABLE IF NOT EXISTS atom_soft_labels (
+    atom_id TEXT NOT NULL REFERENCES knowledge_atoms(id) ON DELETE CASCADE,
+    label_id INTEGER NOT NULL REFERENCES label_vocab(id) ON DELETE CASCADE,
+    score REAL NOT NULL CHECK(score >= 0.0 AND score <= 1.0),
+    PRIMARY KEY (atom_id, label_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_atom_soft_labels_label
+    ON atom_soft_labels(label_id);
 "#;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
@@ -242,6 +260,13 @@ pub fn migrate(conn: &Connection) -> Result<()> {
             .map_err(|e| KurultaiError::Store(format!("migration 006 failed: {e}")))?;
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [6])
             .map_err(|e| KurultaiError::Store(format!("migration 006 record failed: {e}")))?;
+    }
+
+    if current < 7 {
+        conn.execute_batch(MIGRATION_007)
+            .map_err(|e| KurultaiError::Store(format!("migration 007 failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [7])
+            .map_err(|e| KurultaiError::Store(format!("migration 007 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");

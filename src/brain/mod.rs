@@ -33,6 +33,9 @@ pub struct AgentAtomView {
     pub excerpt: String,
     pub score: f64,
     pub tags: Vec<String>,
+    /// Soft multi-label scores when present (#113).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub soft_labels: Vec<crate::types::SoftLabel>,
     /// Trust lane (`trusted` / `quarantine`) so agents can see quarantine when opted in.
     pub trust_lane: String,
     /// Present when the atom is quarantined (include_quarantine search).
@@ -72,6 +75,7 @@ impl AgentAtomView {
             excerpt,
             score,
             tags: atom.tags.clone(),
+            soft_labels: atom.soft_labels.clone(),
             trust_lane: atom.trust_lane.as_str().to_string(),
             quarantine_reason: atom.quarantine_reason.clone(),
             question: atom.question.clone(),
@@ -97,6 +101,7 @@ mod tests {
             question: None,
             resolution: None,
             tags: vec![],
+            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             embedding: None,
