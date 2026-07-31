@@ -139,7 +139,7 @@ mod tests {
         let resp = app
             .oneshot(
                 Request::builder()
-                    .uri(format!("/ui/{css_path}"))
+                    .uri(&format!("/ui/{css_path}"))
                     .body(Body::empty())
                     .unwrap(),
             )
