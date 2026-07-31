@@ -54,6 +54,48 @@ void main() {
 }
 `;
 
+/*
+ * Node point-sprite cloud (U3 / KTD3). A second instance of the cortex
+ * circular-falloff idiom, used when the memory-node count exceeds the
+ * sphere-mesh budget. Per-node size is driven by the same degree formula as
+ * the sphere radius (NODE_SPRITE_SIZE_SCALE converts world radius → the
+ * gl_PointSize pixel curve the cortex shader uses). uPointer/uHover are shared
+ * with the cortex uniforms so the pointer flare routes through the hovered
+ * node exactly as it does for meshes (highlightConnections sets pointerTarget).
+ */
+const NODE_SPRITE_VERTEX = /* glsl */ `
+attribute float aSize;
+attribute vec3 aColor;
+attribute float aAlpha;
+uniform vec3 uPointer;
+uniform float uHover;
+uniform float uIntro;
+varying vec3 vColor;
+varying float vAlpha;
+
+void main() {
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  float d = distance(uPointer, position);
+  float c = smoothstep(0.22, 0.04, d);
+  float scale = (aSize + c * 7.0 * uHover) * uIntro;
+  gl_PointSize = scale * (500.0 / -mvPosition.z);
+  vColor = mix(aColor, vec3(1.0), c * uHover * 0.9);
+  vAlpha = aAlpha * (0.85 + 0.15 * c * uHover);
+}
+`;
+
+const NODE_SPRITE_FRAGMENT = /* glsl */ `
+varying vec3 vColor;
+varying float vAlpha;
+void main() {
+  float dist = distance(gl_PointCoord, vec2(0.5));
+  if (dist > 0.5) discard;
+  float soft = 1.0 - smoothstep(0.35, 0.5, dist);
+  gl_FragColor = vec4(vColor, vAlpha * soft);
+}
+`;
+
 interface Palette {
   nodeBase: number;
   nodeHot: number;
@@ -88,6 +130,15 @@ export type Region = 'left' | 'right' | 'stem';
 
 const MAX_NODES = 2500;
 const MAX_EDGES = 3000;
+
+// Hybrid node rendering (KTD3 / R4): above this count nodes render as a single
+// THREE.Points draw call; at or below it the sphere+halo+label meshes render.
+const NODE_SPRITE_CUTOFF = 500;
+// Converts the sphere radius (world units) to the cortex gl_PointSize curve.
+// Tuned so the sprite visual size matches the sphere at the 500-node crossover.
+const NODE_SPRITE_SIZE_SCALE = 5;
+// Raycaster threshold (world units) for picking individual node sprites.
+const NODE_RAYCAST_THRESHOLD = 0.02;
 
 // Force-directed layout constants (vanilla JS — no physics library).
 const FORCE_MAX_ITERATIONS = 300;
@@ -147,6 +198,33 @@ export class BrainView {
   private labelMap = new Map<string, THREE.Sprite>();
   private links: Link[] = [];
   private atomsById = new Map<string, Atom>();
+
+  /* ── Hybrid node rendering (U3) ────────────────────────────── */
+  // Authoritative per-atom positions in brainGroup-local space. BOTH render
+  // paths write to this; the edge builder, layout animation, hover flare and
+  // camera focus all read from it. Mesh position and the sprite position
+  // attribute are both just sinks that mirror this map.
+  private atomPositions = new Map<string, THREE.Vector3>();
+  // Atom ids currently passing the connectionThreshold filter (both modes).
+  private visibleAtomIds = new Set<string>();
+  // Shown atom ids in render order (the slice(0, MAX_NODES) result).
+  private _shownIds: string[] = [];
+  // True when nodes render as a THREE.Points cloud instead of sphere meshes.
+  private spriteMode = false;
+  private nodeSpriteCloud: THREE.Points | null = null;
+  private spritePosAttr?: THREE.BufferAttribute;
+  private spriteColorAttr?: THREE.BufferAttribute;
+  private spriteAlphaAttr?: THREE.BufferAttribute;
+  // atomId ↔ cloud-point index lookups (sprite mode only).
+  private spriteIndexMap = new Map<string, number>();
+  private spriteIdByIndex: string[] = [];
+  private spriteRegionOf = new Map<string, Region>();
+  // On-demand label sprite for the hovered node in sprite mode.
+  private spriteHoverLabel: THREE.Sprite | null = null;
+  // Unified hover/zoom trackers (work in both modes).
+  private hoverAtomId: string | null = null;
+  private hoverConnected = new Set<string>();
+  private zoomAtomId: string | null = null;
   private regionVerts: Record<Region, number[]> = { left: [], right: [], stem: [] };
   private usedVerts = new Set<number>();
   private degrees = new Map<string, number>();
@@ -173,7 +251,6 @@ export class BrainView {
   private showSynapses = true;
   private showLabels = false;
   private showRegions = false;
-  private zoomNode: THREE.Mesh | null = null;
   private manualDistance: number | null = null;
 
   private raycaster = new THREE.Raycaster();
@@ -210,6 +287,9 @@ export class BrainView {
     container.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.05, 60);
+    // Points-picking threshold for the node sprite cloud (set once; no other
+    // Points objects are raycast in this view, so a constant is safe).
+    this.raycaster.params.Points.threshold = NODE_RAYCAST_THRESHOLD;
     this.brainGroup.add(this.nodeGroup, this.edgeGroup);
     // The brain mesh's vertical centroid sits below the origin; recenter it.
     this.brainGroup.position.y = 0.08;
@@ -401,7 +481,9 @@ export class BrainView {
     this.atomsById = new Map(atoms.map((a) => [a.id, a]));
     this.links = links;
     this.hover = null;
-    this.zoomNode = null;
+    this.hoverAtomId = null;
+    this.hoverConnected = new Set();
+    this.zoomAtomId = null;
 
     // Compute connection counts (degrees) for region assignment.
     this.degrees = new Map();
@@ -410,16 +492,29 @@ export class BrainView {
       this.degrees.set(link.b, (this.degrees.get(link.b) || 0) + 1);
     });
 
+    // Hybrid path selection (KTD3 / R4): > cutoff → sprite cloud, else meshes.
+    this.spriteMode = atoms.slice(0, MAX_NODES).length > NODE_SPRITE_CUTOFF;
+    // Release the previous cloud whenever we rebuild (mode switch or refresh).
+    this.disposeSpriteHoverLabel();
+    this.disposeNodeSpriteCloud();
+
     this.nodeGroup.clear();
     this.edgeGroup.clear();
     this.nodeObjects = [];
     this.nodeMap = new Map();
     this.haloMap = new Map();
     this.labelMap = new Map();
+    this.atomPositions = new Map();
+    this.visibleAtomIds = new Set();
+    this._shownIds = [];
+    this.spriteRegionOf = new Map();
+    this.spriteIndexMap = new Map();
+    this.spriteIdByIndex = [];
     this.usedVerts = new Set();
     if (!this.verts.length) return;
 
     const shown = atoms.slice(0, MAX_NODES);
+    this._shownIds = shown.map((a) => a.id);
 
     // Sort by connection count descending to assign brain regions.
     // Top 10% (hubs) → stem, next 40% (more connected) → right, bottom 50% → left.
@@ -434,6 +529,30 @@ export class BrainView {
     sorted.slice(stemCount, stemCount + rightCount).forEach((a) => regionOf.set(a.id, 'right'));
     sorted.slice(stemCount + rightCount).forEach((a) => regionOf.set(a.id, 'left'));
 
+    if (this.spriteMode) {
+      this.buildNodeSpriteCloud(shown, regionOf);
+      this.nodeGroup.visible = false;
+    } else {
+      this.buildNodeMeshes(shown, regionOf);
+      this.nodeGroup.visible = true;
+    }
+
+    this.buildEdges();
+
+    // Apply current interactive-control state to the freshly built graph.
+    this.applyFilters();
+    this.applyRegionColors();
+
+    // Kick off the force-directed layout sim in the background.
+    // Nodes stay at lattice positions until the sim settles; on completion
+    // the existing setLayout transition animates to force positions if the
+    // user is currently in force mode.
+    this.computeForceLayout();
+  }
+
+  /** Sphere+halo+label mesh path (≤ NODE_SPRITE_CUTOFF nodes). Byte-identical to
+   *  the original builder; additionally mirrors positions into atomPositions. */
+  private buildNodeMeshes(shown: Atom[], regionOf: Map<string, Region>) {
     shown.forEach((atom) => {
       const region = regionOf.get(atom.id) || 'left';
       const degree = this.degrees.get(atom.id) || 0;
@@ -468,24 +587,86 @@ export class BrainView {
       this.nodeMap.set(atom.id, mesh);
       this.haloMap.set(atom.id, halo);
       this.labelMap.set(atom.id, label);
+      this.atomPositions.set(atom.id, mesh.position.clone());
+    });
+  }
+
+  /** GPU point-sprite cloud path (> NODE_SPRITE_CUTOFF nodes): one draw call. */
+  private buildNodeSpriteCloud(shown: Atom[], regionOf: Map<string, Region>) {
+    const count = shown.length;
+    const positions = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const colors = new Float32Array(count * 3);
+    const alphas = new Float32Array(count);
+    const color = new THREE.Color();
+
+    shown.forEach((atom, i) => {
+      const region = regionOf.get(atom.id) || 'left';
+      const degree = this.degrees.get(atom.id) || 0;
+      const radius = 0.006 + Math.min(degree, 20) * 0.0012 + Math.min(atom.score, 1) * 0.003;
+      const pos = this.vertexForRegion(atom, region);
+      positions[i * 3] = pos.x;
+      positions[i * 3 + 1] = pos.y;
+      positions[i * 3 + 2] = pos.z;
+      // Same degree formula as the sphere radius, converted to the gl_PointSize
+      // curve the cortex shader uses (crossover stays visually continuous).
+      sizes[i] = radius * NODE_SPRITE_SIZE_SCALE;
+      const c = this.showRegions ? this.regionColor(region) : this.palette.nodeBase;
+      color.setHex(c);
+      colors[i * 3] = color.r;
+      colors[i * 3 + 1] = color.g;
+      colors[i * 3 + 2] = color.b;
+      alphas[i] = 1;
+
+      this.atomPositions.set(atom.id, pos);
+      this.spriteRegionOf.set(atom.id, region);
+      this.spriteIndexMap.set(atom.id, i);
+      this.spriteIdByIndex.push(atom.id);
     });
 
-    links
+    const geometry = new THREE.BufferGeometry();
+    this.spritePosAttr = new THREE.BufferAttribute(positions, 3);
+    geometry.setAttribute('position', this.spritePosAttr);
+    geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+    this.spriteColorAttr = new THREE.BufferAttribute(colors, 3);
+    geometry.setAttribute('aColor', this.spriteColorAttr);
+    this.spriteAlphaAttr = new THREE.BufferAttribute(alphas, 1);
+    geometry.setAttribute('aAlpha', this.spriteAlphaAttr);
+
+    const material = new THREE.ShaderMaterial({
+      vertexShader: NODE_SPRITE_VERTEX,
+      fragmentShader: NODE_SPRITE_FRAGMENT,
+      uniforms: this.uniforms,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+
+    const cloud = new THREE.Points(geometry, material);
+    cloud.frustumCulled = false;
+    this.nodeSpriteCloud = cloud;
+    this.brainGroup.add(cloud);
+  }
+
+  /** Edge builder — reads endpoint positions from the authoritative
+   *  atomPositions map so it works identically in mesh and sprite modes. */
+  private buildEdges() {
+    this.links
       .slice()
       .sort((a, b) => b.strength - a.strength)
       .slice(0, MAX_EDGES)
       .forEach((link) => {
-        const a = this.nodeMap.get(link.a);
-        const b = this.nodeMap.get(link.b);
+        const a = this.atomPositions.get(link.a);
+        const b = this.atomPositions.get(link.b);
         if (!a || !b) return;
 
         // Build a surface-conformant Catmull-Rom curve through 4-6
         // intermediate points projected onto the brain mesh surface.
-        const points: THREE.Vector3[] = [a.position.clone()];
+        const points: THREE.Vector3[] = [a.clone()];
         const numIntermediate = 4;
         for (let i = 1; i <= numIntermediate; i++) {
           const t = i / (numIntermediate + 1);
-          const p = a.position.clone().lerp(b.position, t);
+          const p = a.clone().lerp(b, t);
 
           if (this.proxy) {
             // Raycast from brain center through p onto the mesh surface.
@@ -514,7 +695,7 @@ export class BrainView {
             points.push(p.add(p.clone().normalize().multiplyScalar(lift)));
           }
         }
-        points.push(b.position.clone());
+        points.push(b.clone());
 
         const curve = new THREE.CatmullRomCurve3(points);
         const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(28));
@@ -530,16 +711,127 @@ export class BrainView {
         line.userData = link;
         this.edgeGroup.add(line);
       });
+  }
 
-    // Apply current interactive-control state to the freshly built graph.
-    this.applyFilters();
-    this.applyRegionColors();
+  /** Release the node sprite cloud's GPU resources and clear lookups. */
+  private disposeNodeSpriteCloud() {
+    if (this.nodeSpriteCloud) {
+      this.brainGroup.remove(this.nodeSpriteCloud);
+      this.nodeSpriteCloud.geometry.dispose();
+      (this.nodeSpriteCloud.material as THREE.Material).dispose();
+      this.nodeSpriteCloud = null;
+    }
+    this.spritePosAttr = undefined;
+    this.spriteColorAttr = undefined;
+    this.spriteAlphaAttr = undefined;
+  }
 
-    // Kick off the force-directed layout sim in the background.
-    // Nodes stay at lattice positions until the sim settles; on completion
-    // the existing setLayout transition animates to force positions if the
-    // user is currently in force mode.
-    this.computeForceLayout();
+  /** Create the on-demand hover label for a sprite node (destroyed on clear). */
+  private showSpriteHoverLabel(atomId: string) {
+    const atom = this.atomsById.get(atomId);
+    const pos = this.atomPositions.get(atomId);
+    if (!atom || !pos) return;
+    // Skip the label for nodes hidden by the connectionThreshold filter.
+    if (!this.visibleAtomIds.has(atomId)) return;
+    this.disposeSpriteHoverLabel();
+    const label = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: this.makeLabelTexture(atom.title),
+        transparent: true,
+        depthWrite: false,
+        depthTest: true,
+      }),
+    );
+    label.scale.setScalar(0.09);
+    label.position.copy(pos);
+    label.position.y += 0.02;
+    label.raycast = () => undefined;
+    this.brainGroup.add(label);
+    this.spriteHoverLabel = label;
+  }
+
+  private disposeSpriteHoverLabel() {
+    if (this.spriteHoverLabel) {
+      this.brainGroup.remove(this.spriteHoverLabel);
+      const mat = this.spriteHoverLabel.material as THREE.SpriteMaterial;
+      mat.map?.dispose();
+      mat.dispose();
+      this.spriteHoverLabel = null;
+    }
+  }
+
+  /** Recompute sprite aColor/aAlpha from current state (preserves an active hover). */
+  private refreshSpriteAttributes() {
+    if (!this.spriteMode || !this.spriteColorAttr || !this.spriteAlphaAttr) return;
+    if (this.hoverAtomId) {
+      this.applySpriteHoverColors(this.hoverAtomId, this.hoverConnected);
+    } else {
+      this.applySpriteBaseColors();
+    }
+  }
+
+  /** Base (non-hover) sprite colors/alphas from region palette + filter. */
+  private applySpriteBaseColors() {
+    if (!this.spriteColorAttr || !this.spriteAlphaAttr) return;
+    const color = new THREE.Color();
+    this._shownIds.forEach((id, i) => {
+      const deg = this.degrees.get(id) || 0;
+      const visible = deg >= this.connectionThreshold;
+      this.spriteAlphaAttr!.setX(i, visible ? 1 : 0);
+      const c = this.showRegions ? this.regionColor(this.spriteRegionOf.get(id)!) : this.palette.nodeBase;
+      color.setHex(c);
+      this.spriteColorAttr!.setXYZ(i, color.r, color.g, color.b);
+    });
+    this.spriteAlphaAttr.needsUpdate = true;
+    this.spriteColorAttr.needsUpdate = true;
+  }
+
+  /** Hover-state sprite colors/alphas: hot hovered node, bright connected, dim rest. */
+  private applySpriteHoverColors(atomId: string, connected: Set<string>) {
+    if (!this.spriteColorAttr || !this.spriteAlphaAttr) return;
+    const color = new THREE.Color();
+    this._shownIds.forEach((id, i) => {
+      const deg = this.degrees.get(id) || 0;
+      const visible = deg >= this.connectionThreshold;
+      let c: number;
+      let alpha: number;
+      if (id === atomId) {
+        c = this.palette.nodeHot;
+        // A hidden hovered node (only reachable via the randomConnection
+        // all-hidden fallback) stays hidden — mirrors mesh mode where
+        // node.visible=false hides the hovered mesh.
+        alpha = visible ? 1 : 0;
+      } else if (connected.has(id)) {
+        c = this.showRegions ? this.regionColor(this.spriteRegionOf.get(id)!) : this.palette.nodeBase;
+        alpha = visible ? 0.9 : 0;
+      } else {
+        c = this.palette.nodeUnfocus;
+        alpha = visible ? 0.3 : 0;
+      }
+      color.setHex(c);
+      this.spriteColorAttr!.setXYZ(i, color.r, color.g, color.b);
+      this.spriteAlphaAttr!.setX(i, alpha);
+    });
+    this.spriteColorAttr.needsUpdate = true;
+    this.spriteAlphaAttr.needsUpdate = true;
+  }
+
+  /** Resolve a pointer raycast to an atom id in whichever path is active. */
+  private pickAtomId(): string | null {
+    if (this.spriteMode && this.nodeSpriteCloud) {
+      const hit = this.raycaster.intersectObject(this.nodeSpriteCloud, false)[0];
+      if (hit && hit.index !== undefined) {
+        const id = this.spriteIdByIndex[hit.index];
+        // Skip nodes hidden by the connectionThreshold (alpha-0 sprites are
+        // still raycast, unlike invisible meshes).
+        if (id && this.visibleAtomIds.has(id)) return id;
+      }
+      return null;
+    }
+    const nodeHit = this.raycaster.intersectObjects(this.nodeObjects, false)[0]?.object as
+      | THREE.Mesh
+      | undefined;
+    return nodeHit ? (nodeHit.userData.atomId as string) : null;
   }
 
   private makeLabelTexture(text: string): THREE.Texture {
@@ -590,13 +882,12 @@ export class BrainView {
 
   /** Smoothly fly the camera to focus on a specific memory node. */
   zoomToAtom(atom: Atom) {
-    const mesh = this.nodeMap.get(atom.id);
-    if (mesh) this.zoomNode = mesh;
+    if (this.atomPositions.has(atom.id)) this.zoomAtomId = atom.id;
   }
 
   zoomOut() {
-    if (this.zoomNode) {
-      this.zoomNode = null;
+    if (this.zoomAtomId) {
+      this.zoomAtomId = null;
       this.opts.onZoomOut();
       this.clearHover();
     }
@@ -604,31 +895,40 @@ export class BrainView {
 
   /** Pick a random node, highlight its connections, and zoom the brain to face it. */
   randomConnection() {
-    if (!this.nodeObjects.length) return;
-    const visibleNodes = this.nodeObjects.filter((n) => n.visible);
-    const pool = visibleNodes.length ? visibleNodes : this.nodeObjects;
-    const node = pool[Math.floor(Math.random() * pool.length)];
-    const atomId = node.userData.atomId as string;
+    if (!this._shownIds.length) return;
+    const visibleIds = [...this.visibleAtomIds];
+    const pool = visibleIds.length ? visibleIds : this._shownIds;
+    const atomId = pool[Math.floor(Math.random() * pool.length)];
     const atom = this.atomsById.get(atomId);
     if (!atom) return;
-    this.highlightConnections(node);
-    this.zoomNode = node;
+    this.highlightConnections(atomId);
+    this.zoomAtomId = atomId;
     this.opts.onSelectAtom(atom);
   }
 
   /* ── Filtering + region colouring ──────────────────────────── */
 
   private applyFilters() {
-    this.nodeObjects.forEach((node) => {
-      const id = node.userData.atomId as string;
-      const deg = this.degrees.get(id) || 0;
-      const visible = deg >= this.connectionThreshold;
-      node.visible = visible;
-      const halo = this.haloMap.get(id);
-      if (halo) halo.visible = visible;
-      const label = this.labelMap.get(id);
-      if (label) label.visible = visible && this.showLabels;
-    });
+    this.visibleAtomIds = new Set();
+    if (this.spriteMode) {
+      this._shownIds.forEach((id) => {
+        const deg = this.degrees.get(id) || 0;
+        if (deg >= this.connectionThreshold) this.visibleAtomIds.add(id);
+      });
+      this.refreshSpriteAttributes();
+    } else {
+      this.nodeObjects.forEach((node) => {
+        const id = node.userData.atomId as string;
+        const deg = this.degrees.get(id) || 0;
+        const visible = deg >= this.connectionThreshold;
+        node.visible = visible;
+        if (visible) this.visibleAtomIds.add(id);
+        const halo = this.haloMap.get(id);
+        if (halo) halo.visible = visible;
+        const label = this.labelMap.get(id);
+        if (label) label.visible = visible && this.showLabels;
+      });
+    }
     this.edgeGroup.children.forEach((line) => {
       const link = line.userData as Link;
       const aDeg = this.degrees.get(link.a) || 0;
@@ -639,6 +939,10 @@ export class BrainView {
   }
 
   private applyRegionColors() {
+    if (this.spriteMode) {
+      this.refreshSpriteAttributes();
+      return;
+    }
     if (this.showRegions) {
       this.nodeObjects.forEach((node) => {
         const region = node.userData.region as Region;
@@ -693,72 +997,90 @@ export class BrainView {
 
   /* ── Hover / selection ─────────────────────────────────────── */
 
-  private highlightConnections(mesh: THREE.Mesh) {
-    this.hover = mesh;
-    const hoveredId = mesh.userData.atomId as string;
+  private highlightConnections(atomId: string) {
+    this.hoverAtomId = atomId;
     const connected = new Set<string>();
     this.links.forEach((link) => {
-      if (link.a === hoveredId) connected.add(link.b);
-      else if (link.b === hoveredId) connected.add(link.a);
+      if (link.a === atomId) connected.add(link.b);
+      else if (link.b === atomId) connected.add(link.a);
     });
+    this.hoverConnected = connected;
 
-    this.nodeObjects.forEach((node) => {
-      const id = node.userData.atomId as string;
-      const nodeMat = node.material as THREE.MeshBasicMaterial;
-      const haloMat = this.haloMap.get(id)!.material as THREE.SpriteMaterial;
-      if (node === mesh) {
-        nodeMat.color.setHex(this.palette.nodeHot);
-        nodeMat.opacity = 1;
-        haloMat.color.setHex(this.palette.nodeHot);
-        haloMat.opacity = 0.7;
-      } else if (connected.has(id)) {
-        const color = this.showRegions
-          ? this.regionColor(node.userData.region as Region)
-          : this.palette.nodeBase;
-        nodeMat.color.setHex(color);
-        nodeMat.opacity = 0.9;
-        haloMat.color.setHex(color);
-        haloMat.opacity = 0.32;
-      } else {
-        nodeMat.color.setHex(this.palette.nodeUnfocus);
-        nodeMat.opacity = 0.3;
-        haloMat.opacity = 0.1;
-      }
-    });
+    if (this.spriteMode) {
+      this.applySpriteHoverColors(atomId, connected);
+      this.showSpriteHoverLabel(atomId);
+    } else {
+      const mesh = this.nodeMap.get(atomId);
+      if (!mesh) return;
+      this.hover = mesh;
+      this.nodeObjects.forEach((node) => {
+        const id = node.userData.atomId as string;
+        const nodeMat = node.material as THREE.MeshBasicMaterial;
+        const haloMat = this.haloMap.get(id)!.material as THREE.SpriteMaterial;
+        if (node === mesh) {
+          nodeMat.color.setHex(this.palette.nodeHot);
+          nodeMat.opacity = 1;
+          haloMat.color.setHex(this.palette.nodeHot);
+          haloMat.opacity = 0.7;
+        } else if (connected.has(id)) {
+          const color = this.showRegions
+            ? this.regionColor(node.userData.region as Region)
+            : this.palette.nodeBase;
+          nodeMat.color.setHex(color);
+          nodeMat.opacity = 0.9;
+          haloMat.color.setHex(color);
+          haloMat.opacity = 0.32;
+        } else {
+          nodeMat.color.setHex(this.palette.nodeUnfocus);
+          nodeMat.opacity = 0.3;
+          haloMat.opacity = 0.1;
+        }
+      });
+    }
 
     this.edgeGroup.children.forEach((line) => {
       const link = line.userData as Link;
-      const linked = link.a === hoveredId || link.b === hoveredId;
+      const linked = link.a === atomId || link.b === atomId;
       const mat = (line as THREE.Line).material as THREE.LineBasicMaterial;
       mat.opacity = linked ? 0.9 : 0.04;
       mat.color.setHex(linked ? this.palette.edgeActive : this.palette.edgeDim);
     });
 
     // Route the particle flare through the highlighted memory.
-    this.pointerTarget.copy(mesh.position);
-    this.hoverTarget = 1;
+    const pos = this.atomPositions.get(atomId);
+    if (pos) {
+      this.pointerTarget.copy(pos);
+      this.hoverTarget = 1;
+    }
   }
 
-  private showHover(mesh: THREE.Mesh, event: PointerEvent) {
-    this.highlightConnections(mesh);
-    const atom = this.atomsById.get(mesh.userData.atomId as string);
+  private showHover(atomId: string, event: PointerEvent) {
+    this.highlightConnections(atomId);
+    const atom = this.atomsById.get(atomId);
     if (atom) this.opts.onHoverAtom(atom, event.clientX, event.clientY);
   }
 
   private clearHover() {
-    if (!this.hover) return;
+    if (!this.hoverAtomId) return;
+    this.hoverAtomId = null;
     this.hover = null;
-    this.nodeObjects.forEach((node) => {
-      const nodeMat = node.material as THREE.MeshBasicMaterial;
-      const haloMat = this.haloMap.get(node.userData.atomId as string)!.material as THREE.SpriteMaterial;
-      const color = this.showRegions
-        ? this.regionColor(node.userData.region as Region)
-        : this.palette.nodeBase;
-      nodeMat.color.setHex(color);
-      nodeMat.opacity = 0.85;
-      haloMat.color.setHex(color);
-      haloMat.opacity = 0.32;
-    });
+    this.hoverConnected = new Set();
+    if (this.spriteMode) {
+      this.disposeSpriteHoverLabel();
+      this.applySpriteBaseColors();
+    } else {
+      this.nodeObjects.forEach((node) => {
+        const nodeMat = node.material as THREE.MeshBasicMaterial;
+        const haloMat = this.haloMap.get(node.userData.atomId as string)!.material as THREE.SpriteMaterial;
+        const color = this.showRegions
+          ? this.regionColor(node.userData.region as Region)
+          : this.palette.nodeBase;
+        nodeMat.color.setHex(color);
+        nodeMat.opacity = 0.85;
+        haloMat.color.setHex(color);
+        haloMat.opacity = 0.32;
+      });
+    }
     this.edgeGroup.children.forEach((line) => {
       const mat = (line as THREE.Line).material as THREE.LineBasicMaterial;
       mat.opacity = 0.2;
@@ -769,9 +1091,9 @@ export class BrainView {
 
   /** External focus (e.g. search pick): pulse the flare at the atom's vertex. */
   focusAtom(atom: Atom) {
-    const mesh = this.nodeMap.get(atom.id);
-    if (!mesh) return;
-    this.focusPulse = { pos: mesh.position.clone(), until: performance.now() + 1400 };
+    const pos = this.atomPositions.get(atom.id);
+    if (!pos) return;
+    this.focusPulse = { pos: pos.clone(), until: performance.now() + 1400 };
   }
 
   setLayout(mode: LayoutMode) {
@@ -829,7 +1151,9 @@ export class BrainView {
   }
 
   /**
-   * Eased lerp of every mesh from its current position to the per-mode target.
+   * Eased lerp of every node from its current position to the per-mode target.
+   * atomPositions is the authoritative store; mesh.position (mesh mode) and
+   * the sprite position attribute (sprite mode) are sinks that mirror it.
    * Extracted from setLayout so the force sim completion can trigger the same
    * transition without re-entering the layoutMode guard.
    */
@@ -837,27 +1161,56 @@ export class BrainView {
     const DURATION = 850;
     const start = performance.now();
     const froms = new Map<string, THREE.Vector3>();
-    this.nodeObjects.forEach((mesh) => {
-      froms.set(mesh.userData.atomId as string, mesh.position.clone());
+    this._shownIds.forEach((id) => {
+      const p = this.atomPositions.get(id);
+      froms.set(id, p ? p.clone() : new THREE.Vector3());
     });
     const animate = () => {
       if (this.disposed) return;
       const t = Math.min((performance.now() - start) / DURATION, 1);
       const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-      this.nodeObjects.forEach((mesh) => {
-        const atom = this.atomsById.get(mesh.userData.atomId as string);
-        if (!atom) return;
-        const from = froms.get(atom.id) ?? mesh.position;
-        const to =
-          mode === 'solar' ? this.solarPos(atom)
-          : mode === 'force' ? this.forcePos(atom)
-          : this.vertexForRegion(atom, mesh.userData.region as Region);
-        mesh.position.lerpVectors(from, to, e);
-        const halo = this.haloMap.get(atom.id);
-        if (halo) halo.position.copy(mesh.position);
-        const label = this.labelMap.get(atom.id);
-        if (label) { label.position.copy(mesh.position); label.position.y += 0.02; }
-      });
+      if (this.spriteMode && this.spritePosAttr) {
+        this._shownIds.forEach((id, i) => {
+          const atom = this.atomsById.get(id);
+          if (!atom) return;
+          const from = froms.get(id) ?? new THREE.Vector3();
+          const region = this.spriteRegionOf.get(id) || 'left';
+          const to =
+            mode === 'solar' ? this.solarPos(atom)
+            : mode === 'force' ? this.forcePos(atom)
+            : this.vertexForRegion(atom, region);
+          const p = this.atomPositions.get(id);
+          if (!p) return;
+          p.lerpVectors(from, to, e);
+          this.spritePosAttr!.setXYZ(i, p.x, p.y, p.z);
+        });
+        this.spritePosAttr.needsUpdate = true;
+        // Keep the on-demand hover label glued to its node.
+        if (this.spriteHoverLabel && this.hoverAtomId) {
+          const hp = this.atomPositions.get(this.hoverAtomId);
+          if (hp) {
+            this.spriteHoverLabel.position.copy(hp);
+            this.spriteHoverLabel.position.y += 0.02;
+          }
+        }
+      } else {
+        this.nodeObjects.forEach((mesh) => {
+          const atom = this.atomsById.get(mesh.userData.atomId as string);
+          if (!atom) return;
+          const from = froms.get(atom.id) ?? mesh.position;
+          const to =
+            mode === 'solar' ? this.solarPos(atom)
+            : mode === 'force' ? this.forcePos(atom)
+            : this.vertexForRegion(atom, mesh.userData.region as Region);
+          mesh.position.lerpVectors(from, to, e);
+          const halo = this.haloMap.get(atom.id);
+          if (halo) halo.position.copy(mesh.position);
+          const label = this.labelMap.get(atom.id);
+          if (label) { label.position.copy(mesh.position); label.position.y += 0.02; }
+          // Mirror the sink back into the authoritative store.
+          this.atomPositions.get(atom.id)?.copy(mesh.position);
+        });
+      }
       if (t < 1) requestAnimationFrame(animate);
     };
     requestAnimationFrame(animate);
@@ -876,12 +1229,14 @@ export class BrainView {
     }
     const moon = this._solarMoons.get(atom.id);
     if (moon) {
-      const planetMesh = this.nodeMap.get(moon.planetId);
-      if (planetMesh) {
+      // Read from the authoritative store so moons track their planet in
+      // both mesh and sprite modes (nodeMap is empty in sprite mode).
+      const planetPos = this.atomPositions.get(moon.planetId);
+      if (planetPos) {
         return new THREE.Vector3(
-          planetMesh.position.x + Math.cos(moon.moonAngle) * moon.moonR,
-          planetMesh.position.y + Math.sin(moon.moonAngle * 0.7) * moon.moonR * 0.4,
-          planetMesh.position.z + Math.sin(moon.moonAngle) * moon.moonR,
+          planetPos.x + Math.cos(moon.moonAngle) * moon.moonR,
+          planetPos.y + Math.sin(moon.moonAngle * 0.7) * moon.moonR * 0.4,
+          planetPos.z + Math.sin(moon.moonAngle) * moon.moonR,
         );
       }
     }
@@ -909,8 +1264,8 @@ export class BrainView {
       );
     }
     // Sim not yet seeded or atom absent — fall back to the lattice position.
-    const mesh = this.nodeMap.get(atom.id);
-    if (mesh) return mesh.position.clone();
+    const pos = this.atomPositions.get(atom.id);
+    if (pos) return pos.clone();
     return new THREE.Vector3();
   }
 
@@ -949,11 +1304,11 @@ export class BrainView {
         this._forcePosArr[i * 3 + 1] = settled.y;
         this._forcePosArr[i * 3 + 2] = settled.z;
       } else {
-        const mesh = this.nodeMap.get(id);
-        if (mesh) {
-          this._forcePosArr[i * 3] = mesh.position.x;
-          this._forcePosArr[i * 3 + 1] = mesh.position.y;
-          this._forcePosArr[i * 3 + 2] = mesh.position.z;
+        const pos = this.atomPositions.get(id);
+        if (pos) {
+          this._forcePosArr[i * 3] = pos.x;
+          this._forcePosArr[i * 3 + 1] = pos.y;
+          this._forcePosArr[i * 3 + 2] = pos.z;
         }
       }
       // Deterministic jitter from atom hash (stable across re-seeds, no Math.random).
@@ -1133,6 +1488,9 @@ export class BrainView {
 
   private clearHoverSilent() {
     this.hover = null;
+    this.hoverAtomId = null;
+    this.hoverConnected = new Set();
+    this.disposeSpriteHoverLabel();
   }
 
   /* ── Input ─────────────────────────────────────────────────── */
@@ -1177,14 +1535,12 @@ export class BrainView {
       return;
     }
     this.raycaster.setFromCamera(this.pointerNdc, this.camera);
-    const nodeHit = this.raycaster.intersectObjects(this.nodeObjects, false)[0]?.object as
-      | THREE.Mesh
-      | undefined;
-    if (nodeHit) {
-      this.showHover(nodeHit, event);
+    const atomId = this.pickAtomId();
+    if (atomId) {
+      this.showHover(atomId, event);
       return;
     }
-    if (this.hover) this.clearHover();
+    if (this.hoverAtomId) this.clearHover();
     if (this.proxy) {
       const hit = this.raycaster.intersectObject(this.proxy, false)[0];
       if (hit) {
@@ -1215,15 +1571,13 @@ export class BrainView {
   private onClick = (event: MouseEvent) => {
     this.updateNdc(event);
     this.raycaster.setFromCamera(this.pointerNdc, this.camera);
-    const hit = this.raycaster.intersectObjects(this.nodeObjects, false)[0]?.object as
-      | THREE.Mesh
-      | undefined;
-    const atom = hit && this.atomsById.get(hit.userData.atomId as string);
+    const atomId = this.pickAtomId();
+    const atom = atomId && this.atomsById.get(atomId);
     if (atom) {
-      if (this.zoomNode === hit) {
+      if (this.zoomAtomId === atomId) {
         this.zoomOut();
       } else {
-        this.zoomNode = hit;
+        this.zoomAtomId = atomId;
       }
       this.opts.onSelectAtom(atom);
     } else {
@@ -1267,7 +1621,7 @@ export class BrainView {
 
     if (!this.opts.reducedMotion) {
       this.uniforms.uTime.value += dt;
-      if (!this.dragging && !this.zoomNode) this.brainGroup.rotation.y += dt * 0.05;
+      if (!this.dragging && !this.zoomAtomId) this.brainGroup.rotation.y += dt * 0.05;
       if (this.uniforms.uIntro.value < 1) {
         this.uniforms.uIntro.value = Math.min(1, this.uniforms.uIntro.value + dt * 0.8);
       }
@@ -1281,16 +1635,27 @@ export class BrainView {
       this.distance += (this.manualDistance - this.distance) * 0.15;
     }
 
-    if (this.zoomNode && this.zoomNode.visible) {
+    if (this.zoomAtomId && this.visibleAtomIds.has(this.zoomAtomId)) {
       // Smoothly fly the camera to the focused node, looking at it.
-      const worldPos = new THREE.Vector3();
-      this.zoomNode.getWorldPosition(worldPos);
-      const dir = new THREE.Vector3().subVectors(this.camera.position, worldPos);
-      if (dir.lengthSq() < 0.0001) dir.set(0, 0, 1);
-      dir.normalize();
-      const desiredCamPos = worldPos.clone().add(dir.multiplyScalar(0.35));
-      this.camera.position.lerp(desiredCamPos, 0.06);
-      this.camera.lookAt(worldPos);
+      // atomPositions is in brainGroup-local space; localToWorld mirrors the
+      // mesh.getWorldPosition path used in mesh mode.
+      const localPos = this.atomPositions.get(this.zoomAtomId);
+      if (localPos) {
+        const worldPos = this.brainGroup.localToWorld(localPos.clone());
+        const dir = new THREE.Vector3().subVectors(this.camera.position, worldPos);
+        if (dir.lengthSq() < 0.0001) dir.set(0, 0, 1);
+        dir.normalize();
+        const desiredCamPos = worldPos.clone().add(dir.multiplyScalar(0.35));
+        this.camera.position.lerp(desiredCamPos, 0.06);
+        this.camera.lookAt(worldPos);
+      } else {
+        this.camera.position.set(
+          Math.sin(this.yaw) * this.distance + this.parallax.x,
+          Math.sin(this.pitch) * this.distance * 0.6 + this.parallax.y,
+          Math.cos(this.yaw) * this.distance,
+        );
+        this.camera.lookAt(0, 0, 0);
+      }
     } else {
       this.camera.position.set(
         Math.sin(this.yaw) * this.distance + this.parallax.x,
@@ -1312,6 +1677,10 @@ export class BrainView {
     this.removeListeners();
     this.haloTexture.dispose();
     this.sphereGeo.dispose();
+    // Release hybrid node-sprite resources explicitly (the brainGroup.traverse
+    // below would also dispose them, but removing first avoids double-dispose).
+    this.disposeSpriteHoverLabel();
+    this.disposeNodeSpriteCloud();
     this.brainGroup.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (mesh.isMesh) {
