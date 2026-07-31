@@ -27,8 +27,15 @@ where
         .route("/ui/{*path}", get(ui_path))
 }
 
+// Old marketing landing page — disabled, redirect to brain.
+const LEGACY_PATHS: &[&str] = &["index.html", "index.js", "index.css"];
+
 async fn ui_path(Path(path): Path<String>) -> Response {
-    serve_asset(&path)
+    let clean = path.trim_start_matches('/');
+    if LEGACY_PATHS.contains(&clean) {
+        return Redirect::permanent("/ui/").into_response();
+    }
+    serve_asset(clean)
 }
 
 fn serve_asset(path: &str) -> Response {

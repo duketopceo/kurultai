@@ -11,11 +11,12 @@ interface Props {
   onMaxMode: (enabled: boolean) => void;
   onSince: (since: number) => void;
   onSelectAtom: (atom: Atom) => void;
+  onRandom: () => void;
 }
 
 export function CommandStrip({
   layout, maxMode, atomTotal, atomsLoaded,
-  onLayoutChange, onMaxMode, onSince, onSelectAtom
+  onLayoutChange, onMaxMode, onSince, onSelectAtom, onRandom
 }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Atom[]>([]);
@@ -150,6 +151,17 @@ export function CommandStrip({
         {maxMode && atomTotal > atomsLoaded && (
           <small style={{ marginLeft: 4, opacity: 0.7 }}>{atomsLoaded}/{atomTotal}</small>
         )}
+      </button>
+
+      <button
+        id="random-pick"
+        className="quiet-button"
+        type="button"
+        aria-label="Jump to a random memory"
+        title="Random: zoom to a random memory and highlight its connections"
+        onClick={onRandom}
+      >
+        random
       </button>
     </section>
   );

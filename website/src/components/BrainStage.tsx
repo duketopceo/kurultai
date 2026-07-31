@@ -1,6 +1,11 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { BrainView } from '../brain/BrainView';
 import type { Atom, LayoutMode } from '../types';
+
+export interface BrainStageHandle {
+  focusAtom: (atom: Atom) => void;
+  randomConnection: () => void;
+}
 
 interface TooltipState {
   atom: Atom;
@@ -18,12 +23,24 @@ interface Props {
   caption: string;
 }
 
-export function BrainStage({ atoms, renderCap, layout, atomTotal, onSelect, onHover, caption }: Props) {
+export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, atomTotal, onSelect, onHover, caption }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const brainRef = useRef<BrainView | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [showFallback, setShowFallback] = useState(true);
   const [ready, setReady] = useState(false);
+
+  useImperativeHandle(ref, () => ({
+    focusAtom: (atom: Atom) => {
+      if (!brainRef.current) return;
+      brainRef.current.focusAtom(atom);
+      brainRef.current.zoomToAtom(atom);
+    },
+    randomConnection: () => {
+      if (!brainRef.current) return;
+      brainRef.current.randomConnection();
+    },
+  }));
 
   const handleTooltip = useCallback((atom: Atom | null, x: number, y: number) => {
     if (!atom) { setTooltip(null); return; }
@@ -117,7 +134,7 @@ export function BrainStage({ atoms, renderCap, layout, atomTotal, onSelect, onHo
       </div>
     </div>
   );
-}
+});
 
 function buildLinks(atoms: Atom[]) {
   const tagIndex = new Map<string, string[]>();

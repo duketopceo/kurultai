@@ -28,18 +28,18 @@ varying float vAlpha;
 void main() {
   float d = distance(uPointer, aOffset);
   float c = smoothstep(0.45, 0.08, d);
-  float scale = (aSize + c * 7.0 * uHover) * uIntro;
+  float scale = (aSize + c * 10.0 * uHover) * uIntro;
   float drift = uTime * (0.2 + aSeed * 0.3);
   vec3 pos = aOffset;
-  pos.x += sin(drift + aSeed * 6.28) * 0.003 * aRotation;
-  pos.y += cos(drift * 0.7 + aSeed * 3.14) * 0.003 * aRotation;
-  pos.z += sin(drift * 0.5 + aSeed * 4.71) * 0.003 * aRotation;
+  pos.x += sin(drift + aSeed * 6.28) * 0.004 * aRotation;
+  pos.y += cos(drift * 0.7 + aSeed * 3.14) * 0.004 * aRotation;
+  pos.z += sin(drift * 0.5 + aSeed * 4.71) * 0.004 * aRotation;
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mvPosition;
-  gl_PointSize = scale * (300.0 / -mvPosition.z);
+  gl_PointSize = scale * (500.0 / -mvPosition.z);
   float flicker = 0.72 + 0.28 * sin(uTime * 2.6 + aSeed * 39.0);
   vColor = mix(aColor, vec3(1.0), c * uHover * 0.9);
-  vAlpha = flicker * (0.55 + 0.45 * c * uHover);
+  vAlpha = flicker * (0.65 + 0.35 * c * uHover);
 }
 `;
 
@@ -49,7 +49,7 @@ varying float vAlpha;
 void main() {
   float dist = distance(gl_PointCoord, vec2(0.5));
   if (dist > 0.5) discard;
-  float soft = 1.0 - smoothstep(0.2, 0.5, dist);
+  float soft = 1.0 - smoothstep(0.35, 0.5, dist);
   gl_FragColor = vec4(vColor, vAlpha * soft);
 }
 `;
@@ -86,8 +86,8 @@ const LIGHT_PALETTE: Palette = {
 
 export type Region = 'left' | 'right' | 'stem';
 
-const MAX_NODES = 450;
-const MAX_EDGES = 800;
+const MAX_NODES = 2500;
+const MAX_EDGES = 3000;
 
 export interface BrainViewOptions {
   theme: Theme;
@@ -141,8 +141,9 @@ export class BrainView {
   private degrees = new Map<string, number>();
   private layoutMode: LayoutMode = 'regions';
   private _solarSunId = '';
-  private _solarSources: string[] = [];
-  private _solarSiblings = new Map<string, string[]>();
+  private _solarPlanets = new Map<string, { orbitR: number; angle: number; tilt: number }>();
+  private _solarMoons = new Map<string, { planetId: string; moonR: number; moonAngle: number }>();
+  private _solarAsteroids = new Map<string, { r: number; angle: number; y: number }>();
 
   /* ── Interactive control state ─────────────────────────────── */
   private connectionThreshold = 0;
@@ -333,7 +334,7 @@ export class BrainView {
     this.particleColorIndex = [];
     for (let i = 0; i < count; i++) {
       rotations[i] = Math.random() * 2 - 1;
-      sizes[i] = 0.3 + Math.random() * 2.7;
+      sizes[i] = 1.0 + Math.random() * 4.0;
       seeds[i] = Math.random();
       // White is rare; purples dominate.
       const idx = Math.random() < 0.08 ? this.palette.particles.length - 1 : Math.floor(Math.random() * (this.palette.particles.length - 1));
@@ -412,7 +413,8 @@ export class BrainView {
 
     shown.forEach((atom) => {
       const region = regionOf.get(atom.id) || 'left';
-      const radius = 0.0095 + Math.min(atom.score, 1) * 0.0075;
+      const degree = this.degrees.get(atom.id) || 0;
+      const radius = 0.006 + Math.min(degree, 20) * 0.0012 + Math.min(atom.score, 1) * 0.003;
       const mesh = new THREE.Mesh(this.sphereGeo, this.nodeMaterial(false));
       mesh.scale.setScalar(radius);
       mesh.position.copy(this.vertexForRegion(atom, region));
@@ -748,13 +750,50 @@ export class BrainView {
     this.layoutMode = mode;
     const atoms = [...this.atomsById.values()];
     if (mode === 'solar') {
-      const sorted = [...atoms].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+      const sorted = [...atoms].sort(
+        (a, b) => (this.degrees.get(b.id) || 0) - (this.degrees.get(a.id) || 0),
+      );
       this._solarSunId = sorted[0]?.id ?? '';
-      const sourceSet = new Set(atoms.map((a) => a.source));
-      this._solarSources = [...sourceSet];
-      this._solarSiblings = new Map();
-      this._solarSources.forEach((src) => {
-        this._solarSiblings.set(src, atoms.filter((a) => a.source === src).map((a) => a.id));
+      const MAX_PLANETS = 14;
+      const planets = sorted.slice(1, MAX_PLANETS + 1);
+      this._solarPlanets = new Map();
+      planets.forEach((atom, i) => {
+        const orbitR = 0.8 + (i / Math.max(planets.length - 1, 1)) * 3.5;
+        const angle = (i / planets.length) * Math.PI * 2;
+        const tilt = (Math.random() - 0.5) * 0.6;
+        this._solarPlanets.set(atom.id, { orbitR, angle, tilt });
+      });
+      const planetIds = new Set(planets.map((a) => a.id));
+      const assigned = new Set<string>([this._solarSunId, ...planetIds]);
+      this._solarMoons = new Map();
+      this._solarAsteroids = new Map();
+      const moonCounts = new Map<string, number>();
+      sorted.slice(MAX_PLANETS + 1).forEach((atom) => {
+        // Find the best planet for this atom (shared link).
+        const link = this.links.find(
+          (l) => (l.a === atom.id && planetIds.has(l.b)) || (l.b === atom.id && planetIds.has(l.a)),
+        );
+        if (link) {
+          const planetId = planetIds.has(link.b) ? link.b : link.a;
+          const mc = (moonCounts.get(planetId) || 0) + 1;
+          moonCounts.set(planetId, mc);
+          this._solarMoons.set(atom.id, {
+            planetId,
+            moonR: 0.15 + (mc % 5) * 0.08,
+            moonAngle: (mc * 2.4) % (Math.PI * 2),
+          });
+          assigned.add(atom.id);
+        }
+      });
+      // Remaining atoms become asteroids scattered between orbits.
+      let ai = 0;
+      atoms.forEach((atom) => {
+        if (assigned.has(atom.id)) return;
+        const r = 1.2 + Math.random() * 3.0;
+        const angle = (ai * 2.399963) % (Math.PI * 2);
+        const y = (Math.random() - 0.5) * 0.4;
+        this._solarAsteroids.set(atom.id, { r, angle, y });
+        ai++;
       });
     }
     const DURATION = 850;
@@ -784,14 +823,35 @@ export class BrainView {
 
   private solarPos(atom: Atom): THREE.Vector3 {
     if (atom.id === this._solarSunId) return new THREE.Vector3(0, 0, 0);
-    const srcIdx = Math.max(0, this._solarSources.indexOf(atom.source));
-    const orbit = 2.5 + (srcIdx / Math.max(this._solarSources.length - 1, 1)) * 5;
-    const siblings = this._solarSiblings.get(atom.source) ?? [];
-    const i = Math.max(0, siblings.indexOf(atom.id));
-    const n = Math.max(siblings.length, 1);
-    const angle = (i / n) * Math.PI * 2 + srcIdx * 0.4;
-    const y = ((i % 5) - 2) * 0.15;
-    return new THREE.Vector3(Math.cos(angle) * orbit, y, Math.sin(angle) * orbit);
+    const planet = this._solarPlanets.get(atom.id);
+    if (planet) {
+      const y = Math.sin(planet.tilt) * planet.orbitR * 0.3;
+      return new THREE.Vector3(
+        Math.cos(planet.angle) * planet.orbitR,
+        y,
+        Math.sin(planet.angle) * planet.orbitR,
+      );
+    }
+    const moon = this._solarMoons.get(atom.id);
+    if (moon) {
+      const planetMesh = this.nodeMap.get(moon.planetId);
+      if (planetMesh) {
+        return new THREE.Vector3(
+          planetMesh.position.x + Math.cos(moon.moonAngle) * moon.moonR,
+          planetMesh.position.y + Math.sin(moon.moonAngle * 0.7) * moon.moonR * 0.4,
+          planetMesh.position.z + Math.sin(moon.moonAngle) * moon.moonR,
+        );
+      }
+    }
+    const asteroid = this._solarAsteroids.get(atom.id);
+    if (asteroid) {
+      return new THREE.Vector3(
+        Math.cos(asteroid.angle) * asteroid.r,
+        asteroid.y,
+        Math.sin(asteroid.angle) * asteroid.r,
+      );
+    }
+    return new THREE.Vector3(1.5, 0, 0);
   }
 
   /* ── Theme ─────────────────────────────────────────────────── */

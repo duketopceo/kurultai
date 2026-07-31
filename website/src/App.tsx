@@ -2,7 +2,7 @@ import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import { reducer, initialState, AppContext } from './state';
 import { fetchStatus, fetchAtoms, fetchGraph } from './api';
 import { TopBar } from './components/TopBar';
-import { BrainStage } from './components/BrainStage';
+import { BrainStage, BrainStageHandle } from './components/BrainStage';
 import { CommandStrip } from './components/CommandStrip';
 import { ActivityPanel } from './components/ActivityPanel';
 import { InspectorPanel } from './components/InspectorPanel';
@@ -23,6 +23,7 @@ export function App() {
   const [selected, setSelected] = useState<Atom | null>(null);
   const [live, setLive] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
+  const brainRef = useRef<BrainStageHandle | null>(null);
 
   const filteredAtoms = useCallback(() => {
     if (state.since <= 0 || !state.atoms.length) return state.atoms;
@@ -83,6 +84,15 @@ export function App() {
     dispatch({ type: 'SET_SINCE', since });
   };
 
+  const handleSelectAndFocus = (atom: Atom) => {
+    setSelected(atom);
+    brainRef.current?.focusAtom(atom);
+  };
+
+  const handleRandom = () => {
+    brainRef.current?.randomConnection();
+  };
+
   const visible = filteredAtoms();
   const renderCap = state.maxMode ? 2500 : DEFAULT_ATOM_LIMIT;
 
@@ -102,6 +112,7 @@ export function App() {
       <main id="workspace">
         <section id="brain" className="brain-hero" aria-label="Brain visualization">
           <BrainStage
+            ref={brainRef}
             atoms={visible}
             renderCap={renderCap}
             layout={state.layout}
@@ -119,7 +130,8 @@ export function App() {
           onLayoutChange={handleLayoutChange}
           onMaxMode={handleMaxMode}
           onSince={handleSince}
-          onSelectAtom={setSelected}
+          onSelectAtom={handleSelectAndFocus}
+          onRandom={handleRandom}
         />
         <section className="dashboard-grid" aria-label="Brain dashboard">
           <ActivityPanel live={live} onLiveToggle={setLive} />
