@@ -114,10 +114,10 @@ export function CommandStrip({
 
       <div className="layout-switcher" role="group" aria-label="Brain layout">
         {([
-          ['lattice', 'regions'],
-          ['force', 'force'],
-          ['galaxy', 'solar'],
-        ] as const).map(([label, mode]) => (
+          { mode: 'regions', label: 'lattice' },
+          { mode: 'force', label: 'force' },
+          { mode: 'solar', label: 'galaxy' },
+        ] as const).map(({ label, mode }) => (
           <button
             key={mode}
             className={`quiet-button layout-toggle${layout === mode ? ' is-active' : ''}`}

@@ -210,6 +210,9 @@ export class BrainView {
   private haloMap = new Map<string, THREE.Sprite>();
   private labelMap = new Map<string, THREE.Sprite>();
   private links: Link[] = [];
+  // Top-MAX_EDGES links by strength, computed once per setData and shared by
+  // the edge builder and the force-sim spring setup.
+  private sortedLinks: Link[] = [];
   private atomsById = new Map<string, Atom>();
 
   /* ── Hybrid node rendering (U3) ────────────────────────────── */
@@ -234,7 +237,6 @@ export class BrainView {
   private spriteColorAttr?: THREE.BufferAttribute;
   private spriteAlphaAttr?: THREE.BufferAttribute;
   // atomId ↔ cloud-point index lookups (sprite mode only).
-  private spriteIndexMap = new Map<string, number>();
   private spriteIdByIndex: string[] = [];
   private spriteRegionOf = new Map<string, Region>();
   // On-demand label sprite for the hovered node in sprite mode.
@@ -282,12 +284,16 @@ export class BrainView {
   private yaw = 0;
   private pitch = 0;
   private distance = 1.75;
+  // Scratch vectors for the zoom camera branch of loop() (no per-frame allocs).
+  private _zoomLocal = new THREE.Vector3();
+  private _zoomWorld = new THREE.Vector3();
+  private _zoomDir = new THREE.Vector3();
   private dragging = false;
   private last: { x: number; y: number } | null = null;
-  private hover: THREE.Mesh | null = null;
 
   private clock = new THREE.Clock();
   private raf = 0;
+  private layoutAnimRaf = 0;
   private resizeObserver?: ResizeObserver;
   private disposed = false;
 
@@ -453,10 +459,10 @@ export class BrainView {
    * and every subsequent frame degenerates into full-region scans (U4 audit),
    * so the cached position is both faster and stable across frames.
    */
-  private latticePos(atom: Atom, region: Region): THREE.Vector3 {
+  private latticePos(atom: Atom, region: Region, out: THREE.Vector3): THREE.Vector3 {
     const cached = this.latticePositions.get(atom.id);
-    if (cached) return cached.clone();
-    return this.vertexForRegion(atom, region);
+    if (cached) return out.copy(cached);
+    return out.copy(this.vertexForRegion(atom, region));
   }
 
   private buildParticles(count: number) {
@@ -515,7 +521,7 @@ export class BrainView {
     const perfT0 = PERF_DEBUG ? performance.now() : 0;
     this.atomsById = new Map(atoms.map((a) => [a.id, a]));
     this.links = links;
-    this.hover = null;
+    this.sortedLinks = links.slice().sort((a, b) => b.strength - a.strength).slice(0, MAX_EDGES);
     this.hoverAtomId = null;
     this.hoverConnected = new Set();
     this.zoomAtomId = null;
@@ -528,7 +534,7 @@ export class BrainView {
     });
 
     // Hybrid path selection (KTD3 / R4): > cutoff → sprite cloud, else meshes.
-    this.spriteMode = atoms.slice(0, MAX_NODES).length > NODE_SPRITE_CUTOFF;
+    this.spriteMode = Math.min(atoms.length, MAX_NODES) > NODE_SPRITE_CUTOFF;
     // Release the previous cloud whenever we rebuild (mode switch or refresh).
     this.disposeSpriteHoverLabel();
     this.disposeNodeSpriteCloud();
@@ -544,7 +550,6 @@ export class BrainView {
     this.visibleAtomIds = new Set();
     this._shownIds = [];
     this.spriteRegionOf = new Map();
-    this.spriteIndexMap = new Map();
     this.spriteIdByIndex = [];
     this.usedVerts = new Set();
     if (!this.verts.length) return;
@@ -576,8 +581,11 @@ export class BrainView {
     this.buildEdges();
 
     // Apply current interactive-control state to the freshly built graph.
+    // Sprite mode: applyFilters routes through refreshSpriteAttributes, which
+    // already recomputes region colors + alphas — a second applyRegionColors
+    // would just redo the same attribute pass.
     this.applyFilters();
-    this.applyRegionColors();
+    if (!this.spriteMode) this.applyRegionColors();
 
     // Kick off the force-directed layout sim in the background.
     // Nodes stay at lattice positions until the sim settles; on completion
@@ -665,7 +673,6 @@ export class BrainView {
       // Separate instance: atomPositions is mutated by layout animations.
       this.latticePositions.set(atom.id, pos.clone());
       this.spriteRegionOf.set(atom.id, region);
-      this.spriteIndexMap.set(atom.id, i);
       this.spriteIdByIndex.push(atom.id);
     });
 
@@ -696,10 +703,7 @@ export class BrainView {
   /** Edge builder — reads endpoint positions from the authoritative
    *  atomPositions map so it works identically in mesh and sprite modes. */
   private buildEdges() {
-    this.links
-      .slice()
-      .sort((a, b) => b.strength - a.strength)
-      .slice(0, MAX_EDGES)
+    this.sortedLinks
       .forEach((link) => {
         const a = this.atomPositions.get(link.a);
         const b = this.atomPositions.get(link.b);
@@ -826,8 +830,7 @@ export class BrainView {
     if (!this.spriteColorAttr || !this.spriteAlphaAttr) return;
     const color = new THREE.Color();
     this._shownIds.forEach((id, i) => {
-      const deg = this.degrees.get(id) || 0;
-      const visible = deg >= this.connectionThreshold;
+      const visible = this.isAtomVisible(id);
       this.spriteAlphaAttr!.setX(i, visible ? 1 : 0);
       const c = this.showRegions ? this.regionColor(this.spriteRegionOf.get(id)!) : this.palette.nodeBase;
       color.setHex(c);
@@ -842,8 +845,7 @@ export class BrainView {
     if (!this.spriteColorAttr || !this.spriteAlphaAttr) return;
     const color = new THREE.Color();
     this._shownIds.forEach((id, i) => {
-      const deg = this.degrees.get(id) || 0;
-      const visible = deg >= this.connectionThreshold;
+      const visible = this.isAtomVisible(id);
       let c: number;
       let alpha: number;
       if (id === atomId) {
@@ -959,19 +961,22 @@ export class BrainView {
 
   /* ── Filtering + region colouring ──────────────────────────── */
 
+  /** Shared degree-visibility predicate (connectionThreshold filter). */
+  private isAtomVisible(id: string): boolean {
+    return (this.degrees.get(id) || 0) >= this.connectionThreshold;
+  }
+
   private applyFilters() {
     this.visibleAtomIds = new Set();
     if (this.spriteMode) {
       this._shownIds.forEach((id) => {
-        const deg = this.degrees.get(id) || 0;
-        if (deg >= this.connectionThreshold) this.visibleAtomIds.add(id);
+        if (this.isAtomVisible(id)) this.visibleAtomIds.add(id);
       });
       this.refreshSpriteAttributes();
     } else {
       this.nodeObjects.forEach((node) => {
         const id = node.userData.atomId as string;
-        const deg = this.degrees.get(id) || 0;
-        const visible = deg >= this.connectionThreshold;
+        const visible = this.isAtomVisible(id);
         node.visible = visible;
         if (visible) this.visibleAtomIds.add(id);
         const halo = this.haloMap.get(id);
@@ -1049,6 +1054,9 @@ export class BrainView {
   /* ── Hover / selection ─────────────────────────────────────── */
 
   private highlightConnections(atomId: string) {
+    // Already highlighting this atom — skip the (expensive in sprite mode)
+    // re-rasterization of the label texture and attribute buffer rewrites.
+    if (atomId === this.hoverAtomId) return;
     this.hoverAtomId = atomId;
     const connected = new Set<string>();
     this.links.forEach((link) => {
@@ -1063,7 +1071,6 @@ export class BrainView {
     } else {
       const mesh = this.nodeMap.get(atomId);
       if (!mesh) return;
-      this.hover = mesh;
       this.nodeObjects.forEach((node) => {
         const id = node.userData.atomId as string;
         const nodeMat = node.material as THREE.MeshBasicMaterial;
@@ -1114,7 +1121,6 @@ export class BrainView {
   private clearHover() {
     if (!this.hoverAtomId) return;
     this.hoverAtomId = null;
-    this.hover = null;
     this.hoverConnected = new Set();
     if (this.spriteMode) {
       this.disposeSpriteHoverLabel();
@@ -1209,6 +1215,8 @@ export class BrainView {
    * transition without re-entering the layoutMode guard.
    */
   private animateLayoutTo(mode: LayoutMode) {
+    // Cancel any in-flight layout transition so two RAF loops never compete.
+    if (this.layoutAnimRaf) cancelAnimationFrame(this.layoutAnimRaf);
     const DURATION = 850;
     const start = performance.now();
     const froms = new Map<string, THREE.Vector3>();
@@ -1220,16 +1228,18 @@ export class BrainView {
       if (this.disposed) return;
       const t = Math.min((performance.now() - start) / DURATION, 1);
       const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      // Scratch target vector — the per-mode pos functions write into it,
+      // avoiding ~n Vector3 allocations per animation frame.
+      const to = new THREE.Vector3();
       if (this.spriteMode && this.spritePosAttr) {
         this._shownIds.forEach((id, i) => {
           const atom = this.atomsById.get(id);
           if (!atom) return;
           const from = froms.get(id) ?? new THREE.Vector3();
           const region = this.spriteRegionOf.get(id) || 'left';
-          const to =
-            mode === 'solar' ? this.solarPos(atom)
-            : mode === 'force' ? this.forcePos(atom)
-            : this.latticePos(atom, region);
+          if (mode === 'solar') this.solarPos(atom, to);
+          else if (mode === 'force') this.forcePos(atom, to);
+          else this.latticePos(atom, region, to);
           const p = this.atomPositions.get(id);
           if (!p) return;
           p.lerpVectors(from, to, e);
@@ -1249,10 +1259,9 @@ export class BrainView {
           const atom = this.atomsById.get(mesh.userData.atomId as string);
           if (!atom) return;
           const from = froms.get(atom.id) ?? mesh.position;
-          const to =
-            mode === 'solar' ? this.solarPos(atom)
-            : mode === 'force' ? this.forcePos(atom)
-            : this.latticePos(atom, mesh.userData.region as Region);
+          if (mode === 'solar') this.solarPos(atom, to);
+          else if (mode === 'force') this.forcePos(atom, to);
+          else this.latticePos(atom, mesh.userData.region as Region, to);
           mesh.position.lerpVectors(from, to, e);
           const halo = this.haloMap.get(atom.id);
           if (halo) halo.position.copy(mesh.position);
@@ -1262,17 +1271,21 @@ export class BrainView {
           this.atomPositions.get(atom.id)?.copy(mesh.position);
         });
       }
-      if (t < 1) requestAnimationFrame(animate);
+      if (t < 1) {
+        this.layoutAnimRaf = requestAnimationFrame(animate);
+      } else {
+        this.layoutAnimRaf = 0;
+      }
     };
-    requestAnimationFrame(animate);
+    this.layoutAnimRaf = requestAnimationFrame(animate);
   }
 
-  private solarPos(atom: Atom): THREE.Vector3 {
-    if (atom.id === this._solarSunId) return new THREE.Vector3(0, 0, 0);
+  private solarPos(atom: Atom, out: THREE.Vector3): THREE.Vector3 {
+    if (atom.id === this._solarSunId) return out.set(0, 0, 0);
     const planet = this._solarPlanets.get(atom.id);
     if (planet) {
       const y = Math.sin(planet.tilt) * planet.orbitR * 0.3;
-      return new THREE.Vector3(
+      return out.set(
         Math.cos(planet.angle) * planet.orbitR,
         y,
         Math.sin(planet.angle) * planet.orbitR,
@@ -1284,7 +1297,7 @@ export class BrainView {
       // both mesh and sprite modes (nodeMap is empty in sprite mode).
       const planetPos = this.atomPositions.get(moon.planetId);
       if (planetPos) {
-        return new THREE.Vector3(
+        return out.set(
           planetPos.x + Math.cos(moon.moonAngle) * moon.moonR,
           planetPos.y + Math.sin(moon.moonAngle * 0.7) * moon.moonR * 0.4,
           planetPos.z + Math.sin(moon.moonAngle) * moon.moonR,
@@ -1293,31 +1306,27 @@ export class BrainView {
     }
     const asteroid = this._solarAsteroids.get(atom.id);
     if (asteroid) {
-      return new THREE.Vector3(
+      return out.set(
         Math.cos(asteroid.angle) * asteroid.r,
         asteroid.y,
         Math.sin(asteroid.angle) * asteroid.r,
       );
     }
-    return new THREE.Vector3(1.5, 0, 0);
+    return out.set(1.5, 0, 0);
   }
 
   /* ── Force-directed layout ─────────────────────────────────── */
 
   /** Target position for the force layout — mirrors the solarPos/vertexForRegion pattern. */
-  private forcePos(atom: Atom): THREE.Vector3 {
+  private forcePos(atom: Atom, out: THREE.Vector3): THREE.Vector3 {
     const idx = this._forceIndex.get(atom.id);
     if (idx !== undefined) {
-      return new THREE.Vector3(
-        this._forcePosArr[idx * 3],
-        this._forcePosArr[idx * 3 + 1],
-        this._forcePosArr[idx * 3 + 2],
-      );
+      return out.fromArray(this._forcePosArr, idx * 3);
     }
     // Sim not yet seeded or atom absent — fall back to the lattice position.
     const pos = this.atomPositions.get(atom.id);
-    if (pos) return pos.clone();
-    return new THREE.Vector3();
+    if (pos) return out.copy(pos);
+    return out.set(0, 0, 0);
   }
 
   /** Iterations per idle slice — throttled for large n to keep each slice <500ms (R5). */
@@ -1371,8 +1380,7 @@ export class BrainView {
 
     // Build link index pairs for spring forces (same MAX_EDGES cap as the edge renderer).
     this._forceLinkPairs = [];
-    const sortedLinks = this.links.slice().sort((a, b) => b.strength - a.strength).slice(0, MAX_EDGES);
-    for (const link of sortedLinks) {
+    for (const link of this.sortedLinks) {
       const ai = this._forceIndex.get(link.a);
       const bi = this._forceIndex.get(link.b);
       if (ai !== undefined && bi !== undefined && ai !== bi) {
@@ -1514,11 +1522,7 @@ export class BrainView {
     for (let i = 0; i < this._forceIds.length; i++) {
       this.forcePositions.set(
         this._forceIds[i],
-        new THREE.Vector3(
-          this._forcePosArr[i * 3],
-          this._forcePosArr[i * 3 + 1],
-          this._forcePosArr[i * 3 + 2],
-        ),
+        new THREE.Vector3().fromArray(this._forcePosArr, i * 3),
       );
     }
     // If the user is already viewing force mode, animate to the settled positions.
@@ -1554,7 +1558,6 @@ export class BrainView {
   }
 
   private clearHoverSilent() {
-    this.hover = null;
     this.hoverAtomId = null;
     this.hoverConnected = new Set();
     this.disposeSpriteHoverLabel();
@@ -1708,11 +1711,11 @@ export class BrainView {
       // mesh.getWorldPosition path used in mesh mode.
       const localPos = this.atomPositions.get(this.zoomAtomId);
       if (localPos) {
-        const worldPos = this.brainGroup.localToWorld(localPos.clone());
-        const dir = new THREE.Vector3().subVectors(this.camera.position, worldPos);
+        const worldPos = this.brainGroup.localToWorld(this._zoomWorld.copy(localPos));
+        const dir = this._zoomDir.subVectors(this.camera.position, worldPos);
         if (dir.lengthSq() < 0.0001) dir.set(0, 0, 1);
         dir.normalize();
-        const desiredCamPos = worldPos.clone().add(dir.multiplyScalar(0.35));
+        const desiredCamPos = this._zoomLocal.copy(worldPos).add(dir.multiplyScalar(0.35));
         this.camera.position.lerp(desiredCamPos, 0.06);
         this.camera.lookAt(worldPos);
       } else {
@@ -1739,6 +1742,7 @@ export class BrainView {
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    cancelAnimationFrame(this.layoutAnimRaf);
     this.cancelForceSim();
     this.resizeObserver?.disconnect();
     this.removeListeners();

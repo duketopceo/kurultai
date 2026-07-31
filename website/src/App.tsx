@@ -75,7 +75,7 @@ export function App() {
     dispatch({ type: 'SET_LAYOUT', layout: mode });
     try {
       localStorage.setItem('kurultai-layout', mode);
-    } catch { /* storage unavailable — layout persistence is best-effort */ }
+    } catch { /* best-effort persistence */ }
   };
 
   const handleMaxMode = async (enabled: boolean) => {
