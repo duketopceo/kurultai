@@ -89,6 +89,17 @@ export type Region = 'left' | 'right' | 'stem';
 const MAX_NODES = 2500;
 const MAX_EDGES = 3000;
 
+// Force-directed layout constants (vanilla JS — no physics library).
+const FORCE_MAX_ITERATIONS = 300;
+const FORCE_DAMPING = 0.85;
+const FORCE_SPRING_REST = 0.35;
+const FORCE_SPRING_K = 0.05;
+const FORCE_REPULSION_K = 0.02;
+const FORCE_REPULSION_MAX_DIST = 1.5; // pairs farther than this don't repel
+const FORCE_REPULSION_EPSILON = 0.01; // guards divide-by-zero on coincident nodes
+const FORCE_CENTER_K = 0.01; // weak pull toward origin
+const FORCE_SETTLE_THRESHOLD = 0.0005; // avg displacement/iter below this ⇒ settled
+
 export interface BrainViewOptions {
   theme: Theme;
   reducedMotion: boolean;
@@ -144,6 +155,18 @@ export class BrainView {
   private _solarPlanets = new Map<string, { orbitR: number; angle: number; tilt: number }>();
   private _solarMoons = new Map<string, { planetId: string; moonR: number; moonAngle: number }>();
   private _solarAsteroids = new Map<string, { r: number; angle: number; y: number }>();
+
+  /* ── Force-directed layout state ──────────────────────────── */
+  // Authoritative settled positions (synced once on sim completion).
+  private forcePositions = new Map<string, THREE.Vector3>();
+  // Flat arrays for the O(n²) hot loop — avoids per-iteration Vector3/GC churn.
+  private _forcePosArr = new Float32Array(0);
+  private _forceVelArr = new Float32Array(0);
+  private _forceIds: string[] = [];
+  private _forceIndex = new Map<string, number>();
+  private _forceLinkPairs: { a: number; b: number; strength: number }[] = [];
+  private _forceSimHandle: ReturnType<typeof setTimeout> | null = null;
+  private _forceIterations = 0;
 
   /* ── Interactive control state ─────────────────────────────── */
   private connectionThreshold = 0;
@@ -511,6 +534,12 @@ export class BrainView {
     // Apply current interactive-control state to the freshly built graph.
     this.applyFilters();
     this.applyRegionColors();
+
+    // Kick off the force-directed layout sim in the background.
+    // Nodes stay at lattice positions until the sim settles; on completion
+    // the existing setLayout transition animates to force positions if the
+    // user is currently in force mode.
+    this.computeForceLayout();
   }
 
   private makeLabelTexture(text: string): THREE.Texture {
@@ -796,6 +825,15 @@ export class BrainView {
         ai++;
       });
     }
+    this.animateLayoutTo(mode);
+  }
+
+  /**
+   * Eased lerp of every mesh from its current position to the per-mode target.
+   * Extracted from setLayout so the force sim completion can trigger the same
+   * transition without re-entering the layoutMode guard.
+   */
+  private animateLayoutTo(mode: LayoutMode) {
     const DURATION = 850;
     const start = performance.now();
     const froms = new Map<string, THREE.Vector3>();
@@ -803,13 +841,17 @@ export class BrainView {
       froms.set(mesh.userData.atomId as string, mesh.position.clone());
     });
     const animate = () => {
+      if (this.disposed) return;
       const t = Math.min((performance.now() - start) / DURATION, 1);
       const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-      this.nodeObjects.forEach((mesh, idx) => {
+      this.nodeObjects.forEach((mesh) => {
         const atom = this.atomsById.get(mesh.userData.atomId as string);
         if (!atom) return;
         const from = froms.get(atom.id) ?? mesh.position;
-        const to = mode === 'solar' ? this.solarPos(atom) : this.vertexForRegion(atom, mesh.userData.region as Region);
+        const to =
+          mode === 'solar' ? this.solarPos(atom)
+          : mode === 'force' ? this.forcePos(atom)
+          : this.vertexForRegion(atom, mesh.userData.region as Region);
         mesh.position.lerpVectors(from, to, e);
         const halo = this.haloMap.get(atom.id);
         if (halo) halo.position.copy(mesh.position);
@@ -852,6 +894,222 @@ export class BrainView {
       );
     }
     return new THREE.Vector3(1.5, 0, 0);
+  }
+
+  /* ── Force-directed layout ─────────────────────────────────── */
+
+  /** Target position for the force layout — mirrors the solarPos/vertexForRegion pattern. */
+  private forcePos(atom: Atom): THREE.Vector3 {
+    const idx = this._forceIndex.get(atom.id);
+    if (idx !== undefined) {
+      return new THREE.Vector3(
+        this._forcePosArr[idx * 3],
+        this._forcePosArr[idx * 3 + 1],
+        this._forcePosArr[idx * 3 + 2],
+      );
+    }
+    // Sim not yet seeded or atom absent — fall back to the lattice position.
+    const mesh = this.nodeMap.get(atom.id);
+    if (mesh) return mesh.position.clone();
+    return new THREE.Vector3();
+  }
+
+  /** Iterations per idle slice — throttled for large n to keep each slice <500ms (R5). */
+  private forceItersPerSlice(n: number): number {
+    if (n <= 500) return 40;
+    if (n <= 1000) return 15;
+    if (n <= 1500) return 8;
+    return 3;
+  }
+
+  /**
+   * Seed the force sim from the current graph and run it in time-sliced chunks.
+   * Warm-starts from previously settled positions for atoms that persist across
+   * setData() refreshes; new atoms inherit their lattice (vertexForRegion) position.
+   * Stale entries (atoms no longer present) are dropped by rebuilding the maps.
+   */
+  private computeForceLayout() {
+    this.cancelForceSim();
+
+    const ids = [...this.atomsById.keys()].slice(0, MAX_NODES);
+    const n = ids.length;
+
+    this._forceIds = ids;
+    this._forceIndex = new Map(ids.map((id, i) => [id, i]));
+    this._forcePosArr = new Float32Array(n * 3);
+    this._forceVelArr = new Float32Array(n * 3);
+    this._forceIterations = 0;
+
+    // Seed positions: warm start from settled forcePositions, else lattice.
+    for (let i = 0; i < n; i++) {
+      const id = ids[i];
+      const settled = this.forcePositions.get(id);
+      if (settled) {
+        this._forcePosArr[i * 3] = settled.x;
+        this._forcePosArr[i * 3 + 1] = settled.y;
+        this._forcePosArr[i * 3 + 2] = settled.z;
+      } else {
+        const mesh = this.nodeMap.get(id);
+        if (mesh) {
+          this._forcePosArr[i * 3] = mesh.position.x;
+          this._forcePosArr[i * 3 + 1] = mesh.position.y;
+          this._forcePosArr[i * 3 + 2] = mesh.position.z;
+        }
+      }
+      // Deterministic jitter from atom hash (stable across re-seeds, no Math.random).
+      const h = hashId(id);
+      this._forcePosArr[i * 3] += ((h % 1000) / 1000 - 0.5) * 0.02;
+      this._forcePosArr[i * 3 + 1] += (((h >>> 8) % 1000) / 1000 - 0.5) * 0.02;
+      this._forcePosArr[i * 3 + 2] += (((h >>> 16) % 1000) / 1000 - 0.5) * 0.02;
+    }
+
+    // Build link index pairs for spring forces (same MAX_EDGES cap as the edge renderer).
+    this._forceLinkPairs = [];
+    const sortedLinks = this.links.slice().sort((a, b) => b.strength - a.strength).slice(0, MAX_EDGES);
+    for (const link of sortedLinks) {
+      const ai = this._forceIndex.get(link.a);
+      const bi = this._forceIndex.get(link.b);
+      if (ai !== undefined && bi !== undefined && ai !== bi) {
+        this._forceLinkPairs.push({ a: ai, b: bi, strength: link.strength || 0 });
+      }
+    }
+
+    // Trivial cases: 0 or 1 node — no sim needed, just center.
+    if (n <= 1) {
+      if (n === 1) {
+        this._forcePosArr[0] = 0;
+        this._forcePosArr[1] = 0;
+        this._forcePosArr[2] = 0;
+      }
+      this.finalizeForceLayout();
+      return;
+    }
+
+    this.scheduleForceSlice();
+  }
+
+  private scheduleForceSlice() {
+    this._forceSimHandle = setTimeout(() => {
+      this._forceSimHandle = null;
+      if (this.disposed) return;
+      this.forceSimSlice();
+    }, 0);
+  }
+
+  /** Run a chunk of sim iterations, then either finalize or schedule the next slice. */
+  private forceSimSlice() {
+    const n = this._forceIds.length;
+    if (n <= 1) {
+      this.finalizeForceLayout();
+      return;
+    }
+
+    const pos = this._forcePosArr;
+    const vel = this._forceVelArr;
+    const iters = this.forceItersPerSlice(n);
+    const maxD2 = FORCE_REPULSION_MAX_DIST * FORCE_REPULSION_MAX_DIST;
+    const eps = FORCE_REPULSION_EPSILON;
+
+    for (let iter = 0; iter < iters; iter++) {
+      this._forceIterations++;
+
+      // Repulsion: O(n²) inverse-square, capped distance.
+      for (let i = 0; i < n; i++) {
+        const ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+        const px = pos[ix], py = pos[iy], pz = pos[iz];
+        let fx = 0, fy = 0, fz = 0;
+        for (let j = i + 1; j < n; j++) {
+          const jx = j * 3, jy = j * 3 + 1, jz = j * 3 + 2;
+          const dx = px - pos[jx];
+          const dy = py - pos[jy];
+          const dz = pz - pos[jz];
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 >= maxD2 || d2 < eps) continue;
+          const d = Math.sqrt(d2);
+          const f = FORCE_REPULSION_K / d2;
+          const nx = dx / d, ny = dy / d, nz = dz / d;
+          fx += nx * f;
+          fy += ny * f;
+          fz += nz * f;
+          vel[jx] -= nx * f;
+          vel[jy] -= ny * f;
+          vel[jz] -= nz * f;
+        }
+        vel[ix] += fx;
+        vel[iy] += fy;
+        vel[iz] += fz;
+      }
+
+      // Spring attraction along links (rest length, strength-proportional).
+      for (const link of this._forceLinkPairs) {
+        const ax = link.a * 3, ay = link.a * 3 + 1, az = link.a * 3 + 2;
+        const bx = link.b * 3, by = link.b * 3 + 1, bz = link.b * 3 + 2;
+        const dx = pos[bx] - pos[ax];
+        const dy = pos[by] - pos[ay];
+        const dz = pos[bz] - pos[az];
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || eps;
+        const displacement = d - FORCE_SPRING_REST;
+        const f = FORCE_SPRING_K * displacement * (link.strength || 1);
+        const nx = dx / d, ny = dy / d, nz = dz / d;
+        vel[ax] += nx * f;
+        vel[ay] += ny * f;
+        vel[az] += nz * f;
+        vel[bx] -= nx * f;
+        vel[by] -= ny * f;
+        vel[bz] -= nz * f;
+      }
+
+      // Centering + damping + position update; track displacement for settle check.
+      let totalDisp = 0;
+      for (let i = 0; i < n; i++) {
+        const ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+        vel[ix] -= pos[ix] * FORCE_CENTER_K;
+        vel[iy] -= pos[iy] * FORCE_CENTER_K;
+        vel[iz] -= pos[iz] * FORCE_CENTER_K;
+        vel[ix] *= FORCE_DAMPING;
+        vel[iy] *= FORCE_DAMPING;
+        vel[iz] *= FORCE_DAMPING;
+        pos[ix] += vel[ix];
+        pos[iy] += vel[iy];
+        pos[iz] += vel[iz];
+        totalDisp += Math.abs(vel[ix]) + Math.abs(vel[iy]) + Math.abs(vel[iz]);
+      }
+
+      const avgDisp = totalDisp / (n * 3);
+      if (avgDisp < FORCE_SETTLE_THRESHOLD || this._forceIterations >= FORCE_MAX_ITERATIONS) {
+        this.finalizeForceLayout();
+        return;
+      }
+    }
+
+    this.scheduleForceSlice();
+  }
+
+  /** Sync flat arrays to the forcePositions map and animate if currently in force mode. */
+  private finalizeForceLayout() {
+    this.cancelForceSim();
+    this.forcePositions = new Map();
+    for (let i = 0; i < this._forceIds.length; i++) {
+      this.forcePositions.set(
+        this._forceIds[i],
+        new THREE.Vector3(
+          this._forcePosArr[i * 3],
+          this._forcePosArr[i * 3 + 1],
+          this._forcePosArr[i * 3 + 2],
+        ),
+      );
+    }
+    // If the user is already viewing force mode, animate to the settled positions.
+    if (this.layoutMode === 'force') {
+      this.animateLayoutTo('force');
+    }
+  }
+
+  private cancelForceSim() {
+    if (this._forceSimHandle !== null) {
+      clearTimeout(this._forceSimHandle);
+      this._forceSimHandle = null;
+    }
   }
 
   /* ── Theme ─────────────────────────────────────────────────── */
@@ -1049,6 +1307,7 @@ export class BrainView {
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
+    this.cancelForceSim();
     this.resizeObserver?.disconnect();
     this.removeListeners();
     this.haloTexture.dispose();
