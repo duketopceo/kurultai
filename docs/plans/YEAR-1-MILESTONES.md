@@ -4,6 +4,9 @@
 **Target Revenue:** $50-100K first year  
 **Strategy:** Any cashflow is good — start with team tier, layer in enterprise
 
+**Version note:** Product **v0.4.0** already shipped as Brain UI (solar · pulse · purple · max). This Year-1 cashflow track starts team pricing at **v0.5.0** (not v0.4.0).
+
+
 ---
 
 ## Q3 2026 (Aug–Sep) — Foundation Hardening
@@ -59,7 +62,7 @@
 
 ## Q4 2026 (Oct–Dec) — Team Foundations
 
-### Milestone: v0.4.0 Team
+### Milestone: v0.5.0 Team
 **Target:** December 15, 2026  
 **Cashflow:** Early team access ($5-10/user/mo)  
 **GitHub Issue:** Create tracking issue
@@ -104,11 +107,11 @@
 
 **Total:** 12 weeks (3 months)  
 **Team:** 1-2 engineers (scale for complexity)  
-**Release:** v0.4.0 + team tier pricing live
+**Release:** v0.5.0 + team tier pricing live
 
 ---
 
-### Milestone: v0.4.1 Enterprise Connectors
+### Milestone: v0.5.1 Enterprise Connectors
 **Target:** January 31, 2027  
 **Cashflow:** Enterprise connector licenses  
 **GitHub Issue:** [#12] (Phase 2 tracking)
@@ -153,13 +156,13 @@
 
 **Total:** 13 weeks (3.25 months)  
 **Team:** 1-2 engineers  
-**Release:** v0.4.1 + enterprise connector marketplace
+**Release:** v0.5.1 + enterprise connector marketplace
 
 ---
 
 ## Q1 2027 (Feb–Apr) — Scale & Ecosystem
 
-### Milestone: v0.5.0 Scale
+### Milestone: v0.6.0 Scale
 **Target:** March 31, 2027  
 **Cashflow:** Scale tier pricing  
 **GitHub Issue:** [#13] (Phase 3 tracking)
@@ -204,11 +207,11 @@
 
 **Total:** 12 weeks (3 months)  
 **Team:** 1-2 engineers  
-**Release:** v0.5.0 + scale tier pricing
+**Release:** v0.6.0 + scale tier pricing
 
 ---
 
-### Milestone: v0.5.1 Plugins
+### Milestone: v0.6.1 Plugins
 **Target:** April 30, 2027  
 **Cashflow:** Plugin marketplace fees  
 **GitHub Issue:** [#14] (Phase 4 tracking)
@@ -253,13 +256,13 @@
 
 **Total:** 10 weeks (2.5 months)  
 **Team:** 1 engineer  
-**Release:** v0.5.1 + plugin marketplace MVP
+**Release:** v0.6.1 + plugin marketplace MVP
 
 ---
 
 ## Q2 2027 (May–Jul) — Launch
 
-### Milestone: v0.6.0 Enterprise
+### Milestone: v0.7.0 Enterprise
 **Target:** June 15, 2027  
 **Cashflow:** Enterprise contracts ($20-50/user/mo)  
 **GitHub Issue:** [#15] (Phase 5 tracking)
@@ -304,7 +307,7 @@
 
 **Total:** 14 weeks (3.5 months)  
 **Team:** 1-2 engineers + security consultant  
-**Release:** v0.6.0 + enterprise tier live
+**Release:** v0.7.0 + enterprise tier live
 
 ---
 
@@ -371,9 +374,9 @@
 | Month | Milestone | Cashflow Source | Est. Users | Est. MRR |
 |-------|-----------|-----------------|------------|----------|
 | Aug-Sep 2026 | v0.3.1 | None | 0 | $0 |
-| Oct-Dec 2026 | v0.4.0/v0.4.1 | Early team access | 50-200 | $1-3K |
-| Jan-Mar 2027 | v0.5.0/v0.5.1 | Scale tier + plugins | 200-500 | $3-8K |
-| Apr-Jun 2027 | v0.6.0 | Enterprise contracts | 500-1K | $8-15K |
+| Oct-Dec 2026 | v0.5.0/v0.5.1 | Early team access | 50-200 | $1-3K |
+| Jan-Mar 2027 | v0.6.0/v0.6.1 | Scale tier + plugins | 200-500 | $3-8K |
+| Apr-Jun 2027 | v0.7.0 | Enterprise contracts | 500-1K | $8-15K |
 | Jul 2027 | v1.0.0 | General availability | 1K-2K | $15-25K |
 
 **Year 1 Total Revenue Estimate:** $50-100K  
@@ -410,11 +413,11 @@ Use this template for each milestone tracking issue:
 
 Create tracking issues for:
 - v0.3.1 Foundation
-- v0.4.0 Team  
-- v0.4.1 Enterprise Connectors
-- v0.5.0 Scale
-- v0.5.1 Plugins
-- v0.6.0 Enterprise
+- v0.5.0 Team  
+- v0.5.1 Enterprise Connectors
+- v0.6.0 Scale
+- v0.6.1 Plugins
+- v0.7.0 Enterprise
 - v1.0.0 Launch
 
 ---
