@@ -1701,6 +1701,7 @@ mod tests {
         let state = AppState {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
         };
         router(state).merge(mcp::routes(mcp::McpHttpState::new(
             brain,
