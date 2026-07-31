@@ -363,6 +363,7 @@ button, input, textarea { font: inherit; }
   position: relative;
   align-items: center;
 }
+.layout-switcher { display: flex; gap: .4rem; }
 .search-control {
   height: 48px;
   border: 1px solid var(--line);
