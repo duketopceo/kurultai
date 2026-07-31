@@ -33,6 +33,8 @@ pub struct DaemonOptions {
     pub nightly_full_sync_hour: Option<u8>,
     /// Skip incremental poll when idle this many hours (#73).
     pub inactivity_threshold_hours: Option<u64>,
+    /// Shared secret for MCP HTTP/SSE (`POST /mcp`). None disables.
+    pub mcp_http_secret: Option<String>,
 }
 
 /// Live daemon scheduler state for `/api/status` (#73).
@@ -236,7 +238,15 @@ pub async fn run(
         }
     }
 
-    let serve_result = http::serve(brain, Arc::clone(&status), opts.port).await;
+    let serve_result = http::serve_with(
+        brain,
+        Arc::clone(&status),
+        http::ServeOptions {
+            port: opts.port,
+            mcp_http_secret: opts.mcp_http_secret,
+        },
+    )
+    .await;
 
     for handle in bg.0.drain(..) {
         handle.abort();
@@ -598,6 +608,7 @@ mod tests {
             watch_roots,
             nightly_full_sync_hour: None,
             inactivity_threshold_hours: None,
+            mcp_http_secret: None,
         }
     }
 

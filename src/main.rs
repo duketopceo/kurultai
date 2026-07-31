@@ -351,7 +351,14 @@ async fn main() -> Result<()> {
                 watch_roots = watch_roots.len(),
                 "daemon starting"
             );
-            println!("Daemon listening on http://127.0.0.1:{port} (localhost only; no auth)");
+            println!("Daemon listening on http://127.0.0.1:{port} (localhost only)");
+            let mcp_secret =
+                kurultai::http::resolve_mcp_http_secret(app.config.mcp_http_secret.as_deref());
+            if mcp_secret.is_some() {
+                println!("MCP HTTP/SSE: POST /mcp · GET /mcp/sse (Authorization: Bearer <secret>)");
+            } else {
+                println!("MCP HTTP/SSE: off (set KURULTAI_MCP_HTTP_SECRET to enable)");
+            }
             if no_poll {
                 println!("Background poll: off");
             } else {
@@ -379,6 +386,7 @@ async fn main() -> Result<()> {
                     watch_roots,
                     nightly_full_sync_hour: app.config.nightly_full_sync_hour,
                     inactivity_threshold_hours: app.config.inactivity_threshold_hours,
+                    mcp_http_secret: mcp_secret,
                 },
             )
             .await?;

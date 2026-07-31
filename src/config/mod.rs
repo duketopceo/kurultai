@@ -23,6 +23,7 @@ dimension = 3072
 
 [runtime]
 poll_interval_secs = 300
+# mcp_http_secret = "…"   # optional; prefer env KURULTAI_MCP_HTTP_SECRET for daemon MCP HTTP/SSE
 # nightly_full_sync_hour = 2
 # inactivity_threshold_hours = 24
 
@@ -131,6 +132,7 @@ mod tests {
             poll_interval_secs: 300,
             nightly_full_sync_hour: None,
             inactivity_threshold_hours: None,
+            mcp_http_secret: None,
             banner: crate::art::BannerMode::Auto,
         };
         assert!(validate(&config).is_err());

@@ -295,6 +295,9 @@ pub struct Config {
     /// Skip incremental poll when no client queries for this many hours (#73).
     #[serde(default)]
     pub inactivity_threshold_hours: Option<u64>,
+    /// Shared secret for MCP HTTP/SSE on the daemon. Prefer `KURULTAI_MCP_HTTP_SECRET`.
+    #[serde(default)]
+    pub mcp_http_secret: Option<String>,
     /// CLI banner presentation (`[cli] banner`); default auto = TTY only.
     #[serde(default)]
     pub banner: crate::art::BannerMode,
