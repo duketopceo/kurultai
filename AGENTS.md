@@ -23,6 +23,12 @@ refreshes dependencies (`cargo fetch` + `npm install` for `web/` and `website/`)
 so this section only covers non-obvious run/test caveats. Standard commands live in
 `CONTRIBUTING.md`, `README.md`, and each `package.json`.
 
+### CodeRabbit / reviews
+
+- Repo `.coderabbit.yaml` keeps **auto-review off** — do not ping `@coderabbitai review` unless the user asks.
+- Prefer CI green + existing approvals; **do not wait on CodeRabbit** to merge.
+- Keep `@coderabbitai ignore` in PR descriptions (PR template already includes it).
+
 ### Surfaces
 
 | Surface | Path | Run (dev) | Notes |
