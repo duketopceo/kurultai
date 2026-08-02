@@ -77,5 +77,5 @@ export interface ActivityItem {
   ts?: string;
 }
 
-export type LayoutMode = 'regions' | 'force' | 'solar';
+export type LayoutMode = 'brain' | 'ontology' | 'galaxy';
 export type Theme = 'dark' | 'light';

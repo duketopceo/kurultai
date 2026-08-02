@@ -247,7 +247,7 @@ export class BrainView {
   private regionVerts: Record<Region, number[]> = { left: [], right: [], stem: [] };
   private usedVerts = new Set<number>();
   private degrees = new Map<string, number>();
-  private layoutMode: LayoutMode = 'regions';
+  private layoutMode: LayoutMode = 'brain';
   private _solarSunId = '';
   private _solarPlanets = new Map<string, { orbitR: number; angle: number; tilt: number }>();
   private _solarMoons = new Map<string, { planetId: string; moonR: number; moonAngle: number }>();
@@ -598,11 +598,11 @@ export class BrainView {
     // user is currently in force mode.
     this.computeForceLayout();
 
-    // Re-apply a non-'regions' layout so live refreshes don't leave new atoms
-    // at lattice positions. 'force' is handled by finalizeForceLayout; 'solar'
-    // rebuilds role assignment here. 'regions' needs nothing (lattice is the
+    // Re-apply a non-'brain' layout so live refreshes don't leave new atoms
+    // at lattice positions. 'ontology' is handled by finalizeForceLayout; 'galaxy'
+    // rebuilds role assignment here. 'brain' needs nothing (lattice is the
     // setData default).
-    if (this.layoutMode === 'solar') this.applySolarLayout();
+    if (this.layoutMode === 'galaxy') this.applySolarLayout();
 
     if (PERF_DEBUG) {
       console.log(
@@ -1207,7 +1207,7 @@ export class BrainView {
   setLayout(mode: LayoutMode) {
     if (this.layoutMode === mode) return;
     this.layoutMode = mode;
-    if (mode === 'solar') {
+    if (mode === 'galaxy') {
       this.applySolarLayout();
     } else {
       this.animateLayoutTo(mode);
@@ -1216,7 +1216,7 @@ export class BrainView {
 
   /**
    * Rebuild the solar role assignment (sun/planets/moons/asteroids) from the
-   * current atomsById and animate to the 'solar' layout. Extracted from
+   * current atomsById and animate to the 'galaxy' layout. Extracted from
    * setLayout so setData can re-apply it after a live refresh (otherwise new
    * atoms stay at lattice positions in solar mode). Preserves the exact
    * role-assignment logic: degree-descending sort, MAX_PLANETS cap, moon
@@ -1269,7 +1269,7 @@ export class BrainView {
       this._solarAsteroids.set(atom.id, { r, angle, y });
       ai++;
     });
-    this.animateLayoutTo('solar');
+    this.animateLayoutTo('galaxy');
   }
 
   /**
@@ -1303,8 +1303,8 @@ export class BrainView {
           if (!atom) return;
           const from = froms.get(id) ?? new THREE.Vector3();
           const region = this.spriteRegionOf.get(id) || 'left';
-          if (mode === 'solar') this.solarPos(atom, to);
-          else if (mode === 'force') this.forcePos(atom, to);
+          if (mode === 'galaxy') this.solarPos(atom, to);
+          else if (mode === 'ontology') this.forcePos(atom, to);
           else this.latticePos(atom, region, to);
           const p = this.atomPositions.get(id);
           if (!p) return;
@@ -1325,8 +1325,8 @@ export class BrainView {
           const atom = this.atomsById.get(mesh.userData.atomId as string);
           if (!atom) return;
           const from = froms.get(atom.id) ?? mesh.position;
-          if (mode === 'solar') this.solarPos(atom, to);
-          else if (mode === 'force') this.forcePos(atom, to);
+          if (mode === 'galaxy') this.solarPos(atom, to);
+          else if (mode === 'ontology') this.forcePos(atom, to);
           else this.latticePos(atom, mesh.userData.region as Region, to);
           mesh.position.lerpVectors(from, to, e);
           const halo = this.haloMap.get(atom.id);
@@ -1592,8 +1592,8 @@ export class BrainView {
       );
     }
     // If the user is already viewing force mode, animate to the settled positions.
-    if (this.layoutMode === 'force') {
-      this.animateLayoutTo('force');
+    if (this.layoutMode === 'ontology') {
+      this.animateLayoutTo('ontology');
     }
   }
 

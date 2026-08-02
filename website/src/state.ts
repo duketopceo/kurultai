@@ -47,15 +47,15 @@ export function reducer(state: AppState, action: AppAction): AppState {
   }
 }
 
-const VALID_LAYOUTS: readonly LayoutMode[] = ['regions', 'force', 'solar'];
+const VALID_LAYOUTS: readonly LayoutMode[] = ['brain', 'ontology', 'galaxy'];
 
-/** Restores the persisted layout, falling back to 'regions' on missing/corrupt values or storage errors. */
+/** Restores the persisted layout, falling back to 'brain' on missing/corrupt values or storage errors. */
 function initialLayout(): LayoutMode {
   try {
     const stored = localStorage.getItem('kurultai-layout');
-    return VALID_LAYOUTS.includes(stored as LayoutMode) ? (stored as LayoutMode) : 'regions';
+    return VALID_LAYOUTS.includes(stored as LayoutMode) ? (stored as LayoutMode) : 'brain';
   } catch {
-    return 'regions';
+    return 'brain';
   }
 }
 
