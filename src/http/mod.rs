@@ -193,9 +193,9 @@ async fn api_status(
 }
 
 /// Full-atom list ceiling — large Brain loads must use `/api/graph` tiers instead.
-const ATOMS_LIST_CEILING: usize = 500;
+const ATOMS_LIST_CEILING: usize = 20_000;
 /// Lean graph node ceiling for max-mode progressive loads.
-const GRAPH_LIST_CEILING: usize = 10_000;
+const GRAPH_LIST_CEILING: usize = 20_000;
 
 fn parse_atoms_limit(raw: Option<&str>) -> usize {
     match raw {

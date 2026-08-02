@@ -1,22 +1,22 @@
 import { useRef, useState, useEffect } from 'react';
-import type { Atom, LayoutMode } from '../types';
+import type { Atom, LayoutMode, LoadTier } from '../types';
 import { searchAtoms } from '../api';
 
 interface Props {
   layout: LayoutMode;
-  maxMode: boolean;
+  loadTier: LoadTier;
   atomTotal: number;
   atomsLoaded: number;
   onLayoutChange: (mode: LayoutMode) => void;
-  onMaxMode: (enabled: boolean) => void;
+  onLoadTier: (tier: LoadTier) => void;
   onSince: (since: number) => void;
   onSelectAtom: (atom: Atom) => void;
   onRandom: () => void;
 }
 
 export function CommandStrip({
-  layout, maxMode, atomTotal, atomsLoaded,
-  onLayoutChange, onMaxMode, onSince, onSelectAtom, onRandom
+  layout, loadTier, atomTotal, atomsLoaded,
+  onLayoutChange, onLoadTier, onSince, onSelectAtom, onRandom
 }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Atom[]>([]);
@@ -131,27 +131,23 @@ export function CommandStrip({
         ))}
       </div>
 
-      <button
-        id="max-toggle"
-        className={`quiet-button max-toggle${maxMode ? ' is-active' : ''}`}
-        type="button"
-        aria-pressed={maxMode}
-        aria-label={maxMode
-          ? 'Exit max mode and reload the standard memory subset'
-          : 'Load up to 10,000 memories via tiered graph'}
-        title="Hover: ghost preview · Click: load up to 10,000 memories (hot → warm → cold)"
-        onClick={() => onMaxMode(!maxMode)}
-        onMouseEnter={() => {
-          if (!maxMode) {
-            // Ghost preview triggered externally via onMaxMode flow
-          }
-        }}
-      >
-        max
-        {maxMode && atomTotal > atomsLoaded && (
-          <small style={{ marginLeft: 4, opacity: 0.7 }}>{atomsLoaded}/{atomTotal}</small>
+      <div className="layout-switcher" role="group" aria-label="Memory load tier">
+        {(['low', 'mid', 'high', 'max'] as LoadTier[]).map((tier) => (
+          <button
+            key={tier}
+            className={`quiet-button layout-toggle${loadTier === tier ? ' is-active' : ''}`}
+            type="button"
+            aria-pressed={loadTier === tier}
+            aria-label={`Load ${tier} memory set`}
+            onClick={() => onLoadTier(tier)}
+          >
+            {tier}
+          </button>
+        ))}
+        {atomTotal > atomsLoaded && (
+          <small style={{ opacity: 0.5, fontSize: '0.7em' }}>{atomsLoaded}/{atomTotal}</small>
         )}
-      </button>
+      </div>
 
       <button
         id="random-pick"

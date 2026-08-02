@@ -1,6 +1,6 @@
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import { reducer, initialState, AppContext } from './state';
-import { fetchStatus, fetchAtoms, fetchGraph } from './api';
+import { fetchStatus, fetchGraph } from './api';
 import { TopBar } from './components/TopBar';
 import { BrainStage, BrainStageHandle } from './components/BrainStage';
 import { CommandStrip } from './components/CommandStrip';
@@ -8,10 +8,10 @@ import { ActivityPanel } from './components/ActivityPanel';
 import { InspectorPanel } from './components/InspectorPanel';
 import { AskPanel } from './components/AskPanel';
 import { StatsPanel } from './components/StatsPanel';
-import type { Atom, LayoutMode } from './types';
+import type { Atom, LayoutMode, LoadTier } from './types';
+import { LOAD_TIER_CAPS } from './types';
 
-const DEFAULT_ATOM_LIMIT = 450;
-const MAX_GRAPH_LIMIT = 10000;
+const dbg = (...args: unknown[]) => console.debug('[kurultai:app]', ...args);
 
 function dateValue(atom: Atom): number {
   const d = Date.parse(atom.indexed_at || atom.last_accessed_at || '');
@@ -22,6 +22,8 @@ export function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [selected, setSelected] = useState<Atom | null>(null);
   const [live, setLive] = useState(true);
+  const [loadMsg, setLoadMsg] = useState('Loading memories…');
+  const [loadTier, setLoadTier] = useState<LoadTier>('low');
   const abortRef = useRef<AbortController | null>(null);
   const brainRef = useRef<BrainStageHandle | null>(null);
 
@@ -34,20 +36,28 @@ export function App() {
     return state.atoms.filter((a) => !dateValue(a) || dateValue(a) >= cutoff);
   }, [state.atoms, state.since]);
 
-  const loadAtoms = useCallback(async () => {
+  const loadAtoms = useCallback(async (tier: LoadTier = loadTier) => {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
     try {
-      let atoms: Atom[];
-      if (state.maxMode) {
-        atoms = await fetchGraph(ac.signal);
-      } else {
-        atoms = await fetchAtoms(DEFAULT_ATOM_LIMIT, ac.signal);
+      dbg('fetchGraph start, tier:', tier);
+      setLoadMsg(`Loading ${tier}…`);
+      const t0 = performance.now();
+      const all = await fetchGraph(ac.signal);
+      const cap = LOAD_TIER_CAPS[tier];
+      const atoms = all.slice(0, cap);
+      const elapsed = (performance.now() - t0).toFixed(0);
+      dbg(`fetchGraph done: ${atoms.length}/${all.length} atoms in ${elapsed}ms (tier: ${tier})`);
+      setLoadMsg(`${atoms.length} memories · ${tier}`);
+      dispatch({ type: 'SET_ATOMS', atoms, total: all.length });
+    } catch (e) {
+      if ((e as Error)?.name !== 'AbortError') {
+        dbg('fetchGraph error:', e);
+        setLoadMsg('Failed to load memories — check daemon');
       }
-      dispatch({ type: 'SET_ATOMS', atoms, total: atoms.length });
-    } catch { /* ignore abort */ }
-  }, [state.maxMode]);
+    }
+  }, [loadTier]);
 
   useEffect(() => {
     let alive = true;
@@ -67,9 +77,7 @@ export function App() {
     return () => { alive = false; abortRef.current?.abort(); };
   }, []);
 
-  useEffect(() => {
-    loadAtoms();
-  }, [state.maxMode]);
+  useEffect(() => { loadAtoms(loadTier); }, [loadTier]);
 
   const handleLayoutChange = (mode: LayoutMode) => {
     dispatch({ type: 'SET_LAYOUT', layout: mode });
@@ -78,9 +86,9 @@ export function App() {
     } catch { /* best-effort persistence */ }
   };
 
-  const handleMaxMode = async (enabled: boolean) => {
-    dispatch({ type: 'SET_MAX_MODE', maxMode: enabled });
-    localStorage.setItem('kurultai-max-mode', enabled ? '1' : '0');
+  const handleLoadTier = (tier: LoadTier) => {
+    setLoadTier(tier);
+    localStorage.setItem('kurultai-load-tier', tier);
   };
 
   const handleSince = (since: number) => {
@@ -97,15 +105,13 @@ export function App() {
   };
 
   const visible = filteredAtoms();
-  const renderCap = state.maxMode ? 2500 : DEFAULT_ATOM_LIMIT;
+  const renderCap = LOAD_TIER_CAPS[loadTier];
 
   const caption = (() => {
     const shown = Math.min(visible.length, renderCap);
     const total = Math.max(state.atomTotal, state.atoms.length);
-    const mode = state.maxMode ? 'max' : 'standard';
-    if (state.maxMode && visible.length > shown) return `${shown} shown · ${visible.length} loaded (cap ${renderCap}) · ${mode}`;
-    if (total > visible.length && !state.maxMode) return `${visible.length} of ${total} memories · ${mode} · hover max for ghost preview`;
-    return `${shown} memories · ${mode} · hover to trace connections`;
+    if (total > shown) return `${shown} of ${total} memories · ${loadTier} · hover to trace`;
+    return `${shown} memories · ${loadTier} · hover to trace connections`;
   })();
 
   return (
@@ -127,11 +133,11 @@ export function App() {
         </section>
         <CommandStrip
           layout={state.layout}
-          maxMode={state.maxMode}
+          loadTier={loadTier}
           atomTotal={state.atomTotal}
           atomsLoaded={state.atoms.length}
           onLayoutChange={handleLayoutChange}
-          onMaxMode={handleMaxMode}
+          onLoadTier={handleLoadTier}
           onSince={handleSince}
           onSelectAtom={handleSelectAndFocus}
           onRandom={handleRandom}
