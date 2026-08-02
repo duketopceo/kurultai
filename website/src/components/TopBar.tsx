@@ -40,7 +40,8 @@ export function TopBar({ daemonOk, daemonVersion }: Props) {
       </a>
       <nav className="topbar-nav" aria-label="Site navigation">
         <a href="/ui/index.html">Home</a>
-        <a href="/ui/" className="active">Brain Explorer</a>
+        <a href="#/">Brain Explorer</a>
+        <a href="#/repos">Repos <span className="beta-badge">β</span></a>
       </nav>
       <div className="topbar-status" aria-live="polite">
         <span className="status-dot" style={{ background: daemonOk ? 'var(--electric-dim)' : 'var(--danger)' }} />

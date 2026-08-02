@@ -2,6 +2,9 @@ import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHand
 import { BrainView } from '../brain/BrainView';
 import type { Atom, LayoutMode } from '../types';
 
+const dbg = (...args: unknown[]) => console.debug('[kurultai:brain]', ...args);
+const MAX_LINKS_PER_TAG = 30;
+
 export interface BrainStageHandle {
   focusAtom: (atom: Atom) => void;
   randomConnection: () => void;
@@ -49,6 +52,7 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
 
   useEffect(() => {
     if (!hostRef.current) return;
+    dbg('BrainView init');
     const brain = new BrainView(hostRef.current, {
       theme: 'dark',
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -56,23 +60,27 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
       onSelectAtom: (atom) => { onSelect(atom); },
       onClearHover: () => { onHover(null); setTooltip(null); },
       onZoomOut: () => {},
-      onReady: () => setReady(true),
-      onError: (msg) => console.error('[BrainView]', msg),
+      onReady: () => { dbg('BrainView ready'); setReady(true); },
+      onError: (msg) => { dbg('BrainView error:', msg); console.error('[BrainView]', msg); },
     });
     brainRef.current = brain;
-    return () => { brain.dispose(); brainRef.current = null; };
+    return () => { dbg('BrainView dispose'); brain.dispose(); brainRef.current = null; };
   }, []);
 
   useEffect(() => {
     if (!brainRef.current || !ready) return;
     const shown = atoms.slice(0, renderCap);
+    dbg(`setData: ${shown.length} atoms (cap ${renderCap})`);
+    const t0 = performance.now();
     const links = buildLinks(shown);
+    dbg(`buildLinks: ${links.length} links in ${(performance.now() - t0).toFixed(0)}ms`);
     brainRef.current.setData(shown, links);
     setShowFallback(shown.length === 0);
   }, [atoms, renderCap, ready]);
 
   useEffect(() => {
     if (!brainRef.current || !ready) return;
+    dbg('setLayout:', layout);
     brainRef.current.setLayout(layout);
   }, [layout, ready]);
 
@@ -148,8 +156,10 @@ function buildLinks(atoms: Atom[]) {
   const seen = new Set<string>();
   const links: { a: string; b: string; strength: number }[] = [];
   tagIndex.forEach((ids) => {
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
+    // cap per-tag pairs to avoid O(n²) explosion on dense tags like "code" or "rs"
+    const limit = Math.min(ids.length, MAX_LINKS_PER_TAG);
+    for (let i = 0; i < limit; i++) {
+      for (let j = i + 1; j < limit; j++) {
         const key = ids[i] < ids[j] ? `${ids[i]}:${ids[j]}` : `${ids[j]}:${ids[i]}`;
         if (!seen.has(key)) { seen.add(key); links.push({ a: ids[i], b: ids[j], strength: 1 }); }
       }

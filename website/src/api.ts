@@ -49,10 +49,19 @@ export function normalizeGraphNode(node: GraphNode): Atom {
   };
 }
 
+const dbg = (...args: unknown[]) => console.debug('[kurultai:api]', ...args);
+
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  dbg('GET', path);
+  const t0 = performance.now();
   const r = await fetch(path, { headers: { Accept: 'application/json' }, signal });
-  if (!r.ok) throw new Error(`${path} failed (${r.status})`);
-  return r.json();
+  if (!r.ok) {
+    dbg('GET failed', path, r.status);
+    throw new Error(`${path} failed (${r.status})`);
+  }
+  const data = await r.json() as T;
+  dbg('GET ok', path, `${(performance.now() - t0).toFixed(0)}ms`);
+  return data;
 }
 
 export async function fetchStatus(signal?: AbortSignal): Promise<StatusResponse> {

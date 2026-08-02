@@ -970,3 +970,84 @@ header.topbar {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Repo Brain pages ────────────────────────────────────────────── */
+.beta-badge {
+  font-size: 0.6em;
+  font-weight: 700;
+  letter-spacing: .04em;
+  background: var(--electric-dim, #7c3aed44);
+  color: var(--electric, #a855f7);
+  border: 1px solid var(--electric-dim, #7c3aed55);
+  border-radius: 4px;
+  padding: 1px 5px;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+.repo-list-page {
+  min-height: 100vh;
+  padding: 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.repo-list-header { margin-bottom: 2rem; }
+.repo-list-header h2 { font-size: 1.6rem; margin: .4rem 0 .3rem; }
+.repo-list-sub { color: var(--fg-muted, #888); font-size: .9rem; }
+.repo-list-loading { color: var(--fg-muted, #888); }
+.back-link { color: var(--electric, #a855f7); font-size: .9rem; text-decoration: none; }
+.back-link:hover { text-decoration: underline; }
+.repo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+.repo-card {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  padding: 1rem 1.2rem;
+  background: var(--surface-1, #111118);
+  border: 1px solid var(--border, #222230);
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color .15s, background .15s;
+}
+.repo-card:hover { border-color: var(--electric-dim, #7c3aed88); background: var(--surface-2, #16161f); }
+.repo-card strong { color: var(--fg, #e0e0f0); font-size: .95rem; }
+.repo-card span { color: var(--fg-muted, #888); font-size: .8rem; }
+
+.repo-brain-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+.repo-brain-topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: .6rem 1.2rem;
+  background: var(--surface-1, #111118);
+  border-bottom: 1px solid var(--border, #222230);
+  flex-shrink: 0;
+}
+.repo-brain-title { font-weight: 600; font-size: 1rem; }
+.repo-brain-count { margin-left: auto; color: var(--fg-muted, #888); font-size: .85rem; }
+.repo-brain-canvas { flex: 1; }
+.repo-brain-inspector {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  background: var(--surface-1, #111118);
+  border: 1px solid var(--border, #222230);
+  border-radius: 8px;
+  padding: .7rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  max-width: 280px;
+  font-size: .82rem;
+}
+.repo-brain-inspector strong { color: var(--fg, #e0e0f0); }
+.repo-brain-inspector span { color: var(--fg-muted, #888); }

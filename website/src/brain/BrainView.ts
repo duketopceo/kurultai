@@ -28,7 +28,7 @@ varying float vAlpha;
 void main() {
   float d = distance(uPointer, aOffset);
   float c = smoothstep(0.45, 0.08, d);
-  float scale = (aSize + c * 10.0 * uHover) * uIntro;
+  float scale = (aSize + c * 3.5 * uHover) * uIntro;
   float drift = uTime * (0.2 + aSeed * 0.3);
   vec3 pos = aOffset;
   pos.x += sin(drift + aSeed * 6.28) * 0.004 * aRotation;
@@ -38,8 +38,8 @@ void main() {
   gl_Position = projectionMatrix * mvPosition;
   gl_PointSize = scale * (500.0 / -mvPosition.z);
   float flicker = 0.72 + 0.28 * sin(uTime * 2.6 + aSeed * 39.0);
-  vColor = mix(aColor, vec3(1.0), c * uHover * 0.9);
-  vAlpha = flicker * (0.65 + 0.35 * c * uHover);
+  vColor = mix(aColor, vec3(1.0), c * uHover * 0.3);
+  vAlpha = flicker * (0.65 + 0.2 * c * uHover);
 }
 `;
 
@@ -78,10 +78,10 @@ void main() {
   gl_Position = projectionMatrix * mvPosition;
   float d = distance(uPointer, position);
   float c = smoothstep(0.22, 0.04, d);
-  float scale = (aSize + c * 7.0 * uHover) * uIntro;
+  float scale = (aSize + c * 2.5 * uHover) * uIntro;
   gl_PointSize = scale * (500.0 / -mvPosition.z);
-  vColor = mix(aColor, vec3(1.0), c * uHover * 0.9);
-  vAlpha = aAlpha * (0.85 + 0.15 * c * uHover);
+  vColor = mix(aColor, vec3(1.0), c * uHover * 0.25);
+  vAlpha = aAlpha * (0.85 + 0.1 * c * uHover);
 }
 `;
 
@@ -614,7 +614,8 @@ export class BrainView {
   /** Shared node radius (degree- and score-scaled) used by both node builders. */
   private nodeRadius(atom: Atom): number {
     const degree = this.degrees.get(atom.id) || 0;
-    return 0.006 + Math.min(degree, 20) * 0.0012 + Math.min(atom.score, 1) * 0.003;
+    const base = 0.006 + Math.min(degree, 20) * 0.0012 + Math.min(atom.score, 1) * 0.003;
+    return atom.source === 'code' ? base * 0.45 : base;
   }
 
   /** Sphere+halo+label mesh path (≤ NODE_SPRITE_CUTOFF nodes). Byte-identical to
