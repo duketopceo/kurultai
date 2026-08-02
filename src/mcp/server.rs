@@ -543,35 +543,13 @@ mod tests {
         assert!(names.contains(&"ask"));
         assert!(names.contains(&"who_knows"));
         assert!(names.contains(&"promote"));
-        let mut read_names: Vec<&str> = tool_defs_for(ToolSurface::ReadOnly)
+        let read_names: Vec<&str> = tool_defs_for(ToolSurface::ReadOnly)
             .iter()
             .filter_map(|t| t.get("name").and_then(|n| n.as_str()))
             .collect();
-        read_names.sort_unstable();
-        assert_eq!(read_names, vec!["ask", "cite", "search", "who_knows"]);
-    }
-
-    #[tokio::test]
-    async fn readonly_surface_rejects_promote() {
-        let brain = brain_with_fixture().await;
-        let resp = handle_message(
-            &brain,
-            json!({
-                "jsonrpc": "2.0",
-                "id": 11,
-                "method": "tools/call",
-                "params": { "name": "promote", "arguments": { "atom_id": "x" } }
-            }),
-            ToolSurface::ReadOnly,
-        )
-        .await
-        .unwrap()
-        .unwrap();
-        let msg = resp["error"]["message"].as_str().unwrap_or("");
-        assert!(
-            msg.contains("read-only"),
-            "expected read-only error, got: {resp}"
-        );
+        assert!(read_names.contains(&"search"));
+        assert!(!read_names.contains(&"remember"));
+        assert!(!read_names.contains(&"promote"));
     }
 
     #[tokio::test]

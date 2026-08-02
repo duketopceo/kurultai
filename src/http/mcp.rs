@@ -17,6 +17,8 @@ use axum::{Json, Router};
 use serde_json::Value;
 use std::sync::Arc;
 
+const BEARER_PREFIX: &str = "Bearer ";
+
 #[derive(Clone)]
 pub(crate) struct McpHttpState {
     pub brain: Arc<BrainService>,
@@ -51,11 +53,8 @@ fn secrets_equal(a: &str, b: &str) -> bool {
 
 fn extract_bearer(headers: &HeaderMap) -> Option<String> {
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
-    let lower = value.to_ascii_lowercase();
-    if !lower.starts_with("bearer ") {
-        return None;
-    }
-    let token = value["bearer ".len()..].trim();
+    let rest = value.strip_prefix(BEARER_PREFIX)?;
+    let token = rest.trim();
     if token.is_empty() {
         None
     } else {
@@ -74,18 +73,19 @@ async fn mcp_post(
     State(state): State<McpHttpState>,
     headers: HeaderMap,
     Json(msg): Json<Value>,
-) -> Result<Response, StatusCode> {
+) -> Result<impl IntoResponse, StatusCode> {
     authorize(&headers, &state.secret)?;
-    let id = msg.get("id").cloned().unwrap_or(Value::Null);
     match handle_message(&state.brain, msg, ToolSurface::ReadOnly).await {
-        Ok(Some(response)) => Ok(Json(response).into_response()),
-        Ok(None) => Ok(StatusCode::ACCEPTED.into_response()),
+        Ok(Some(response)) => Ok(Json(response)),
+        Ok(None) => Ok(Json(serde_json::json!({
+            "jsonrpc": "2.0",
+            "result": { "ok": true, "notification": true }
+        }))),
         Err(e) => Ok(Json(serde_json::json!({
             "jsonrpc": "2.0",
-            "id": id,
+            "id": null,
             "error": { "code": -32000, "message": e.to_string() }
-        }))
-        .into_response()),
+        }))),
     }
 }
 
