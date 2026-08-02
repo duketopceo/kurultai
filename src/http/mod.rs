@@ -264,14 +264,12 @@ async fn api_graph(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("api_graph", request_id=%request_id);
     state.status.touch_client_activity();
-    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Graph);
     let limit = parse_graph_limit(params.get("limit").map(String::as_str));
     let tier = params
         .get("tier")
         .and_then(|s| crate::memory::MemoryTier::parse(s));
     if let Some(raw) = params.get("tier") {
         if tier.is_none() && !raw.is_empty() {
-            timer.failure();
             return Err(json_error(
                 StatusCode::BAD_REQUEST,
                 format!("invalid tier '{raw}' (want hot|warm|cold)"),
@@ -279,6 +277,7 @@ async fn api_graph(
             ));
         }
     }
+    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Graph);
     let include_quarantine = params
         .get("include_quarantine")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
