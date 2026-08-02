@@ -12,8 +12,9 @@
 ## Q3 2026 (Aug–Sep) — Foundation Hardening
 
 ### Milestone: v0.3.1 Foundation
+
 **Target:** September 30, 2026  
-**Cashflow:** None (stability release)  
+**Cashflow:** None (stability release — N/A exception to cashflow-live DoD gate)  
 **GitHub Issue:** Create tracking issue
 
 #### Work Orders
@@ -38,9 +39,8 @@
 
 - **[WO-103]** feat: Cloud-hosted Brain UI — GitHub login → tunnel to local daemon [#101]
   - GitHub OAuth integration
-  - WebSocket tunneling
-  - Cloud UI deployment
-  - Local daemon proxy
+  - WebSocket tunneling to local daemon (served via `ui/` embedded in daemon — no separate dashboard deployment)
+  - Auth portal via `web/`
   - **Estimated:** 3 weeks
   - **Dependencies:** WO-102 (SSE transport)
   - **Cashflow Impact:** Foundation for hosted tier
@@ -63,6 +63,7 @@
 ## Q4 2026 (Oct–Dec) — Team Foundations
 
 ### Milestone: v0.5.0 Team
+
 **Target:** December 15, 2026  
 **Cashflow:** Early team access ($5-10/user/mo)  
 **GitHub Issue:** Create tracking issue
@@ -71,7 +72,7 @@
 
 - **[WO-201]** feat: Multi-tenant Postgres backend
   - Postgres + pgvector schema
-  - Tenant isolation
+  - Tenant isolation via Row-Level Security (RLS) on every table; cross-tenant denial tests required
   - Migration tools (SQLite → Postgres)
   - Connection pooling
   - **Estimated:** 4 weeks
@@ -79,10 +80,11 @@
   - **Cashflow Impact:** Enables team tier pricing
 
 - **[WO-202]** feat: RBAC + audit logging
-  - Role-based permissions
+  - Role-based permissions with authorization checks at every store access
   - User management API
   - Audit log for all access
   - Admin UI
+  - **Acceptance Criteria:** RLS enforcement tests pass; cross-tenant read returns 0 rows; deny-by-default confirmed
   - **Estimated:** 3 weeks
   - **Dependencies:** WO-201 (multi-tenant)
   - **Cashflow Impact:** Enterprise requirement
@@ -112,6 +114,7 @@
 ---
 
 ### Milestone: v0.5.1 Enterprise Connectors
+
 **Target:** January 31, 2027  
 **Cashflow:** Enterprise connector licenses  
 **GitHub Issue:** [#12] (Phase 2 tracking)
@@ -141,6 +144,7 @@
   - Entity extractor
   - Question extraction
   - Tagging system
+  - **Data-handling controls:** Redaction of PII before LLM submission; approved-provider allowlist; per-tenant opt-out; data retention and residency documented; connector content stays within tenant boundary
   - **Estimated:** 4 weeks
   - **Dependencies:** WO-301 + WO-302 (data sources)
   - **Cashflow Impact:** Quality differentiator
@@ -156,13 +160,14 @@
 
 **Total:** 13 weeks (3.25 months)  
 **Team:** 1-2 engineers  
-**Release:** v0.5.1 + enterprise connector marketplace
+**Release:** v0.5.1 + connector integrations (Slack, Notion); marketplace discovery/packaging deferred to v0.7.0
 
 ---
 
 ## Q1 2027 (Feb–Apr) — Scale & Ecosystem
 
 ### Milestone: v0.6.0 Scale
+
 **Target:** March 31, 2027  
 **Cashflow:** Scale tier pricing  
 **GitHub Issue:** [#13] (Phase 3 tracking)
@@ -212,6 +217,7 @@
 ---
 
 ### Milestone: v0.6.1 Plugins
+
 **Target:** April 30, 2027  
 **Cashflow:** Plugin marketplace fees  
 **GitHub Issue:** [#14] (Phase 4 tracking)
@@ -236,11 +242,13 @@
   - **Dependencies:** WO-501 (plugin API)
   - **Cashflow Impact:** Developer experience
 
-- **[WO-503]** feat: Plugin permissions
+- **[WO-503]** feat: Plugin sandbox & permissions (**release gate — v0.6.1 cannot ship without this**)
+  - Deny-by-default capability model
   - Filesystem permissions
   - Network permissions
-  - Sandboxing
-  - Security model
+  - Resource limits (CPU, memory)
+  - Trust validation and sandboxing
+  - Sandbox tests with adversarial plugins
   - **Estimated:** 2 weeks
   - **Dependencies:** WO-501 (plugin API)
   - **Cashflow Impact:** Enterprise security
@@ -263,6 +271,7 @@
 ## Q2 2027 (May–Jul) — Launch
 
 ### Milestone: v0.7.0 Enterprise
+
 **Target:** June 15, 2027  
 **Cashflow:** Enterprise contracts ($20-50/user/mo)  
 **GitHub Issue:** [#15] (Phase 5 tracking)
@@ -287,13 +296,16 @@
   - **Dependencies:** None
   - **Cashflow Impact:** Self-hosted enterprise
 
-- **[WO-603]** feat: Security compliance
+- **[WO-603]** feat: Security compliance + GDPR erasure
   - SOC2 Type II prep
   - GDPR compliance
+  - Data-subject deletion across Redis, Postgres, S3, and backups
+  - Retention enforcement and purge acceptance tests
+  - Audit-log handling for erasure requests
   - Penetration testing
   - Security audit logs
-  - **Estimated:** 4 weeks
-  - **Dependencies:** WO-202 (audit logging)
+  - **Estimated:** 5 weeks
+  - **Dependencies:** WO-202 (audit logging), WO-304 (multi-tier storage), WO-401 (S3)
   - **Cashflow Impact:** Enterprise trust
 
 - **[WO-604]** feat: Migration tools
@@ -305,13 +317,23 @@
   - **Dependencies:** WO-302 (Notion connector)
   - **Cashflow Impact:** Migration services revenue
 
-**Total:** 14 weeks (3.5 months)  
+- **[WO-605]** feat: Connector marketplace (discovery, packaging, licensing)
+  - Plugin/connector registry
+  - Packaging format and versioning
+  - Licensing and distribution
+  - In-app marketplace browsing
+  - **Estimated:** 3 weeks
+  - **Dependencies:** WO-503 (plugin sandbox), WO-601 (SSO)
+  - **Cashflow Impact:** Marketplace listing revenue
+
+**Total:** 18 weeks (4.5 months)  
 **Team:** 1-2 engineers + security consultant  
-**Release:** v0.7.0 + enterprise tier live
+**Release:** v0.7.0 + enterprise tier live + connector marketplace
 
 ---
 
 ### Milestone: v1.0.0 Launch
+
 **Target:** July 31, 2027  
 **Cashflow:** General availability + all tiers  
 **GitHub Issue:** [#10] (Phase 6 tracking)
@@ -345,11 +367,9 @@
   - **Dependencies:** WO-702 (release packaging)
   - **Cashflow Impact:** Engineering efficiency
 
-- **[WO-704]** feat: Community contribution guide
-  - CONTRIBUTING.md
-  - Issue templates
-  - PR templates
-  - Code of conduct
+- **[WO-704]** feat: Community contribution — outstanding gaps
+  - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue templates, and PR template already exist
+  - Remaining scope: security disclosure policy (`SECURITY.md`), maintainer triage runbook, first-issue labeling workflow
   - **Estimated:** 1 week
   - **Dependencies:** None
   - **Cashflow Impact:** Community growth
@@ -371,16 +391,29 @@
 
 ## Cashflow Timeline
 
-| Month | Milestone | Cashflow Source | Est. Users | Est. MRR |
-|-------|-----------|-----------------|------------|----------|
-| Aug-Sep 2026 | v0.3.1 | None | 0 | $0 |
-| Oct-Dec 2026 | v0.5.0/v0.5.1 | Early team access | 50-200 | $1-3K |
-| Jan-Mar 2027 | v0.6.0/v0.6.1 | Scale tier + plugins | 200-500 | $3-8K |
-| Apr-Jun 2027 | v0.7.0 | Enterprise contracts | 500-1K | $8-15K |
+| Period | Milestone | Cashflow Source | Est. Users | Est. MRR |
+|--------|-----------|-----------------|------------|----------|
+| Aug–Sep 2026 | v0.3.1 | None | 0 | $0 |
+| Oct–Dec 2026 | v0.5.0 | Early team access | 50-100 | $1-2K |
+| Jan–Feb 2027 | v0.5.1 | Enterprise connector licenses | 100-200 | $2-4K |
+| Feb–Mar 2027 | v0.6.0 | Scale tier pricing | 200-400 | $3-6K |
+| Apr 2027 | v0.6.1 | Plugin marketplace fees | 400-600 | $5-8K |
+| May–Jun 2027 | v0.7.0 | Enterprise contracts | 600-1K | $8-15K |
 | Jul 2027 | v1.0.0 | General availability | 1K-2K | $15-25K |
 
 **Year 1 Total Revenue Estimate:** $50-100K  
+_(MRR ranges above produce ~$50K–$103K annualized; ranges rounded to $50-100K for planning)_  
 **Cashflow Philosophy:** Any revenue is good — start small, layer in tiers
+
+---
+
+## Definition of Done (per milestone)
+
+- [ ] All work orders completed
+- [ ] Tests pass (coverage >80%)
+- [ ] Documentation updated
+- [ ] Release tagged
+- [ ] Cashflow source live — **exception: stability releases (v0.3.1) are explicitly N/A for this gate**
 
 ---
 
@@ -408,10 +441,11 @@ Use this template for each milestone tracking issue:
 - [ ] Tests pass
 - [ ] Documentation updated
 - [ ] Release tagged
-- [ ] Cashflow source live
+- [ ] Cashflow source live (or N/A for stability releases)
 ```
 
 Create tracking issues for:
+
 - v0.3.1 Foundation
 - v0.5.0 Team  
 - v0.5.1 Enterprise Connectors
@@ -443,20 +477,23 @@ These are valuable but not cashflow-critical for Year 1:
 | Multi-tenant Postgres complexity | High | High | Start with SQLite, migrate carefully |
 | SOC2 compliance timeline | Medium | High | Start prep in Q4, use consultant |
 | Enterprise connector maintenance | High | Medium | Community plugins first, official later |
-| Plugin system security | Medium | High | Sandboxing + strict permissions |
+| Plugin system security | Medium | High | WO-503 is hard release gate; sandboxing required |
 | Cashflow slower than expected | Medium | High | Keep burn low, prioritize team tier |
+| LLM connector data leakage | Medium | High | Redaction + provider allowlist before WO-303 ships |
 
 ---
 
 ## Success Metrics
 
 **Technical:**
+
 - All 7 milestones shipped on time
 - Test coverage >80%
 - Zero critical bugs in releases
-- Multi-tenant isolation verified
+- Multi-tenant isolation verified (RLS + cross-tenant denial tests)
 
 **Business:**
+
 - $50-100K Year 1 revenue
 - 1K+ users by v1.0.0
 - 10+ paying teams
@@ -464,6 +501,7 @@ These are valuable but not cashflow-critical for Year 1:
 - 20+ community plugins
 
 **Community:**
+
 - 1K+ GitHub stars
 - 50+ community contributors
 - Active Discord/Slack community
