@@ -72,9 +72,9 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
   }, [atoms, renderCap, ready]);
 
   useEffect(() => {
-    if (!brainRef.current) return;
+    if (!brainRef.current || !ready) return;
     brainRef.current.setLayout(layout);
-  }, [layout]);
+  }, [layout, ready]);
 
   return (
     <div

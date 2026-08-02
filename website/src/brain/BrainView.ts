@@ -236,8 +236,7 @@ export class BrainView {
   private spritePosAttr?: THREE.BufferAttribute;
   private spriteColorAttr?: THREE.BufferAttribute;
   private spriteAlphaAttr?: THREE.BufferAttribute;
-  // atomId ↔ cloud-point index lookups (sprite mode only).
-  private spriteIdByIndex: string[] = [];
+  // atomId → brain region lookup (sprite mode only).
   private spriteRegionOf = new Map<string, Region>();
   // On-demand label sprite for the hovered node in sprite mode.
   private spriteHoverLabel: THREE.Sprite | null = null;
@@ -518,10 +517,15 @@ export class BrainView {
   }
 
   setData(atoms: Atom[], links: Link[]) {
+    // Cancel any in-flight layout transition so a mid-animation refresh
+    // doesn't compete with the rebuild below (mirrors dispose()).
+    if (this.layoutAnimRaf) { cancelAnimationFrame(this.layoutAnimRaf); this.layoutAnimRaf = 0; }
     const perfT0 = PERF_DEBUG ? performance.now() : 0;
     this.atomsById = new Map(atoms.map((a) => [a.id, a]));
     this.links = links;
     this.sortedLinks = links.slice().sort((a, b) => b.strength - a.strength).slice(0, MAX_EDGES);
+    // Notify the consumer before orphaning the React hover tooltip.
+    if (this.hoverAtomId) this.opts.onClearHover();
     this.hoverAtomId = null;
     this.hoverConnected = new Set();
     this.zoomAtomId = null;
@@ -538,7 +542,9 @@ export class BrainView {
     // Release the previous cloud whenever we rebuild (mode switch or refresh).
     this.disposeSpriteHoverLabel();
     this.disposeNodeSpriteCloud();
-
+    // Dispose mesh-mode + edge GPU resources before detaching children —
+    // clear() alone orphans geometries/materials every refresh.
+    this.disposeNodeAndEdgeGroups();
     this.nodeGroup.clear();
     this.edgeGroup.clear();
     this.nodeObjects = [];
@@ -550,7 +556,6 @@ export class BrainView {
     this.visibleAtomIds = new Set();
     this._shownIds = [];
     this.spriteRegionOf = new Map();
-    this.spriteIdByIndex = [];
     this.usedVerts = new Set();
     if (!this.verts.length) return;
 
@@ -593,6 +598,12 @@ export class BrainView {
     // user is currently in force mode.
     this.computeForceLayout();
 
+    // Re-apply a non-'regions' layout so live refreshes don't leave new atoms
+    // at lattice positions. 'force' is handled by finalizeForceLayout; 'solar'
+    // rebuilds role assignment here. 'regions' needs nothing (lattice is the
+    // setData default).
+    if (this.layoutMode === 'solar') this.applySolarLayout();
+
     if (PERF_DEBUG) {
       console.log(
         `[brain-perf] setData n=${shown.length} edges=${this.edgeGroup.children.length} sprite=${this.spriteMode}: ${(performance.now() - perfT0).toFixed(1)}ms`,
@@ -600,13 +611,18 @@ export class BrainView {
     }
   }
 
+  /** Shared node radius (degree- and score-scaled) used by both node builders. */
+  private nodeRadius(atom: Atom): number {
+    const degree = this.degrees.get(atom.id) || 0;
+    return 0.006 + Math.min(degree, 20) * 0.0012 + Math.min(atom.score, 1) * 0.003;
+  }
+
   /** Sphere+halo+label mesh path (≤ NODE_SPRITE_CUTOFF nodes). Byte-identical to
    *  the original builder; additionally mirrors positions into atomPositions. */
   private buildNodeMeshes(shown: Atom[], regionOf: Map<string, Region>) {
     shown.forEach((atom) => {
       const region = regionOf.get(atom.id) || 'left';
-      const degree = this.degrees.get(atom.id) || 0;
-      const radius = 0.006 + Math.min(degree, 20) * 0.0012 + Math.min(atom.score, 1) * 0.003;
+      const radius = this.nodeRadius(atom);
       const mesh = new THREE.Mesh(this.sphereGeo, this.nodeMaterial(false));
       mesh.scale.setScalar(radius);
       mesh.position.copy(this.vertexForRegion(atom, region));
@@ -653,8 +669,7 @@ export class BrainView {
 
     shown.forEach((atom, i) => {
       const region = regionOf.get(atom.id) || 'left';
-      const degree = this.degrees.get(atom.id) || 0;
-      const radius = 0.006 + Math.min(degree, 20) * 0.0012 + Math.min(atom.score, 1) * 0.003;
+      const radius = this.nodeRadius(atom);
       const pos = this.vertexForRegion(atom, region);
       positions[i * 3] = pos.x;
       positions[i * 3 + 1] = pos.y;
@@ -673,7 +688,6 @@ export class BrainView {
       // Separate instance: atomPositions is mutated by layout animations.
       this.latticePositions.set(atom.id, pos.clone());
       this.spriteRegionOf.set(atom.id, region);
-      this.spriteIdByIndex.push(atom.id);
     });
 
     const geometry = new THREE.BufferGeometry();
@@ -781,6 +795,37 @@ export class BrainView {
     this.spriteAlphaAttr = undefined;
   }
 
+  /** Dispose mesh-mode node + edge GPU resources before group.clear() detaches
+   *  them. sphereGeo is SHARED across all node meshes — never disposed here.
+   *  haloTexture is shared across halo sprites; label sprites own their
+   *  CanvasTexture maps, which MUST be disposed to avoid per-refresh leaks. */
+  private disposeNodeAndEdgeGroups() {
+    this.edgeGroup.children.forEach((child) => {
+      const line = child as THREE.Line;
+      line.geometry?.dispose();
+      const mat = line.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+      else mat?.dispose();
+    });
+    this.nodeGroup.children.forEach((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.isMesh) {
+        // sphereGeo is shared — dispose material only.
+        const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+        else mat?.dispose();
+        return;
+      }
+      const sprite = child as THREE.Sprite;
+      if (sprite.isSprite) {
+        const spriteMat = sprite.material as THREE.SpriteMaterial;
+        // haloTexture is shared; label sprites own their CanvasTexture maps.
+        if (spriteMat.map && spriteMat.map !== this.haloTexture) spriteMat.map.dispose();
+        spriteMat.dispose();
+      }
+    });
+  }
+
   /** Create the on-demand hover label for a sprite node (destroyed on clear). */
   private showSpriteHoverLabel(atomId: string) {
     const atom = this.atomsById.get(atomId);
@@ -828,21 +873,25 @@ export class BrainView {
   /** Base (non-hover) sprite colors/alphas from region palette + filter. */
   private applySpriteBaseColors() {
     if (!this.spriteColorAttr || !this.spriteAlphaAttr) return;
+    const colorAttr = this.spriteColorAttr;
+    const alphaAttr = this.spriteAlphaAttr;
     const color = new THREE.Color();
     this._shownIds.forEach((id, i) => {
       const visible = this.isAtomVisible(id);
-      this.spriteAlphaAttr!.setX(i, visible ? 1 : 0);
-      const c = this.showRegions ? this.regionColor(this.spriteRegionOf.get(id)!) : this.palette.nodeBase;
+      alphaAttr.setX(i, visible ? 1 : 0);
+      const c = this.showRegions ? this.regionColor(this.spriteRegionOf.get(id) ?? 'left') : this.palette.nodeBase;
       color.setHex(c);
-      this.spriteColorAttr!.setXYZ(i, color.r, color.g, color.b);
+      colorAttr.setXYZ(i, color.r, color.g, color.b);
     });
-    this.spriteAlphaAttr.needsUpdate = true;
-    this.spriteColorAttr.needsUpdate = true;
+    alphaAttr.needsUpdate = true;
+    colorAttr.needsUpdate = true;
   }
 
   /** Hover-state sprite colors/alphas: hot hovered node, bright connected, dim rest. */
   private applySpriteHoverColors(atomId: string, connected: Set<string>) {
     if (!this.spriteColorAttr || !this.spriteAlphaAttr) return;
+    const colorAttr = this.spriteColorAttr;
+    const alphaAttr = this.spriteAlphaAttr;
     const color = new THREE.Color();
     this._shownIds.forEach((id, i) => {
       const visible = this.isAtomVisible(id);
@@ -855,18 +904,18 @@ export class BrainView {
         // node.visible=false hides the hovered mesh.
         alpha = visible ? 1 : 0;
       } else if (connected.has(id)) {
-        c = this.showRegions ? this.regionColor(this.spriteRegionOf.get(id)!) : this.palette.nodeBase;
+        c = this.showRegions ? this.regionColor(this.spriteRegionOf.get(id) ?? 'left') : this.palette.nodeBase;
         alpha = visible ? 0.9 : 0;
       } else {
         c = this.palette.nodeUnfocus;
         alpha = visible ? 0.3 : 0;
       }
       color.setHex(c);
-      this.spriteColorAttr!.setXYZ(i, color.r, color.g, color.b);
-      this.spriteAlphaAttr!.setX(i, alpha);
+      colorAttr.setXYZ(i, color.r, color.g, color.b);
+      alphaAttr.setX(i, alpha);
     });
-    this.spriteColorAttr.needsUpdate = true;
-    this.spriteAlphaAttr.needsUpdate = true;
+    colorAttr.needsUpdate = true;
+    alphaAttr.needsUpdate = true;
   }
 
   /** Resolve a pointer raycast to an atom id in whichever path is active. */
@@ -874,7 +923,7 @@ export class BrainView {
     if (this.spriteMode && this.nodeSpriteCloud) {
       const hit = this.raycaster.intersectObject(this.nodeSpriteCloud, false)[0];
       if (hit && hit.index !== undefined) {
-        const id = this.spriteIdByIndex[hit.index];
+        const id = this._shownIds[hit.index];
         // Skip nodes hidden by the connectionThreshold (alpha-0 sprites are
         // still raycast, unlike invisible meshes).
         if (id && this.visibleAtomIds.has(id)) return id;
@@ -973,6 +1022,10 @@ export class BrainView {
         if (this.isAtomVisible(id)) this.visibleAtomIds.add(id);
       });
       this.refreshSpriteAttributes();
+      // A hovered node filtered to alpha 0 keeps its floating label — drop it.
+      if (this.hoverAtomId && !this.visibleAtomIds.has(this.hoverAtomId)) {
+        this.disposeSpriteHoverLabel();
+      }
     } else {
       this.nodeObjects.forEach((node) => {
         const id = node.userData.atomId as string;
@@ -987,10 +1040,8 @@ export class BrainView {
     }
     this.edgeGroup.children.forEach((line) => {
       const link = line.userData as Link;
-      const aDeg = this.degrees.get(link.a) || 0;
-      const bDeg = this.degrees.get(link.b) || 0;
       (line as THREE.Line).visible =
-        this.showSynapses && aDeg >= this.connectionThreshold && bDeg >= this.connectionThreshold;
+        this.showSynapses && this.isAtomVisible(link.a) && this.isAtomVisible(link.b);
     });
   }
 
@@ -1156,55 +1207,69 @@ export class BrainView {
   setLayout(mode: LayoutMode) {
     if (this.layoutMode === mode) return;
     this.layoutMode = mode;
-    const atoms = [...this.atomsById.values()];
     if (mode === 'solar') {
-      const sorted = [...atoms].sort(
-        (a, b) => (this.degrees.get(b.id) || 0) - (this.degrees.get(a.id) || 0),
-      );
-      this._solarSunId = sorted[0]?.id ?? '';
-      const MAX_PLANETS = 14;
-      const planets = sorted.slice(1, MAX_PLANETS + 1);
-      this._solarPlanets = new Map();
-      planets.forEach((atom, i) => {
-        const orbitR = 0.8 + (i / Math.max(planets.length - 1, 1)) * 3.5;
-        const angle = (i / planets.length) * Math.PI * 2;
-        const tilt = (Math.random() - 0.5) * 0.6;
-        this._solarPlanets.set(atom.id, { orbitR, angle, tilt });
-      });
-      const planetIds = new Set(planets.map((a) => a.id));
-      const assigned = new Set<string>([this._solarSunId, ...planetIds]);
-      this._solarMoons = new Map();
-      this._solarAsteroids = new Map();
-      const moonCounts = new Map<string, number>();
-      sorted.slice(MAX_PLANETS + 1).forEach((atom) => {
-        // Find the best planet for this atom (shared link).
-        const link = this.links.find(
-          (l) => (l.a === atom.id && planetIds.has(l.b)) || (l.b === atom.id && planetIds.has(l.a)),
-        );
-        if (link) {
-          const planetId = planetIds.has(link.b) ? link.b : link.a;
-          const mc = (moonCounts.get(planetId) || 0) + 1;
-          moonCounts.set(planetId, mc);
-          this._solarMoons.set(atom.id, {
-            planetId,
-            moonR: 0.15 + (mc % 5) * 0.08,
-            moonAngle: (mc * 2.4) % (Math.PI * 2),
-          });
-          assigned.add(atom.id);
-        }
-      });
-      // Remaining atoms become asteroids scattered between orbits.
-      let ai = 0;
-      atoms.forEach((atom) => {
-        if (assigned.has(atom.id)) return;
-        const r = 1.2 + Math.random() * 3.0;
-        const angle = (ai * 2.399963) % (Math.PI * 2);
-        const y = (Math.random() - 0.5) * 0.4;
-        this._solarAsteroids.set(atom.id, { r, angle, y });
-        ai++;
-      });
+      this.applySolarLayout();
+    } else {
+      this.animateLayoutTo(mode);
     }
-    this.animateLayoutTo(mode);
+  }
+
+  /**
+   * Rebuild the solar role assignment (sun/planets/moons/asteroids) from the
+   * current atomsById and animate to the 'solar' layout. Extracted from
+   * setLayout so setData can re-apply it after a live refresh (otherwise new
+   * atoms stay at lattice positions in solar mode). Preserves the exact
+   * role-assignment logic: degree-descending sort, MAX_PLANETS cap, moon
+   * assignment via shared-link planet lookup, and asteroid scatter for the rest.
+   */
+  private applySolarLayout() {
+    const atoms = [...this.atomsById.values()];
+    const sorted = [...atoms].sort(
+      (a, b) => (this.degrees.get(b.id) || 0) - (this.degrees.get(a.id) || 0),
+    );
+    this._solarSunId = sorted[0]?.id ?? '';
+    const MAX_PLANETS = 14;
+    const planets = sorted.slice(1, MAX_PLANETS + 1);
+    this._solarPlanets = new Map();
+    planets.forEach((atom, i) => {
+      const orbitR = 0.8 + (i / Math.max(planets.length - 1, 1)) * 3.5;
+      const angle = (i / planets.length) * Math.PI * 2;
+      const tilt = (Math.random() - 0.5) * 0.6;
+      this._solarPlanets.set(atom.id, { orbitR, angle, tilt });
+    });
+    const planetIds = new Set(planets.map((a) => a.id));
+    const assigned = new Set<string>([this._solarSunId, ...planetIds]);
+    this._solarMoons = new Map();
+    this._solarAsteroids = new Map();
+    const moonCounts = new Map<string, number>();
+    sorted.slice(MAX_PLANETS + 1).forEach((atom) => {
+      // Find the best planet for this atom (shared link).
+      const link = this.links.find(
+        (l) => (l.a === atom.id && planetIds.has(l.b)) || (l.b === atom.id && planetIds.has(l.a)),
+      );
+      if (link) {
+        const planetId = planetIds.has(link.b) ? link.b : link.a;
+        const mc = (moonCounts.get(planetId) || 0) + 1;
+        moonCounts.set(planetId, mc);
+        this._solarMoons.set(atom.id, {
+          planetId,
+          moonR: 0.15 + (mc % 5) * 0.08,
+          moonAngle: (mc * 2.4) % (Math.PI * 2),
+        });
+        assigned.add(atom.id);
+      }
+    });
+    // Remaining atoms become asteroids scattered between orbits.
+    let ai = 0;
+    atoms.forEach((atom) => {
+      if (assigned.has(atom.id)) return;
+      const r = 1.2 + Math.random() * 3.0;
+      const angle = (ai * 2.399963) % (Math.PI * 2);
+      const y = (Math.random() - 0.5) * 0.4;
+      this._solarAsteroids.set(atom.id, { r, angle, y });
+      ai++;
+    });
+    this.animateLayoutTo('solar');
   }
 
   /**
@@ -1232,6 +1297,7 @@ export class BrainView {
       // avoiding ~n Vector3 allocations per animation frame.
       const to = new THREE.Vector3();
       if (this.spriteMode && this.spritePosAttr) {
+        const posAttr = this.spritePosAttr;
         this._shownIds.forEach((id, i) => {
           const atom = this.atomsById.get(id);
           if (!atom) return;
@@ -1243,9 +1309,9 @@ export class BrainView {
           const p = this.atomPositions.get(id);
           if (!p) return;
           p.lerpVectors(from, to, e);
-          this.spritePosAttr!.setXYZ(i, p.x, p.y, p.z);
+          posAttr.setXYZ(i, p.x, p.y, p.z);
         });
-        this.spritePosAttr.needsUpdate = true;
+        posAttr.needsUpdate = true;
         // Keep the on-demand hover label glued to its node.
         if (this.spriteHoverLabel && this.hoverAtomId) {
           const hp = this.atomPositions.get(this.hoverAtomId);
@@ -1558,6 +1624,9 @@ export class BrainView {
   }
 
   private clearHoverSilent() {
+    // Notify the consumer so the React hover tooltip isn't orphaned on
+    // theme toggles (the only call site of this method).
+    if (this.hoverAtomId) this.opts.onClearHover();
     this.hoverAtomId = null;
     this.hoverConnected = new Set();
     this.disposeSpriteHoverLabel();
@@ -1705,27 +1774,21 @@ export class BrainView {
       this.distance += (this.manualDistance - this.distance) * 0.15;
     }
 
-    if (this.zoomAtomId && this.visibleAtomIds.has(this.zoomAtomId)) {
-      // Smoothly fly the camera to the focused node, looking at it.
-      // atomPositions is in brainGroup-local space; localToWorld mirrors the
-      // mesh.getWorldPosition path used in mesh mode.
-      const localPos = this.atomPositions.get(this.zoomAtomId);
-      if (localPos) {
-        const worldPos = this.brainGroup.localToWorld(this._zoomWorld.copy(localPos));
-        const dir = this._zoomDir.subVectors(this.camera.position, worldPos);
-        if (dir.lengthSq() < 0.0001) dir.set(0, 0, 1);
-        dir.normalize();
-        const desiredCamPos = this._zoomLocal.copy(worldPos).add(dir.multiplyScalar(0.35));
-        this.camera.position.lerp(desiredCamPos, 0.06);
-        this.camera.lookAt(worldPos);
-      } else {
-        this.camera.position.set(
-          Math.sin(this.yaw) * this.distance + this.parallax.x,
-          Math.sin(this.pitch) * this.distance * 0.6 + this.parallax.y,
-          Math.cos(this.yaw) * this.distance,
-        );
-        this.camera.lookAt(0, 0, 0);
-      }
+    // Smoothly fly the camera to the focused node, looking at it.
+    // atomPositions is in brainGroup-local space; localToWorld mirrors the
+    // mesh.getWorldPosition path used in mesh mode.
+    const zoomPos =
+      this.zoomAtomId && this.visibleAtomIds.has(this.zoomAtomId)
+        ? this.atomPositions.get(this.zoomAtomId)
+        : undefined;
+    if (zoomPos) {
+      const worldPos = this.brainGroup.localToWorld(this._zoomWorld.copy(zoomPos));
+      const dir = this._zoomDir.subVectors(this.camera.position, worldPos);
+      if (dir.lengthSq() < 0.0001) dir.set(0, 0, 1);
+      dir.normalize();
+      const desiredCamPos = this._zoomLocal.copy(worldPos).add(dir.multiplyScalar(0.35));
+      this.camera.position.lerp(desiredCamPos, 0.06);
+      this.camera.lookAt(worldPos);
     } else {
       this.camera.position.set(
         Math.sin(this.yaw) * this.distance + this.parallax.x,

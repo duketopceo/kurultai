@@ -137,7 +137,10 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let env = Environment::resolve(cli.env.as_deref())?;
-    logging::init_logging(cli.log.as_deref(), env)?;
+    // Daemon keeps verbose default; all other CLI commands stay silent unless --log is set.
+    let is_daemon = matches!(cli.command, Commands::Daemon { .. });
+    let default_filter = if is_daemon { env.default_log_filter() } else { env.cli_log_filter() };
+    logging::init_logging(cli.log.as_deref().or(Some(default_filter)), env)?;
 
     let plain = effective_plain(cli.plain);
     let no_color = env_no_color_set();
