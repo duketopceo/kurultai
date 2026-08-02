@@ -46,12 +46,20 @@ impl Environment {
         }
     }
 
-    /// Default log filter when `KURULTAI_LOG` is unset.
+    /// Default log filter for the daemon (verbose).
     pub fn default_log_filter(self) -> &'static str {
         match self {
             Self::Dev => "kurultai=debug,info",
             Self::Staging => "kurultai=info,warn",
             Self::Prod => "kurultai=warn,error",
+        }
+    }
+
+    /// Default log filter for CLI commands — silent unless --log is passed.
+    pub fn cli_log_filter(self) -> &'static str {
+        match self {
+            Self::Dev => "warn",
+            Self::Staging | Self::Prod => "error",
         }
     }
 

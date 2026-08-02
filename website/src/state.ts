@@ -47,6 +47,18 @@ export function reducer(state: AppState, action: AppAction): AppState {
   }
 }
 
+const VALID_LAYOUTS: readonly LayoutMode[] = ['brain', 'ontology', 'galaxy'];
+
+/** Restores the persisted layout, falling back to 'brain' on missing/corrupt values or storage errors. */
+function initialLayout(): LayoutMode {
+  try {
+    const stored = localStorage.getItem('kurultai-layout');
+    return VALID_LAYOUTS.includes(stored as LayoutMode) ? (stored as LayoutMode) : 'brain';
+  } catch {
+    return 'brain';
+  }
+}
+
 export const initialState: AppState = {
   atoms: [],
   selected: null,
@@ -55,7 +67,7 @@ export const initialState: AppState = {
   live: true,
   maxMode: localStorage.getItem('kurultai-max-mode') === '1',
   atomTotal: 0,
-  layout: 'regions',
+  layout: initialLayout(),
   daemonOk: false,
   daemonVersion: '',
 };

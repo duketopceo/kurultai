@@ -112,24 +112,24 @@ export function CommandStrip({
         <output id="timeline-output">{timelineLabel}</output>
       </div>
 
-      <button
-        className={`quiet-button layout-toggle${layout === 'regions' ? ' is-active' : ''}`}
-        type="button"
-        aria-pressed={layout === 'regions'}
-        aria-label="Switch to brain regions layout"
-        onClick={() => onLayoutChange('regions')}
-      >
-        brain
-      </button>
-      <button
-        className={`quiet-button layout-toggle${layout === 'solar' ? ' is-active' : ''}`}
-        type="button"
-        aria-pressed={layout === 'solar'}
-        aria-label="Switch to solar system layout"
-        onClick={() => onLayoutChange('solar')}
-      >
-        solar
-      </button>
+      <div className="layout-switcher" role="group" aria-label="Brain layout">
+        {([
+          { mode: 'brain', label: 'brain' },
+          { mode: 'galaxy', label: 'galaxy' },
+          { mode: 'ontology', label: 'ontology' },
+        ] as const).map(({ label, mode }) => (
+          <button
+            key={mode}
+            className={`quiet-button layout-toggle${layout === mode ? ' is-active' : ''}`}
+            type="button"
+            aria-pressed={layout === mode}
+            aria-label={`Switch to ${label} layout`}
+            onClick={() => onLayoutChange(mode)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       <button
         id="max-toggle"
