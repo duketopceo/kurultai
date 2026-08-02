@@ -972,14 +972,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_graph_limit_max_uses_ten_thousand_ceiling() {
-        assert_eq!(parse_graph_limit(Some("max")), 10_000);
-        assert_eq!(parse_graph_limit(Some("all")), 10_000);
-        assert_eq!(parse_graph_limit(None), 10_000);
+    fn parse_graph_limit_max_uses_ceiling() {
+        assert_eq!(parse_graph_limit(Some("max")), 20_000);
+        assert_eq!(parse_graph_limit(Some("all")), 20_000);
+        assert_eq!(parse_graph_limit(None), 20_000);
         assert_eq!(parse_graph_limit(Some("2500")), 2500);
         assert_eq!(parse_graph_limit(Some("999999")), 50_000);
         assert_eq!(parse_atoms_limit(Some("max")), 500);
-        assert_eq!(parse_atoms_limit(Some("9000")), 500);
+        assert_eq!(parse_atoms_limit(Some("9000")), 9000);
         assert_eq!(parse_atoms_limit(Some("12")), 12);
     }
 
@@ -1189,6 +1189,12 @@ mod tests {
         async fn list_pending_ingestion_jobs(
             &self,
         ) -> crate::Result<Vec<crate::store::IngestionJob>> {
+            Ok(vec![])
+        }
+        async fn find_atoms_by_source_id_patterns(
+            &self,
+            _patterns: &[&str],
+        ) -> crate::Result<Vec<crate::types::KnowledgeAtom>> {
             Ok(vec![])
         }
     }

@@ -31,12 +31,69 @@ const SKIP_DIRS: &[&str] = &[
     "node_modules",
     "dist",
     "build",
+    "out",
+    "_next",
+    ".next",
     "vendor",
     "__pycache__",
     ".venv",
     "venv",
     ".cargo",
+    "coverage",
+    ".turbo",
+    ".vercel",
+    "storybook-static",
 ];
+
+const HASH_HEURISTIC_EXTENSIONS: &[&str] = &["js", "jsx", "ts", "tsx", "css"];
+
+/// Returns true for files that are clearly compiled/minified output rather than source.
+fn is_generated_file(path: &Path) -> bool {
+    let path_str = path.to_string_lossy();
+
+    // Hash-stem heuristic: only for web asset extensions to avoid false positives
+    // on config files like `my-feature-v2.toml`.
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase());
+    let is_web_asset = ext
+        .as_deref()
+        .is_some_and(|e| HASH_HEURISTIC_EXTENSIONS.contains(&e));
+
+    if is_web_asset {
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            let parts: Vec<&str> = stem.rsplitn(2, '-').collect();
+            if parts.len() == 2 {
+                let hash = parts[0];
+                // Pure alphanum only — dashes/underscores in real names would pass through
+                if hash.len() >= 7 && hash.chars().all(|c| c.is_ascii_alphanumeric()) {
+                    return true;
+                }
+            }
+            // Pure hash stem (no dash): hex chars only, e.g. `7340adf74ff47ec0.js`
+            if stem.len() >= 8 && stem.chars().all(|c| c.is_ascii_hexdigit()) {
+                return true;
+            }
+        }
+    }
+
+    // Path-based signals
+    path_str.contains("/chunks/")
+        || path_str.contains("/static/js/")
+        || path_str.contains("/static/css/")
+        || path_str.contains("/static/media/")
+        || path_str.contains("/__generated__/")
+        || path_str.contains("/generated/")
+}
+
+/// Returns true when content looks minified: very few newlines relative to byte count.
+/// Checks only the first 4 KB to stay O(1).
+fn is_minified_content(content: &str) -> bool {
+    let sample = &content[..content.len().min(4096)];
+    let newline_count = sample.bytes().filter(|&b| b == b'\n').count();
+    newline_count < 3 && content.len() > 500
+}
 
 /// Indexes source files from a local repository tree.
 ///
@@ -294,6 +351,7 @@ fn walk_code_files(
                 .extension()
                 .and_then(|e| e.to_str())
                 .is_some_and(|e| extensions.contains(&e.to_ascii_lowercase()))
+            && !is_generated_file(&path)
         {
             visit(&path)?;
         }
@@ -308,7 +366,7 @@ fn file_to_atoms(
     source_updated_at: DateTime<Utc>,
 ) -> Vec<KnowledgeAtom> {
     let content = text.trim();
-    if content.is_empty() {
+    if content.is_empty() || is_minified_content(content) {
         return Vec::new();
     }
     let pieces = split_by_words(content, MAX_CHUNK_WORDS);
@@ -490,6 +548,52 @@ mod tests {
             }),
             "symlink evil.rs must not produce atoms"
         );
+    }
+
+    #[test]
+    fn is_generated_file_detects_hashed_bundles() {
+        assert!(is_generated_file(Path::new("7340adf74ff47ec0.js")));
+        assert!(is_generated_file(Path::new("brain-DSYQzhy.js")));
+        assert!(is_generated_file(Path::new("_next/static/chunks/foo.js")));
+        assert!(is_generated_file(Path::new("out/static/js/main.js")));
+        assert!(is_generated_file(Path::new("src/__generated__/api.ts")));
+        assert!(is_generated_file(Path::new("src/generated/schema.ts")));
+    }
+
+    #[test]
+    fn is_generated_file_passes_source_files() {
+        assert!(!is_generated_file(Path::new("src/main.rs")));
+        assert!(!is_generated_file(Path::new("App.tsx")));
+        assert!(!is_generated_file(Path::new("my-feature-v2.ts")));
+        assert!(!is_generated_file(Path::new("README.md")));
+        // Hash heuristic must NOT fire on non-web-asset extensions
+        assert!(!is_generated_file(Path::new("config-abc1234.toml")));
+        assert!(!is_generated_file(Path::new("migration-20240101.sql")));
+    }
+
+    #[test]
+    fn is_minified_content_detects_single_line_js() {
+        let minified = "a".repeat(600);
+        assert!(is_minified_content(&minified));
+    }
+
+    #[test]
+    fn is_minified_content_passes_normal_source() {
+        let source = "fn main() {\n    println!(\"hello\");\n}\n// more lines\npub fn foo() {}";
+        assert!(!is_minified_content(source));
+    }
+
+    #[test]
+    fn is_minified_content_passes_short_single_line() {
+        let short = "a".repeat(300);
+        assert!(!is_minified_content(&short));
+    }
+
+    #[test]
+    fn file_to_atoms_rejects_minified_content() {
+        let minified = "x".repeat(600);
+        let atoms = file_to_atoms("test", "bundle.js", &minified, Utc::now());
+        assert!(atoms.is_empty());
     }
 
     #[tokio::test]

@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use zerocopy::AsBytes;
 
 /// Norm below this is treated as a zero / stub vector — never written to `atoms_vec`.
@@ -134,6 +134,12 @@ pub trait Store: Send + Sync {
     /// Return up to `limit` atoms ordered newest-first.
     async fn list_atoms(&self, limit: usize, filter: SearchFilter) -> Result<Vec<KnowledgeAtom>>;
 
+    /// Return atoms whose `source_id` matches any of the given SQL LIKE patterns.
+    async fn find_atoms_by_source_id_patterns(
+        &self,
+        patterns: &[&str],
+    ) -> Result<Vec<KnowledgeAtom>>;
+
     /// First trusted atom id with this content hash (exact-dupe gate).
     async fn find_trusted_by_content_hash(&self, content_hash: &str) -> Result<Option<String>>;
 
@@ -209,6 +215,12 @@ pub trait Store: Send + Sync {
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
+/// Open the default store from a loaded config (convenience helper for CLI commands).
+pub async fn open_store(config: &crate::types::Config) -> Result<Arc<dyn Store>> {
+    let path = crate::config::expand_path(&config.storage_path)?;
+    Ok(Arc::new(SqliteVecStore::open(path, config.embed_dim)?) as Arc<dyn Store>)
+}
+
 pub struct SqliteVecStore {
     conn: Mutex<Connection>,
     path: PathBuf,
@@ -842,6 +854,41 @@ impl Store for SqliteVecStore {
 
     async fn list_atoms(&self, limit: usize, filter: SearchFilter) -> Result<Vec<KnowledgeAtom>> {
         self.list_atoms_sync(limit, filter)
+    }
+
+    async fn find_atoms_by_source_id_patterns(
+        &self,
+        patterns: &[&str],
+    ) -> Result<Vec<KnowledgeAtom>> {
+        if patterns.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.lock()?;
+        let placeholders = patterns
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("source_id LIKE ?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+        let sql = format!(
+            "SELECT {} FROM knowledge_atoms WHERE {}",
+            ATOM_COLUMNS, placeholders
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| {
+            KurultaiError::Store(format!("find_atoms_by_source_id_patterns prepare: {e}"))
+        })?;
+        let params: Vec<&dyn rusqlite::ToSql> =
+            patterns.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+        let atoms = stmt
+            .query_map(params.as_slice(), row_to_atom)
+            .map_err(|e| {
+                KurultaiError::Store(format!("find_atoms_by_source_id_patterns query: {e}"))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| {
+                KurultaiError::Store(format!("find_atoms_by_source_id_patterns collect: {e}"))
+            })?;
+        Ok(atoms)
     }
 
     async fn get(&self, id: &str) -> Result<Option<KnowledgeAtom>> {

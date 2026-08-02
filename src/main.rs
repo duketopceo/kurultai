@@ -114,6 +114,12 @@ enum Commands {
         #[arg(short = 'o', long)]
         output: Option<PathBuf>,
     },
+    /// Delete already-indexed atoms matching known generated-file path patterns
+    Prune {
+        /// Remove atoms whose source_id contains Next.js / webpack generated-file path segments
+        #[arg(long)]
+        generated: bool,
+    },
     /// Import a `.kurultai` pack into a new or existing setup
     Import {
         /// Path to a `.kurultai` pack
@@ -381,6 +387,38 @@ async fn main() -> Result<()> {
                 },
             )
             .await?;
+        }
+        Commands::Prune { generated } => {
+            if !generated {
+                return Err(kurultai::KurultaiError::config(
+                    "specify a filter: --generated",
+                ));
+            }
+            let config = load_config_with_env(cli.config.as_deref(), cli.env.as_deref())?;
+            let store = kurultai::store::open_store(&config).await?;
+            let patterns: &[&str] = &[
+                "%/chunks/%",
+                "%/static/js/%",
+                "%/static/css/%",
+                "%/static/media/%",
+                "%/__generated__/%",
+                "%/_next/%",
+                "%/out/_next/%",
+                "%/generated/%",
+            ];
+            let matched = store.find_atoms_by_source_id_patterns(patterns).await?;
+            let total = matched.len();
+            if total == 0 {
+                println!("0 atoms matched, 0 deleted");
+            } else {
+                println!("Found {total} atoms matching generated-file patterns. Deleting…");
+                let mut deleted = 0usize;
+                for atom in &matched {
+                    store.delete_atom(&atom.id).await?;
+                    deleted += 1;
+                }
+                println!("Deleted {deleted} / {total} atoms.");
+            }
         }
         Commands::Export { output } => {
             let cfg_file = resolve_config_file(cli.config.as_deref())?;
