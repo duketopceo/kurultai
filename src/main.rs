@@ -83,12 +83,6 @@ enum Commands {
         #[arg(long, default_value = "8421")]
         port: u16,
     },
-    /// Delete all atoms for a given source from the knowledge store
-    Delete {
-        /// Source name to delete (e.g. titanic, test-vault)
-        #[arg(long)]
-        source: String,
-    },
     /// Promote a quarantined atom to trusted (re-runs quality gate)
     Promote {
         /// Atom id
@@ -321,16 +315,6 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Delete { ref source } => {
-            let app = bootstrap_app(&cli).await?;
-            tracing::info!(source = %source, "delete source requested");
-            app.store.delete_source(source).await?;
-            println!("Deleted all atoms for source '{}'.", source);
-            println!(
-                "Run `kurultai search {}` to verify no results remain.",
-                source
-            );
-        }
         Commands::Daemon {
             port,
             no_poll,
@@ -351,14 +335,7 @@ async fn main() -> Result<()> {
                 watch_roots = watch_roots.len(),
                 "daemon starting"
             );
-            println!("Daemon listening on http://127.0.0.1:{port} (localhost only)");
-            let mcp_secret =
-                kurultai::http::resolve_mcp_http_secret(app.config.mcp_http_secret.as_deref());
-            if mcp_secret.is_some() {
-                println!("MCP HTTP/SSE: POST /mcp · GET /mcp/sse (Authorization: Bearer <secret>)");
-            } else {
-                println!("MCP HTTP/SSE: off (set KURULTAI_MCP_HTTP_SECRET to enable)");
-            }
+            println!("Daemon listening on http://127.0.0.1:{port} (localhost only; no auth)");
             if no_poll {
                 println!("Background poll: off");
             } else {
@@ -386,7 +363,6 @@ async fn main() -> Result<()> {
                     watch_roots,
                     nightly_full_sync_hour: app.config.nightly_full_sync_hour,
                     inactivity_threshold_hours: app.config.inactivity_threshold_hours,
-                    mcp_http_secret: mcp_secret,
                 },
             )
             .await?;
