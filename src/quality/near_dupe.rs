@@ -138,6 +138,7 @@ mod tests {
             summary: content.into(),
             content: content.into(),
             tags: vec!["ops".into()],
+            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             metadata: HashMap::new(),

@@ -27,8 +27,15 @@ where
         .route("/ui/{*path}", get(ui_path))
 }
 
+// Old marketing landing page — disabled, redirect to brain.
+const LEGACY_PATHS: &[&str] = &["index.html", "index.js", "index.css"];
+
 async fn ui_path(Path(path): Path<String>) -> Response {
-    serve_asset(&path)
+    let clean = path.trim_start_matches('/');
+    if LEGACY_PATHS.contains(&clean) {
+        return Redirect::permanent("/ui/").into_response();
+    }
+    serve_asset(clean)
 }
 
 fn serve_asset(path: &str) -> Response {
@@ -106,11 +113,33 @@ mod tests {
 
     #[tokio::test]
     async fn ui_serves_css_asset() {
+        // Legacy flat assets (index.html/index.js/index.css) redirect to /ui/.
         let app = routes::<()>();
         let resp = app
             .oneshot(
                 Request::builder()
                     .uri("/ui/index.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            resp.status().is_redirection(),
+            "legacy index.css should redirect, got {}",
+            resp.status()
+        );
+
+        // The real CSS bundle lives under assets/ with a content hash — find it.
+        let css_path = UiAssets::iter()
+            .find(|p| p.starts_with("assets/") && p.ends_with(".css"))
+            .map(|p| p.into_owned())
+            .expect("a hashed css bundle must be embedded");
+        let app = routes::<()>();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/ui/{css_path}"))
                     .body(Body::empty())
                     .unwrap(),
             )

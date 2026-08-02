@@ -1,4 +1,4 @@
-//! Diamond hybrid search: FTS ∥ vector → RRF barrier → optional rerank.
+//! Diamond hybrid search: FTS ∥ vector → RRF barrier → optional soft-label boost → optional rerank.
 
 use crate::brain::{AgentAtomView, DEFAULT_EXCERPT_CAP};
 use crate::embed::Embedder;
@@ -6,9 +6,56 @@ use crate::error::Result;
 use crate::query::rrf::{candidate_limit, fuse_rrf_ids, RRF_K};
 use crate::rerank::{apply_rerank_order, Reranker};
 use crate::store::{SearchFilter, Store};
-use crate::types::SearchResult;
+use crate::types::{KnowledgeAtom, SearchResult};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Multiplier weight for soft-label match boost: `score * (1 + α * best_score)`.
+const SOFT_LABEL_BOOST_ALPHA: f64 = 0.5;
+
+/// True when the query mentions a soft label name or alias (case-insensitive substring).
+fn query_matches_soft_label(query_lc: &str, atom: &KnowledgeAtom) -> Option<f32> {
+    let mut best: Option<f32> = None;
+    for sl in &atom.soft_labels {
+        let name = sl.name.to_lowercase();
+        if !name.is_empty() && query_lc.contains(&name) {
+            best = Some(best.map_or(sl.score, |b| b.max(sl.score)));
+        }
+        for alias in &sl.aliases {
+            let a = alias.to_lowercase();
+            if !a.is_empty() && query_lc.contains(&a) {
+                best = Some(best.map_or(sl.score, |b| b.max(sl.score)));
+            }
+        }
+    }
+    best
+}
+
+/// Post-RRF boost when the query matches a soft label (#113).
+fn apply_soft_label_boost(query: &str, results: &mut [SearchResult]) {
+    let q = query.to_lowercase();
+    let mut boosted = false;
+    for r in results.iter_mut() {
+        if let Some(best) = query_matches_soft_label(&q, &r.atom) {
+            r.score *= 1.0 + SOFT_LABEL_BOOST_ALPHA * f64::from(best);
+            if !r.matched_by.iter().any(|m| m == "soft_label") {
+                r.matched_by.push("soft_label".into());
+            }
+            boosted = true;
+        }
+    }
+    if boosted {
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.atom.id.cmp(&b.atom.id))
+        });
+        for (i, r) in results.iter_mut().enumerate() {
+            r.rank = i;
+        }
+    }
+}
 
 /// Parallel FTS + optional vector, fused with RRF (`k=60`), optional LLM rerank.
 pub async fn hybrid_search(
@@ -100,6 +147,8 @@ pub async fn hybrid_search_filtered(
         r.rank = i;
     }
 
+    apply_soft_label_boost(query, &mut results);
+
     if reranker.is_live() && !results.is_empty() {
         let candidates: Vec<(String, String)> = results
             .iter()
@@ -120,4 +169,52 @@ pub async fn hybrid_search_filtered(
     }
 
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{KnowledgeAtom, SoftLabel};
+
+    #[test]
+    fn soft_label_boost_reorders_when_query_matches() {
+        let mut low = SearchResult {
+            atom: KnowledgeAtom {
+                id: "low".into(),
+                soft_labels: vec![],
+                ..Default::default()
+            },
+            score: 0.010,
+            rank: 0,
+            matched_by: vec!["fts".into()],
+        };
+        let mut high = SearchResult {
+            atom: KnowledgeAtom {
+                id: "high".into(),
+                soft_labels: vec![SoftLabel {
+                    label_id: 1,
+                    name: "kubernetes".into(),
+                    score: 1.0,
+                    aliases: vec!["k8s".into()],
+                }],
+                ..Default::default()
+            },
+            score: 0.009,
+            rank: 1,
+            matched_by: vec!["fts".into()],
+        };
+        // Before boost, low ranks first by score.
+        let mut results = vec![low.clone(), high.clone()];
+        apply_soft_label_boost("how do we run kubernetes", &mut results);
+        assert_eq!(results[0].atom.id, "high");
+        assert!(results[0].matched_by.iter().any(|m| m == "soft_label"));
+        assert!(results[0].score > results[1].score);
+
+        // Alias match.
+        low.score = 0.010;
+        high.score = 0.009;
+        let mut results = vec![low, high];
+        apply_soft_label_boost("k8s rollout", &mut results);
+        assert_eq!(results[0].atom.id, "high");
+    }
 }

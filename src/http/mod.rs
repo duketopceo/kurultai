@@ -1,18 +1,23 @@
 //! Thin local HTTP API mirroring MCP read tools (Phase 3 / #7).
 //!
-//! Bind to localhost only — no auth in this slice.
+//! Bind to localhost only. REST routes stay open on loopback.
+//! MCP HTTP/SSE (`/mcp`, `/mcp/sse`) is **opt-in** when a shared secret is set.
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
+mod mcp;
 mod ui;
+
+pub use mcp::resolve_mcp_http_secret;
 
 use crate::daemon::DaemonStatus;
 use crate::error::KurultaiError;
 use crate::mcp::brain::BrainService;
 use crate::mcp::interface::AgentRead;
+use crate::metrics::{MetricOp, MetricsRegistry, TimedObserve};
 use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
+use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -26,6 +31,15 @@ use uuid::Uuid;
 struct AppState {
     brain: Arc<BrainService>,
     status: Arc<DaemonStatus>,
+    metrics: Arc<MetricsRegistry>,
+}
+
+/// Options for the localhost HTTP daemon.
+#[derive(Debug, Clone, Default)]
+pub struct ServeOptions {
+    pub port: u16,
+    /// When set, mounts authenticated MCP HTTP/SSE routes.
+    pub mcp_http_secret: Option<String>,
 }
 
 fn json_error(
@@ -45,12 +59,39 @@ fn json_error(
 
 /// Serve search/ask/cite/who_knows on `127.0.0.1:port` until cancelled.
 pub async fn serve(brain: BrainService, status: Arc<DaemonStatus>, port: u16) -> crate::Result<()> {
-    let state = AppState {
-        brain: Arc::new(brain),
+    serve_with(
+        brain,
         status,
+        ServeOptions {
+            port,
+            mcp_http_secret: None,
+        },
+    )
+    .await
+}
+
+/// Serve HTTP (+ optional MCP HTTP/SSE) on `127.0.0.1`.
+pub async fn serve_with(
+    brain: BrainService,
+    status: Arc<DaemonStatus>,
+    opts: ServeOptions,
+) -> crate::Result<()> {
+    let brain = Arc::new(brain);
+    let state = AppState {
+        brain: Arc::clone(&brain),
+        status,
+        metrics: MetricsRegistry::shared(),
     };
-    let app = router(state);
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let mut app = router(state);
+    if let Some(secret) = mcp::resolve_mcp_http_secret(opts.mcp_http_secret.as_deref()) {
+        tracing::info!("mcp HTTP/SSE enabled at POST /mcp and GET /mcp/sse (bearer auth)");
+        app = app.merge(mcp::routes(mcp::McpHttpState::new(brain, secret)));
+    } else {
+        tracing::info!(
+            "mcp HTTP/SSE disabled (set KURULTAI_MCP_HTTP_SECRET or [runtime].mcp_http_secret)"
+        );
+    }
+    let addr = SocketAddr::from(([127, 0, 0, 1], opts.port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("bind {addr}: {e}")))?;
@@ -65,6 +106,7 @@ fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/api/status", get(api_status))
+        .route("/api/metrics", get(api_metrics))
         .route("/api/atoms", get(api_atoms))
         .route("/api/graph", get(api_graph))
         .route("/api/touch", post(api_touch))
@@ -84,6 +126,18 @@ fn router(state: AppState) -> Router {
 
 async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "ok": true, "service": "kurultai" }))
+}
+
+/// Prometheus text exposition of in-process query histograms (#102 thin).
+async fn api_metrics(State(state): State<AppState>) -> impl IntoResponse {
+    let body = state.metrics.render_prometheus();
+    (
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
+        )],
+        body,
+    )
 }
 
 async fn api_status(
@@ -114,6 +168,7 @@ async fn api_status(
                     },
                     "memory": memory,
                     "scheduler": state.status.snapshot(),
+                    "metrics": state.metrics.summary_json(),
                 })))
             }
             Err(e) => Err(json_error(
@@ -131,6 +186,7 @@ async fn api_status(
                 "error": e.to_string(),
                 "request_id": &request_id,
                 "scheduler": state.status.snapshot(),
+                "metrics": state.metrics.summary_json(),
             })),
         )),
     }
@@ -221,28 +277,36 @@ async fn api_graph(
             ));
         }
     }
+    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Graph);
     let include_quarantine = params
         .get("include_quarantine")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let nodes = state
+    match state
         .brain
         .list_graph_nodes(tier, limit, include_quarantine)
         .await
-        .map_err(|e| {
-            json_error(
+    {
+        Ok(nodes) => {
+            let count = nodes.len();
+            timer.success(count as u64);
+            Ok(Json(serde_json::json!({
+                "ok": true,
+                "request_id": &request_id,
+                "tier": tier.map(|t| t.as_str()),
+                "count": count,
+                "nodes": nodes,
+            })))
+        }
+        Err(e) => {
+            timer.failure();
+            Err(json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            )
-        })?;
-    Ok(Json(serde_json::json!({
-        "ok": true,
-        "request_id": &request_id,
-        "tier": tier.map(|t| t.as_str()),
-        "count": nodes.len(),
-        "nodes": nodes,
-    })))
+            ))
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -376,18 +440,25 @@ async fn search_post(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("search_post", request_id=%request_id);
     state.status.touch_client_activity();
-    state
+    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Search);
+    match state
         .brain
         .search_filtered(&body.query, body.limit, body.include_quarantine)
         .await
-        .map(Json)
-        .map_err(|e| {
-            json_error(
+    {
+        Ok(results) => {
+            timer.success(results.len() as u64);
+            Ok(Json(results))
+        }
+        Err(e) => {
+            timer.failure();
+            Err(json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            )
-        })
+            ))
+        }
+    }
 }
 
 async fn search_get(
@@ -397,18 +468,25 @@ async fn search_get(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("search_get", request_id=%request_id);
     state.status.touch_client_activity();
-    state
+    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Search);
+    match state
         .brain
         .search_filtered(&query.q, query.limit, query.include_quarantine)
         .await
-        .map(Json)
-        .map_err(|e| {
-            json_error(
+    {
+        Ok(results) => {
+            timer.success(results.len() as u64);
+            Ok(Json(results))
+        }
+        Err(e) => {
+            timer.failure();
+            Err(json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            )
-        })
+            ))
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -423,18 +501,21 @@ async fn ask_post(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("ask_post", request_id=%request_id);
     state.status.touch_client_activity();
-    state
-        .brain
-        .ask(&body.question)
-        .await
-        .map(Json)
-        .map_err(|e| {
-            json_error(
+    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Ask);
+    match state.brain.ask(&body.question).await {
+        Ok(answer) => {
+            timer.success(answer.citations.len() as u64);
+            Ok(Json(answer))
+        }
+        Err(e) => {
+            timer.failure();
+            Err(json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            )
-        })
+            ))
+        }
+    }
 }
 
 async fn ask_get(
@@ -444,18 +525,21 @@ async fn ask_get(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("ask_get", request_id=%request_id);
     state.status.touch_client_activity();
-    state
-        .brain
-        .ask(&query.question)
-        .await
-        .map(Json)
-        .map_err(|e| {
-            json_error(
+    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Ask);
+    match state.brain.ask(&query.question).await {
+        Ok(answer) => {
+            timer.success(answer.citations.len() as u64);
+            Ok(Json(answer))
+        }
+        Err(e) => {
+            timer.failure();
+            Err(json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            )
-        })
+            ))
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -470,18 +554,21 @@ async fn cite_post(
 ) -> Result<Json<Option<Citation>>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("cite_post", request_id=%request_id);
-    state
-        .brain
-        .cite(&body.source, &body.source_id)
-        .await
-        .map(Json)
-        .map_err(|e| {
-            json_error(
+    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Cite);
+    match state.brain.cite(&body.source, &body.source_id).await {
+        Ok(citation) => {
+            timer.success(u64::from(citation.is_some()));
+            Ok(Json(citation))
+        }
+        Err(e) => {
+            timer.failure();
+            Err(json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            )
-        })
+            ))
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -497,18 +584,21 @@ async fn who_knows_post(
 ) -> Result<Json<Vec<WhoKnowsEntry>>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("who_knows_post", request_id=%request_id);
-    state
-        .brain
-        .who_knows(&body.topic, body.limit)
-        .await
-        .map(Json)
-        .map_err(|e| {
-            json_error(
+    let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::WhoKnows);
+    match state.brain.who_knows(&body.topic, body.limit).await {
+        Ok(entries) => {
+            timer.success(entries.len() as u64);
+            Ok(Json(entries))
+        }
+        Err(e) => {
+            timer.failure();
+            Err(json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 e.to_string(),
                 &request_id,
-            )
-        })
+            ))
+        }
+    }
 }
 
 async fn api_open(
@@ -560,6 +650,7 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -579,6 +670,7 @@ mod tests {
         let app = router(AppState {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .clone()
@@ -623,6 +715,7 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -683,6 +776,7 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
         });
         (app, db_dir)
     }
@@ -901,6 +995,7 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
+            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -1104,6 +1199,7 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
+            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -1145,6 +1241,7 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -1182,6 +1279,7 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
+            metrics: MetricsRegistry::shared(),
         });
 
         let resp = app
@@ -1268,6 +1366,7 @@ mod tests {
             summary: "HTTPTRUSTTOKEN trusted summary".into(),
             content: "HTTPTRUSTTOKEN trusted content body".into(),
             tags: vec!["ops".into()],
+            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             metadata: HashMap::new(),
@@ -1283,6 +1382,7 @@ mod tests {
             summary: "HTTPTRUSTTOKEN quarantine summary".into(),
             content: "HTTPTRUSTTOKEN quarantine content body".into(),
             tags: vec![],
+            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             metadata: HashMap::new(),
@@ -1301,6 +1401,7 @@ mod tests {
         let app = router(AppState {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
         });
 
         // Default list excludes quarantine.
@@ -1436,6 +1537,7 @@ mod tests {
         let app = router(AppState {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
         });
         let resp = app
             .oneshot(
@@ -1453,6 +1555,77 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         let rid = v["request_id"].as_str().unwrap_or("");
         assert!(!rid.is_empty(), "request_id must be present and non-empty");
+    }
+
+    #[tokio::test]
+    async fn api_metrics_prometheus_after_search() {
+        let metrics = MetricsRegistry::shared();
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: Arc::clone(&metrics),
+        });
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/search?q=hello&limit=3")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let ct = resp
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(ct.contains("text/plain"), "content-type={ct}");
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            body.contains("kurultai_query_requests_total{op=\"search\"} 1"),
+            "body={body}"
+        );
+        assert!(body.contains("kurultai_query_latency_ms_bucket"));
+    }
+
+    #[tokio::test]
+    async fn api_status_includes_metrics_summary() {
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v["metrics"]["search"]["requests"].is_number());
+        assert!(v["metrics"]["ask"]["requests"].is_number());
     }
 
     #[tokio::test]
@@ -1520,5 +1693,144 @@ mod tests {
         assert!(v.get("atom").is_none(), "must not dump full atom payload");
         assert!(v.get("content").is_none());
         assert!(!v["request_id"].as_str().unwrap_or("").is_empty());
+    }
+
+    fn mcp_http_app(brain: BrainService, secret: &str) -> Router {
+        let brain = Arc::new(brain);
+        let state = AppState {
+            brain: Arc::clone(&brain),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+        };
+        router(state).merge(mcp::routes(mcp::McpHttpState::new(
+            brain,
+            secret.to_string(),
+        )))
+    }
+
+    #[tokio::test]
+    async fn mcp_http_rejects_missing_bearer() {
+        let app = mcp_http_app(test_brain(), "test-secret");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mcp")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn mcp_http_search_roundtrip_with_bearer() {
+        let brain = {
+            let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
+            let db_dir = tempfile::tempdir().unwrap();
+            let store = Arc::new(SqliteVecStore::open(db_dir.path().join("store.db"), 4).unwrap());
+            let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+            let pipeline =
+                IndexPipeline::new(Arc::clone(&store) as Arc<dyn Store>, Arc::clone(&embedder));
+            let mut connector = MarkdownConnector::new();
+            let mut extra = HashMap::new();
+            extra.insert("root_path".into(), fixture.to_string_lossy().into_owned());
+            connector
+                .init(&SourceConfig {
+                    name: "notes".into(),
+                    kind: SourceKind::Markdown,
+                    enabled: true,
+                    poll_interval_secs: 60,
+                    extra,
+                })
+                .await
+                .unwrap();
+            pipeline
+                .index_connector("notes", &connector, true)
+                .await
+                .unwrap();
+            let brain = BrainService::new(
+                store,
+                embedder,
+                Arc::new(NullReranker::new()),
+                Arc::new(ExtractiveSynthesizer::new()),
+            );
+            std::mem::forget(db_dir);
+            brain
+        };
+        let app = mcp_http_app(brain, "s3cr3t");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mcp")
+                    .header("content-type", "application/json")
+                    .header("authorization", "Bearer s3cr3t")
+                    .body(Body::from(
+                        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"KNOWN_PHRASE_KURULTAI_42","limit":3}}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v.get("result").is_some(), "{v}");
+        let text = v["result"]["content"][0]["text"].as_str().unwrap_or("");
+        assert!(
+            text.contains("KNOWN_PHRASE_KURULTAI_42") || text.contains("notes"),
+            "{text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_http_rejects_remember_on_readonly_surface() {
+        let app = mcp_http_app(test_brain(), "s3cr3t");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mcp")
+                    .header("content-type", "application/json")
+                    .header("authorization", "Bearer s3cr3t")
+                    .body(Body::from(
+                        r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"remember","arguments":{"title":"x","summary":"y","tags":["t"]}}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let msg = v["error"]["message"].as_str().unwrap_or("");
+        assert!(
+            msg.contains("read-only") || msg.contains("not available"),
+            "{v}"
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_sse_requires_auth() {
+        let app = mcp_http_app(test_brain(), "s3cr3t");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/mcp/sse")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

@@ -68,6 +68,7 @@ mod tests {
             summary: content.chars().take(80).collect(),
             content: content.into(),
             tags: tags.into_iter().map(str::to_string).collect(),
+            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             metadata: HashMap::new(),
@@ -92,6 +93,26 @@ mod tests {
     async fn untagged_quarantines() {
         let store = temp_store();
         let a = atom("a1", "hello world unique", vec![]);
+        let out = evaluate(store.as_ref() as &dyn Store, &a).await.unwrap();
+        assert_eq!(
+            out,
+            GateOutcome::Quarantine {
+                reason: "untagged".into()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn soft_labels_alone_do_not_satisfy_tag_gate() {
+        use crate::types::SoftLabel;
+        let store = temp_store();
+        let mut a = atom("soft-only", "soft only body", vec![]);
+        a.soft_labels = vec![SoftLabel {
+            label_id: 0,
+            name: "infra".into(),
+            score: 0.99,
+            aliases: vec![],
+        }];
         let out = evaluate(store.as_ref() as &dyn Store, &a).await.unwrap();
         assert_eq!(
             out,

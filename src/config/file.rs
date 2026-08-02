@@ -76,6 +76,8 @@ pub struct FileRuntimeConfig {
     pub nightly_full_sync_hour: Option<u8>,
     /// Skip poll when idle this many hours (#73).
     pub inactivity_threshold_hours: Option<u64>,
+    /// Shared secret for daemon MCP HTTP/SSE (`POST /mcp`). Prefer env `KURULTAI_MCP_HTTP_SECRET`.
+    pub mcp_http_secret: Option<String>,
 }
 
 fn default_true() -> bool {

@@ -75,7 +75,20 @@ enum Commands {
         limit: usize,
     },
     /// List configured sources and status
-    Status,
+    Status {
+        /// Print Prometheus metrics from a running local daemon (`GET /api/metrics`)
+        #[arg(long)]
+        metrics: bool,
+        /// Daemon HTTP port when using `--metrics` (default: 8421)
+        #[arg(long, default_value = "8421")]
+        port: u16,
+    },
+    /// Delete all atoms for a given source from the knowledge store
+    Delete {
+        /// Source name to delete (e.g. titanic, test-vault)
+        #[arg(long)]
+        source: String,
+    },
     /// Promote a quarantined atom to trusted (re-runs quality gate)
     Promote {
         /// Atom id
@@ -227,7 +240,7 @@ async fn main() -> Result<()> {
             let res = brain.promote(atom_id, "cli", reason.as_deref()).await?;
             println!("promoted {} (actor={})", res.atom_id, res.actor);
         }
-        Commands::Status => {
+        Commands::Status { metrics, port } => {
             let app = bootstrap_app(&cli).await?;
             let _ = print_banner_stdout(ArtVariant::Compact, app.config.banner, plain, no_color);
             let atom_count = app.atom_count().await?;
@@ -263,6 +276,31 @@ async fn main() -> Result<()> {
             println!("  Quarantine: {}", quarantine);
             println!("  Merge candidates (pending): {}", merge_pending);
 
+            if metrics {
+                let url = format!("http://127.0.0.1:{port}/api/metrics");
+                match reqwest::Client::new().get(&url).send().await {
+                    Ok(resp) if resp.status().is_success() => {
+                        let body = resp.text().await.unwrap_or_default();
+                        println!();
+                        println!("Daemon metrics ({url}):");
+                        println!("{body}");
+                    }
+                    Ok(resp) => {
+                        println!();
+                        println!(
+                            "Daemon metrics: HTTP {} from {url} (is `kurultai daemon` running?)",
+                            resp.status()
+                        );
+                    }
+                    Err(e) => {
+                        println!();
+                        println!(
+                            "Daemon metrics: unreachable ({e}). Start `kurultai daemon --port {port}` then retry."
+                        );
+                    }
+                }
+            }
+
             if app.connectors.is_empty() {
                 println!("  Sources: (none enabled)");
             } else {
@@ -282,6 +320,16 @@ async fn main() -> Result<()> {
                     );
                 }
             }
+        }
+        Commands::Delete { ref source } => {
+            let app = bootstrap_app(&cli).await?;
+            tracing::info!(source = %source, "delete source requested");
+            app.store.delete_source(source).await?;
+            println!("Deleted all atoms for source '{}'.", source);
+            println!(
+                "Run `kurultai search {}` to verify no results remain.",
+                source
+            );
         }
         Commands::Daemon {
             port,
@@ -303,7 +351,14 @@ async fn main() -> Result<()> {
                 watch_roots = watch_roots.len(),
                 "daemon starting"
             );
-            println!("Daemon listening on http://127.0.0.1:{port} (localhost only; no auth)");
+            println!("Daemon listening on http://127.0.0.1:{port} (localhost only)");
+            let mcp_secret =
+                kurultai::http::resolve_mcp_http_secret(app.config.mcp_http_secret.as_deref());
+            if mcp_secret.is_some() {
+                println!("MCP HTTP/SSE: POST /mcp · GET /mcp/sse (Authorization: Bearer <secret>)");
+            } else {
+                println!("MCP HTTP/SSE: off (set KURULTAI_MCP_HTTP_SECRET to enable)");
+            }
             if no_poll {
                 println!("Background poll: off");
             } else {
@@ -331,6 +386,7 @@ async fn main() -> Result<()> {
                     watch_roots,
                     nightly_full_sync_hour: app.config.nightly_full_sync_hour,
                     inactivity_threshold_hours: app.config.inactivity_threshold_hours,
+                    mcp_http_secret: mcp_secret,
                 },
             )
             .await?;

@@ -3,7 +3,7 @@ pub mod migrations;
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
-use crate::types::{KnowledgeAtom, TrustLane};
+use crate::types::{normalize_soft_labels, KnowledgeAtom, SoftLabel, TrustLane};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
@@ -223,6 +223,9 @@ impl SqliteVecStore {
         let conn = Connection::open(&path)
             .map_err(|e| KurultaiError::Store(format!("failed to open {}: {e}", path.display())))?;
 
+        conn.execute_batch("PRAGMA foreign_keys = ON;")
+            .map_err(|e| KurultaiError::Store(format!("enable foreign_keys: {e}")))?;
+
         migrations::migrate(&conn)?;
         migrations::ensure_vec_table(&conn, embed_dim)?;
 
@@ -277,9 +280,11 @@ impl SqliteVecStore {
         let atoms = stmt
             .query_map([limit as i64], row_to_atom)
             .map_err(|e| KurultaiError::Store(format!("list_atoms query: {e}")))?;
-        atoms
+        let mut atoms = atoms
             .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| KurultaiError::Store(format!("list_atoms collect: {e}")))
+            .map_err(|e| KurultaiError::Store(format!("list_atoms collect: {e}")))?;
+        attach_soft_labels(&conn, &mut atoms)?;
+        Ok(atoms)
     }
 
     /// Keyset-paginated atom list with optional embeddings (`ORDER BY id`, `id > after_id`).
@@ -351,6 +356,8 @@ impl SqliteVecStore {
             }
         }
         .map_err(|e| KurultaiError::Store(format!("list_atoms_page collect: {e}")))?;
+        let mut atoms = atoms;
+        attach_soft_labels(&conn, &mut atoms)?;
         Ok(atoms)
     }
 
@@ -524,6 +531,12 @@ impl SqliteVecStore {
                     .map_err(|e| KurultaiError::Store(format!("vec delete failed: {e}")))?;
             }
             None => {}
+        }
+
+        // Soft labels: replace when caller provided any; preserve existing when empty
+        // so re-index / hash-skip paths do not wipe distillation scores.
+        if !atom.soft_labels.is_empty() {
+            replace_soft_labels(conn, &atom.id, &atom.soft_labels)?;
         }
 
         Ok(())
@@ -741,6 +754,15 @@ impl Store for SqliteVecStore {
 
             conn.execute("DELETE FROM knowledge_atoms WHERE source = ?1", [source])
                 .map_err(|e| KurultaiError::Store(format!("delete_source failed: {e}")))?;
+
+            // Clean up merge_candidates referencing deleted atoms.
+            for (_, id) in &pairs {
+                conn.execute(
+                    "DELETE FROM merge_candidates WHERE atom_a = ?1 OR atom_b = ?1",
+                    [id],
+                )
+                .map_err(|e| KurultaiError::Store(format!("delete merge_candidates: {e}")))?;
+            }
             Ok(())
         })();
 
@@ -1226,9 +1248,14 @@ const STOPWORDS: &[&str] = &[
 
 fn load_atom_by_id(conn: &Connection, id: &str) -> Result<Option<KnowledgeAtom>> {
     let sql = format!("SELECT {} FROM knowledge_atoms WHERE id = ?1", ATOM_COLUMNS);
-    conn.query_row(&sql, [id], row_to_atom)
+    let mut atom = conn
+        .query_row(&sql, [id], row_to_atom)
         .optional()
-        .map_err(|e| KurultaiError::Store(format!("load_atom_by_id: {e}")))
+        .map_err(|e| KurultaiError::Store(format!("load_atom_by_id: {e}")))?;
+    if let Some(ref mut a) = atom {
+        a.soft_labels = load_soft_labels(conn, &a.id)?;
+    }
+    Ok(atom)
 }
 
 fn load_atom_by_source_id(
@@ -1240,9 +1267,99 @@ fn load_atom_by_source_id(
         "SELECT {} FROM knowledge_atoms WHERE source = ?1 AND source_id = ?2 LIMIT 1",
         ATOM_COLUMNS
     );
-    conn.query_row(&sql, params![source, source_id], row_to_atom)
+    let mut atom = conn
+        .query_row(&sql, params![source, source_id], row_to_atom)
         .optional()
-        .map_err(|e| KurultaiError::Store(format!("load_atom_by_source_id: {e}")))
+        .map_err(|e| KurultaiError::Store(format!("load_atom_by_source_id: {e}")))?;
+    if let Some(ref mut a) = atom {
+        a.soft_labels = load_soft_labels(conn, &a.id)?;
+    }
+    Ok(atom)
+}
+
+fn load_soft_labels(conn: &Connection, atom_id: &str) -> Result<Vec<SoftLabel>> {
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT v.id, v.name, s.score, v.aliases_json
+            FROM atom_soft_labels s
+            JOIN label_vocab v ON v.id = s.label_id
+            WHERE s.atom_id = ?1
+            ORDER BY s.score DESC, v.name COLLATE NOCASE
+            "#,
+        )
+        .map_err(|e| KurultaiError::Store(format!("load_soft_labels prepare: {e}")))?;
+    let rows = stmt
+        .query_map([atom_id], |row| {
+            let aliases_json: String = row.get(3)?;
+            let aliases: Vec<String> = serde_json::from_str(&aliases_json).unwrap_or_default();
+            Ok(SoftLabel {
+                label_id: row.get(0)?,
+                name: row.get(1)?,
+                score: row.get::<_, f64>(2)? as f32,
+                aliases,
+            })
+        })
+        .map_err(|e| KurultaiError::Store(format!("load_soft_labels query: {e}")))?;
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|e| KurultaiError::Store(format!("load_soft_labels collect: {e}")))
+}
+
+fn attach_soft_labels(conn: &Connection, atoms: &mut [KnowledgeAtom]) -> Result<()> {
+    for atom in atoms.iter_mut() {
+        atom.soft_labels = load_soft_labels(conn, &atom.id)?;
+    }
+    Ok(())
+}
+
+fn ensure_label_id(conn: &Connection, name: &str, aliases: &[String]) -> Result<i64> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(KurultaiError::Store("soft label name empty".into()));
+    }
+    let existing: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM label_vocab WHERE name = ?1 COLLATE NOCASE",
+            [name],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("label_vocab lookup: {e}")))?;
+    if let Some(id) = existing {
+        if !aliases.is_empty() {
+            let aliases_json = serde_json::to_string(aliases)
+                .map_err(|e| KurultaiError::Store(format!("aliases serialize: {e}")))?;
+            conn.execute(
+                "UPDATE label_vocab SET aliases_json = ?1 WHERE id = ?2",
+                params![aliases_json, id],
+            )
+            .map_err(|e| KurultaiError::Store(format!("label_vocab aliases update: {e}")))?;
+        }
+        return Ok(id);
+    }
+    let aliases_json = serde_json::to_string(aliases)
+        .map_err(|e| KurultaiError::Store(format!("aliases serialize: {e}")))?;
+    conn.execute(
+        "INSERT INTO label_vocab (name, aliases_json) VALUES (?1, ?2)",
+        params![name, aliases_json],
+    )
+    .map_err(|e| KurultaiError::Store(format!("label_vocab insert: {e}")))?;
+    Ok(conn.last_insert_rowid())
+}
+
+fn replace_soft_labels(conn: &Connection, atom_id: &str, labels: &[SoftLabel]) -> Result<()> {
+    let normalized = normalize_soft_labels(labels);
+    conn.execute("DELETE FROM atom_soft_labels WHERE atom_id = ?1", [atom_id])
+        .map_err(|e| KurultaiError::Store(format!("soft_labels delete: {e}")))?;
+    for label in &normalized {
+        let id = ensure_label_id(conn, &label.name, &label.aliases)?;
+        conn.execute(
+            "INSERT OR REPLACE INTO atom_soft_labels (atom_id, label_id, score) VALUES (?1, ?2, ?3)",
+            params![atom_id, id, label.score as f64],
+        )
+        .map_err(|e| KurultaiError::Store(format!("soft_labels insert: {e}")))?;
+    }
+    Ok(())
 }
 
 fn embedding_f32s_from_blob(bytes: &[u8]) -> Result<Vec<f32>> {
@@ -1295,6 +1412,7 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
         metadata,
         trust_lane: TrustLane::parse(&trust_lane),
         quarantine_reason,
+        soft_labels: Vec::new(),
     })
 }
 
@@ -1394,6 +1512,7 @@ mod tests {
             question: None,
             resolution: None,
             tags: vec!["test".into()],
+            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             embedding: emb,
@@ -1864,5 +1983,66 @@ mod tests {
         let (h2, _, c2) = store.count_by_tier(TierPolicy::default()).await.unwrap();
         assert_eq!(h2, 2);
         assert_eq!(c2, 0);
+    }
+
+    #[tokio::test]
+    async fn soft_labels_round_trip_and_preserve_when_empty() {
+        use crate::types::SoftLabel;
+        let store = temp_store(4);
+        let mut atom = sample_atom("sl1", "Soft", "kubernetes deploy runbook", None);
+        atom.soft_labels = vec![
+            SoftLabel {
+                label_id: 0,
+                name: "kubernetes".into(),
+                score: 0.9,
+                aliases: vec!["k8s".into()],
+            },
+            SoftLabel {
+                label_id: 0,
+                name: "ops".into(),
+                score: 0.4,
+                aliases: vec![],
+            },
+        ];
+        store.upsert(&atom).await.unwrap();
+        let loaded = store.get("sl1").await.unwrap().unwrap();
+        assert_eq!(loaded.soft_labels.len(), 2);
+        assert_eq!(loaded.soft_labels[0].name, "kubernetes");
+        assert!((loaded.soft_labels[0].score - 0.9).abs() < 1e-5);
+        assert_eq!(loaded.soft_labels[0].aliases, vec!["k8s".to_string()]);
+        assert!(loaded.soft_labels[0].label_id > 0);
+
+        // Empty soft_labels on upsert must preserve existing scores.
+        let mut again = loaded.clone();
+        again.soft_labels.clear();
+        again.content = "kubernetes deploy runbook".into(); // same hash path
+        store.upsert(&again).await.unwrap();
+        let kept = store.get("sl1").await.unwrap().unwrap();
+        assert_eq!(kept.soft_labels.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn soft_label_vocab_shared_across_atoms() {
+        use crate::types::SoftLabel;
+        let store = temp_store(4);
+        let mut a = sample_atom("a", "A", "alpha content about rust", None);
+        a.soft_labels = vec![SoftLabel {
+            label_id: 0,
+            name: "rust".into(),
+            score: 0.8,
+            aliases: vec![],
+        }];
+        let mut b = sample_atom("b", "B", "beta content about rust", None);
+        b.soft_labels = vec![SoftLabel {
+            label_id: 0,
+            name: "Rust".into(), // case-insensitive vocab
+            score: 0.5,
+            aliases: vec![],
+        }];
+        store.upsert(&a).await.unwrap();
+        store.upsert(&b).await.unwrap();
+        let la = store.get("a").await.unwrap().unwrap();
+        let lb = store.get("b").await.unwrap().unwrap();
+        assert_eq!(la.soft_labels[0].label_id, lb.soft_labels[0].label_id);
     }
 }

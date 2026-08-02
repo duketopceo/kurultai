@@ -429,6 +429,7 @@ mod tests {
             summary: String::new(),
             content: content.into(),
             tags: vec!["export".into()],
+            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             last_accessed_at: Utc::now(),
@@ -639,6 +640,7 @@ poll_interval_secs = 300
             poll_interval_secs: 300,
             nightly_full_sync_hour: None,
             inactivity_threshold_hours: None,
+            mcp_http_secret: None,
             banner: crate::art::BannerMode::Auto,
         };
 

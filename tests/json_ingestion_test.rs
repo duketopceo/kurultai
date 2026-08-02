@@ -22,7 +22,7 @@ fn migration_v006_creates_ingestion_jobs_table() {
     // Open the raw SQLite connection and probe the table.
     let conn = Connection::open(dir.path().join("store.db")).unwrap();
 
-    // schema_migrations must record version 6
+    // schema_migrations must record version 7
     let max_version: i32 = conn
         .query_row(
             "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
@@ -30,7 +30,7 @@ fn migration_v006_creates_ingestion_jobs_table() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(max_version, 6, "schema_migrations should record version 6");
+    assert_eq!(max_version, 7, "schema_migrations should record version 7");
 
     // ingestion_jobs table must exist with expected columns
     let mut stmt = conn.prepare("PRAGMA table_info(ingestion_jobs)").unwrap();
@@ -61,7 +61,7 @@ fn migration_v006_creates_ingestion_jobs_table() {
 #[test]
 fn migration_v006_is_idempotent() {
     let dir = tempfile::tempdir().unwrap();
-    // Open twice — second open must not error even though version 6 already applied.
+    // Open twice — second open must not error even though version 7 already applied.
     let _ = SqliteVecStore::open(dir.path().join("store.db"), 4).unwrap();
     let _ = SqliteVecStore::open(dir.path().join("store.db"), 4).unwrap();
 }
@@ -347,6 +347,7 @@ async fn json_connector_from_registry_via_config() {
         poll_interval_secs: 300,
         nightly_full_sync_hour: None,
         inactivity_threshold_hours: None,
+        mcp_http_secret: None,
         banner: kurultai::art::BannerMode::Auto,
     };
 

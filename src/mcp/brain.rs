@@ -404,6 +404,7 @@ impl AgentWrite for BrainService {
             question: None,
             resolution: None,
             tags: tags.to_vec(),
+            soft_labels: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
             embedding: None,
