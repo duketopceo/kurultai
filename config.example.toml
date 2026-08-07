@@ -1,0 +1,64 @@
+# Example Kurultai config. Copy to:
+#   ~/.config/kurultai/config.toml
+# or set KURULTAI_CONFIG=/path/to/config.toml
+#
+# API keys belong in the environment (see .env.example) — never in this file.
+# Generate a real config with: kurultai init
+
+environment = "dev"   # dev | staging | prod
+
+[storage]
+path = "~/.local/share/kurultai/dev/store.db"
+
+# --- Sources (enable at least one) ------------------------------------------
+
+[sources.notes]
+enabled = true
+kind = "markdown"
+root_path = "/Users/you/Documents/notes"
+poll_interval_secs = 60
+
+[sources.data]
+enabled = false
+kind = "json"                    # .json arrays or .jsonl / .ndjson
+root_path = "/Users/you/data"
+# optional: id_field = "url"     # stable source_id field (default: id)
+
+[sources.dayflow]
+enabled = false
+kind = "dayflow"
+
+[sources.pond]
+enabled = false
+kind = "pond"
+
+[sources.code]
+enabled = false
+kind = "github"
+root_path = "/Users/you/src/your-repo"
+
+# --- Embeddings -------------------------------------------------------------
+
+[embed]
+# OpenRouter / cloud (default when OPENROUTER_API_KEY or KURULTAI_API_KEY is set):
+model = "openai/text-embedding-3-large"
+dimension = 3072
+# Local ONNX alternative (requires: cargo build --features local-embed).
+# Replace the two lines above — do not leave conflicting model/dimension active:
+# backend = "local"
+# model = "AllMiniLML6V2"
+# dimension = 384
+
+# --- Runtime ----------------------------------------------------------------
+
+[runtime]
+poll_interval_secs = 300
+# nightly_full_sync_hour = 2          # local hour 0–23 for nightly full reindex
+# inactivity_threshold_hours = 24     # skip poll when idle this many hours
+# reranker_model = "openai/gpt-4o-mini"
+# mcp_http_secret = "…"               # optional; prefer env KURULTAI_MCP_HTTP_SECRET
+
+# --- CLI presentation -------------------------------------------------------
+
+[cli]
+# banner = "auto"   # true | false | "auto" (TTY only); suppressed by --plain / NO_COLOR / KURULTAI_PLAIN

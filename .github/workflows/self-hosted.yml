@@ -1,17 +1,18 @@
-# Runs on self-hosted ARC runners when available.
-# Requires Actions Runner Controller (ARC) scale set named `kurultai-runners`.
+# Disabled until ARC runners exist (kurultai-runners scale set — #20).
+# Previously ran on every push to main and sat queued/cancelled for hours
+# because no self-hosted runners are registered.
 #
-# See: https://github.com/duketopceo/kurultai/issues/20
+# Re-enable: remove `if: false`, restore `push: branches: [main]` when
+# Actions Runner Controller is wired up.
 name: Self-Hosted CI
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 jobs:
   full-build:
     name: Full build (self-hosted)
+    if: false
     runs-on: kurultai-runners
     timeout-minutes: 30
     container:
