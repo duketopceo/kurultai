@@ -1,0 +1,22 @@
+# Dependabot version updates (weekly).
+# Security updates are toggled separately in repo Settings → Security →
+# Dependabot → Dependabot security updates (requires admin; see PR notes).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10

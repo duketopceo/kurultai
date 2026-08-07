@@ -94,6 +94,8 @@ Without an API key, FTS search / `who-knows` / extractive `ask` all work. Vector
 
 ## Configuration
 
+Templates at repo root: [`config.example.toml`](config.example.toml) (file keys) and [`.env.example`](.env.example) (env vars / API keys). Copy the TOML to `~/.config/kurultai/config.toml` (or run `kurultai init`).
+
 `~/.config/kurultai/config.toml` (from `kurultai init`):
 
 ```toml
@@ -191,6 +193,17 @@ Multi-user model: [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md). Co
 | Storage | `…/kurultai/dev/store.db` | `…/staging/…` | `…/store.db` |
 | Logging | `kurultai=debug` | info | warn |
 | API keys | Optional (FTS) | Optional for FTS; required for **remote** embeddings (OpenRouter). Local ONNX (`embed.backend = "local"`) needs no cloud key | Same |
+
+### GitHub Actions deploy (`.github/workflows/deploy.yml`)
+
+`deploy.yml` builds release binaries and uploads artifacts for `staging` / `production` GitHub Environments. It does **not** currently reference environment secrets or push to a host — treat remote deploy as **aspirational / not fully wired**.
+
+| GitHub Environment | Status (as of this note) |
+|--------------------|--------------------------|
+| `production` | Exists (no protection rules; no deploy secrets required by the workflow today) |
+| `staging` | **Missing** — create under Settings → Environments before pushes to a `staging` branch will bind correctly |
+
+To create staging (admin): `gh api -X PUT repos/duketopceo/kurultai/environments/staging --input - <<<'{}'`
 
 ## Docs & contributing
 
