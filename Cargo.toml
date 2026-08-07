@@ -35,7 +35,7 @@ rusqlite = { version = "0.31", features = ["bundled", "backup"] }
 tempfile = "3"
 tar = "0.4"
 flate2 = "1"
-sqlite-vec = "=0.1.6"
+sqlite-vec = "=0.1.9"
 zerocopy = "0.7"
 
 # Content hashing for incremental index skip
