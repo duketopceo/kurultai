@@ -10,12 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^18.3.1",
+    "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.168.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.3",
+    "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@types/three": "^0.168.0",
     "@vitejs/plugin-react": "^4.3.1",
