@@ -39,7 +39,7 @@ sqlite-vec = "=0.1.6"
 zerocopy = "0.7"
 
 # Content hashing for incremental index skip
-sha2 = "0.10"
+sha2 = "0.11"
 
 # Embeddings: OpenRouter by default; optional ONNX via feature `local-embed`
 
