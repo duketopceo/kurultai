@@ -4,9 +4,11 @@ use chrono::Utc;
 use kurultai::brain::DEFAULT_EXCERPT_CAP;
 use kurultai::embed::{Embedder, NullEmbedder};
 use kurultai::error::{KurultaiError, Result};
+use kurultai::mcp::brain::BrainService;
 use kurultai::query::{expand_markdown_context, hybrid_search, RRF_K};
 use kurultai::rerank::{NullReranker, Reranker};
 use kurultai::store::{SqliteVecStore, Store};
+use kurultai::synthesize::ExtractiveSynthesizer;
 use kurultai::types::KnowledgeAtom;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -105,6 +107,19 @@ impl Reranker for StubReranker {
     }
 }
 
+fn sample_atom_with_project(
+    id: &str,
+    title: &str,
+    content: &str,
+    embedding: Option<Vec<f32>>,
+    project: &str,
+) -> KnowledgeAtom {
+    let mut atom = sample_atom(id, title, content, embedding);
+    atom.metadata
+        .insert("project_id".to_string(), project.to_string());
+    atom
+}
+
 async fn seeded_store() -> Arc<dyn Store> {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SqliteVecStore::open(dir.path().join("store.db"), 4).unwrap());
@@ -142,6 +157,14 @@ async fn seeded_store() -> Arc<dyn Store> {
         .unwrap();
 
     store as Arc<dyn Store>
+}
+
+async fn brain_service() -> BrainService {
+    let store = seeded_store().await;
+    let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+    let reranker: Arc<dyn Reranker> = Arc::new(NullReranker::new());
+    let synthesizer = std::sync::Arc::new(ExtractiveSynthesizer::new());
+    BrainService::new(store, embedder, reranker, synthesizer)
 }
 
 #[tokio::test]
@@ -196,6 +219,57 @@ async fn hybrid_embed_fail_falls_back_to_fts() {
     assert!(hits
         .iter()
         .all(|h| !h.matched_by.iter().any(|m| m == "vector")));
+}
+
+#[tokio::test]
+async fn recall_for_agent_sequesters_by_project() {
+    let brain = brain_service().await;
+    let store = brain.store();
+
+    // Seed atoms into two projects.
+    store
+        .upsert(&sample_atom_with_project(
+            "alpha",
+            "Alpha",
+            "KURULTAIRECALL alpha project secret",
+            None,
+            "khan-yurt",
+        ))
+        .await
+        .unwrap();
+    store
+        .upsert(&sample_atom_with_project(
+            "beta",
+            "Beta",
+            "KURULTAIRECALL beta project other",
+            None,
+            "khan-horde",
+        ))
+        .await
+        .unwrap();
+    store
+        .upsert(&sample_atom_with_project(
+            "gamma",
+            "Gamma",
+            "KURULTAIRECALL gamma project secret",
+            None,
+            "khan-yurt",
+        ))
+        .await
+        .unwrap();
+
+    let views = brain
+        .recall_for_agent("khan-yurt", "KURULTAIRECALL secret", 10, false)
+        .await
+        .unwrap();
+
+    let ids: Vec<_> = views.iter().map(|v| v.id.as_str()).collect();
+    assert!(ids.contains(&"alpha"), "expected alpha atom in yurt recall");
+    assert!(ids.contains(&"gamma"), "expected gamma atom in yurt recall");
+    assert!(
+        !ids.contains(&"beta"),
+        "beta atom belongs to khan-horde and should be sequestered"
+    );
 }
 
 #[tokio::test]
