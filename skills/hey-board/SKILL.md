@@ -23,8 +23,10 @@ Every phase starts with a **phase load**: the coordinator (perplexity or Luke) c
 ### Work Order Lifecycle
 
 ```
-Backlog → Working → Review Ready → Reviewing → Changes Requested | Done/Merged
+Backlog → Working → Review Ready → Reviewing → Changes Requested | Blocked | Done/Merged
 ```
+
+`Blocked` means the issue is waiting on a dependency or external input. Note what it's blocked by.
 
 | Status | Meaning | Who acts |
 |---|---|---|
@@ -33,6 +35,7 @@ Backlog → Working → Review Ready → Reviewing → Changes Requested | Done/
 | Review Ready | PR open, implementation complete | Reviewer picks up |
 | Reviewing | Reviewer is checking the PR | Reviewer |
 | Changes Requested | Reviewer found issues | Implementer fixes |
+| Blocked | Waiting on dependency or external input | Unblocker |
 | Done/Merged | PR merged, Linear issue Done | Merge captain |
 
 ### Rules
@@ -41,7 +44,7 @@ Backlog → Working → Review Ready → Reviewing → Changes Requested | Done/
 2. **One reviewer per issue.** Assigned at phase load, not picked ad hoc.
 3. **Reviewer is merge captain.** If the review passes, the reviewer merges the PR, moves the Linear issue to Done, and updates hey.md — all in one sweep.
 4. **Codegraph-first.** If `.codegraph/` exists, use it before broad `grep`. Saves tokens.
-5. **hey.md pushes directly to main.** PR-gate exempt for board edits only.
+5. **hey.md push rules depend on repo.** Khan: direct-to-main exempt for board edits only. Kurultai: all changes through PR, including hey.md (public repo, branch protection enforced).
 6. **Every work order has:** Linear issue, implementer, reviewer, acceptance criteria, branch/PR link.
 7. **Attribution.** Every hey.md edit includes agent alias and version bump.
 
@@ -94,11 +97,19 @@ docs(hey): <alias> v0.XXXX.Y <note>
 
 3. **Bump version** — increment Y, update last-edit line
 
-4. **Commit and push:**
+4. **Commit and push** — for Khan, push directly to main. For Kurultai, push to a branch and open a PR:
    ```bash
+   # Khan (direct-to-main exempt for hey.md)
    git add hey.md
    git commit -m "docs(hey): <alias> v0.XXXX.Y <note>"
    git push origin main
+   
+   # Kurultai (PR required — public repo, branch protection)
+   git checkout -b docs/hey-update-<version>
+   git add hey.md
+   git commit -m "docs(hey): <alias> v0.XXXX.Y <note>"
+   git push origin docs/hey-update-<version>
+   gh pr create --title "docs(hey): <alias> v0.XXXX.Y <note>" --body "hey.md board update"
    ```
 
 ## Review Checklist (for reviewers / merge captains)
