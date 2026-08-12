@@ -1,7 +1,7 @@
 use crate::connectors::Connector;
 use crate::error::{KurultaiError, Result};
 use crate::security::validate_readable_path;
-use crate::types::{KnowledgeAtom, SourceConfig};
+use crate::types::{CorpusTier, KnowledgeAtom, SourceConfig};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -23,6 +23,8 @@ pub struct MarkdownConnector {
     root_path: Option<PathBuf>,
     /// Watermark for incremental poll (mtime).
     last_poll: Mutex<Option<SystemTime>>,
+    default_corpus_tier: CorpusTier,
+    default_visibility_labels: Vec<String>,
 }
 
 impl MarkdownConnector {
@@ -31,6 +33,8 @@ impl MarkdownConnector {
             source_name: "markdown".into(),
             root_path: None,
             last_poll: Mutex::new(None),
+            default_corpus_tier: CorpusTier::Public,
+            default_visibility_labels: Vec::new(),
         }
     }
 
@@ -85,7 +89,14 @@ impl MarkdownConnector {
                 .map(|d| DateTime::from_timestamp(d.as_secs() as i64, 0).unwrap_or_else(Utc::now))
                 .unwrap_or_else(Utc::now);
 
-            atoms.extend(file_to_atoms(&self.source_name, &rel, &text, updated));
+            atoms.extend(file_to_atoms(
+                &self.source_name,
+                &rel,
+                &text,
+                updated,
+                self.default_corpus_tier,
+                &self.default_visibility_labels,
+            ));
             Ok(())
         })?;
 
@@ -107,6 +118,8 @@ impl Connector for MarkdownConnector {
 
     async fn init(&mut self, config: &SourceConfig) -> Result<()> {
         self.source_name = config.name.clone();
+        self.default_corpus_tier = config.default_corpus_tier();
+        self.default_visibility_labels = config.default_visibility_labels();
         let root = Self::resolve_root(config)?;
         let resolved = validate_readable_path(&root, "markdown root")?;
         tracing::debug!(root = %resolved.display(), "markdown connector initialized");
@@ -213,6 +226,8 @@ fn file_to_atoms(
     rel_path: &str,
     text: &str,
     source_updated_at: DateTime<Utc>,
+    corpus_tier: CorpusTier,
+    visibility_labels: &[String],
 ) -> Vec<KnowledgeAtom> {
     let (fm, body) = split_frontmatter(text);
     let file_title = fm
@@ -244,6 +259,8 @@ fn file_to_atoms(
             source_updated_at,
             0,
             1,
+            corpus_tier,
+            visibility_labels,
         ));
         return atoms;
     }
@@ -271,6 +288,8 @@ fn file_to_atoms(
             source_updated_at,
             chunk_index as u32,
             chunk_count as u32,
+            corpus_tier,
+            visibility_labels,
         ));
     }
     atoms
@@ -344,6 +363,8 @@ fn make_atom(
     source_updated_at: DateTime<Utc>,
     chunk_index: u32,
     chunk_count: u32,
+    corpus_tier: CorpusTier,
+    visibility_labels: &[String],
 ) -> KnowledgeAtom {
     // Include chunk_index so repeated headings / split pieces stay unique for cite.
     let source_id = match heading {
@@ -380,6 +401,8 @@ fn make_atom(
         indexed_at: Utc::now(),
         embedding: None,
         metadata,
+        corpus_tier,
+        visibility_labels: visibility_labels.to_vec(),
         ..Default::default()
     }
 }
@@ -470,7 +493,14 @@ Run the database migration scripts carefully.
 ## Rollback
 How to rollback a bad deploy.
 "#;
-        let atoms = file_to_atoms("notes", "ops/deploy.md", text, Utc::now());
+        let atoms = file_to_atoms(
+            "notes",
+            "ops/deploy.md",
+            text,
+            Utc::now(),
+            CorpusTier::Public,
+            &[],
+        );
         assert!(atoms.len() >= 2);
         assert!(atoms
             .iter()
@@ -489,7 +519,16 @@ How to rollback a bad deploy.
     #[test]
     fn hashtag_only_file_gets_tags_not_empty() {
         let text = "#vpn #snipe-it #network\n\nReset the UniFi gateway after hours.\n";
-        let atoms = file_to_atoms("it_docs", "vpn/reset.md", text, Utc::now());
+        let atoms = file_to_atoms(
+            "it_docs",
+            "vpn/reset.md",
+            text,
+            Utc::now(),
+            CorpusTier::Private,
+            &["it".into()],
+        );
+        assert!(atoms.iter().all(|a| a.corpus_tier == CorpusTier::Private));
+        assert!(atoms.iter().all(|a| a.visibility_labels.contains(&"it".into())));
         assert!(!atoms.is_empty());
         assert!(atoms.iter().all(|a| a.tags.contains(&"vpn".into())));
         assert!(atoms.iter().all(|a| a.tags.contains(&"snipe-it".into())));
@@ -499,21 +538,28 @@ How to rollback a bad deploy.
     #[test]
     fn yaml_tags_win_over_hashtag_line() {
         let text = "---\ntags: [ops]\n---\n#vpn #ignored\n\nBody.\n";
-        let atoms = file_to_atoms("notes", "ops.md", text, Utc::now());
+        let atoms = file_to_atoms("notes", "ops.md", text, Utc::now(), CorpusTier::Public, &[]);
         assert!(atoms.iter().all(|a| a.tags == vec!["ops".to_string()]));
     }
 
     #[test]
     fn heading_and_prose_hash_are_not_tags() {
         let text = "# Reset VPN\n\nSee #vpn in Slack after the outage.\n";
-        let atoms = file_to_atoms("it_docs", "vpn.md", text, Utc::now());
+        let atoms = file_to_atoms("it_docs", "vpn.md", text, Utc::now(), CorpusTier::Public, &[]);
         assert!(atoms.iter().all(|a| a.tags.is_empty()));
     }
 
     #[test]
     fn trailing_hashtag_line_is_accepted() {
         let text = "How to image a laptop.\n\n#imaging #it\n";
-        let atoms = file_to_atoms("it_docs", "image.md", text, Utc::now());
+        let atoms = file_to_atoms(
+            "it_docs",
+            "image.md",
+            text,
+            Utc::now(),
+            CorpusTier::Public,
+            &[],
+        );
         assert!(atoms.iter().all(|a| a.tags.contains(&"imaging".into())));
         assert!(atoms.iter().all(|a| a.tags.contains(&"it".into())));
     }

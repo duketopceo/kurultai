@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 7;
+pub const CURRENT_SCHEMA_VERSION: i32 = 8;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -267,6 +267,30 @@ pub fn migrate(conn: &Connection) -> Result<()> {
             .map_err(|e| KurultaiError::Store(format!("migration 007 failed: {e}")))?;
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [7])
             .map_err(|e| KurultaiError::Store(format!("migration 007 record failed: {e}")))?;
+    }
+
+    if current < 8 {
+        add_column_if_missing(
+            conn,
+            "knowledge_atoms",
+            "corpus_tier",
+            "TEXT NOT NULL DEFAULT 'public'",
+        )?;
+        add_column_if_missing(
+            conn,
+            "knowledge_atoms",
+            "visibility_labels_json",
+            "TEXT NOT NULL DEFAULT '[]'",
+        )?;
+        conn.execute_batch(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_atoms_corpus_tier
+                ON knowledge_atoms(corpus_tier);
+            "#,
+        )
+        .map_err(|e| KurultaiError::Store(format!("migration 008 objects failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [8])
+            .map_err(|e| KurultaiError::Store(format!("migration 008 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");
