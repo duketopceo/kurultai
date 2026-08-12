@@ -42,7 +42,7 @@ so this section only covers non-obvious run/test caveats. Standard commands live
 - Set `KURULTAI_ENV=dev` for dev work (storage under `~/.local/share/kurultai/dev/store.db`, debug logging).
 - `kurultai` needs a config first: `kurultai init` writes `~/.config/kurultai/config.toml`. Enable a source (e.g. a `[sources.notes]` markdown root) before `index`.
 - **FTS-only mode is normal here**: without `OPENROUTER_API_KEY` (or `KURULTAI_API_KEY`) the app uses `NullEmbedder` — FTS5 search / `who-knows` / extractive `ask` all work; vector recall, reranking, and LLM `ask` are disabled. This is expected, not an error.
-- Markdown atoms need **≥1 tag** (YAML frontmatter `tags:`) or they land in quarantine and are excluded from default search.
+- Markdown atoms need **≥1 tag** (YAML frontmatter `tags:` **or** a dedicated hashtag line such as `#vpn #snipe-it`) or they land in quarantine and are excluded from default search. YAML tags win when present. Headings and inline `#mentions` in prose are not tags.
 - Run the daemon: `kurultai daemon --port 8421`. Open the Brain UI at **`http://127.0.0.1:8421/ui/`** — the trailing slash matters (bare `/ui` returns a 308 redirect). API lives under `/api/*` (`/api/status`, `/api/atoms`, `/api/search`, ...).
 
 ## Wiring Kurultai (MCP + Data Flow)

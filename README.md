@@ -74,7 +74,7 @@ kurultai import brain.kurultai --combine  # merge into an existing store
 
 **Brain UI:** open [`http://127.0.0.1:8421/ui/`](http://127.0.0.1:8421/ui/) (trailing slash matters). Assets live in `ui/` and are embedded in the daemon binary — that is the only Brain dashboard. Do not add a parallel brain under `website/` or `web/`.
 
-Markdown atoms need **≥1 tag** (YAML frontmatter `tags:`); untagged writes land in quarantine and are skipped by default search. Promote after fixing: `kurultai promote <atom_id>`.
+Markdown atoms need **≥1 tag** (YAML frontmatter `tags:` **or** a dedicated hashtag line such as `#vpn #snipe-it`); untagged writes land in quarantine and are skipped by default search. YAML tags win when present. Promote after fixing: `kurultai promote <atom_id>`.
 
 Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md). Concepts: [CONCEPTS.md](CONCEPTS.md).
 

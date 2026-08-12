@@ -219,7 +219,12 @@ fn file_to_atoms(
         .get("title")
         .cloned()
         .unwrap_or_else(|| title_from_path(rel_path));
-    let tags = parse_tags(fm.get("tags").map(String::as_str));
+    let mut tags = parse_tags(fm.get("tags").map(String::as_str));
+    // YAML tags win. kb-it-docs (and similar) use a dedicated hashtag line
+    // instead of frontmatter — empty YAML must not quarantine the file.
+    if tags.is_empty() {
+        tags = parse_hashtag_line_tags(body);
+    }
 
     let chunks = chunk_markdown(body);
     let mut atoms = Vec::with_capacity(chunks.len().max(1));
@@ -398,6 +403,54 @@ fn parse_tags(raw: Option<&str>) -> Vec<String> {
         .collect()
 }
 
+/// A dedicated hashtag line is whitespace-separated `#tag` tokens only.
+/// Headings (`# Title`) and inline `#mentions` in prose are ignored.
+fn parse_hashtag_line_tags(body: &str) -> Vec<String> {
+    let mut tags = Vec::new();
+    for line in body.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(line_tags) = hashtag_only_line(line) {
+            for tag in line_tags {
+                if !tags.iter().any(|existing| existing == &tag) {
+                    tags.push(tag);
+                }
+            }
+        }
+    }
+    tags
+}
+
+fn hashtag_only_line(line: &str) -> Option<Vec<String>> {
+    let mut tags = Vec::new();
+    for token in line.split_whitespace() {
+        match hashtag_token(token) {
+            Some(tag) => tags.push(tag),
+            None => return None,
+        }
+    }
+    if tags.is_empty() {
+        None
+    } else {
+        Some(tags)
+    }
+}
+
+fn hashtag_token(token: &str) -> Option<String> {
+    let rest = token.strip_prefix('#')?;
+    let mut chars = rest.chars();
+    let first = chars.next()?;
+    if !first.is_ascii_alphabetic() {
+        return None;
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        return None;
+    }
+    Some(rest.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -431,6 +484,38 @@ How to rollback a bad deploy.
             .filter_map(|a| a.metadata.get("chunk_index")?.parse().ok())
             .collect();
         assert!(indexes.contains(&0));
+    }
+
+    #[test]
+    fn hashtag_only_file_gets_tags_not_empty() {
+        let text = "#vpn #snipe-it #network\n\nReset the UniFi gateway after hours.\n";
+        let atoms = file_to_atoms("it_docs", "vpn/reset.md", text, Utc::now());
+        assert!(!atoms.is_empty());
+        assert!(atoms.iter().all(|a| a.tags.contains(&"vpn".into())));
+        assert!(atoms.iter().all(|a| a.tags.contains(&"snipe-it".into())));
+        assert!(atoms.iter().all(|a| a.tags.contains(&"network".into())));
+    }
+
+    #[test]
+    fn yaml_tags_win_over_hashtag_line() {
+        let text = "---\ntags: [ops]\n---\n#vpn #ignored\n\nBody.\n";
+        let atoms = file_to_atoms("notes", "ops.md", text, Utc::now());
+        assert!(atoms.iter().all(|a| a.tags == vec!["ops".to_string()]));
+    }
+
+    #[test]
+    fn heading_and_prose_hash_are_not_tags() {
+        let text = "# Reset VPN\n\nSee #vpn in Slack after the outage.\n";
+        let atoms = file_to_atoms("it_docs", "vpn.md", text, Utc::now());
+        assert!(atoms.iter().all(|a| a.tags.is_empty()));
+    }
+
+    #[test]
+    fn trailing_hashtag_line_is_accepted() {
+        let text = "How to image a laptop.\n\n#imaging #it\n";
+        let atoms = file_to_atoms("it_docs", "image.md", text, Utc::now());
+        assert!(atoms.iter().all(|a| a.tags.contains(&"imaging".into())));
+        assert!(atoms.iter().all(|a| a.tags.contains(&"it".into())));
     }
 
     #[tokio::test]
