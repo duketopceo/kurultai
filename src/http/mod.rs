@@ -1,13 +1,16 @@
 //! Thin local HTTP API mirroring MCP read tools (Phase 3 / #7).
 //!
-//! Bind to localhost only. REST routes stay open on loopback.
+//! Default bind is localhost; REST is unauthenticated on loopback.
+//! Hub mode (`KURULTAI_HUB_AUTH=api_key`, `KURULTAI_HUB_BIND=all`) authenticates `/api/*`.
 //! MCP HTTP/SSE (`/mcp`, `/mcp/sse`) is **opt-in** when a shared secret is set.
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
+mod auth;
 mod mcp;
 mod ui;
 
 pub use mcp::resolve_mcp_http_secret;
+pub use auth::{HubAuth, HubGate};
 
 use crate::daemon::DaemonStatus;
 use crate::error::KurultaiError;
@@ -18,9 +21,11 @@ use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
 use axum::extract::{Query, State};
 use axum::http::{header, HeaderValue, StatusCode};
+use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use auth::hub_api_auth;
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -32,6 +37,7 @@ struct AppState {
     brain: Arc<BrainService>,
     status: Arc<DaemonStatus>,
     metrics: Arc<MetricsRegistry>,
+    hub: HubGate,
 }
 
 /// Options for the localhost HTTP daemon.
@@ -40,6 +46,9 @@ pub struct ServeOptions {
     pub port: u16,
     /// When set, mounts authenticated MCP HTTP/SSE routes.
     pub mcp_http_secret: Option<String>,
+    /// Bind `0.0.0.0` instead of loopback (hub mode).
+    pub bind_all: bool,
+    pub hub: HubGate,
 }
 
 fn json_error(
@@ -65,6 +74,8 @@ pub async fn serve(brain: BrainService, status: Arc<DaemonStatus>, port: u16) ->
         ServeOptions {
             port,
             mcp_http_secret: None,
+            bind_all: false,
+            hub: HubGate::default(),
         },
     )
     .await
@@ -77,10 +88,16 @@ pub async fn serve_with(
     opts: ServeOptions,
 ) -> crate::Result<()> {
     let brain = Arc::new(brain);
+    let mut hub = opts.hub;
+    if hub.auth == HubAuth::None && hub.api_keys.is_empty() {
+        hub = auth::resolve_hub_gate_from_env();
+    }
+    let bind_all = opts.bind_all || auth::resolve_bind_all_from_env();
     let state = AppState {
         brain: Arc::clone(&brain),
         status,
         metrics: MetricsRegistry::shared(),
+        hub: hub.clone(),
     };
     let mut app = router(state);
     if let Some(secret) = mcp::resolve_mcp_http_secret(opts.mcp_http_secret.as_deref()) {
@@ -91,11 +108,15 @@ pub async fn serve_with(
             "mcp HTTP/SSE disabled (set KURULTAI_MCP_HTTP_SECRET or [runtime].mcp_http_secret)"
         );
     }
-    let addr = SocketAddr::from(([127, 0, 0, 1], opts.port));
+    let addr = if bind_all {
+        SocketAddr::from(([0, 0, 0, 0], opts.port))
+    } else {
+        SocketAddr::from(([127, 0, 0, 1], opts.port))
+    };
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("bind {addr}: {e}")))?;
-    tracing::info!(%addr, "http daemon listening (localhost only)");
+    tracing::info!(%addr, bind_all, "http daemon listening");
     axum::serve(listener, app)
         .await
         .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("http serve: {e}")))?;
@@ -120,6 +141,10 @@ fn router(state: AppState) -> Router {
         .route("/cite", post(cite_post))
         .route("/who_knows", post(who_knows_post))
         .merge(ui::routes())
+        .layer(middleware::from_fn_with_state(
+            state.hub.clone(),
+            hub_api_auth,
+        ))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -651,6 +676,7 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         });
         let resp = app
             .oneshot(
@@ -671,6 +697,7 @@ mod tests {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         });
         let resp = app
             .clone()
@@ -716,6 +743,7 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         });
         let resp = app
             .oneshot(
@@ -777,6 +805,7 @@ mod tests {
             brain: Arc::new(brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         });
         (app, db_dir)
     }
@@ -996,6 +1025,7 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         });
         let resp = app
             .oneshot(
@@ -1206,6 +1236,7 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         });
         let resp = app
             .oneshot(
@@ -1248,6 +1279,7 @@ mod tests {
             brain: Arc::new(brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         });
         let resp = app
             .oneshot(
@@ -1286,6 +1318,7 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         });
 
         let resp = app
@@ -1406,6 +1439,7 @@ mod tests {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         });
 
         // Default list excludes quarantine.
@@ -1542,6 +1576,7 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         });
         let resp = app
             .oneshot(
@@ -1568,6 +1603,7 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: Arc::clone(&metrics),
+            hub: HubGate::default(),
         });
         let _ = app
             .clone()
@@ -1613,6 +1649,7 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         });
         let resp = app
             .oneshot(
@@ -1705,6 +1742,7 @@ mod tests {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
         };
         router(state).merge(mcp::routes(mcp::McpHttpState::new(
             brain,
@@ -1836,5 +1874,75 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn hub_api_key_rejects_missing_and_wrong_bearer() {
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+            hub: HubGate {
+                auth: HubAuth::ApiKey,
+                api_keys: vec!["hub-secret".into()],
+            },
+        });
+        let missing = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::UNAUTHORIZED);
+        let wrong = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/status")
+                    .header("authorization", "Bearer nope")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+        let ok = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/status")
+                    .header("authorization", "Bearer hub-secret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ok.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn hub_api_key_leaves_health_open() {
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+            hub: HubGate {
+                auth: HubAuth::ApiKey,
+                api_keys: vec!["hub-secret".into()],
+            },
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }

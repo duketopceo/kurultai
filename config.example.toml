@@ -57,6 +57,7 @@ poll_interval_secs = 300
 # inactivity_threshold_hours = 24     # skip poll when idle this many hours
 # reranker_model = "openai/gpt-4o-mini"
 # mcp_http_secret = "…"               # optional; prefer env KURULTAI_MCP_HTTP_SECRET
+# Hub mode (optional): prefer env KURULTAI_HUB_AUTH=api_key, KURULTAI_HUB_API_KEYS, KURULTAI_HUB_BIND=all
 
 # --- CLI presentation -------------------------------------------------------
 

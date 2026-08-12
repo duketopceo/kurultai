@@ -36,6 +36,14 @@ On incremental index, if an atom’s content hash is unchanged and a vector alre
 
 One structured knowledge unit: title, summary, content, tags, provenance (source and source id), optional embedding. Markdown files are one ingest source, not the system of record.
 
+### Visibility scope
+
+Atom visibility: `personal`, `team`, or `company`. Personal never leaves the originating device. Team and company live on an optional shared hub. A deployment may enable zero, one, or two shared tiers.
+
+### Hub
+
+Optional shared store for one organization (not a multi-company SaaS). Personal kernel stays local SQLite; the hub is Postgres+pgvector behind Tailscale or public API keys.
+
 ## Orchestration
 
 ### Graph orchestration (diamond)

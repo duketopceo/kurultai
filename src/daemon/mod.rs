@@ -244,6 +244,8 @@ pub async fn run(
         http::ServeOptions {
             port: opts.port,
             mcp_http_secret: opts.mcp_http_secret,
+            bind_all: false,
+            hub: crate::http::HubGate::default(),
         },
     )
     .await;
