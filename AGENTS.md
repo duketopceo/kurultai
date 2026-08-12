@@ -15,6 +15,8 @@
 - Local Vite preview commonly runs from `website/` on `http://127.0.0.1:5174` (`npm run dev -- --host 127.0.0.1 --port 5174`) and can serve live `ui/` files; embedded daemon UI changes need a rebuild.
 - Default local daemon: `./target/debug/kurultai daemon --port 8421` from the repo root.
 - Large brain graphs should use tiered loading (hot/warm/cold, timestamped) rather than shipping all nodes to the browser at once.
+- `docs/solutions/` — documented solutions to past problems (bugs, architecture, workflow), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
+- `CONCEPTS.md` — shared domain vocabulary. Read when orienting to the codebase or before discussing domain concepts.
 
 ## Cursor Cloud specific instructions
 
