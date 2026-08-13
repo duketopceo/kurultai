@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { UI_VERSION } from '../version';
 
 interface Props {
   daemonOk: boolean;
@@ -37,6 +38,7 @@ export function TopBar({ daemonOk, daemonVersion }: Props) {
         </span>
         <span>KURULTAI</span>
         <small>LOCAL BRAIN</small>
+        <small className="version-mark" title="Embedded UI bundle version">ui {UI_VERSION}</small>
       </a>
       <nav className="topbar-nav" aria-label="Site navigation">
         <a href="/ui/index.html">Home</a>
@@ -45,7 +47,11 @@ export function TopBar({ daemonOk, daemonVersion }: Props) {
       </nav>
       <div className="topbar-status" aria-live="polite">
         <span className="status-dot" style={{ background: daemonOk ? 'var(--electric-dim)' : 'var(--danger)' }} />
-        <span id="daemon-status">{daemonOk ? `online${daemonVersion ? ' · v' + daemonVersion : ''}` : 'connecting'}</span>
+        <span id="daemon-status">
+          {daemonOk
+            ? `online · api ${daemonVersion || '—'}`
+            : 'connecting'}
+        </span>
       </div>
       <button
         id="theme-toggle"

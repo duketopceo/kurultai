@@ -21,7 +21,7 @@ Override with `KURULTAI_FEATURE_<ID>=0|1`. Catalog: `src/features.rs` · `kurult
 | `local_embed` | v0.3.0 | cargo feature | `--features local-embed` |
 | `hub` | **v0.5.0** | **off** | Wave G HUB-2…6 — do not treat as v0.4.x |
 
-**v0.3.1 was skipped.** GitHub latest is [v0.4.0](https://github.com/duketopceo/kurultai/releases/tag/v0.4.0). Next production tag is **v0.4.1**. Team cashflow stays **v0.5.0**.
+**v0.3.1 was skipped.** Production tag is [v0.4.1](https://github.com/duketopceo/kurultai/releases/tag/v0.4.1). Team cashflow stays **v0.5.0**.
 
 ## Reality check
 
@@ -41,9 +41,9 @@ Ship **visibility scopes + shared hub** before Atlas UI or enterprise connector 
 
 | Order | ID | Work order | Issue | Size | Version / flag | First LFG? |
 |------:|----|------------|-------|------|----------------|------------|
-| 0 | **REL-1** | **v0.4.1 production tag** — crate/docs/UI embed in sync; human tags `v0.4.1` after merge | this tree | S | v0.4.1 | After this PR |
+| 0 | **REL-1** | **v0.4.1 production tag** — crate/docs/UI embed in sync; GitHub Release `v0.4.1` | this tree | S | v0.4.1 | ✅ this release |
 | 1 | **HUB-1** | **Atom visibility scope** `personal \| team \| company` + merged local query shape (solo unchanged) | [#178](https://github.com/duketopceo/kurultai/issues/178) | M | v0.4.x (`hub` still off) | ✅ `#192` |
-| 2 | **HUB-2** | Postgres + pgvector `Store` for **shared** tier | [#176](https://github.com/duketopceo/kurultai/issues/176) · legacy [#111](https://github.com/duketopceo/kurultai/issues/111) | L | v0.5.0 `hub` | **This PR** |
+| 2 | **HUB-2** | Postgres + pgvector `Store` for **shared** tier | [#176](https://github.com/duketopceo/kurultai/issues/176) · legacy [#111](https://github.com/duketopceo/kurultai/issues/111) | L | v0.5.0 `hub` | ✅ `#197` |
 | 3 | HUB-3 | Hub mode daemon — Tailscale-only **or** public + per-device API key | [#177](https://github.com/duketopceo/kurultai/issues/177) | L | v0.5.0 `hub` | After HUB-2 · [#190](https://github.com/duketopceo/kurultai/pull/190) shipped API-key scaffold |
 | 4 | HUB-4 | Admin CLI — issue/revoke device keys; `team_id` / `org_id` boundaries | [#179](https://github.com/duketopceo/kurultai/issues/179) | M | v0.5.0 `hub` | With/after HUB-3 |
 | 5 | HUB-5 | Connector ingest tags visibility scope at source (never infer later) | [#180](https://github.com/duketopceo/kurultai/issues/180) · narrows [#114](https://github.com/duketopceo/kurultai/issues/114) | M | v0.5.0 `hub` | After HUB-1 · restart on `main` ([#193](https://github.com/duketopceo/kurultai/pull/193) closed unmerged) |

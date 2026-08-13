@@ -27,7 +27,8 @@ export function App() {
   const [loadMsg, setLoadMsg] = useState('Loading memories…');
   const [codeRepos, setCodeRepos] = useState<{ name: string; count: number }[]>([]);
   const [loadTier, setLoadTier] = useState<LoadTier>('low');
-  const abortRef = useRef<AbortController | null>(null);
+  const graphAbortRef = useRef<AbortController | null>(null);
+  const statusAbortRef = useRef<AbortController | null>(null);
   const brainRef = useRef<BrainStageHandle | null>(null);
 
   const filteredAtoms = useCallback(() => {
@@ -40,9 +41,9 @@ export function App() {
   }, [state.atoms, state.since]);
 
   const loadAtoms = useCallback(async (tier: LoadTier = loadTier) => {
-    abortRef.current?.abort();
+    graphAbortRef.current?.abort();
     const ac = new AbortController();
-    abortRef.current = ac;
+    graphAbortRef.current = ac;
     try {
       dbg('fetchGraph start, tier:', tier);
       setLoadMsg(`Loading ${tier}…`);
@@ -69,9 +70,9 @@ export function App() {
     const poll = async () => {
       while (alive) {
         try {
-          abortRef.current?.abort();
+          statusAbortRef.current?.abort();
           const ac = new AbortController();
-          abortRef.current = ac;
+          statusAbortRef.current = ac;
           const status = await fetchStatus(ac.signal);
           dispatch({ type: 'SET_DAEMON', ok: status.ok, version: status.version });
         } catch { /* ignore */ }
@@ -79,7 +80,11 @@ export function App() {
       }
     };
     poll();
-    return () => { alive = false; abortRef.current?.abort(); };
+    return () => {
+      alive = false;
+      statusAbortRef.current?.abort();
+      graphAbortRef.current?.abort();
+    };
   }, []);
 
   useEffect(() => { loadAtoms(loadTier); }, [loadTier]);

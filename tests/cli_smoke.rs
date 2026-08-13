@@ -60,6 +60,10 @@ fn status_shows_environment_and_sources() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Kurultai status"))
+        .stdout(predicate::str::contains(format!(
+            "Version: {}",
+            env!("CARGO_PKG_VERSION")
+        )))
         .stdout(predicate::str::contains("notes"))
         .stdout(predicate::str::contains("Reranker: none"))
         .stdout(predicate::str::contains("Features"))
@@ -105,7 +109,15 @@ fn index_and_search_fixture_phrase() {
         .args(["--config", cfg.to_str().unwrap(), "index", "--full"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("notes"));
+        .stdout(predicate::str::contains("notes"))
+        .stdout(predicate::str::contains(format!(
+            "Kurultai {}",
+            env!("CARGO_PKG_VERSION")
+        )))
+        .stdout(predicate::str::contains(format!(
+            "embedded UI {}",
+            env!("CARGO_PKG_VERSION")
+        )));
 
     bin()
         .args([

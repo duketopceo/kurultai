@@ -209,6 +209,11 @@ async fn main() -> Result<()> {
         }
         Commands::Index { full } => {
             let app = bootstrap_app(&cli).await?;
+            println!(
+                "Kurultai {}  (embedded UI {})",
+                env!("CARGO_PKG_VERSION"),
+                env!("CARGO_PKG_VERSION")
+            );
             tracing::info!(full, "starting index");
             let stats = app.pipeline.index_all(&app.connectors, full).await?;
             for s in &stats {
@@ -284,6 +289,7 @@ async fn main() -> Result<()> {
             let brain = brain_from_app(&app);
             let (trusted, quarantine, merge_pending) = brain.lane_counts().await?;
             println!("Kurultai status");
+            println!("  Version: {}", env!("CARGO_PKG_VERSION"));
             println!("  Environment: {}", app.environment);
             println!("  Storage: {}", app.config.storage_path);
             println!("  Schema:  v{}", app.schema_version());
