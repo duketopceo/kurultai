@@ -90,7 +90,12 @@ fn is_generated_file(path: &Path) -> bool {
 /// Returns true when content looks minified: very few newlines relative to byte count.
 /// Checks only the first 4 KB to stay O(1).
 fn is_minified_content(content: &str) -> bool {
-    let sample = &content[..content.len().min(4096)];
+    let byte_end = content.len().min(4096);
+    let mut end = byte_end;
+    while end > 0 && !content.is_char_boundary(end) {
+        end -= 1;
+    }
+    let sample = &content[..end];
     let newline_count = sample.bytes().filter(|&b| b == b'\n').count();
     newline_count < 3 && content.len() > 500
 }
