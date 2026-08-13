@@ -74,6 +74,7 @@ fn help_groups_setup_knowledge_serve() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Setup"))
+        .stdout(predicate::str::contains("init --docs"))
         .stdout(predicate::str::contains("Knowledge"))
         .stdout(predicate::str::contains("Serve"))
         .stdout(predicate::str::contains("Packs"))
