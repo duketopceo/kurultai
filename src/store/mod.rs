@@ -328,11 +328,13 @@ impl SqliteVecStore {
         let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<KnowledgeAtom> {
             let mut atom = row_to_atom(row)?;
             if with_embeddings {
-                let blob: Option<Vec<u8>> = row.get(15)?;
+                // ATOM_COLUMNS ends at index 15 (`visibility`); embedding is the next select.
+                const EMBEDDING_COL: usize = 16;
+                let blob: Option<Vec<u8>> = row.get(EMBEDDING_COL)?;
                 if let Some(bytes) = blob {
                     atom.embedding = Some(embedding_f32s_from_blob(&bytes).map_err(|e| {
                         rusqlite::Error::FromSqlConversionFailure(
-                            15,
+                            EMBEDDING_COL,
                             rusqlite::types::Type::Blob,
                             Box::new(std::io::Error::new(
                                 std::io::ErrorKind::InvalidData,
