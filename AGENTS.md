@@ -6,7 +6,8 @@
 - Before changing Kurultai Brain/dashboard visuals, ask first — the current design is largely liked.
 - Keep the dashboard layout with the brain as the main focal point; do not replace it with a full-viewport-only redesign unless asked.
 - Brain synaptic visualization: deep black background; black/white plus slight purple only (three colors); neurons/synapses with electric zap/shimmer (not plain white orbs); hovering a node highlights its connections; avoid extra chrome (control buttons and live/suggested/showcase MCP callouts).
-- Brain camera should start with the whole graph in view (no opening live zoom-in); search needs a clear/reset control; do not add circle or brain-shape layout modes.
+- Brain camera should start with the whole graph in view (no opening live zoom-in); search needs a clear/reset control.
+- Intended Brain layouts: volumetric **brain-shape** (constrained FDG inside the cortex hull) and **algorithmic ontology** (typed hierarchy). Galaxy/solar is deprecated. Do not ship an ontology layout until O1 primitives exist. Research: `docs/brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md`.
 - Version/tag before risky Brain UI experiments so rollback is easy.
 
 ## Learned Workspace Facts
