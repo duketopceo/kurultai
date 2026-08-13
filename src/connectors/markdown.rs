@@ -1,7 +1,7 @@
-use crate::connectors::Connector;
+use crate::connectors::{source_visibility, Connector};
 use crate::error::{KurultaiError, Result};
 use crate::security::validate_readable_path;
-use crate::types::{KnowledgeAtom, SourceConfig};
+use crate::types::{KnowledgeAtom, SourceConfig, VisibilityScope};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -21,6 +21,8 @@ pub struct MarkdownConnector {
     /// Config source name (e.g. `notes`) — stored on each atom for delete_source.
     source_name: String,
     root_path: Option<PathBuf>,
+    /// Source-level default; frontmatter `visibility` may override (HUB-5).
+    visibility: VisibilityScope,
     /// Watermark for incremental poll (mtime).
     last_poll: Mutex<Option<SystemTime>>,
 }
@@ -30,6 +32,7 @@ impl MarkdownConnector {
         Self {
             source_name: "markdown".into(),
             root_path: None,
+            visibility: VisibilityScope::Personal,
             last_poll: Mutex::new(None),
         }
     }
@@ -85,7 +88,13 @@ impl MarkdownConnector {
                 .map(|d| DateTime::from_timestamp(d.as_secs() as i64, 0).unwrap_or_else(Utc::now))
                 .unwrap_or_else(Utc::now);
 
-            atoms.extend(file_to_atoms(&self.source_name, &rel, &text, updated));
+            atoms.extend(file_to_atoms(
+                &self.source_name,
+                &rel,
+                &text,
+                updated,
+                self.visibility,
+            ));
             Ok(())
         })?;
 
@@ -107,9 +116,14 @@ impl Connector for MarkdownConnector {
 
     async fn init(&mut self, config: &SourceConfig) -> Result<()> {
         self.source_name = config.name.clone();
+        self.visibility = source_visibility(config);
         let root = Self::resolve_root(config)?;
         let resolved = validate_readable_path(&root, "markdown root")?;
-        tracing::debug!(root = %resolved.display(), "markdown connector initialized");
+        tracing::debug!(
+            root = %resolved.display(),
+            visibility = self.visibility.as_str(),
+            "markdown connector initialized"
+        );
         self.root_path = Some(resolved);
         Ok(())
     }
@@ -213,6 +227,7 @@ fn file_to_atoms(
     rel_path: &str,
     text: &str,
     source_updated_at: DateTime<Utc>,
+    default_visibility: VisibilityScope,
 ) -> Vec<KnowledgeAtom> {
     let (fm, body) = split_frontmatter(text);
     let file_title = fm
@@ -220,6 +235,10 @@ fn file_to_atoms(
         .cloned()
         .unwrap_or_else(|| title_from_path(rel_path));
     let tags = parse_tags(fm.get("tags").map(String::as_str));
+    let visibility = fm
+        .get("visibility")
+        .map(|s| VisibilityScope::parse(s.trim()))
+        .unwrap_or(default_visibility);
 
     let chunks = chunk_markdown(body);
     let mut atoms = Vec::with_capacity(chunks.len().max(1));
@@ -239,6 +258,7 @@ fn file_to_atoms(
             source_updated_at,
             0,
             1,
+            visibility,
         ));
         return atoms;
     }
@@ -266,6 +286,7 @@ fn file_to_atoms(
             source_updated_at,
             chunk_index as u32,
             chunk_count as u32,
+            visibility,
         ));
     }
     atoms
@@ -339,6 +360,7 @@ fn make_atom(
     source_updated_at: DateTime<Utc>,
     chunk_index: u32,
     chunk_count: u32,
+    visibility: VisibilityScope,
 ) -> KnowledgeAtom {
     // Include chunk_index so repeated headings / split pieces stay unique for cite.
     let source_id = match heading {
@@ -375,6 +397,7 @@ fn make_atom(
         indexed_at: Utc::now(),
         embedding: None,
         metadata,
+        visibility,
         ..Default::default()
     }
 }
@@ -417,7 +440,13 @@ Run the database migration scripts carefully.
 ## Rollback
 How to rollback a bad deploy.
 "#;
-        let atoms = file_to_atoms("notes", "ops/deploy.md", text, Utc::now());
+        let atoms = file_to_atoms(
+            "notes",
+            "ops/deploy.md",
+            text,
+            Utc::now(),
+            VisibilityScope::Personal,
+        );
         assert!(atoms.len() >= 2);
         assert!(atoms
             .iter()
@@ -426,11 +455,34 @@ How to rollback a bad deploy.
         assert!(atoms.iter().any(|a| a.tags.contains(&"ops".into())));
         assert!(atoms.iter().all(|a| a.metadata.contains_key("rel_path")));
         assert!(atoms.iter().all(|a| a.metadata.contains_key("chunk_index")));
+        assert!(atoms
+            .iter()
+            .all(|a| a.visibility == VisibilityScope::Personal));
         let indexes: Vec<u32> = atoms
             .iter()
             .filter_map(|a| a.metadata.get("chunk_index")?.parse().ok())
             .collect();
         assert!(indexes.contains(&0));
+    }
+
+    #[test]
+    fn frontmatter_visibility_overrides_source_default() {
+        let text = r#"---
+title: Shared Runbook
+visibility: team
+---
+## Steps
+Do the thing.
+"#;
+        let atoms = file_to_atoms(
+            "notes",
+            "ops/runbook.md",
+            text,
+            Utc::now(),
+            VisibilityScope::Personal,
+        );
+        assert!(!atoms.is_empty());
+        assert!(atoms.iter().all(|a| a.visibility == VisibilityScope::Team));
     }
 
     #[tokio::test]
@@ -450,6 +502,7 @@ How to rollback a bad deploy.
         let mut connector = MarkdownConnector::new();
         let mut extra = HashMap::new();
         extra.insert("root_path".into(), dir.to_string_lossy().into_owned());
+        extra.insert("visibility".into(), "company".into());
         let config = SourceConfig {
             name: "notes".into(),
             kind: crate::types::SourceKind::Markdown,
@@ -463,6 +516,9 @@ How to rollback a bad deploy.
         assert!(atoms
             .iter()
             .any(|a| a.content.contains("KNOWN_PHRASE_KURULTAI_42")));
+        assert!(atoms
+            .iter()
+            .all(|a| a.visibility == VisibilityScope::Company));
         let _ = fs::remove_dir_all(&dir);
     }
 }

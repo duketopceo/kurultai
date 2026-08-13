@@ -17,12 +17,14 @@ enabled = true
 kind = "markdown"
 root_path = "/Users/you/Documents/notes"
 poll_interval_secs = 60
+# visibility = "personal"   # personal | team | company (default personal; HUB-5)
 
 [sources.data]
 enabled = false
 kind = "json"                    # .json arrays or .jsonl / .ndjson
 root_path = "/Users/you/data"
 # optional: id_field = "url"     # stable source_id field (default: id)
+# visibility = "team"            # source default; per-record "visibility" may override
 
 [sources.dayflow]
 enabled = false

@@ -3,10 +3,10 @@
 //! Bridges Pond's read-only SQL surface (`pond sql --format ndjson`) —
 //! does not open Lance storage directly.
 
-use crate::connectors::Connector;
+use crate::connectors::{source_visibility, Connector};
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::atom_id;
-use crate::types::{KnowledgeAtom, SourceConfig};
+use crate::types::{KnowledgeAtom, SourceConfig, VisibilityScope};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -24,6 +24,7 @@ pub struct PondConnector {
     pond_bin: PathBuf,
     limit: usize,
     timeout_secs: u64,
+    visibility: VisibilityScope,
     /// Watermark: ISO timestamp string from last message.
     last_timestamp: Mutex<Option<String>>,
     /// Injectable runner for tests.
@@ -78,6 +79,7 @@ impl PondConnector {
             pond_bin: PathBuf::from("pond"),
             limit: DEFAULT_LIMIT,
             timeout_secs: DEFAULT_TIMEOUT_SECS,
+            visibility: VisibilityScope::Personal,
             last_timestamp: Mutex::new(None),
             runner: Box::new(ProcessPondRunner),
         }
@@ -105,7 +107,11 @@ impl PondConnector {
         }
     }
 
-    fn parse_ndjson(source_name: &str, stdout: &str) -> Result<Vec<KnowledgeAtom>> {
+    fn parse_ndjson(
+        source_name: &str,
+        stdout: &str,
+        visibility: VisibilityScope,
+    ) -> Result<Vec<KnowledgeAtom>> {
         let mut atoms = Vec::new();
         for line in stdout.lines() {
             let line = line.trim();
@@ -114,7 +120,7 @@ impl PondConnector {
             }
             let row: PondMessageRow = serde_json::from_str(line)
                 .map_err(|e| KurultaiError::connector("pond", format!("ndjson decode: {e}")))?;
-            if let Some(atom) = row.into_atom(source_name) {
+            if let Some(atom) = row.into_atom(source_name, visibility) {
                 atoms.push(atom);
             }
         }
@@ -126,7 +132,7 @@ impl PondConnector {
         let out = self
             .runner
             .run_sql(&self.pond_bin, &sql, self.limit, self.timeout_secs)?;
-        Self::parse_ndjson(&self.source_name, &out)
+        Self::parse_ndjson(&self.source_name, &out, self.visibility)
     }
 }
 
@@ -149,7 +155,7 @@ struct PondMessageRow {
 }
 
 impl PondMessageRow {
-    fn into_atom(self, source_name: &str) -> Option<KnowledgeAtom> {
+    fn into_atom(self, source_name: &str, visibility: VisibilityScope) -> Option<KnowledgeAtom> {
         let text = self
             .search_text
             .filter(|s| !s.trim().is_empty())
@@ -200,6 +206,7 @@ impl PondMessageRow {
             indexed_at: Utc::now(),
             embedding: None,
             metadata,
+            visibility,
             ..Default::default()
         })
     }
@@ -213,6 +220,7 @@ impl Connector for PondConnector {
 
     async fn init(&mut self, config: &SourceConfig) -> Result<()> {
         self.source_name = config.name.clone();
+        self.visibility = source_visibility(config);
         if let Some(bin) = config.extra.get("pond_bin") {
             self.pond_bin = PathBuf::from(bin);
         }
@@ -227,7 +235,12 @@ impl Connector for PondConnector {
             }
         }
         // Probe binary only when PATH-style; existence of custom path is checked at fetch.
-        tracing::debug!(bin = %self.pond_bin.display(), limit = self.limit, "pond connector initialized");
+        tracing::debug!(
+            bin = %self.pond_bin.display(),
+            limit = self.limit,
+            visibility = self.visibility.as_str(),
+            "pond connector initialized"
+        );
         Ok(())
     }
 
@@ -289,11 +302,13 @@ mod tests {
     #[test]
     fn parse_ndjson_fixture() {
         let line = r#"{"session_id":"s1","message_id":"s1:2","timestamp":"2026-06-13T20:08:28.390Z","role":"user","source_agent":"claude-code","project":"/tmp","search_text":"KNOWN_POND_MSG_99 how does indexing work","content":null}"#;
-        let atoms = PondConnector::parse_ndjson("chats", line).unwrap();
+        let atoms =
+            PondConnector::parse_ndjson("chats", line, VisibilityScope::Personal).unwrap();
         assert_eq!(atoms.len(), 1);
         assert!(atoms[0].content.contains("KNOWN_POND_MSG_99"));
         assert_eq!(atoms[0].source, "chats");
         assert_eq!(atoms[0].source_id, "s1:2");
+        assert_eq!(atoms[0].visibility, VisibilityScope::Personal);
     }
 
     #[tokio::test]
@@ -305,19 +320,21 @@ mod tests {
             kind: SourceKind::Pond,
             enabled: true,
             poll_interval_secs: 60,
-            extra: HashMap::new(),
+            extra: HashMap::from([("visibility".into(), "team".into())]),
         })
         .await
         .unwrap();
         let atoms = c.full_sync().await.unwrap();
         assert_eq!(atoms.len(), 1);
         assert!(atoms[0].content.contains("KNOWN_POND_MSG_99"));
+        assert_eq!(atoms[0].visibility, VisibilityScope::Team);
     }
 
     #[test]
     fn skips_empty_search_text() {
         let line = r#"{"message_id":"x","role":"user","search_text":"","content":""}"#;
-        let atoms = PondConnector::parse_ndjson("chats", line).unwrap();
+        let atoms =
+            PondConnector::parse_ndjson("chats", line, VisibilityScope::Personal).unwrap();
         assert!(atoms.is_empty());
     }
 }

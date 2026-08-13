@@ -3,11 +3,11 @@
 //! Indexes a checkout on disk (Pace-Server, luke-agents, etc.). No GitHub API —
 //! name matches the Phase 4 roadmap “GitHub/Code” source.
 
-use crate::connectors::Connector;
+use crate::connectors::{source_visibility, Connector};
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::{atom_id_from_hash, sha256_hex};
 use crate::security::validate_readable_path;
-use crate::types::{KnowledgeAtom, SourceConfig};
+use crate::types::{KnowledgeAtom, SourceConfig, VisibilityScope};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
@@ -109,6 +109,7 @@ pub struct GitHubConnector {
     root_path: Option<PathBuf>,
     extensions: HashSet<String>,
     max_file_bytes: u64,
+    visibility: VisibilityScope,
     last_poll: Mutex<Option<SystemTime>>,
 }
 
@@ -124,6 +125,7 @@ impl GitHubConnector {
                 .map(|e| (*e).to_string())
                 .collect(),
             max_file_bytes: DEFAULT_MAX_FILE_BYTES,
+            visibility: VisibilityScope::Personal,
             last_poll: Mutex::new(None),
         }
     }
@@ -159,9 +161,17 @@ impl GitHubConnector {
             .ok_or_else(|| KurultaiError::connector("github", "not initialized"))?;
         let extensions = self.extensions.clone();
         let max_file_bytes = self.max_file_bytes;
+        let visibility = self.visibility;
 
         let atoms = tokio::task::spawn_blocking(move || {
-            collect_atoms(source_name, root, extensions, max_file_bytes, since)
+            collect_atoms(
+                source_name,
+                root,
+                extensions,
+                max_file_bytes,
+                since,
+                visibility,
+            )
         })
         .await
         .map_err(|e| KurultaiError::connector("github", format!("spawn_blocking: {e}")))??;
@@ -189,6 +199,7 @@ impl Connector for GitHubConnector {
 
     async fn init(&mut self, config: &SourceConfig) -> Result<()> {
         self.source_name = config.name.clone();
+        self.visibility = source_visibility(config);
         let root = Self::resolve_root(config)?;
         let resolved = validate_readable_path(&root, "github root")?;
         self.extensions = Self::parse_extensions(config.extra.get("extensions"));
@@ -197,7 +208,11 @@ impl Connector for GitHubConnector {
             .get("max_file_bytes")
             .and_then(|s| s.parse().ok())
             .unwrap_or(DEFAULT_MAX_FILE_BYTES);
-        tracing::debug!(root = %resolved.display(), "github connector initialized");
+        tracing::debug!(
+            root = %resolved.display(),
+            visibility = self.visibility.as_str(),
+            "github connector initialized"
+        );
         self.root_path = Some(resolved);
         Ok(())
     }
@@ -221,6 +236,7 @@ fn collect_atoms(
     extensions: HashSet<String>,
     max_file_bytes: u64,
     since: Option<SystemTime>,
+    visibility: VisibilityScope,
 ) -> Result<Vec<KnowledgeAtom>> {
     let mut by_source_id: HashMap<String, KnowledgeAtom> = HashMap::new();
     walk_code_files(&root, &extensions, &mut |path| {
@@ -267,7 +283,7 @@ fn collect_atoms(
             .map(|d| DateTime::from_timestamp(d.as_secs() as i64, 0).unwrap_or_else(Utc::now))
             .unwrap_or_else(Utc::now);
 
-        for atom in file_to_atoms(&source_name, &rel, &text, updated) {
+        for atom in file_to_atoms(&source_name, &rel, &text, updated, visibility) {
             by_source_id.insert(atom.source_id.clone(), atom);
         }
         Ok(())
@@ -369,6 +385,7 @@ fn file_to_atoms(
     rel_path: &str,
     text: &str,
     source_updated_at: DateTime<Utc>,
+    visibility: VisibilityScope,
 ) -> Vec<KnowledgeAtom> {
     let content = text.trim();
     if content.is_empty() || is_minified_content(content) {
@@ -394,6 +411,7 @@ fn file_to_atoms(
                 source_updated_at,
                 i as u32,
                 chunk_count,
+                visibility,
             )
         })
         .collect()
@@ -415,6 +433,7 @@ fn make_atom(
     source_updated_at: DateTime<Utc>,
     chunk_index: u32,
     chunk_count: u32,
+    visibility: VisibilityScope,
 ) -> KnowledgeAtom {
     let source_id = if chunk_count > 1 {
         format!("{rel_path}#c{chunk_index}")
@@ -453,6 +472,7 @@ fn make_atom(
             ("chunk_index".into(), chunk_index.to_string()),
             ("chunk_count".into(), chunk_count.to_string()),
         ]),
+        visibility,
         ..Default::default()
     }
 }
@@ -597,7 +617,13 @@ mod tests {
     #[test]
     fn file_to_atoms_rejects_minified_content() {
         let minified = "x".repeat(600);
-        let atoms = file_to_atoms("test", "bundle.js", &minified, Utc::now());
+        let atoms = file_to_atoms(
+            "test",
+            "bundle.js",
+            &minified,
+            Utc::now(),
+            VisibilityScope::Personal,
+        );
         assert!(atoms.is_empty());
     }
 

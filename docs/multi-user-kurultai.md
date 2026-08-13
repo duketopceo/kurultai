@@ -10,6 +10,7 @@ Related: GitHub login [#81](https://github.com/duketopceo/kurultai/issues/81) ·
 |------------|--------|
 | Personal kernel (`cargo install`, local `store.db`) | **Shipped** |
 | Atom **visibility scope** (`personal` \| `team` \| `company`, default `personal`) | **Shipped** (HUB-1 / [#178](https://github.com/duketopceo/kurultai/issues/178)) — solo search unchanged; hub enforcement later |
+| Connector **visibility tagging** at ingest (`visibility` on source / JSON / MD frontmatter) | **Shipped** (HUB-5 / [#180](https://github.com/duketopceo/kurultai/issues/180)) — never inferred after the fact |
 | `web/` Clerk + GitHub sign-in shell | **Shipped** |
 | One team deploy + one Clerk Organization | **Design + partial UI** — auth only; shared store/API enforcement not in this PR |
 | Promote-to-shared-index, device sync (#80) | **Partial** — offline `.kurultai` export/import shipped; encrypted/live sync still roadmap |
@@ -26,7 +27,24 @@ Every `KnowledgeAtom` carries a visibility field:
 | `team` | Shared with a team tier when a hub exists (optional — deployments may omit `company`) |
 | `company` | Org-wide when both shared tiers exist |
 
-**Solo / no hub:** search and ask return all local atoms regardless of scope tags (no filter yet). Connectors may set scope at ingest; Kurultai does **not** infer it from path or source kind.
+**Solo / no hub:** search and ask return all local atoms regardless of scope tags (no filter yet). Connectors set scope at ingest via source `visibility` (and JSON record / markdown frontmatter overrides); Kurultai does **not** infer it from path or source kind.
+
+### Config (HUB-5)
+
+```toml
+[sources.ops-notes]
+kind = "markdown"
+root_path = "/path/to/shared-runbooks"
+visibility = "team"   # personal | team | company — default personal
+
+[sources.data]
+kind = "json"
+root_path = "/path/to/exports"
+visibility = "company"
+# Per-record override in JSON: { "visibility": "personal", ... }
+```
+
+Markdown frontmatter may also set `visibility: team` per file.
 
 Next: Postgres shared store + hub transport — see [phase-6-next-work-orders.md](plans/phase-6-next-work-orders.md).
 

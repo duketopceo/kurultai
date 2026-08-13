@@ -2,11 +2,11 @@
 //!
 //! Read-only SQLite over `timeline_cards` — never writes the Dayflow DB.
 
-use crate::connectors::Connector;
+use crate::connectors::{source_visibility, Connector};
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::atom_id;
 use crate::security::validate_readable_path;
-use crate::types::{KnowledgeAtom, SourceConfig};
+use crate::types::{KnowledgeAtom, SourceConfig, VisibilityScope};
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use rusqlite::{Connection, OpenFlags};
@@ -20,6 +20,7 @@ const DEFAULT_REL: &str = "Library/Application Support/Dayflow/chunks.sqlite";
 pub struct DayflowConnector {
     source_name: String,
     db_path: Option<PathBuf>,
+    visibility: VisibilityScope,
     /// Incremental watermark: max `start_ts` seen (unix seconds).
     last_start_ts: Mutex<Option<i64>>,
 }
@@ -29,6 +30,7 @@ impl DayflowConnector {
         Self {
             source_name: "dayflow".into(),
             db_path: None,
+            visibility: VisibilityScope::Personal,
             last_start_ts: Mutex::new(None),
         }
     }
@@ -160,6 +162,7 @@ impl DayflowConnector {
                 indexed_at: Utc::now(),
                 embedding: None,
                 metadata,
+                visibility: self.visibility,
                 ..Default::default()
             })
         };
@@ -196,9 +199,14 @@ impl Connector for DayflowConnector {
 
     async fn init(&mut self, config: &SourceConfig) -> Result<()> {
         self.source_name = config.name.clone();
+        self.visibility = source_visibility(config);
         let raw = Self::resolve_db_path(config)?;
         let path = validate_readable_path(&raw, "dayflow db")?;
-        tracing::debug!(db = %path.display(), "dayflow connector initialized");
+        tracing::debug!(
+            db = %path.display(),
+            visibility = self.visibility.as_str(),
+            "dayflow connector initialized"
+        );
         self.db_path = Some(path);
         Ok(())
     }

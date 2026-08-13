@@ -11,6 +11,7 @@
 //! enabled  = true
 //! root_path = "/path/to/json-files"
 //! extra    = { id_field = "url" }   # optional: use a field as stable source_id
+//! # visibility = "team"             # optional source default (HUB-5); fail-closed personal
 //! ```
 //!
 //! # Atom mapping
@@ -20,11 +21,12 @@
 //! - `tags`   — `tags` field (array or comma-separated string), or `[]
 //! - `source_id` — value of `id_field` extra config (default: `"id"`), falling
 //!   back to `"<rel_path>/<index>"`
+//! - `visibility` — per-record override of source default (`personal`|`team`|`company`)
 
-use crate::connectors::Connector;
+use crate::connectors::{source_visibility, Connector};
 use crate::error::{KurultaiError, Result};
 use crate::security::validate_readable_path;
-use crate::types::{KnowledgeAtom, SourceConfig};
+use crate::types::{KnowledgeAtom, SourceConfig, VisibilityScope};
 use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::Value;
@@ -39,6 +41,8 @@ pub struct JsonConnector {
     source_name: String,
     root_path: Option<PathBuf>,
     id_field: String,
+    /// Source-level default; per-record `visibility` may override (HUB-5).
+    visibility: VisibilityScope,
     last_poll: Mutex<Option<SystemTime>>,
 }
 
@@ -48,6 +52,7 @@ impl JsonConnector {
             source_name: "json".into(),
             root_path: None,
             id_field: "id".into(),
+            visibility: VisibilityScope::Personal,
             last_poll: Mutex::new(None),
         }
     }
@@ -77,7 +82,13 @@ impl JsonConnector {
                 .replace('\\', "/");
 
             let records = parse_json_file(path, &self.source_name)?;
-            let file_atoms = records_to_atoms(&self.source_name, &rel, &self.id_field, records);
+            let file_atoms = records_to_atoms(
+                &self.source_name,
+                &rel,
+                &self.id_field,
+                self.visibility,
+                records,
+            );
             atoms.extend(file_atoms);
             Ok(())
         })?;
@@ -100,12 +111,17 @@ impl Connector for JsonConnector {
 
     async fn init(&mut self, config: &SourceConfig) -> Result<()> {
         self.source_name = config.name.clone();
+        self.visibility = source_visibility(config);
 
         let root = config.extra.get("root_path").ok_or_else(|| {
             KurultaiError::connector(&config.name, "root_path required for json source")
         })?;
         let resolved = validate_readable_path(root, "json root")?;
-        tracing::debug!(root = %resolved.display(), "json connector initialized");
+        tracing::debug!(
+            root = %resolved.display(),
+            visibility = self.visibility.as_str(),
+            "json connector initialized"
+        );
         self.root_path = Some(resolved);
 
         if let Some(id_field) = config.extra.get("id_field") {
@@ -265,6 +281,7 @@ fn records_to_atoms(
     source: &str,
     rel_path: &str,
     id_field: &str,
+    default_visibility: VisibilityScope,
     records: Vec<Value>,
 ) -> Vec<KnowledgeAtom> {
     let mut out = Vec::with_capacity(records.len());
@@ -296,6 +313,11 @@ fn records_to_atoms(
             .unwrap_or_else(|| serde_json::to_string(obj).unwrap_or_else(|_| String::from("{}")));
 
         let tags = extract_tags(obj);
+        let visibility = obj
+            .get("visibility")
+            .and_then(Value::as_str)
+            .map(VisibilityScope::parse)
+            .unwrap_or(default_visibility);
 
         // Collect any remaining scalar fields as atom metadata.
         let metadata: HashMap<String, String> = obj
@@ -303,7 +325,7 @@ fn records_to_atoms(
             .filter(|(k, v)| {
                 !matches!(
                     k.as_str(),
-                    "title" | "name" | "content" | "body" | "text" | "tags"
+                    "title" | "name" | "content" | "body" | "text" | "tags" | "visibility"
                 ) && v.is_string()
             })
             .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()))
@@ -327,6 +349,7 @@ fn records_to_atoms(
             indexed_at: Utc::now(),
             embedding: None,
             metadata,
+            visibility,
             ..Default::default()
         });
     }
@@ -442,7 +465,13 @@ mod tests {
             r#"[{"id": "doc1", "title": "My Doc", "content": "The quick brown fox", "tags": ["rust"]}]"#,
         )
         .unwrap();
-        let atoms = records_to_atoms("test-src", "docs/data.json", "id", records);
+        let atoms = records_to_atoms(
+            "test-src",
+            "docs/data.json",
+            "id",
+            VisibilityScope::Personal,
+            records,
+        );
         assert_eq!(atoms.len(), 1);
         let a = &atoms[0];
         assert_eq!(a.source_id, "doc1");
@@ -450,13 +479,14 @@ mod tests {
         assert!(a.content.contains("quick brown fox"));
         assert!(a.tags.contains(&"rust".to_string()));
         assert_eq!(a.source, "test-src");
+        assert_eq!(a.visibility, VisibilityScope::Personal);
     }
 
     #[test]
     fn records_to_atoms_falls_back_for_missing_fields() {
         let records: Vec<Value> =
             serde_json::from_str(r#"[{"description": "no standard fields"}]"#).unwrap();
-        let atoms = records_to_atoms("src", "f.json", "id", records);
+        let atoms = records_to_atoms("src", "f.json", "id", VisibilityScope::Personal, records);
         assert_eq!(atoms.len(), 1);
         // Source_id falls back to "f.json/0"
         assert_eq!(atoms[0].source_id, "f.json/0");
@@ -464,6 +494,40 @@ mod tests {
         assert_eq!(atoms[0].title, "src/0");
         // Content is the full serialized object
         assert!(atoms[0].content.contains("description"));
+    }
+
+    #[test]
+    fn records_to_atoms_uses_source_default_visibility() {
+        let records: Vec<Value> =
+            serde_json::from_str(r#"[{"id": "t1", "content": "shared ops note"}]"#).unwrap();
+        let atoms = records_to_atoms("src", "f.json", "id", VisibilityScope::Team, records);
+        assert_eq!(atoms[0].visibility, VisibilityScope::Team);
+    }
+
+    #[test]
+    fn records_to_atoms_per_record_visibility_overrides_default() {
+        let records: Vec<Value> = serde_json::from_str(
+            r#"[
+              {"id": "a", "content": "dm", "visibility": "personal"},
+              {"id": "b", "content": "channel", "visibility": "team"},
+              {"id": "c", "content": "all-hands", "visibility": "company"}
+            ]"#,
+        )
+        .unwrap();
+        let atoms = records_to_atoms("src", "f.json", "id", VisibilityScope::Company, records);
+        assert_eq!(atoms[0].visibility, VisibilityScope::Personal);
+        assert_eq!(atoms[1].visibility, VisibilityScope::Team);
+        assert_eq!(atoms[2].visibility, VisibilityScope::Company);
+    }
+
+    #[test]
+    fn records_to_atoms_unknown_visibility_fail_closed() {
+        let records: Vec<Value> = serde_json::from_str(
+            r#"[{"id": "x", "content": "x", "visibility": "everyone"}]"#,
+        )
+        .unwrap();
+        let atoms = records_to_atoms("src", "f.json", "id", VisibilityScope::Team, records);
+        assert_eq!(atoms[0].visibility, VisibilityScope::Personal);
     }
 
     #[test]
@@ -504,6 +568,35 @@ mod tests {
             .any(|a| a.content.contains("FIXTURE_JSON_KNOWN_PHRASE_42")));
         assert!(atoms.iter().any(|a| a.tags.contains(&"alpha".to_string())));
         assert!(atoms.iter().all(|a| a.source == "json-test"));
+        assert!(atoms
+            .iter()
+            .all(|a| a.visibility == VisibilityScope::Personal));
+    }
+
+    #[tokio::test]
+    async fn full_sync_applies_source_visibility_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = r#"[{"id": "k1", "title": "Team", "content": "TEAM_VIS_42"}]"#;
+        fs::write(dir.path().join("fixture.json"), content).unwrap();
+
+        let mut connector = JsonConnector::new();
+        let config = SourceConfig {
+            name: "json-team".into(),
+            kind: crate::types::SourceKind::Json,
+            enabled: true,
+            poll_interval_secs: 60,
+            extra: HashMap::from([
+                (
+                    "root_path".into(),
+                    dir.path().to_string_lossy().into_owned(),
+                ),
+                ("visibility".into(), "team".into()),
+            ]),
+        };
+        connector.init(&config).await.unwrap();
+        let atoms = connector.full_sync().await.unwrap();
+        assert_eq!(atoms.len(), 1);
+        assert_eq!(atoms[0].visibility, VisibilityScope::Team);
     }
 
     #[tokio::test]
