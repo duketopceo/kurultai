@@ -1,13 +1,27 @@
 # Phase 6 — next work orders (post–Wave B)
 
-**Status:** Planning · ready for `/lfg`  
-**Date:** 2026-08-12  
+**Status:** v0.4.1 production prep · Wave G hub = **v0.5.0**  
+**Date:** 2026-08-12 · **Updated:** 2026-08-13  
 **Base:** `main` after Wave B foundation (MCP HTTP/SSE · thin metrics · soft labels · export/import · Brain UI)  
 **Umbrella:** [#10](https://github.com/duketopceo/kurultai/issues/10) Open Source Launch · Milestone 6  
 **Parent pack:** [`phase-6-work-orders.md`](phase-6-work-orders.md)  
 **Product contract:** [`docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md`](../brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md)  
 **Milestone:** [Tiered Access + Hosted Hub](https://github.com/duketopceo/kurultai/milestone/8) (#176–#181)  
 **Audience spine:** developer ✅ → solo ✅ (kernel) → **team 🔜** → company ([#25](https://github.com/duketopceo/kurultai/issues/25))
+
+## Version flags
+
+Override with `KURULTAI_FEATURE_<ID>=0|1`. Catalog: `src/features.rs` · `kurultai status`.
+
+| Flag | Since | Default | Work |
+|------|-------|---------|------|
+| `fts` | v0.3.0 | on | Kernel search (shipped) |
+| `brain_ui` | v0.4.0 | on | Embedded `/ui/` (shipped) |
+| `mcp_http` | v0.4.0 | on | Daemon MCP HTTP/SSE (shipped) |
+| `local_embed` | v0.3.0 | cargo feature | `--features local-embed` |
+| `hub` | **v0.5.0** | **off** | Wave G HUB-2…6 — do not treat as v0.4.x |
+
+**v0.3.1 was skipped.** GitHub latest is [v0.4.0](https://github.com/duketopceo/kurultai/releases/tag/v0.4.0). Next production tag is **v0.4.1**. Team cashflow stays **v0.5.0**.
 
 ## Reality check
 
@@ -25,14 +39,15 @@
 
 Ship **visibility scopes + shared hub** before Atlas UI or enterprise connector sprawl.
 
-| Order | ID | Work order | Issue | Size | First LFG? |
-|------:|----|------------|-------|------|------------|
-| 1 | **HUB-1** | **Atom visibility scope** `personal \| team \| company` + merged local query shape (solo unchanged) | [#178](https://github.com/duketopceo/kurultai/issues/178) | M | **Yes — next `/lfg`** · plan [`2026-08-12-002-feat-tiered-access-atom-scope-plan.md`](2026-08-12-002-feat-tiered-access-atom-scope-plan.md) |
-| 2 | HUB-2 | Postgres + pgvector `Store` for **shared** tier | [#176](https://github.com/duketopceo/kurultai/issues/176) · legacy [#111](https://github.com/duketopceo/kurultai/issues/111) | L | After HUB-1 |
-| 3 | HUB-3 | Hub mode daemon — Tailscale-only **or** public + per-device API key | [#177](https://github.com/duketopceo/kurultai/issues/177) | L | Needs HUB-2 |
-| 4 | HUB-4 | Admin CLI — issue/revoke device keys; `team_id` / `org_id` boundaries | [#179](https://github.com/duketopceo/kurultai/issues/179) | M | With/after HUB-3 |
-| 5 | HUB-5 | Connector ingest tags visibility scope at source (never infer later) | [#180](https://github.com/duketopceo/kurultai/issues/180) · narrows [#114](https://github.com/duketopceo/kurultai/issues/114) | M | After HUB-1 |
-| 6 | HUB-6 | Acceptance suite AE1–AE5 | [#181](https://github.com/duketopceo/kurultai/issues/181) | M | Continuous; gate before calling v0.5.0 “team” |
+| Order | ID | Work order | Issue | Size | Version / flag | First LFG? |
+|------:|----|------------|-------|------|----------------|------------|
+| 0 | **REL-1** | **v0.4.1 production tag** — crate/docs/UI embed in sync; human tags `v0.4.1` after merge | this tree | S | v0.4.1 | After this PR |
+| 1 | **HUB-1** | **Atom visibility scope** `personal \| team \| company` + merged local query shape (solo unchanged) | [#178](https://github.com/duketopceo/kurultai/issues/178) | M | v0.4.x (`hub` still off) | ✅ `#192` |
+| 2 | **HUB-2** | Postgres + pgvector `Store` for **shared** tier | [#176](https://github.com/duketopceo/kurultai/issues/176) · legacy [#111](https://github.com/duketopceo/kurultai/issues/111) | L | v0.5.0 `hub` | **Yes — next `/lfg`** |
+| 3 | HUB-3 | Hub mode daemon — Tailscale-only **or** public + per-device API key | [#177](https://github.com/duketopceo/kurultai/issues/177) | L | v0.5.0 `hub` | After HUB-2 · [#190](https://github.com/duketopceo/kurultai/pull/190) shipped API-key scaffold |
+| 4 | HUB-4 | Admin CLI — issue/revoke device keys; `team_id` / `org_id` boundaries | [#179](https://github.com/duketopceo/kurultai/issues/179) | M | v0.5.0 `hub` | With/after HUB-3 |
+| 5 | HUB-5 | Connector ingest tags visibility scope at source (never infer later) | [#180](https://github.com/duketopceo/kurultai/issues/180) · narrows [#114](https://github.com/duketopceo/kurultai/issues/114) | M | v0.5.0 `hub` | After HUB-1 · restart on `main` ([#193](https://github.com/duketopceo/kurultai/pull/193) closed unmerged) |
+| 6 | HUB-6 | Acceptance suite AE1–AE5 | [#181](https://github.com/duketopceo/kurultai/issues/181) | M | v0.5.0 `hub` | Gate before calling v0.5.0 “team” |
 
 **HUB-1 DoD (LFG capsule):** every `KnowledgeAtom` carries a visibility scope (default `personal`); solo `ask`/`search` unchanged when no hub configured; schema/migration + tests; **no** Postgres and **no** public bind in this slice.
 
@@ -76,10 +91,10 @@ Atlas sequencing still lives in [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md)
 
 ## `/lfg` playbook (this queue)
 
-1. Docs (this PR): land next-queue pack + HUB-1 plan.  
-2. Agent `/lfg`: **HUB-1** → [`2026-08-12-002-feat-tiered-access-atom-scope-plan.md`](2026-08-12-002-feat-tiered-access-atom-scope-plan.md).  
-3. Next: **HUB-2** Postgres Store ([#176](https://github.com/duketopceo/kurultai/issues/176)).  
-4. Then HUB-3 transport → HUB-4 admin → HUB-5 connector tagging; keep HUB-6 green.
+1. ~~HUB-1 atom scope~~ ✅ `#192`.  
+2. **v0.4.1 prep** (this PR): CLI map · UI build · versioned flags. Solo docs: [#195](https://github.com/duketopceo/kurultai/pull/195) (`init --docs`) — merge before the tag if it should ship in 0.4.1. Human tags **`v0.4.1`** on `main`.  
+3. **Next `/lfg`:** **HUB-2** Postgres Store ([#176](https://github.com/duketopceo/kurultai/issues/176), Linear PRO-760) under flag `hub` / v0.5.0. SQLite stays the solo kernel.  
+4. Then remaining HUB-3 (Tailscale bind + tenant identity; API-key scaffold is `#190`) → HUB-4 admin → HUB-5 connector tagging (restart; `#193` did not land) → HUB-6 green.
 
 ### Hygiene
 

@@ -10,6 +10,7 @@ pub mod embed;
 pub mod environment;
 pub mod error;
 pub mod export;
+pub mod features;
 pub mod hashutil;
 pub mod http;
 pub mod ingest;

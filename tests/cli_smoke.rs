@@ -61,7 +61,39 @@ fn status_shows_environment_and_sources() {
         .success()
         .stdout(predicate::str::contains("Kurultai status"))
         .stdout(predicate::str::contains("notes"))
-        .stdout(predicate::str::contains("Reranker: none"));
+        .stdout(predicate::str::contains("Reranker: none"))
+        .stdout(predicate::str::contains("Features"))
+        .stdout(predicate::str::contains("fts"))
+        .stdout(predicate::str::contains("brain_ui"));
+}
+
+#[test]
+fn help_groups_setup_knowledge_serve() {
+    bin()
+        .args(["--plain", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Setup"))
+        .stdout(predicate::str::contains("Knowledge"))
+        .stdout(predicate::str::contains("Serve"))
+        .stdout(predicate::str::contains("Packs"))
+        .stdout(predicate::str::contains("Maintenance"))
+        .stdout(predicate::str::contains("who-knows"))
+        .stdout(predicate::str::contains("127.0.0.1:8421/ui/"));
+}
+
+#[test]
+fn who_knows_underscore_alias_works() {
+    let tmp = tempfile::tempdir().unwrap();
+    let cfg = fixture_config(&tmp);
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "index", "--full"])
+        .assert()
+        .success();
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "who_knows", "migration"])
+        .assert()
+        .success();
 }
 
 #[test]

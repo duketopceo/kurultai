@@ -34,7 +34,7 @@ Prefer one of:
 curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.sh | bash
 
 # Or from source / git tag
-cargo install --git https://github.com/duketopceo/kurultai --tag v0.3.0 --locked
+cargo install --git https://github.com/duketopceo/kurultai --tag v0.4.0 --locked
 
 # Or from a local clone
 cargo install --path . --locked
