@@ -11,6 +11,7 @@ environment = "dev"   # dev | staging | prod
 path = "~/.local/share/kurultai/dev/store.db"
 
 # --- Sources (enable at least one) ------------------------------------------
+# Solo shortcut: `kurultai init --docs` creates Documents/kurultai and enables notes.
 
 [sources.notes]
 enabled = true

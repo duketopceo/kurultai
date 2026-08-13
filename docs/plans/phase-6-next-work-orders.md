@@ -92,7 +92,7 @@ Atlas sequencing still lives in [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md)
 ## `/lfg` playbook (this queue)
 
 1. ~~HUB-1 atom scope~~ ✅ `#192`.  
-2. **v0.4.1 prep** (this PR): CLI map · UI build · versioned flags. Solo docs: [#195](https://github.com/duketopceo/kurultai/pull/195) (`init --docs`) — merge before the tag if it should ship in 0.4.1. Human tags **`v0.4.1`** on `main`.  
+2. ~~v0.4.1 prep~~ ✅ `#196` (CLI map · UI build · versioned flags). Solo docs: this PR (`init --docs`). Human tags **`v0.4.1`** on `main` after both land.  
 3. **Next `/lfg`:** **HUB-2** Postgres Store ([#176](https://github.com/duketopceo/kurultai/issues/176), Linear PRO-760) under flag `hub` / v0.5.0. SQLite stays the solo kernel.  
 4. Then remaining HUB-3 (Tailscale bind + tenant identity; API-key scaffold is `#190`) → HUB-4 admin → HUB-5 connector tagging (restart; `#193` did not land) → HUB-6 green.
 

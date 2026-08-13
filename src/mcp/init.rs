@@ -1,9 +1,11 @@
 //! Wire Kurultai into agent MCP configs (`kurultai init --agent …`).
+//! Also provisions an on-device markdown folder (`kurultai init --docs`).
 
 use crate::config::default_config_toml;
 use crate::error::{KurultaiError, Result};
 use clap::ValueEnum;
 use serde_json::{json, Value};
+use std::fmt::Write as _;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -19,6 +21,8 @@ pub enum AgentTarget {
     Codex,
     Hermes,
     All,
+    /// Skip MCP wiring (`--agent none`).
+    None,
 }
 
 impl AgentTarget {
@@ -37,15 +41,282 @@ impl FromStr for AgentTarget {
             "codex" => Ok(Self::Codex),
             "hermes" => Ok(Self::Hermes),
             "all" => Ok(Self::All),
+            "none" => Ok(Self::None),
             other => Err(format!(
-                "unsupported agent '{other}' — supports: cursor, claude, codex, hermes, all"
+                "unsupported agent '{other}' — supports: cursor, claude, codex, hermes, all, none"
             )),
         }
     }
 }
 
+/// Result of `init --docs`: folder path and whether a starter note was created.
+#[derive(Debug, Clone)]
+pub struct DocsProvision {
+    pub dir: PathBuf,
+    pub starter_written: bool,
+}
+
+const STARTER_NOTE_NAME: &str = "welcome.md";
+
+const STARTER_NOTE: &str = r#"---
+title: Welcome to Kurultai
+tags: [getting-started, notes]
+---
+
+# Welcome
+
+This folder is your on-device docs source. Drop markdown here, then run:
+
+    kurultai index --full
+
+Each note needs at least one `tags:` entry in YAML frontmatter (for example `tags: [notes]`) or it stays in quarantine.
+
+## Next
+
+1. `kurultai daemon --port 8421`
+2. Open http://127.0.0.1:8421/ui/
+
+Without an API key, FTS search still works. Set `OPENROUTER_API_KEY` (or `KURULTAI_API_KEY`) for embeddings and LLM ask.
+"#;
+
+/// Default on-device docs folder: `Documents/kurultai`, else `~/kurultai`.
+pub fn default_docs_dir() -> PathBuf {
+    if let Some(dir) = dirs::document_dir() {
+        return dir.join("kurultai");
+    }
+    match dirs::home_dir() {
+        Some(home) => {
+            let documents = home.join("Documents");
+            if documents.is_dir() {
+                documents.join("kurultai")
+            } else {
+                home.join("kurultai")
+            }
+        }
+        None => PathBuf::from("kurultai"),
+    }
+}
+
+/// Resolve `--docs [PATH]`. Empty / omitted path uses [`default_docs_dir`].
+pub fn resolve_docs_dir(arg: Option<&str>) -> Result<PathBuf> {
+    let raw = match arg {
+        None | Some("") => default_docs_dir(),
+        Some(p) => PathBuf::from(p),
+    };
+    if raw.is_absolute() {
+        Ok(raw)
+    } else {
+        Ok(std::env::current_dir()?.join(raw))
+    }
+}
+
+/// Create the docs folder, write a tagged starter note if missing, enable `[sources.notes]`.
+pub fn provision_docs(docs_arg: Option<&str>, config_path: &Path) -> Result<DocsProvision> {
+    let dir = resolve_docs_dir(docs_arg)?;
+    fs::create_dir_all(&dir)?;
+    let starter = dir.join(STARTER_NOTE_NAME);
+    let starter_written = if starter.exists() {
+        false
+    } else {
+        fs::write(&starter, STARTER_NOTE)?;
+        true
+    };
+
+    let raw = fs::read_to_string(config_path)?;
+    let root_path = dir.to_string_lossy();
+    let updated = upsert_notes_source(&raw, &root_path)?;
+    if updated != raw {
+        atomic_write(config_path, updated.as_bytes())?;
+    }
+    Ok(DocsProvision {
+        dir,
+        starter_written,
+    })
+}
+
+/// Printed after `kurultai init` so CLI tests can assert the same walkthrough.
+pub fn init_walkthrough(
+    config_path: &Path,
+    docs: Option<&DocsProvision>,
+    mcp_paths: &[PathBuf],
+    agent: AgentTarget,
+    indexed: bool,
+) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "Config: {}", config_path.display());
+    if let Some(docs) = docs {
+        let _ = writeln!(out, "Docs folder: {}", docs.dir.display());
+        if docs.starter_written {
+            let _ = writeln!(
+                out,
+                "  Starter note: welcome.md (tagged so it is searchable)"
+            );
+        } else {
+            let _ = writeln!(out, "  Existing notes kept (welcome.md not overwritten)");
+        }
+    }
+    let _ = writeln!(out);
+    if agent == AgentTarget::None {
+        let _ = writeln!(out, "MCP: skipped (--agent none)");
+    } else {
+        for path in mcp_paths {
+            let _ = writeln!(out, "MCP wired: {}", path.display());
+        }
+        let _ = writeln!(out, "Restart the agent(s) to load the kurultai MCP server.");
+    }
+    let _ = writeln!(out);
+    if indexed {
+        let _ = writeln!(out, "Indexed sources (full).");
+    } else {
+        let _ = writeln!(out, "Next: kurultai index --full");
+    }
+    let _ = writeln!(out);
+    let _ = writeln!(out, "Without an API key (FTS-only — works now):");
+    if !indexed {
+        let _ = writeln!(out, "  kurultai index --full");
+    }
+    let _ = writeln!(out, "  kurultai search \"welcome\"");
+    let _ = writeln!(out, "  kurultai daemon --port 8421");
+    let _ = writeln!(out, "  # Brain UI → http://127.0.0.1:8421/ui/");
+    let _ = writeln!(out);
+    let _ = writeln!(out, "With embeddings / LLM ask:");
+    let _ = writeln!(
+        out,
+        "  export OPENROUTER_API_KEY=...   # or KURULTAI_API_KEY"
+    );
+    let _ = writeln!(out, "  kurultai index --full");
+    let _ = writeln!(out, "  kurultai ask \"what is in my notes?\"");
+    let _ = writeln!(out);
+    if docs.is_none() {
+        let _ = writeln!(out, "Store docs on this device:  kurultai init --docs");
+    } else {
+        let _ = writeln!(
+            out,
+            "Drop more markdown in the docs folder (YAML tags: required). Then index again."
+        );
+    }
+    out
+}
+
+/// Upsert `[sources.notes]` without dropping other sources. Prefers splicing the
+/// dotted table so comments elsewhere in the file survive.
+fn upsert_notes_source(raw: &str, root_path: &str) -> Result<String> {
+    let mut value: toml::Value = raw.parse().map_err(|e: toml::de::Error| {
+        KurultaiError::config(format!(
+            "existing config is not valid TOML ({e}); fix it before re-running init --docs"
+        ))
+    })?;
+    let table = value
+        .as_table_mut()
+        .ok_or_else(|| KurultaiError::config("config root must be a TOML table"))?;
+    apply_notes_fields(table, root_path)?;
+
+    let notes = table
+        .get("sources")
+        .and_then(|s| s.get("notes"))
+        .and_then(toml::Value::as_table)
+        .cloned()
+        .ok_or_else(|| KurultaiError::config("failed to build sources.notes"))?;
+    let rendered_table = render_notes_table(&notes)?;
+
+    if let Some(range) = find_toml_table_range(raw, "sources.notes") {
+        let mut out = String::with_capacity(raw.len() + rendered_table.len());
+        out.push_str(&raw[..range.start]);
+        out.push_str(&rendered_table);
+        if !rendered_table.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(&raw[range.end..]);
+        Ok(out)
+    } else {
+        let mut out = raw.trim_end().to_string();
+        out.push_str("\n\n");
+        out.push_str(&rendered_table);
+        if !rendered_table.ends_with('\n') {
+            out.push('\n');
+        }
+        Ok(out)
+    }
+}
+
+fn apply_notes_fields(
+    root: &mut toml::map::Map<String, toml::Value>,
+    root_path: &str,
+) -> Result<()> {
+    let sources = root
+        .entry("sources".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
+    let sources = sources
+        .as_table_mut()
+        .ok_or_else(|| KurultaiError::config("`sources` must be a TOML table"))?;
+    let notes = sources
+        .entry("notes".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
+    let notes = notes
+        .as_table_mut()
+        .ok_or_else(|| KurultaiError::config("`sources.notes` must be a TOML table"))?;
+    notes.insert("enabled".into(), toml::Value::Boolean(true));
+    notes.insert("kind".into(), toml::Value::String("markdown".into()));
+    notes.insert(
+        "root_path".into(),
+        toml::Value::String(root_path.to_string()),
+    );
+    notes
+        .entry("poll_interval_secs".to_string())
+        .or_insert(toml::Value::Integer(60));
+    Ok(())
+}
+
+fn render_notes_table(notes: &toml::map::Map<String, toml::Value>) -> Result<String> {
+    let mut sources = toml::map::Map::new();
+    sources.insert("notes".into(), toml::Value::Table(notes.clone()));
+    let mut root = toml::map::Map::new();
+    root.insert("sources".into(), toml::Value::Table(sources));
+    toml::to_string(&toml::Value::Table(root))
+        .map_err(|e| KurultaiError::Other(anyhow::anyhow!("encode sources.notes: {e}")))
+}
+
+fn find_toml_table_range(src: &str, name: &str) -> Option<std::ops::Range<usize>> {
+    let header = format!("[{name}]");
+    let mut search_from = 0;
+    while let Some(rel) = src[search_from..].find(&header) {
+        let abs = search_from + rel;
+        let line_start = src[..abs].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let prefix = src[line_start..abs].trim();
+        if prefix.is_empty() {
+            let after = abs + header.len();
+            let next = src.as_bytes().get(after).copied();
+            let header_ok = matches!(
+                next,
+                None | Some(b'\n') | Some(b'\r') | Some(b' ') | Some(b'\t') | Some(b'#')
+            );
+            if header_ok {
+                let rest = &src[after..];
+                let body_rel = rest.find('\n').map(|i| i + 1).unwrap_or(rest.len());
+                let body_start = after + body_rel;
+                let mut end = src.len();
+                let bytes = src.as_bytes();
+                let mut i = body_start;
+                while i < src.len() {
+                    if bytes[i] == b'[' && (i == 0 || bytes[i - 1] == b'\n') {
+                        end = i;
+                        break;
+                    }
+                    i += 1;
+                }
+                return Some(abs..end);
+            }
+        }
+        search_from = abs + header.len();
+    }
+    None
+}
+
 /// Write/merge MCP server entry for the given agent. Returns every path written.
 pub fn wire_agent(agent: AgentTarget) -> Result<Vec<PathBuf>> {
+    if agent == AgentTarget::None {
+        return Ok(Vec::new());
+    }
     let home = home_dir()?;
     let bin = resolve_kurultai_bin()?;
     match agent {
@@ -70,6 +341,7 @@ pub fn wire_agent(agent: AgentTarget) -> Result<Vec<PathBuf>> {
             wire_codex_at(&home.join(".codex/config.toml"), &bin)?,
             wire_hermes_at(&home.join(".hermes/config.yaml"), &bin)?,
         ]),
+        AgentTarget::None => unreachable!("None returns before home lookup"),
     }
 }
 
@@ -298,12 +570,122 @@ mod tests {
         assert_eq!(AgentTarget::parse("hermes").unwrap(), AgentTarget::Hermes);
         assert_eq!(AgentTarget::parse("Hermes").unwrap(), AgentTarget::Hermes);
         assert_eq!(AgentTarget::parse("all").unwrap(), AgentTarget::All);
+        assert_eq!(AgentTarget::parse("none").unwrap(), AgentTarget::None);
+        assert_eq!(AgentTarget::parse("None").unwrap(), AgentTarget::None);
         let err = AgentTarget::parse("bogus").unwrap_err().to_string();
         assert!(err.contains("cursor"));
         assert!(err.contains("claude"));
         assert!(err.contains("codex"));
         assert!(err.contains("hermes"));
         assert!(err.contains("all"));
+        assert!(err.contains("none"));
+    }
+
+    #[test]
+    fn wire_agent_none_writes_nothing() {
+        assert!(wire_agent(AgentTarget::None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn upsert_notes_appends_and_preserves_sibling_source() {
+        let raw = r#"environment = "dev"
+
+# keep this comment
+[storage]
+path = "/tmp/store.db"
+
+[sources.other]
+kind = "json"
+enabled = false
+root_path = "/tmp/data"
+"#;
+        let out = upsert_notes_source(raw, "/tmp/docs").unwrap();
+        assert!(out.contains("# keep this comment"));
+        assert!(out.contains("root_path = \"/tmp/data\""));
+        let parsed: toml::Value = out.parse().unwrap();
+        assert_eq!(
+            parsed["sources"]["notes"]["kind"].as_str(),
+            Some("markdown")
+        );
+        assert_eq!(
+            parsed["sources"]["notes"]["root_path"].as_str(),
+            Some("/tmp/docs")
+        );
+        assert_eq!(parsed["sources"]["notes"]["enabled"].as_bool(), Some(true));
+        assert_eq!(parsed["sources"]["other"]["kind"].as_str(), Some("json"));
+    }
+
+    #[test]
+    fn upsert_notes_refreshes_root_path_keeps_extra_keys() {
+        let raw = r#"
+[sources.notes]
+enabled = false
+kind = "markdown"
+root_path = "/old"
+poll_interval_secs = 90
+custom = "keep-me"
+"#;
+        let out = upsert_notes_source(raw, "/new").unwrap();
+        let parsed: toml::Value = out.parse().unwrap();
+        assert_eq!(
+            parsed["sources"]["notes"]["root_path"].as_str(),
+            Some("/new")
+        );
+        assert_eq!(parsed["sources"]["notes"]["enabled"].as_bool(), Some(true));
+        assert_eq!(
+            parsed["sources"]["notes"]["poll_interval_secs"].as_integer(),
+            Some(90)
+        );
+        assert_eq!(
+            parsed["sources"]["notes"]["custom"].as_str(),
+            Some("keep-me")
+        );
+    }
+
+    #[test]
+    fn provision_docs_writes_tagged_starter_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("config.toml");
+        fs::write(&cfg, default_config_toml()).unwrap();
+        let docs = dir.path().join("notes");
+        let first = provision_docs(Some(docs.to_str().unwrap()), &cfg).unwrap();
+        assert!(first.starter_written);
+        let welcome = docs.join("welcome.md");
+        let original = fs::read_to_string(&welcome).unwrap();
+        assert!(original.contains("tags:"));
+        assert!(original.contains("getting-started"));
+
+        fs::write(&welcome, "KEEP ME\n").unwrap();
+        let second = provision_docs(Some(docs.to_str().unwrap()), &cfg).unwrap();
+        assert!(!second.starter_written);
+        assert_eq!(fs::read_to_string(&welcome).unwrap(), "KEEP ME\n");
+
+        let cfg_raw = fs::read_to_string(&cfg).unwrap();
+        assert!(cfg_raw.contains("[sources.notes]"));
+        assert!(cfg_raw.contains("kind = \"markdown\""));
+        let parsed: toml::Value = cfg_raw.parse().unwrap();
+        assert_eq!(
+            parsed["sources"]["notes"]["root_path"].as_str(),
+            Some(docs.to_str().unwrap())
+        );
+    }
+
+    #[test]
+    fn walkthrough_covers_fts_and_daemon_ui() {
+        let text = init_walkthrough(
+            Path::new("/tmp/config.toml"),
+            None,
+            &[],
+            AgentTarget::None,
+            false,
+        );
+        assert!(text.contains("FTS-only"));
+        assert!(text.contains("OPENROUTER_API_KEY"));
+        assert!(text.contains("KURULTAI_API_KEY"));
+        assert!(text.contains("http://127.0.0.1:8421/ui/"));
+        assert!(text.contains("kurultai init --docs"));
+        assert!(text.contains("MCP: skipped"));
+        assert!(text.contains("kurultai index --full"));
     }
 
     #[test]

@@ -115,6 +115,7 @@ export function App() {
   const caption = (() => {
     const shown = Math.min(visible.length, renderCap);
     const total = Math.max(state.atomTotal, state.atoms.length);
+    if (total === 0) return '0 memories — kurultai init --docs · then index --full';
     if (total > shown) return `${shown} of ${total} memories · ${loadTier} · hover to trace`;
     return `${shown} memories · ${loadTier} · hover to trace connections`;
   })();

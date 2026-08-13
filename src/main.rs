@@ -8,7 +8,10 @@ use kurultai::environment::Environment;
 use kurultai::error::Result;
 use kurultai::export::{export_pack, import_pack, resolve_config_file, ImportMode};
 use kurultai::logging;
-use kurultai::mcp::{ensure_default_config, wire_agent, AgentRead, AgentTarget, BrainService};
+use kurultai::mcp::{
+    ensure_default_config, init_walkthrough, provision_docs, wire_agent, AgentRead, AgentTarget,
+    BrainService,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -17,7 +20,7 @@ use std::sync::Arc;
     name = "kurultai",
     version,
     about = "Assemble what you know, from wherever it lives.",
-    after_help = "Setup        kurultai init --agent <cursor|claude|codex|hermes|all>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated"
+    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated"
 )]
 struct Cli {
     /// Log filter (overrides KURULTAI_LOG). Example: kurultai=trace,info
@@ -42,11 +45,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Write config and wire MCP (`--agent cursor|claude|codex|hermes|all`)
+    /// Write default config, optionally provision a docs folder, and wire MCP
     Init {
-        /// Agent to wire: cursor, claude, codex, hermes, or all
+        /// Agent to wire: cursor, claude, codex, hermes, all, or none
         #[arg(long, default_value = "cursor")]
         agent: AgentTarget,
+        /// Provision an on-device markdown folder (default: Documents/kurultai)
+        #[arg(long, num_args = 0..=1, default_missing_value = "", value_name = "PATH")]
+        docs: Option<String>,
+        /// Run a full index after writing config
+        #[arg(long)]
+        index: bool,
     },
     /// Ingest configured sources into the brain
     Index {
@@ -158,18 +167,37 @@ async fn main() -> Result<()> {
     let no_color = env_no_color_set();
 
     match cli.command {
-        Commands::Init { agent } => {
+        Commands::Init {
+            agent,
+            ref docs,
+            index,
+        } => {
             let config_path = ensure_default_config()?;
             let banner_mode = load_config_from(&config_path)
                 .map(|c| c.banner)
                 .unwrap_or(BannerMode::Auto);
             let _ = print_banner_stdout(ArtVariant::Compact, banner_mode, plain, no_color);
+            let provisioned = if docs.is_some() {
+                Some(provision_docs(docs.as_deref(), &config_path)?)
+            } else {
+                None
+            };
             let mcp_paths = wire_agent(agent)?;
-            println!("Config: {}", config_path.display());
-            for path in &mcp_paths {
-                println!("MCP wired: {}", path.display());
+            print!(
+                "{}",
+                init_walkthrough(&config_path, provisioned.as_ref(), &mcp_paths, agent, index,)
+            );
+            if index {
+                let app = bootstrap_app(&cli).await?;
+                tracing::info!(full = true, "starting index");
+                let stats = app.pipeline.index_all(&app.connectors, true).await?;
+                for s in &stats {
+                    println!(
+                        "  {} — fetched {}, indexed {} ({}ms)",
+                        s.source, s.atoms_fetched, s.atoms_indexed, s.duration_ms
+                    );
+                }
             }
-            println!("Restart the agent(s) to load the kurultai MCP server.");
         }
         Commands::Mcp => {
             // Never print art on MCP stdio — protocol must stay clean.
