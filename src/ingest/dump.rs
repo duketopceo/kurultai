@@ -92,9 +92,8 @@ pub fn atomize_path(
             format!("unsupported dump format: {}", path.display()),
         )
     })?;
-    let text = fs::read_to_string(path).map_err(|e| {
-        KurultaiError::connector(source, format!("read {}: {e}", path.display()))
-    })?;
+    let text = fs::read_to_string(path)
+        .map_err(|e| KurultaiError::connector(source, format!("read {}: {e}", path.display())))?;
     let rel = path
         .strip_prefix(root)
         .unwrap_or(path)
@@ -357,7 +356,12 @@ fn atomize_ndjson(
         }
         records.push(v);
     }
-    Ok(records_to_atoms(source, rel_path, records, source_updated_at))
+    Ok(records_to_atoms(
+        source,
+        rel_path,
+        records,
+        source_updated_at,
+    ))
 }
 
 fn records_to_atoms(
@@ -466,7 +470,7 @@ fn atomize_plain(
         return vec![];
     }
     let title = title_from_path(rel_path);
-    let mut metadata = HashMap::from([("rel_path".into(), rel_path.to_string())]);
+    let metadata = HashMap::from([("rel_path".into(), rel_path.to_string())]);
     // Plain dumps have no tags — gate will quarantine as untagged unless caller adds tags.
     vec![finish_atom(
         source,
@@ -565,18 +569,18 @@ pub fn walk_dump_files(
     exclude_dir_names: &[&str],
     visit: &mut dyn FnMut(&Path) -> Result<()>,
 ) -> Result<()> {
-    let entries = fs::read_dir(root)
-        .map_err(|e| KurultaiError::connector("dump", format!("read_dir {}: {e}", root.display())))?;
+    let entries = fs::read_dir(root).map_err(|e| {
+        KurultaiError::connector("dump", format!("read_dir {}: {e}", root.display()))
+    })?;
     for entry in entries {
-        let entry =
-            entry.map_err(|e| KurultaiError::connector("dump", e.to_string()))?;
+        let entry = entry.map_err(|e| KurultaiError::connector("dump", e.to_string()))?;
         let path = entry.path();
         if path.is_dir() {
             let name = path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or_default();
-            if name.starts_with('.') || exclude_dir_names.iter().any(|x| *x == name) {
+            if name.starts_with('.') || exclude_dir_names.contains(&name) {
                 continue;
             }
             walk_dump_files(&path, exclude_dir_names, visit)?;
@@ -638,7 +642,9 @@ Run the database migration scripts carefully and verify checksums.
         .unwrap();
         assert!(atoms.len() >= 2);
         assert!(atoms.iter().all(|a| a.tags.contains(&"ops".into())));
-        assert!(atoms.iter().all(|a| a.metadata.contains_key(QUALITY_SCORE_KEY)));
+        assert!(atoms
+            .iter()
+            .all(|a| a.metadata.contains_key(QUALITY_SCORE_KEY)));
         assert!(atoms.iter().any(|a| a.source_id.contains("ops/deploy.md")));
         // Re-atomize must produce the same ids (stable source_id + content hash).
         let again = atomize_bytes(
@@ -667,7 +673,10 @@ Run the database migration scripts carefully and verify checksums.
         .unwrap();
         assert_eq!(atoms.len(), 1);
         assert_eq!(atoms[0].source_id, "docs/data.json/0");
-        assert_eq!(atoms[0].metadata.get("external_id").map(String::as_str), Some("a1"));
+        assert_eq!(
+            atoms[0].metadata.get("external_id").map(String::as_str),
+            Some("a1")
+        );
     }
 
     #[test]
@@ -710,14 +719,21 @@ Run the database migration scripts carefully and verify checksums.
 
     #[test]
     fn ndjson_and_single_object_json() {
-        let nd = "{\"title\":\"A\",\"content\":\"ndjson body content for atom\",\"tags\":[\"n\"]}\n";
-        let atoms = atomize_bytes("s", "f.ndjson", nd.as_bytes(), DumpFormat::Ndjson, Utc::now())
-            .unwrap();
+        let nd =
+            "{\"title\":\"A\",\"content\":\"ndjson body content for atom\",\"tags\":[\"n\"]}\n";
+        let atoms = atomize_bytes(
+            "s",
+            "f.ndjson",
+            nd.as_bytes(),
+            DumpFormat::Ndjson,
+            Utc::now(),
+        )
+        .unwrap();
         assert_eq!(atoms.len(), 1);
 
         let obj = r#"{"title":"B","content":"single object json body content","tags":["j"]}"#;
-        let atoms = atomize_bytes("s", "f.json", obj.as_bytes(), DumpFormat::Json, Utc::now())
-            .unwrap();
+        let atoms =
+            atomize_bytes("s", "f.json", obj.as_bytes(), DumpFormat::Json, Utc::now()).unwrap();
         assert_eq!(atoms.len(), 1);
         assert_eq!(atoms[0].source_id, "f.json/0");
     }

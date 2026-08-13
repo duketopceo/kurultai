@@ -4,7 +4,6 @@
 //! loopback. Shared-secret compare is constant-time.
 
 use crate::embed::Embedder;
-use crate::error::Result;
 use crate::hashutil::sha256_hex;
 use crate::ingest::dump::{self, DumpFormat};
 use crate::quality::{apply_gate, evaluate};
@@ -122,7 +121,7 @@ async fn ingest_post(
     headers: HeaderMap,
     Query(q): Query<IngestQuery>,
     body: Bytes,
-) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+) -> std::result::Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
     if !is_loopback(&addr) {
         return Err((
             StatusCode::FORBIDDEN,
@@ -160,14 +159,13 @@ async fn ingest_post(
         .unwrap_or("ingest/body")
         .replace('\\', "/");
 
-    let mut atoms = dump::atomize_bytes("ingest", &rel_path, &body, format, Utc::now()).map_err(
-        |e| {
+    let mut atoms =
+        dump::atomize_bytes("ingest", &rel_path, &body, format, Utc::now()).map_err(|e| {
             (
                 StatusCode::BAD_REQUEST,
                 Json(json!({ "ok": false, "error": e.to_string() })),
             )
-        },
-    )?;
+        })?;
 
     if atoms.is_empty() {
         return Err((
@@ -212,14 +210,8 @@ async fn ingest_post(
 
     let atom_ids: Vec<String> = atoms.iter().map(|a| a.id.clone()).collect();
     let all_trusted = atoms.iter().all(|a| a.trust_lane == TrustLane::Trusted);
-    let lane = if all_trusted {
-        "trusted"
-    } else {
-        "quarantine"
-    };
-    let quarantine_reason = atoms
-        .iter()
-        .find_map(|a| a.quarantine_reason.clone());
+    let lane = if all_trusted { "trusted" } else { "quarantine" };
+    let quarantine_reason = atoms.iter().find_map(|a| a.quarantine_reason.clone());
 
     // Minimal response — no brain dump.
     Ok((
@@ -246,7 +238,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         // Leak tempdir path for test process lifetime (test-only).
         let path = dir.path().join("store.db");
-        let store = Arc::new(SqliteVecStore::open(&path, 4).unwrap());
+        let store = Arc::new(SqliteVecStore::open(path, 4).unwrap());
         std::mem::forget(dir);
         IngestState {
             store,
@@ -326,7 +318,7 @@ mod tests {
         .await;
         assert_eq!(status, Sc::OK, "{v}");
         assert_eq!(v["ok"], true);
-        assert!(v["atom_ids"].as_array().unwrap().len() >= 1);
+        assert!(!v["atom_ids"].as_array().unwrap().is_empty());
         assert!(v.get("atoms").is_none()); // no brain dump
         assert!(v["lane"].is_string());
     }

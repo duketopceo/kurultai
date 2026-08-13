@@ -17,7 +17,6 @@ use crate::security::validate_readable_path;
 use crate::types::{KnowledgeAtom, SourceConfig};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -47,10 +46,7 @@ impl JsonConnector {
         let mut atoms = Vec::new();
         dump::walk_dump_files(root, &[], &mut |path| {
             let meta = std::fs::metadata(path).map_err(|e| {
-                KurultaiError::connector(
-                    &self.source_name,
-                    format!("stat {}: {e}", path.display()),
-                )
+                KurultaiError::connector(&self.source_name, format!("stat {}: {e}", path.display()))
             })?;
             let mtime = meta.modified().ok();
             if let (Some(since), Some(mtime)) = (since, mtime) {
@@ -64,12 +60,7 @@ impl JsonConnector {
                 .map(|d| DateTime::from_timestamp(d.as_secs() as i64, 0).unwrap_or_else(Utc::now))
                 .unwrap_or_else(Utc::now);
 
-            atoms.extend(dump::atomize_path(
-                &self.source_name,
-                root,
-                path,
-                updated,
-            )?);
+            atoms.extend(dump::atomize_path(&self.source_name, root, path, updated)?);
             Ok(())
         })?;
 
@@ -130,6 +121,7 @@ impl Connector for JsonConnector {
 mod tests {
     use super::*;
     use crate::types::SourceKind;
+    use std::collections::HashMap;
     use std::fs;
 
     #[tokio::test]

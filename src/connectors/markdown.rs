@@ -7,7 +7,6 @@ use crate::security::validate_readable_path;
 use crate::types::{KnowledgeAtom, SourceConfig};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -73,12 +72,7 @@ impl MarkdownConnector {
                 .map(|d| DateTime::from_timestamp(d.as_secs() as i64, 0).unwrap_or_else(Utc::now))
                 .unwrap_or_else(Utc::now);
 
-            atoms.extend(dump::atomize_path(
-                &self.source_name,
-                root,
-                path,
-                updated,
-            )?);
+            atoms.extend(dump::atomize_path(&self.source_name, root, path, updated)?);
             Ok(())
         })?;
 
@@ -136,6 +130,7 @@ impl Connector for MarkdownConnector {
 mod tests {
     use super::*;
     use crate::types::SourceKind;
+    use std::collections::HashMap;
     use std::fs;
     use std::io::Write;
 

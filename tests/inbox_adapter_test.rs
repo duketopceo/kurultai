@@ -32,7 +32,7 @@ async fn ae1_tagged_markdown_dump_trusted_and_searchable() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
         dir.path().join("note.md"),
-        "---\ntags: [ops]\n---\n\nDeploy checklist with verification steps for the production cluster rollout.\n",
+        "---\ntags: [ops]\n---\n\nDeploy checklist with verification steps for the production cluster rollout and post-deploy health checks.\n",
     )
     .unwrap();
 
@@ -73,22 +73,29 @@ async fn ae2_untagged_plain_text_inbox_fails_but_stores() {
         .init(&source("tray", SourceKind::Inbox, &inbox))
         .await
         .unwrap();
-    pipe.index_connector("tray", &connector, true).await.unwrap();
+    pipe.index_connector("tray", &connector, true)
+        .await
+        .unwrap();
 
     assert!(!inbox.join("raw.txt").exists());
     let failed = inbox.join("failed");
-    assert!(failed
-        .read_dir()
+    assert!(failed.read_dir().unwrap().any(|e| e
         .unwrap()
-        .any(|e| e.unwrap().file_name().to_string_lossy().contains("raw")));
+        .file_name()
+        .to_string_lossy()
+        .contains("raw")));
 
     let all = store
-        .list_atoms(50, SearchFilter { trusted_only: false })
+        .list_atoms(
+            50,
+            SearchFilter {
+                trusted_only: false,
+            },
+        )
         .await
         .unwrap();
     assert!(all.iter().any(|a| {
-        a.trust_lane == TrustLane::Quarantine
-            && a.quarantine_reason.as_deref() == Some("untagged")
+        a.trust_lane == TrustLane::Quarantine && a.quarantine_reason.as_deref() == Some("untagged")
     }));
 }
 
@@ -113,12 +120,17 @@ async fn ae3_too_short_quarantines() {
         .unwrap();
 
     let atoms = store
-        .list_atoms(20, SearchFilter { trusted_only: false })
+        .list_atoms(
+            20,
+            SearchFilter {
+                trusted_only: false,
+            },
+        )
         .await
         .unwrap();
-    assert!(atoms.iter().any(|a| {
-        a.quarantine_reason.as_deref() == Some("low_quality:too_short")
-    }));
+    assert!(atoms
+        .iter()
+        .any(|a| { a.quarantine_reason.as_deref() == Some("low_quality:too_short") }));
 }
 
 #[tokio::test]
@@ -126,7 +138,7 @@ async fn ae4_thin_boilerplate_quarantines() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
         dir.path().join("thin.md"),
-        "---\ntags: [ops]\n---\n\nlorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor.\n",
+        "---\ntags: [ops]\n---\n\nlorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore.\n",
     )
     .unwrap();
 
@@ -142,7 +154,12 @@ async fn ae4_thin_boilerplate_quarantines() {
         .unwrap();
 
     let atoms = store
-        .list_atoms(20, SearchFilter { trusted_only: false })
+        .list_atoms(
+            20,
+            SearchFilter {
+                trusted_only: false,
+            },
+        )
         .await
         .unwrap();
     assert!(atoms
@@ -165,7 +182,8 @@ async fn ae5_soft_labels_do_not_satisfy_tag_gate() {
         source_id: "x".into(),
         title: "t".into(),
         summary: "s".into(),
-        content: "Detailed soft-label-only body with plenty of operational words for length.".into(),
+        content: "Detailed soft-label-only body with plenty of operational words for length."
+            .into(),
         tags: vec![],
         soft_labels: vec![SoftLabel {
             label_id: 1,
@@ -193,7 +211,7 @@ async fn ae7_inbox_trusted_to_processed_and_format_parity() {
     fs::create_dir_all(&inbox).unwrap();
     fs::write(
         inbox.join("ok.md"),
-        "---\ntags: [ops]\n---\n\nTrusted inbox dump covering migration verification and rollback notes.\n",
+        "---\ntags: [ops]\n---\n\nTrusted inbox dump covering migration verification and rollback notes for operators.\n",
     )
     .unwrap();
 
@@ -204,12 +222,16 @@ async fn ae7_inbox_trusted_to_processed_and_format_parity() {
         .init(&source("tray", SourceKind::Inbox, &inbox))
         .await
         .unwrap();
-    pipe.index_connector("tray", &connector, true).await.unwrap();
+    pipe.index_connector("tray", &connector, true)
+        .await
+        .unwrap();
 
     assert!(!inbox.join("ok.md").exists());
-    assert!(inbox.join("processed").read_dir().unwrap().any(|e| {
-        e.unwrap().file_name().to_string_lossy().starts_with("ok")
-    }));
+    assert!(inbox
+        .join("processed")
+        .read_dir()
+        .unwrap()
+        .any(|e| { e.unwrap().file_name().to_string_lossy().starts_with("ok") }));
 
     // Format parity: json source reads markdown dumps with path-stable ids.
     let data = dir.path().join("data");
@@ -230,6 +252,8 @@ async fn ae7_inbox_trusted_to_processed_and_format_parity() {
         .await
         .unwrap();
     let atoms = json.full_sync().await.unwrap();
-    assert!(atoms.iter().any(|a| a.source_id == "note.md" || a.source_id.starts_with("note.md")));
+    assert!(atoms
+        .iter()
+        .any(|a| a.source_id == "note.md" || a.source_id.starts_with("note.md")));
     assert!(atoms.iter().any(|a| a.source_id.ends_with("/0")));
 }

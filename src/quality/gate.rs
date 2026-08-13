@@ -20,12 +20,10 @@ pub fn has_non_empty_tags(tags: &[String]) -> bool {
 }
 
 /// Cheap thin/boilerplate detector (not an LLM judge).
+///
+/// Runs after the length gate; does not re-check short char counts.
 fn is_thin_or_boilerplate(content: &str) -> bool {
     let trimmed = content.trim();
-    let words: Vec<&str> = trimmed.split_whitespace().collect();
-    if words.len() < 12 {
-        return true;
-    }
     let lower = trimmed.to_ascii_lowercase();
     // Common dump boilerplate / placeholder patterns.
     const BOILERPLATE: &[&str] = &[
@@ -39,9 +37,9 @@ fn is_thin_or_boilerplate(content: &str) -> bool {
     if BOILERPLATE.iter().any(|p| lower.contains(p)) {
         return true;
     }
+    let words: Vec<&str> = trimmed.split_whitespace().collect();
     // Extremely low lexical diversity (e.g. same word repeated).
-    let unique: std::collections::HashSet<&str> =
-        words.iter().map(|w| *w).collect();
+    let unique: std::collections::HashSet<&str> = words.iter().copied().collect();
     if words.len() >= 12 && unique.len() * 4 <= words.len() {
         return true;
     }

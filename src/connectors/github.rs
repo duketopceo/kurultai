@@ -468,7 +468,11 @@ mod tests {
         let src = dir.path().join("src");
         fs::create_dir_all(&src).unwrap();
         let mut f = fs::File::create(src.join("lib.rs")).unwrap();
-        writeln!(f, "// KNOWN_GITHUB_PHRASE_42\npub fn hello() {{}}").unwrap();
+        writeln!(
+            f,
+            "// KNOWN_GITHUB_PHRASE_42 appears here for search fixtures with enough detail.\npub fn hello() {{}}"
+        )
+        .unwrap();
 
         // Should be skipped
         let nm = dir.path().join("node_modules").join("pkg");

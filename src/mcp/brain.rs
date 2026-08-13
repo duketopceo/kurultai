@@ -148,16 +148,6 @@ impl BrainService {
         Arc::clone(&self.activity)
     }
 
-    /// Store handle for loopback ingest and other write surfaces.
-    pub fn store(&self) -> Arc<dyn Store> {
-        Arc::clone(&self.store)
-    }
-
-    /// Embedder handle for loopback ingest (skip-on-quarantine applied by caller).
-    pub fn embedder(&self) -> Arc<dyn Embedder> {
-        Arc::clone(&self.embedder)
-    }
-
     /// Hybrid search + markdown context expand (no activity record).
     async fn hybrid_hits(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         self.hybrid_hits_filtered(query, limit, SearchFilter::default())
@@ -255,6 +245,11 @@ impl BrainService {
 
     pub fn store(&self) -> Arc<dyn Store> {
         Arc::clone(&self.store)
+    }
+
+    /// Embedder handle for loopback ingest (skip-on-quarantine applied by caller).
+    pub fn embedder(&self) -> Arc<dyn Embedder> {
+        Arc::clone(&self.embedder)
     }
 
     /// Search with optional quarantine inclusion (HTTP / MCP).

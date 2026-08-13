@@ -114,7 +114,11 @@ mod tests {
     #[tokio::test]
     async fn promote_after_tags_succeeds() {
         let store = temp_store();
-        let mut a = sample("p2", vec![], "unique promote body");
+        let mut a = sample(
+            "p2",
+            vec![],
+            "unique promote body with enough operational detail for the quality gate to accept after tags",
+        );
         apply_gate(
             &mut a,
             GateOutcome::Quarantine {

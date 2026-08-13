@@ -45,10 +45,7 @@ impl InboxConnector {
         let mut atoms = Vec::new();
         dump::walk_dump_files(root, &[PROCESSED, FAILED], &mut |path| {
             let meta = fs::metadata(path).map_err(|e| {
-                KurultaiError::connector(
-                    &self.source_name,
-                    format!("stat {}: {e}", path.display()),
-                )
+                KurultaiError::connector(&self.source_name, format!("stat {}: {e}", path.display()))
             })?;
             let mtime = meta.modified().ok();
             if let (Some(since), Some(mtime)) = (since, mtime) {
@@ -178,9 +175,8 @@ fn unique_dest(dir: &Path, file_name: &str) -> PathBuf {
 
 fn move_to_processed(root: &Path, abs_path: &Path) -> Result<()> {
     let processed = root.join(PROCESSED);
-    fs::create_dir_all(&processed).map_err(|e| {
-        KurultaiError::connector("inbox", format!("mkdir processed: {e}"))
-    })?;
+    fs::create_dir_all(&processed)
+        .map_err(|e| KurultaiError::connector("inbox", format!("mkdir processed: {e}")))?;
     let name = abs_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -280,8 +276,7 @@ pub fn inbox_tray_counts(root: &Path) -> (u64, u64) {
             rd.filter_map(|e| e.ok())
                 .filter(|e| {
                     let p = e.path();
-                    p.is_file()
-                        && dump::is_dump_file(&p)
+                    p.is_file() && dump::is_dump_file(&p)
                 })
                 .count() as u64
         })
@@ -320,10 +315,11 @@ mod tests {
         assert!(atoms.is_empty());
         assert!(!dir.path().join("bad.json").exists());
         let failed_dir = dir.path().join(FAILED);
-        assert!(failed_dir
-            .read_dir()
+        assert!(failed_dir.read_dir().unwrap().any(|e| e
             .unwrap()
-            .any(|e| e.unwrap().file_name().to_string_lossy().starts_with("bad")));
+            .file_name()
+            .to_string_lossy()
+            .starts_with("bad")));
     }
 
     #[tokio::test]
@@ -348,6 +344,8 @@ mod tests {
             .unwrap();
         let atoms = connector.full_sync().await.unwrap();
         assert!(!atoms.is_empty());
-        assert!(atoms.iter().all(|a| a.metadata.contains_key(INBOX_META_PATH)));
+        assert!(atoms
+            .iter()
+            .all(|a| a.metadata.contains_key(INBOX_META_PATH)));
     }
 }

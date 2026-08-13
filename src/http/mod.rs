@@ -1406,7 +1406,7 @@ mod tests {
             source_id: "/http-q1".into(),
             title: "Quarantine Hit".into(),
             summary: "HTTPTRUSTTOKEN quarantine summary".into(),
-            content: "HTTPTRUSTTOKEN quarantine content body".into(),
+            content: "HTTPTRUSTTOKEN quarantine content body with enough operational detail for promote after tags".into(),
             tags: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),

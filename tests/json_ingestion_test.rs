@@ -150,8 +150,8 @@ async fn ingestion_jobs_finish_failure_records_error() {
 async fn json_connector_full_sync_indexes_json_array() {
     let dir = tempfile::tempdir().unwrap();
     let content = r#"[
-      {"id": "j1", "title": "Record One",   "content": "INTEGRATION_JSON_KNOWN_55 with enough operational detail for the quality gate.", "tags": ["integration"]},
-      {"id": "j2", "title": "Record Two",   "content": "second record content with enough operational detail for indexing."}
+      {"id": "j1", "title": "Record One",   "content": "INTEGRATION_JSON_KNOWN_55 with enough operational detail for the quality gate to pass.", "tags": ["integration"]},
+      {"id": "j2", "title": "Record Two",   "content": "second record content with enough operational detail for indexing under quarantine."}
     ]"#;
     std::fs::write(dir.path().join("data.json"), content).unwrap();
 
