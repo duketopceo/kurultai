@@ -528,7 +528,9 @@ How to rollback a bad deploy.
             &["it".into()],
         );
         assert!(atoms.iter().all(|a| a.corpus_tier == CorpusTier::Private));
-        assert!(atoms.iter().all(|a| a.visibility_labels.contains(&"it".into())));
+        assert!(atoms
+            .iter()
+            .all(|a| a.visibility_labels.contains(&"it".into())));
         assert!(!atoms.is_empty());
         assert!(atoms.iter().all(|a| a.tags.contains(&"vpn".into())));
         assert!(atoms.iter().all(|a| a.tags.contains(&"snipe-it".into())));
@@ -545,7 +547,14 @@ How to rollback a bad deploy.
     #[test]
     fn heading_and_prose_hash_are_not_tags() {
         let text = "# Reset VPN\n\nSee #vpn in Slack after the outage.\n";
-        let atoms = file_to_atoms("it_docs", "vpn.md", text, Utc::now(), CorpusTier::Public, &[]);
+        let atoms = file_to_atoms(
+            "it_docs",
+            "vpn.md",
+            text,
+            Utc::now(),
+            CorpusTier::Public,
+            &[],
+        );
         assert!(atoms.iter().all(|a| a.tags.is_empty()));
     }
 

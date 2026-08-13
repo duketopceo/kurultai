@@ -3,9 +3,7 @@ pub mod migrations;
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
-use crate::types::{
-    normalize_soft_labels, CorpusTier, KnowledgeAtom, SoftLabel, TrustLane,
-};
+use crate::types::{normalize_soft_labels, CorpusTier, KnowledgeAtom, SoftLabel, TrustLane};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
