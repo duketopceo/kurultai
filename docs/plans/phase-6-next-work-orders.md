@@ -42,11 +42,11 @@ Ship **visibility scopes + shared hub** before Atlas UI or enterprise connector 
 | Order | ID | Work order | Issue | Size | Version / flag | First LFG? |
 |------:|----|------------|-------|------|----------------|------------|
 | 0 | **REL-1** | **v0.4.1 production tag** — crate/docs/UI embed in sync; human tags `v0.4.1` after merge | this tree | S | v0.4.1 | After this PR |
-| 1 | **HUB-1** | **Atom visibility scope** `personal \| team \| company` + merged local query shape (solo unchanged) | [#178](https://github.com/duketopceo/kurultai/issues/178) | M | v0.4.x (`hub` still off) | ✅ on `main` |
-| 2 | HUB-2 | Postgres + pgvector `Store` for **shared** tier | [#176](https://github.com/duketopceo/kurultai/issues/176) · legacy [#111](https://github.com/duketopceo/kurultai/issues/111) | L | v0.5.0 `hub` | After REL-1 |
-| 3 | HUB-3 | Hub mode daemon — Tailscale-only **or** public + per-device API key | [#177](https://github.com/duketopceo/kurultai/issues/177) | L | v0.5.0 `hub` | Needs HUB-2 |
+| 1 | **HUB-1** | **Atom visibility scope** `personal \| team \| company` + merged local query shape (solo unchanged) | [#178](https://github.com/duketopceo/kurultai/issues/178) | M | v0.4.x (`hub` still off) | ✅ `#192` |
+| 2 | **HUB-2** | Postgres + pgvector `Store` for **shared** tier | [#176](https://github.com/duketopceo/kurultai/issues/176) · legacy [#111](https://github.com/duketopceo/kurultai/issues/111) | L | v0.5.0 `hub` | **Yes — next `/lfg`** |
+| 3 | HUB-3 | Hub mode daemon — Tailscale-only **or** public + per-device API key | [#177](https://github.com/duketopceo/kurultai/issues/177) | L | v0.5.0 `hub` | After HUB-2 · [#190](https://github.com/duketopceo/kurultai/pull/190) shipped API-key scaffold |
 | 4 | HUB-4 | Admin CLI — issue/revoke device keys; `team_id` / `org_id` boundaries | [#179](https://github.com/duketopceo/kurultai/issues/179) | M | v0.5.0 `hub` | With/after HUB-3 |
-| 5 | HUB-5 | Connector ingest tags visibility scope at source (never infer later) | [#180](https://github.com/duketopceo/kurultai/issues/180) · narrows [#114](https://github.com/duketopceo/kurultai/issues/114) | M | v0.5.0 `hub` | After HUB-1 |
+| 5 | HUB-5 | Connector ingest tags visibility scope at source (never infer later) | [#180](https://github.com/duketopceo/kurultai/issues/180) · narrows [#114](https://github.com/duketopceo/kurultai/issues/114) | M | v0.5.0 `hub` | After HUB-1 · restart on `main` ([#193](https://github.com/duketopceo/kurultai/pull/193) closed unmerged) |
 | 6 | HUB-6 | Acceptance suite AE1–AE5 | [#181](https://github.com/duketopceo/kurultai/issues/181) | M | v0.5.0 `hub` | Gate before calling v0.5.0 “team” |
 
 **HUB-1 DoD (LFG capsule):** every `KnowledgeAtom` carries a visibility scope (default `personal`); solo `ask`/`search` unchanged when no hub configured; schema/migration + tests; **no** Postgres and **no** public bind in this slice.
@@ -92,9 +92,9 @@ Atlas sequencing still lives in [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md)
 ## `/lfg` playbook (this queue)
 
 1. ~~HUB-1 atom scope~~ ✅ `#192`.  
-2. **Now:** merge v0.4.1 prep (CLI groups · UI build · flags) → human tags **`v0.4.1`**. Solo docs one-command is [#195](https://github.com/duketopceo/kurultai/pull/195) (`init --docs`) — merge before or with the tag if you want it in 0.4.1.  
-3. Next product: **HUB-2** Postgres Store ([#176](https://github.com/duketopceo/kurultai/issues/176)) under flag `hub` / v0.5.0.  
-4. Then HUB-3 transport → HUB-4 admin → HUB-5 connector tagging; keep HUB-6 green.
+2. **v0.4.1 prep** (this PR): CLI map · UI build · versioned flags. Solo docs: [#195](https://github.com/duketopceo/kurultai/pull/195) (`init --docs`) — merge before the tag if it should ship in 0.4.1. Human tags **`v0.4.1`** on `main`.  
+3. **Next `/lfg`:** **HUB-2** Postgres Store ([#176](https://github.com/duketopceo/kurultai/issues/176), Linear PRO-760) under flag `hub` / v0.5.0. SQLite stays the solo kernel.  
+4. Then remaining HUB-3 (Tailscale bind + tenant identity; API-key scaffold is `#190`) → HUB-4 admin → HUB-5 connector tagging (restart; `#193` did not land) → HUB-6 green.
 
 ### Hygiene
 
