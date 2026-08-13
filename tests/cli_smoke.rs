@@ -502,3 +502,149 @@ root_path = "{vault}"
         .success()
         .stdout(predicate::str::contains("DEST_REFUSE_MARKER_KURULTAI_77"));
 }
+
+#[test]
+fn init_help_lists_docs_index_and_agent_none() {
+    bin()
+        .args(["init", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--docs"))
+        .stdout(predicate::str::contains("--index"))
+        .stdout(predicate::str::contains("none"));
+}
+
+#[test]
+fn init_docs_agent_none_provisions_tagged_starter() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+    let cfg = tmp.path().join("config.toml");
+    let docs = tmp.path().join("vault");
+
+    bin()
+        .args([
+            "--plain",
+            "init",
+            "--docs",
+            docs.to_str().unwrap(),
+            "--agent",
+            "none",
+        ])
+        .env("HOME", &home)
+        .env("KURULTAI_CONFIG", &cfg)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Docs folder:"))
+        .stdout(predicate::str::contains("welcome.md"))
+        .stdout(predicate::str::contains("FTS-only"))
+        .stdout(predicate::str::contains("http://127.0.0.1:8421/ui/"))
+        .stdout(predicate::str::contains("MCP: skipped"))
+        .stdout(predicate::str::contains("kurultai index --full"));
+
+    let welcome = fs::read_to_string(docs.join("welcome.md")).unwrap();
+    assert!(welcome.contains("tags:"));
+    let raw = fs::read_to_string(&cfg).unwrap();
+    assert!(raw.contains("[sources.notes]"));
+    assert!(raw.contains("kind = \"markdown\""));
+    assert!(!home.join(".cursor/mcp.json").exists());
+}
+
+#[test]
+fn init_without_docs_points_at_docs_flag() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+    let cfg = tmp.path().join("config.toml");
+
+    bin()
+        .args(["--plain", "init", "--agent", "none"])
+        .env("HOME", &home)
+        .env("KURULTAI_CONFIG", &cfg)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kurultai init --docs"))
+        .stdout(predicate::str::contains("MCP: skipped"));
+
+    assert!(cfg.exists());
+    let raw = fs::read_to_string(&cfg).unwrap();
+    assert!(!raw.contains("[sources.notes]"));
+}
+
+#[test]
+fn init_docs_does_not_overwrite_existing_note() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+    let cfg = tmp.path().join("config.toml");
+    let docs = tmp.path().join("vault");
+    fs::create_dir_all(&docs).unwrap();
+    fs::write(docs.join("welcome.md"), "KEEP\n").unwrap();
+    fs::write(
+        docs.join("already.md"),
+        "---\ntitle: Existing\ntags:\n  - notes\n---\n\nkeep me\n",
+    )
+    .unwrap();
+
+    bin()
+        .args([
+            "--plain",
+            "init",
+            "--docs",
+            docs.to_str().unwrap(),
+            "--agent",
+            "none",
+        ])
+        .env("HOME", &home)
+        .env("KURULTAI_CONFIG", &cfg)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("not overwritten"));
+
+    assert_eq!(
+        fs::read_to_string(docs.join("welcome.md")).unwrap(),
+        "KEEP\n"
+    );
+    assert!(fs::read_to_string(docs.join("already.md"))
+        .unwrap()
+        .contains("keep me"));
+}
+
+#[test]
+fn init_docs_index_makes_starter_searchable() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+    let cfg = tmp.path().join("config.toml");
+    let docs = tmp.path().join("vault");
+
+    bin()
+        .args([
+            "--plain",
+            "init",
+            "--docs",
+            docs.to_str().unwrap(),
+            "--agent",
+            "none",
+            "--index",
+        ])
+        .env("HOME", &home)
+        .env("KURULTAI_CONFIG", &cfg)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("notes"))
+        .stdout(predicate::str::contains("Indexed sources"))
+        .stdout(predicate::str::contains("indexed 1").or(predicate::str::contains("indexed 2")));
+
+    bin()
+        .args(["--plain", "search", "welcome", "--limit", "5"])
+        .env("HOME", &home)
+        .env("KURULTAI_CONFIG", &cfg)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("welcome")
+                .or(predicate::str::contains("Welcome"))
+                .or(predicate::str::contains("getting-started")),
+        );
+}

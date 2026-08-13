@@ -27,8 +27,9 @@ per its `mcp_<server>_<tool>` convention.
 curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.sh | bash
 # or: cargo install --git https://github.com/duketopceo/kurultai --tag v0.4.0 --locked
 
-# 2. Wire the kurultai MCP server into your agent
-kurultai init --agent hermes      # or: cursor | claude | codex | all
+# 2. Docs on this device + optional MCP
+kurultai init --docs --agent hermes   # or: cursor | claude | codex | all | none
+# kurultai init --docs --agent none --index
 
 # 3. Index sources + run the brain
 kurultai index --full

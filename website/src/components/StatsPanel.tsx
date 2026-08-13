@@ -22,6 +22,9 @@ export function StatsPanel({ atoms, atomTotal }: Props) {
         <div><dt>hot / warm / cold</dt><dd id="stat-tiers">{atoms.length ? `${hot} / ${warm} / ${cold}` : '—'}</dd></div>
         <div><dt>trusted</dt><dd id="stat-trusted">{atoms.length ? trusted : '—'}</dd></div>
       </dl>
+      {atomTotal === 0 && (
+        <p className="empty-state">No memories yet. On this device: <code>kurultai init --docs</code> then <code>kurultai index --full</code>.</p>
+      )}
     </section>
   );
 }

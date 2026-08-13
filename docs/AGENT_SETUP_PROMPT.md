@@ -55,14 +55,27 @@ export OPENROUTER_API_KEY=…      # or KURULTAI_API_KEY
 
 FTS search works **without** a key. Vectors / cloud ask stay off until a key (or local ONNX embed) is configured.
 
+## Store docs on this device (solo)
+
+One command provisions a markdown folder, enables `[sources.notes]`, and writes a **tagged** starter note (untagged markdown is quarantined):
+
+```bash
+kurultai init --docs                 # ~/Documents/kurultai (or ~/kurultai)
+# kurultai init --docs /ABSOLUTE/PATH/TO/notes
+kurultai init --docs --agent none    # CLI / Brain UI only — skip MCP
+# kurultai init --docs --agent none --index   # also index now
+```
+
+Do **not** overwrite existing files in that folder. Re-running `--docs` refreshes `root_path` / `enabled` only.
+
 ## Wire agents (MCP)
 
 ```bash
 kurultai init --agent all        # cursor + claude + codex + hermes
-# or one of: cursor | claude | codex | hermes
+# or one of: cursor | claude | codex | hermes | none
 ```
 
-That writes host MCP configs (`kurultai mcp` stdio). **Restart the agent** so tools reload.
+That writes host MCP configs (`kurultai mcp` stdio). **Restart the agent** so tools reload. `--agent none` skips MCP.
 
 MCP tools: `search`, `cite`, `ask`, `who_knows`, `remember`, `promote`.
 
@@ -70,9 +83,9 @@ Portable skill to teach agents tool discipline:
 
 - https://github.com/duketopceo/kurultai/tree/main/skills/kurultai-brain
 
-## Configure at least one source
+## Configure extra sources (optional)
 
-Edit `~/.config/kurultai/config.toml` (created by `init`). Example markdown vault:
+`init --docs` already enables markdown. To add JSON / code / etc., edit `~/.config/kurultai/config.toml`. Example extra vault:
 
 ```toml
 environment = "dev"
@@ -176,7 +189,7 @@ kurultai promote <atom_id>
 ## Success checklist
 
 - [ ] `kurultai` binary on PATH
-- [ ] `~/.config/kurultai/config.toml` exists with ≥1 enabled source and real absolute `root_path`
+- [ ] `~/.config/kurultai/config.toml` exists with ≥1 enabled source and real absolute `root_path` (`kurultai init --docs` does this)
 - [ ] `kurultai index --full` succeeds
 - [ ] `kurultai search` finds a known phrase
 - [ ] Agent MCP restarted and can call `search` / `remember`

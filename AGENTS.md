@@ -42,7 +42,7 @@ so this section only covers non-obvious run/test caveats. Standard commands live
 ### Core CLI / daemon caveats
 
 - Set `KURULTAI_ENV=dev` for dev work (storage under `~/.local/share/kurultai/dev/store.db`, debug logging).
-- `kurultai` needs a config first: `kurultai init` writes `~/.config/kurultai/config.toml`. Enable a source (e.g. a `[sources.notes]` markdown root) before `index`.
+- `kurultai` needs a config first: `kurultai init --docs` writes `~/.config/kurultai/config.toml`, creates `Documents/kurultai` (or `~/kurultai`), and enables `[sources.notes]`. `--agent none` skips MCP; `--index` indexes immediately. Plain `kurultai init` still writes config only.
 - **FTS-only mode is normal here**: without `OPENROUTER_API_KEY` (or `KURULTAI_API_KEY`) the app uses `NullEmbedder` — FTS5 search / `who-knows` / extractive `ask` all work; vector recall, reranking, and LLM `ask` are disabled. This is expected, not an error.
 - Markdown atoms need **≥1 tag** (YAML frontmatter `tags:` **or** a dedicated hashtag line such as `#vpn #snipe-it`) or they land in quarantine and are excluded from default search. YAML tags win when present. Headings and inline `#mentions` in prose are not tags.
 - Run the daemon: `kurultai daemon --port 8421`. Open the Brain UI at **`http://127.0.0.1:8421/ui/`** — the trailing slash matters (bare `/ui` returns a 308 redirect). API lives under `/api/*` (`/api/status`, `/api/atoms`, `/api/search`, ...).
@@ -63,7 +63,7 @@ Agents discover and connect to the Kurultai knowledge graph using the Model Cont
 To wire an agent on a new machine or environment:
 1. Build/install the binary (`cargo build --release` → `~/.cargo/bin/kurultai`)
 2. Run **`kurultai init --agent <name>`** (valid targets: `cursor`, `claude`, `codex`, `hermes`, or `all`).
-3. This automatically updates `~/.cursor/mcp.json`, `~/.claude.json`, `~/.codex/config.toml`, or `~/.hermes/config.yaml`.
+3. This automatically updates `~/.cursor/mcp.json`, `~/.claude.json`, `~/.codex/config.toml`, or `~/.hermes/config.yaml`. `--agent none` skips MCP. Combine with `--docs` to provision a local markdown folder.
 4. Restart the agent(s) to load the MCP server.
 
 ### Egress caveat (Brain UI 3D graph)

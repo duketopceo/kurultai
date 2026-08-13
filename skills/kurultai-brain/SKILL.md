@@ -10,12 +10,17 @@ when_to_use:
   - "Ground this answer in the local brain"
 transport: stdio_mcp
 setup: |
+  # On-device docs folder + tagged starter (skip MCP with --agent none):
+  kurultai init --docs              # ~/Documents/kurultai (or ~/kurultai)
+  # kurultai init --docs --agent none --index
+
   # Wire the kurultai MCP server into your agent (pick one):
   kurultai init --agent hermes      # NousResearch Hermes Agent -> ~/.hermes/config.yaml
   kurultai init --agent cursor      # Cursor -> ~/.cursor/mcp.json
   kurultai init --agent claude      # Claude Code -> ~/.claude.json
   kurultai init --agent codex       # Codex -> ~/.codex/config.toml
   kurultai init --agent all         # all four
+  kurultai init --agent none        # CLI / Brain UI only
 
   # Index sources + run the brain, then restart the agent so tools load:
   kurultai index --full

@@ -46,17 +46,21 @@ Binaries ship for macOS (arm64 / amd64), Linux amd64, and Windows amd64 via [`.g
 
 ## Quick start
 
+Closest to one-click on this device (folder + tagged starter + config):
+
 ```bash
 export KURULTAI_ENV=dev          # optional; stores under …/kurultai/dev/
 export RUST_LOG=kurultai=debug   # optional
 
-kurultai init --agent all        # cursor + claude + codex + hermes
-# edit ~/.config/kurultai/config.toml — enable at least one source
+# Docs folder: ~/Documents/kurultai (or ~/kurultai). Skip MCP with --agent none.
+kurultai init --docs
+# kurultai init --docs ~/Notes --agent none
+# kurultai init --docs --agent none --index   # also index now
 
 kurultai index --full            # FTS works with no API key
 kurultai status
-kurultai search "database migration" --limit 10
-kurultai ask "what deployments are we running?"
+kurultai search "welcome" --limit 10
+kurultai ask "what is in my notes?"
 
 kurultai mcp                     # stdio MCP for agents
 kurultai daemon --port 8421      # HTTP API + Brain UI
@@ -98,9 +102,9 @@ Without an API key, FTS search / `who-knows` / extractive `ask` all work. Vector
 
 ## Configuration
 
-Templates at repo root: [`config.example.toml`](config.example.toml) (file keys) and [`.env.example`](.env.example) (env vars / API keys). Copy the TOML to `~/.config/kurultai/config.toml` (or run `kurultai init`).
+Templates at repo root: [`config.example.toml`](config.example.toml) (file keys) and [`.env.example`](.env.example) (env vars / API keys). `kurultai init --docs` writes config and enables `[sources.notes]` — no hand-edit required for solo markdown.
 
-`~/.config/kurultai/config.toml` (from `kurultai init`):
+`~/.config/kurultai/config.toml` (from `kurultai init --docs`):
 
 ```toml
 environment = "dev"   # dev | staging | prod
@@ -176,6 +180,7 @@ Overrides: `KURULTAI_ENV=dev`, `kurultai --env staging status`. API keys via env
 | `codex` | `~/.codex/config.toml` |
 | `hermes` | `~/.hermes/config.yaml` |
 | `all` | all four |
+| `none` | skip MCP (CLI / Brain UI only) |
 
 **Copy-paste setup prompt for any agent:** [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) · full text in [`docs/AGENT_SETUP_PROMPT.md`](docs/AGENT_SETUP_PROMPT.md).
 

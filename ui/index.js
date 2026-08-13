@@ -49,8 +49,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const steps = [
         {
-            input: "kurultai init --agent cursor",
-            output: "Config: ~/.config/kurultai/config.toml\nMCP wired: ~/Library/Application Support/Cursor/User/globalStorage/cursor-mcp/config.json\n\nRestart Cursor to load the kurultai MCP server.",
+            input: "kurultai init --docs",
+            output: "Config: ~/.config/kurultai/config.toml\nDocs folder: ~/Documents/kurultai\n  Starter note: welcome.md (tagged so it is searchable)\n\nMCP wired: ~/.cursor/mcp.json\nRestart the agent(s) to load the kurultai MCP server.\n\nWithout an API key (FTS-only — works now):\n  kurultai index --full\n  kurultai daemon --port 8421\n  # Brain UI → http://127.0.0.1:8421/ui/",
             delay: 2200
         },
         {
