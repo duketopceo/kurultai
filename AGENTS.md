@@ -45,6 +45,25 @@ so this section only covers non-obvious run/test caveats. Standard commands live
 - Markdown atoms need **≥1 tag** (YAML frontmatter `tags:`) or they land in quarantine and are excluded from default search.
 - Run the daemon: `kurultai daemon --port 8421`. Open the Brain UI at **`http://127.0.0.1:8421/ui/`** — the trailing slash matters (bare `/ui` returns a 308 redirect). API lives under `/api/*` (`/api/status`, `/api/atoms`, `/api/search`, ...).
 
+## Wiring Kurultai (MCP + Data Flow)
+
+Kurultai is the knowledge brain. All autonomous agents (Cursor, Claude, Codex, Hermes) must wire into it via MCP, and all cron-generated data must flow upstream into it.
+
+### 1. The Upstream Data Rule
+**For any cron that stores data, its data must flow upstream to Kurultai** (labeled as needed).
+- Downstream domain stores (Luke-Vault, NN data, Notion, SQLite databases) are allowed and expected.
+- However, all data must match the downstream store and ultimately land in Kurultai so it is globally searchable.
+- Build connectors in `src/connectors/` (e.g., `tech_tracker`, `json`) to bridge isolated stores into the brain.
+
+### 2. MCP Agent Wiring
+Agents discover and connect to the Kurultai knowledge graph using the Model Context Protocol (MCP). Kurultai provides 6 tools: `search`, `cite`, `remember`, `ask`, `who_knows`, and `promote`.
+
+To wire an agent on a new machine or environment:
+1. Build/install the binary (`cargo build --release` → `~/.cargo/bin/kurultai`)
+2. Run **`kurultai init --agent <name>`** (valid targets: `cursor`, `claude`, `codex`, `hermes`, or `all`).
+3. This automatically updates `~/.cursor/mcp.json`, `~/.claude.json`, `~/.codex/config.toml`, or `~/.hermes/config.yaml`.
+4. Restart the agent(s) to load the MCP server.
+
 ### Egress caveat (Brain UI 3D graph)
 
 The Brain UI loads `three.js` + `3d-force-graph` from `unpkg.com`. In the restricted
