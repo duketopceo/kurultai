@@ -74,22 +74,24 @@ kurultai import brain.kurultai --combine  # merge into an existing store
 
 **Brain UI:** open [`http://127.0.0.1:8421/ui/`](http://127.0.0.1:8421/ui/) (trailing slash matters). Assets live in `ui/` and are embedded in the daemon binary — that is the only Brain dashboard. Do not add a parallel brain under `website/` or `web/`.
 
-Markdown atoms need **≥1 tag** (YAML frontmatter `tags:`); untagged writes land in quarantine and are skipped by default search. Promote after fixing: `kurultai promote <atom_id>`.
+Atoms need **≥1 tag** (YAML frontmatter `tags:` or JSON `tags`); untagged writes land in quarantine and are skipped by default search. Soft labels never satisfy the tag gate. Cheap length/thin heuristics also quarantine low-quality dumps (`low_quality:too_short` / `low_quality:thin`) — no LLM judge. Promote after fixing: `kurultai promote <atom_id>`.
 
-Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md). Concepts: [CONCEPTS.md](CONCEPTS.md).
+**Dump adapters:** markdown and json folder sources accept the same formats (`.md`, `.json`/`.jsonl`/`.ndjson`, `.txt`) via a shared atomizer. Prefer **one source per mixed folder**. Inbox trays (`kind = "inbox"`) move successes to `processed/` and failures to `failed/` (+ `.reason.txt`); `kurultai index` drains the tray offline. Loopback push: `POST /ingest` with `KURULTAI_INGEST_SECRET` (not under `/api/`).
+
+Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md). Concepts: [CONCEPTS.md](CONCEPTS.md). Plan: [docs/plans/2026-08-12-002-feat-config-not-code-adapters-plan.md](docs/plans/2026-08-12-002-feat-config-not-code-adapters-plan.md).
 
 ## What ships (v0.3.0)
 
 | Layer | Reality |
 |-------|---------|
 | **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon` |
-| **Connectors** | Markdown · JSON/NDJSON · Dayflow · Pond · GitHub (local checkout). AppFlowy deferred ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
+| **Connectors** | Markdown · JSON · Inbox tray · Dayflow · Pond · GitHub (local checkout). AppFlowy deferred ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
 | **Store** | SQLite + FTS5 + sqlite-vec · hot / warm / cold memory · ingestion staging |
-| **Search** | FTS ∥ vector → RRF → optional rerank |
+| **Search** | FTS ∥ vector → RRF → soft-label / quality boost → optional rerank |
 | **Embeddings** | **FTS-first by default** (`NullEmbedder` when no key). OpenRouter when `OPENROUTER_API_KEY` / `KURULTAI_API_KEY` is set. Opt-in local ONNX: `embed.backend = "local"` + `--features local-embed` |
 | **Visibility** | Every atom has scope `personal` \| `team` \| `company` (default `personal`, HUB-1). Solo/no-hub search does not filter by scope yet — [multi-user doc](docs/multi-user-kurultai.md) |
 | **Agents** | MCP stdio (full tools) · optional daemon MCP HTTP/SSE read-only (`KURULTAI_MCP_HTTP_SECRET`) |
-| **Daemon** | HTTP `/api/*` + poll/watch · Brain UI at `GET /ui/` |
+| **Daemon** | HTTP `/api/*` + optional `POST /ingest` · poll/watch · Brain UI at `GET /ui/` |
 
 Without an API key, FTS search / `who-knows` / extractive `ask` all work. Vector recall, reranking, and LLM `ask` stay off until a key (or local embed) is configured. That is expected, not an error.
 
@@ -104,15 +106,19 @@ environment = "dev"   # dev | staging | prod
 
 [sources.notes]
 enabled = true
-kind = "markdown"
+kind = "markdown"                # .md / .json / .ndjson / .txt (one source per folder)
 root_path = "/Users/you/Documents/notes"
 poll_interval_secs = 60
 
 [sources.data]
 enabled = false
-kind = "json"                    # .json arrays or .jsonl / .ndjson
+kind = "json"
 root_path = "/Users/you/data"
-# optional: id_field = "url"     # stable source_id field (default: id)
+
+[sources.inbox]
+enabled = false
+kind = "inbox"
+root_path = "/Users/you/kurultai-inbox"
 
 [sources.dayflow]
 enabled = false
@@ -155,8 +161,10 @@ Overrides: `KURULTAI_ENV=dev`, `kurultai --env staging status`. API keys via env
 - `POST /mcp` — JSON-RPC (`tools/list`, `tools/call`, …)
 - `GET /mcp/sse` — SSE bootstrap (`endpoint` → `/mcp`)
 - Auth: `Authorization: Bearer <secret>`
-- Surface: **read-only** (`search`, `cite`, `ask`, `who_knows`) — no writes over HTTP in this slice
+- Surface: **read-only** (`search`, `cite`, `ask`, `who_knows`) — no writes over HTTP MCP
 - Bind stays `127.0.0.1` — do not expose without a tunnel + secret
+
+**Loopback dump ingest (opt-in):** set `KURULTAI_INGEST_SECRET`, then `POST /ingest` (not under `/api/`) with the secret header. Peer must be loopback. Response is `{ ok, atom_ids, lane, quarantine_reason? }` — no brain dump.
 
 `init` only writes the host config for stdio MCP:
 

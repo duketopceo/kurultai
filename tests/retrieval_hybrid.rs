@@ -345,13 +345,13 @@ tags: [test]
 ---
 
 ## First
-prev chunk unique PREVTOKEN
+prev chunk unique PREVTOKEN with enough surrounding detail for the quality gate.
 
 ## Middle
-MIDDLETOKEN center chunk content
+MIDDLETOKEN center chunk content with enough surrounding detail for the quality gate.
 
 ## Last
-next chunk unique NEXTTOKEN
+next chunk unique NEXTTOKEN with enough surrounding detail for the quality gate.
 "#
     )
     .unwrap();

@@ -2,11 +2,14 @@
 //!
 //! Bind to localhost only. REST routes stay open on loopback.
 //! MCP HTTP/SSE (`/mcp`, `/mcp/sse`) is **opt-in** when a shared secret is set.
+//! Loopback dump ingest (`POST /ingest`) is **opt-in** when `KURULTAI_INGEST_SECRET` is set.
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
+mod ingest;
 mod mcp;
 mod ui;
 
+pub use ingest::resolve_ingest_secret;
 pub use mcp::resolve_mcp_http_secret;
 
 use crate::brain::AgentAtomView;
@@ -71,7 +74,7 @@ pub async fn serve(brain: BrainService, status: Arc<DaemonStatus>, port: u16) ->
     .await
 }
 
-/// Serve HTTP (+ optional MCP HTTP/SSE) on `127.0.0.1`.
+/// Serve HTTP (+ optional MCP HTTP/SSE + optional loopback `/ingest`) on `127.0.0.1`.
 pub async fn serve_with(
     brain: BrainService,
     status: Arc<DaemonStatus>,
@@ -86,20 +89,36 @@ pub async fn serve_with(
     let mut app = router(state);
     if let Some(secret) = mcp::resolve_mcp_http_secret(opts.mcp_http_secret.as_deref()) {
         tracing::info!("mcp HTTP/SSE enabled at POST /mcp and GET /mcp/sse (bearer auth)");
-        app = app.merge(mcp::routes(mcp::McpHttpState::new(brain, secret)));
+        app = app.merge(mcp::routes(mcp::McpHttpState::new(
+            Arc::clone(&brain),
+            secret,
+        )));
     } else {
         tracing::info!(
             "mcp HTTP/SSE disabled (set KURULTAI_MCP_HTTP_SECRET or [runtime].mcp_http_secret)"
         );
+    }
+    if let Some(secret) = resolve_ingest_secret() {
+        tracing::info!("loopback ingest enabled at POST /ingest (shared secret required)");
+        app = app.merge(ingest::routes(ingest::IngestState {
+            store: brain.store(),
+            embedder: brain.embedder(),
+            secret,
+        }));
+    } else {
+        tracing::info!("loopback ingest disabled (set KURULTAI_INGEST_SECRET to enable)");
     }
     let addr = SocketAddr::from(([127, 0, 0, 1], opts.port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("bind {addr}: {e}")))?;
     tracing::info!(%addr, "http daemon listening (localhost only)");
-    axum::serve(listener, app)
-        .await
-        .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("http serve: {e}")))?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("http serve: {e}")))?;
     Ok(())
 }
 
@@ -158,6 +177,7 @@ async fn api_status(
                     }),
                     Err(_) => serde_json::Value::Null,
                 };
+                let inbox = state.status.inbox_summary();
                 Ok(Json(serde_json::json!({
                     "ok": true,
                     "service": "kurultai",
@@ -168,6 +188,7 @@ async fn api_status(
                         "quarantine_count": quarantine,
                         "merge_candidates_pending": merge_pending,
                     },
+                    "inbox": inbox,
                     "memory": memory,
                     "scheduler": state.status.snapshot(),
                     "metrics": state.metrics.summary_json(),
@@ -1423,7 +1444,7 @@ mod tests {
             source_id: "/http-q1".into(),
             title: "Quarantine Hit".into(),
             summary: "HTTPTRUSTTOKEN quarantine summary".into(),
-            content: "HTTPTRUSTTOKEN quarantine content body".into(),
+            content: "HTTPTRUSTTOKEN quarantine content body with enough operational detail for promote after tags".into(),
             tags: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),

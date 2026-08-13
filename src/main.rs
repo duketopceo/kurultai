@@ -283,6 +283,19 @@ async fn main() -> Result<()> {
             println!("  Quarantine: {}", quarantine);
             println!("  Merge candidates (pending): {}", merge_pending);
 
+            let inbox_roots = kurultai::daemon::inbox_roots_from_sources(&app.config.sources);
+            if !inbox_roots.is_empty() {
+                let mut pending = 0u64;
+                let mut failed = 0u64;
+                for root in &inbox_roots {
+                    let (p, f) = kurultai::connectors::inbox::inbox_tray_counts(root);
+                    pending += p;
+                    failed += f;
+                }
+                println!("  Inbox pending: {}", pending);
+                println!("  Inbox failed: {}", failed);
+            }
+
             if metrics {
                 let url = format!("http://127.0.0.1:{port}/api/metrics");
                 match reqwest::Client::new().get(&url).send().await {
@@ -340,6 +353,7 @@ async fn main() -> Result<()> {
                 poll_interval.unwrap_or(app.config.poll_interval_secs),
             );
             let watch_roots = kurultai::daemon::watch_roots_from_sources(&app.config.sources);
+            let inbox_roots = kurultai::daemon::inbox_roots_from_sources(&app.config.sources);
             tracing::info!(
                 port,
                 poll = !no_poll,
@@ -356,6 +370,11 @@ async fn main() -> Result<()> {
             } else {
                 println!("MCP HTTP/SSE: off (set KURULTAI_MCP_HTTP_SECRET to enable)");
             }
+            if kurultai::http::resolve_ingest_secret().is_some() {
+                println!("Loopback ingest: POST /ingest (X-Kurultai-Ingest-Secret or Bearer)");
+            } else {
+                println!("Loopback ingest: off (set KURULTAI_INGEST_SECRET to enable)");
+            }
             if no_poll {
                 println!("Background poll: off");
             } else {
@@ -364,7 +383,7 @@ async fn main() -> Result<()> {
             if no_watch {
                 println!("Filesystem watch: off");
             } else if watch_roots.is_empty() {
-                println!("Filesystem watch: no markdown/github roots to watch");
+                println!("Filesystem watch: no markdown/github/json/inbox roots to watch");
             } else {
                 println!(
                     "Filesystem watch: {} root(s) (debounced incremental)",
@@ -381,6 +400,7 @@ async fn main() -> Result<()> {
                     poll_interval_secs: interval,
                     watch: !no_watch,
                     watch_roots,
+                    inbox_roots,
                     nightly_full_sync_hour: app.config.nightly_full_sync_hour,
                     inactivity_threshold_hours: app.config.inactivity_threshold_hours,
                     mcp_http_secret: mcp_secret,

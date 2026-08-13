@@ -306,7 +306,7 @@ fn export_import_combine_keeps_both_brains() {
     fs::create_dir_all(dest_vault.join("ops")).unwrap();
     fs::write(
         dest_vault.join("ops/local.md"),
-        "---\ntags: [local]\n---\n\nDEST_ONLY_MARKER_KURULTAI_99 stays on device B.\n",
+        "---\ntags: [local]\n---\n\nDEST_ONLY_MARKER_KURULTAI_99 stays on device B with enough detail for the quality gate.\n",
     )
     .unwrap();
     let dest_db = b.path().join("store.db");
@@ -400,7 +400,7 @@ fn export_import_replace_refuses_nonempty_store() {
     fs::create_dir_all(dest_vault.join("ops")).unwrap();
     fs::write(
         dest_vault.join("ops/keep.md"),
-        "---\ntags: [keep]\n---\n\nDEST_REFUSE_MARKER_KURULTAI_77 must survive a refused replace.\n",
+        "---\ntags: [keep]\n---\n\nDEST_REFUSE_MARKER_KURULTAI_77 must survive a refused replace with enough detail for the quality gate.\n",
     )
     .unwrap();
     let dest_db = dest.path().join("store.db");

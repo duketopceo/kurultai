@@ -247,6 +247,11 @@ impl BrainService {
         Arc::clone(&self.store)
     }
 
+    /// Embedder handle for loopback ingest (skip-on-quarantine applied by caller).
+    pub fn embedder(&self) -> Arc<dyn Embedder> {
+        Arc::clone(&self.embedder)
+    }
+
     /// Search with optional quarantine inclusion (HTTP / MCP).
     pub async fn search_filtered(
         &self,
@@ -436,11 +441,14 @@ impl AgentWrite for BrainService {
         let outcome = evaluate(self.store.as_ref(), &atom).await?;
         apply_gate(&mut atom, outcome);
 
-        if self.embedder.is_live() {
+        // KTD7: skip embed on quarantine (don't pay / pollute atoms_vec).
+        if atom.trust_lane == crate::types::TrustLane::Trusted && self.embedder.is_live() {
             let text = format!("{}\n{}", atom.title, atom.content);
             if let Ok(emb) = self.embedder.embed(&text).await {
                 atom.embedding = Some(emb);
             }
+        } else {
+            atom.embedding = None;
         }
 
         let lane = atom.trust_lane.as_str().to_string();
@@ -572,7 +580,7 @@ mod tests {
         let id = brain
             .remember(
                 "Decision",
-                "Use FTS-first boot without API keys",
+                "Use FTS-first boot without API keys so local search works offline for operators and agents.",
                 &["architecture".into()],
                 &[("via", "test")],
             )
