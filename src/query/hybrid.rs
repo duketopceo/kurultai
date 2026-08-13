@@ -1,17 +1,21 @@
-//! Diamond hybrid search: FTS ∥ vector → RRF barrier → optional soft-label boost → optional rerank.
+//! Diamond hybrid search: FTS ∥ vector → RRF barrier → soft-label / quality boost → optional rerank.
 
 use crate::brain::{AgentAtomView, DEFAULT_EXCERPT_CAP};
 use crate::embed::Embedder;
 use crate::error::Result;
+use crate::ingest::dump::QUALITY_SCORE_KEY;
 use crate::query::rrf::{candidate_limit, fuse_rrf_ids, RRF_K};
 use crate::rerank::{apply_rerank_order, Reranker};
 use crate::store::{SearchFilter, Store};
-use crate::types::{KnowledgeAtom, SearchResult};
+use crate::types::{KnowledgeAtom, SearchResult, TrustLane};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Multiplier weight for soft-label match boost: `score * (1 + α * best_score)`.
 const SOFT_LABEL_BOOST_ALPHA: f64 = 0.5;
+
+/// Light post-RRF quality boost: `score * (1 + α * quality_score)` for trusted atoms.
+const QUALITY_BOOST_ALPHA: f64 = 0.15;
 
 /// True when the query mentions a soft label name or alias (case-insensitive substring).
 fn query_matches_soft_label(query_lc: &str, atom: &KnowledgeAtom) -> Option<f32> {
@@ -31,6 +35,18 @@ fn query_matches_soft_label(query_lc: &str, atom: &KnowledgeAtom) -> Option<f32>
     best
 }
 
+fn resort_by_score(results: &mut [SearchResult]) {
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.atom.id.cmp(&b.atom.id))
+    });
+    for (i, r) in results.iter_mut().enumerate() {
+        r.rank = i;
+    }
+}
+
 /// Post-RRF boost when the query matches a soft label (#113).
 fn apply_soft_label_boost(query: &str, results: &mut [SearchResult]) {
     let q = query.to_lowercase();
@@ -45,15 +61,35 @@ fn apply_soft_label_boost(query: &str, results: &mut [SearchResult]) {
         }
     }
     if boosted {
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.atom.id.cmp(&b.atom.id))
-        });
-        for (i, r) in results.iter_mut().enumerate() {
-            r.rank = i;
+        resort_by_score(results);
+    }
+}
+
+/// Post-RRF light boost from atom `quality_score` metadata (trusted only).
+fn apply_quality_score_boost(results: &mut [SearchResult]) {
+    let mut boosted = false;
+    for r in results.iter_mut() {
+        if r.atom.trust_lane != TrustLane::Trusted {
+            continue;
         }
+        let Some(raw) = r.atom.metadata.get(QUALITY_SCORE_KEY) else {
+            continue;
+        };
+        let Ok(qs) = raw.parse::<f64>() else {
+            continue;
+        };
+        let qs = qs.clamp(0.0, 1.0);
+        if qs <= 0.0 {
+            continue;
+        }
+        r.score *= 1.0 + QUALITY_BOOST_ALPHA * qs;
+        if !r.matched_by.iter().any(|m| m == "quality") {
+            r.matched_by.push("quality".into());
+        }
+        boosted = true;
+    }
+    if boosted {
+        resort_by_score(results);
     }
 }
 
@@ -148,6 +184,7 @@ pub async fn hybrid_search_filtered(
     }
 
     apply_soft_label_boost(query, &mut results);
+    apply_quality_score_boost(&mut results);
 
     if reranker.is_live() && !results.is_empty() {
         let candidates: Vec<(String, String)> = results
@@ -216,5 +253,46 @@ mod tests {
         let mut results = vec![low, high];
         apply_soft_label_boost("k8s rollout", &mut results);
         assert_eq!(results[0].atom.id, "high");
+    }
+
+    #[test]
+    fn quality_score_boost_reorders_trusted() {
+        use crate::ingest::dump::QUALITY_SCORE_KEY;
+        use std::collections::HashMap;
+
+        let mut low = SearchResult {
+            atom: KnowledgeAtom {
+                id: "low".into(),
+                trust_lane: TrustLane::Trusted,
+                metadata: HashMap::from([(QUALITY_SCORE_KEY.into(), "0.1".into())]),
+                ..Default::default()
+            },
+            score: 0.010,
+            rank: 0,
+            matched_by: vec!["fts".into()],
+        };
+        let mut high = SearchResult {
+            atom: KnowledgeAtom {
+                id: "high".into(),
+                trust_lane: TrustLane::Trusted,
+                metadata: HashMap::from([(QUALITY_SCORE_KEY.into(), "1.0".into())]),
+                ..Default::default()
+            },
+            score: 0.0095,
+            rank: 1,
+            matched_by: vec!["fts".into()],
+        };
+        let mut results = vec![low.clone(), high.clone()];
+        apply_quality_score_boost(&mut results);
+        assert_eq!(results[0].atom.id, "high");
+        assert!(results[0].matched_by.iter().any(|m| m == "quality"));
+
+        // Quarantine must not receive the boost even with a high score.
+        high.atom.trust_lane = TrustLane::Quarantine;
+        high.score = 0.0095;
+        low.score = 0.010;
+        let mut results = vec![low, high];
+        apply_quality_score_boost(&mut results);
+        assert_eq!(results[0].atom.id, "low");
     }
 }

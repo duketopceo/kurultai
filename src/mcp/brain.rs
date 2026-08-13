@@ -258,6 +258,11 @@ impl BrainService {
         Arc::clone(&self.store)
     }
 
+    /// Embedder handle for loopback ingest (skip-on-quarantine applied by caller).
+    pub fn embedder(&self) -> Arc<dyn Embedder> {
+        Arc::clone(&self.embedder)
+    }
+
     /// Search with optional quarantine inclusion (HTTP / MCP).
     pub async fn search_filtered(
         &self,
@@ -298,6 +303,27 @@ impl BrainService {
         self.touch_access_many(&ids).await;
         self.activity.record("search", query, ids, None);
         Ok(results)
+    }
+
+    /// Agent-optimized recall: search then filter by `project_id`, returning token-capped views.
+    /// Prototype implementation filters in-memory; production should push `project_id` into SQL.
+    pub async fn recall_for_agent(
+        &self,
+        project: &str,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+    ) -> Result<Vec<AgentAtomView>> {
+        // Over-fetch so project filtering still yields useful results.
+        let mut results = self
+            .search_filtered(query, limit * 2, include_quarantine)
+            .await?;
+        results.retain(|r| r.atom.project_id() == project);
+        results.truncate(limit);
+        Ok(results
+            .into_iter()
+            .map(|r| AgentAtomView::from_atom(&r.atom, r.score, DEFAULT_EXCERPT_CAP))
+            .collect())
     }
 
     /// Hot / warm / cold counts under default [`TierPolicy`].
@@ -479,11 +505,14 @@ impl AgentWrite for BrainService {
         let outcome = evaluate(self.store.as_ref(), &atom).await?;
         apply_gate(&mut atom, outcome);
 
-        if self.embedder.is_live() {
+        // KTD7: skip embed on quarantine (don't pay / pollute atoms_vec).
+        if atom.trust_lane == crate::types::TrustLane::Trusted && self.embedder.is_live() {
             let text = format!("{}\n{}", atom.title, atom.content);
             if let Ok(emb) = self.embedder.embed(&text).await {
                 atom.embedding = Some(emb);
             }
+        } else {
+            atom.embedding = None;
         }
 
         let lane = atom.trust_lane.as_str().to_string();
@@ -615,7 +644,7 @@ mod tests {
         let id = brain
             .remember(
                 "Decision",
-                "Use FTS-first boot without API keys",
+                "Use FTS-first boot without API keys so local search works offline for operators and agents.",
                 &["architecture".into()],
                 &[("via", "test")],
             )

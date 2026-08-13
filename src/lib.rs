@@ -12,6 +12,7 @@ pub mod error;
 pub mod export;
 pub mod hashutil;
 pub mod http;
+pub mod ingest;
 pub mod logging;
 pub mod mcp;
 pub mod memory;

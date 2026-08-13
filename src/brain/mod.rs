@@ -41,6 +41,8 @@ pub struct AgentAtomView {
     /// Present when the atom is quarantined (include_quarantine search).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quarantine_reason: Option<String>,
+    /// Tiered visibility (`personal` / `team` / `company`) — metadata only (#178).
+    pub visibility: String,
     /// Optional routing fields when present (cheap to include, high signal).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub question: Option<String>,
@@ -78,6 +80,7 @@ impl AgentAtomView {
             soft_labels: atom.soft_labels.clone(),
             trust_lane: atom.trust_lane.as_str().to_string(),
             quarantine_reason: atom.quarantine_reason.clone(),
+            visibility: atom.visibility.as_str().to_string(),
             question: atom.question.clone(),
             resolution: atom.resolution.clone(),
         }
@@ -111,5 +114,22 @@ mod tests {
         let view = AgentAtomView::from_atom(&atom, 0.9, 50);
         assert!(view.excerpt.len() <= 50);
         assert!(!view.excerpt.contains(&"x".repeat(500)));
+        assert_eq!(view.visibility, "personal");
+    }
+
+    #[test]
+    fn view_exposes_explicit_visibility() {
+        let mut atom = KnowledgeAtom {
+            id: "a".into(),
+            source: "markdown".into(),
+            source_id: "/x.md".into(),
+            title: "T".into(),
+            summary: "short".into(),
+            content: "body".into(),
+            ..Default::default()
+        };
+        atom.visibility = crate::types::VisibilityScope::Team;
+        let view = AgentAtomView::from_atom(&atom, 0.5, 80);
+        assert_eq!(view.visibility, "team");
     }
 }

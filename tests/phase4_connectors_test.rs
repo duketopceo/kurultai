@@ -39,7 +39,7 @@ fn dayflow_fixture_db() -> std::path::PathBuf {
         VALUES
           (7, '1:00 PM', '2:00 PM', 1700000000, '2023-11-14',
            'Dayflow CI debug', 'summary', 'Work',
-           'KNOWN_DAYFLOW_PHRASE_88 fixed the pipeline');",
+           'KNOWN_DAYFLOW_PHRASE_88 fixed the pipeline with enough detail for the quality gate');",
     )
     .unwrap();
     // Keep dir alive

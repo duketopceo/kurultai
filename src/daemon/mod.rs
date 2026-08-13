@@ -29,6 +29,8 @@ pub struct DaemonOptions {
     pub poll_interval_secs: u64,
     pub watch: bool,
     pub watch_roots: Vec<PathBuf>,
+    /// Inbox tray roots for `/api/status` pending/failed counts.
+    pub inbox_roots: Vec<PathBuf>,
     /// Local hour 0–23 for nightly full reindex; None disables (#73).
     pub nightly_full_sync_hour: Option<u8>,
     /// Skip incremental poll when idle this many hours (#73).
@@ -47,6 +49,8 @@ pub struct DaemonStatus {
     pub poll_enabled: std::sync::atomic::AtomicBool,
     pub watch_enabled: std::sync::atomic::AtomicBool,
     pub nightly_hour: std::sync::atomic::AtomicU8,
+    /// Inbox tray roots for pending/failed counts in `/api/status`.
+    pub inbox_roots: std::sync::Mutex<Vec<PathBuf>>,
 }
 
 impl DaemonStatus {
@@ -93,6 +97,54 @@ impl DaemonStatus {
         self.last_full_unix
             .store(Self::now_unix(), Ordering::Relaxed);
     }
+
+    /// Set inbox tray roots for status reporting.
+    pub fn set_inbox_roots(&self, roots: Vec<PathBuf>) {
+        if let Ok(mut guard) = self.inbox_roots.lock() {
+            *guard = roots;
+        }
+    }
+
+    /// Aggregate pending/failed dump counts across configured inbox trays.
+    pub fn inbox_summary(&self) -> serde_json::Value {
+        let roots = self
+            .inbox_roots
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default();
+        let mut pending = 0u64;
+        let mut failed = 0u64;
+        for root in &roots {
+            let (p, f) = crate::connectors::inbox::inbox_tray_counts(root);
+            pending += p;
+            failed += f;
+        }
+        serde_json::json!({
+            "pending": pending,
+            "failed": failed,
+            "roots": roots.len(),
+        })
+    }
+}
+
+/// Collect enabled inbox `root_path` directories (validated).
+pub fn inbox_roots_from_sources(sources: &[SourceConfig]) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for src in sources {
+        if !src.enabled || src.kind != SourceKind::Inbox {
+            continue;
+        }
+        let Some(path) = src.extra.get("root_path") else {
+            continue;
+        };
+        let Ok(resolved) = validate_readable_path(path, &src.name) else {
+            continue;
+        };
+        if resolved.is_dir() && !roots.iter().any(|r| r == &resolved) {
+            roots.push(resolved);
+        }
+    }
+    roots
 }
 
 /// Clamp poll interval to at least 1 second (shared by CLI + daemon).
@@ -100,7 +152,7 @@ pub fn normalize_poll_interval_secs(secs: u64) -> u64 {
     secs.max(1)
 }
 
-/// Collect existing directories to watch from enabled markdown/github sources.
+/// Collect existing directories to watch from enabled markdown/github/json/inbox sources.
 ///
 /// Uses `root_path`, falling back to deprecated markdown `vault_path`.
 /// Paths go through [`validate_readable_path`] (canonicalize + traversal checks).
@@ -111,7 +163,10 @@ pub fn watch_roots_from_sources(sources: &[SourceConfig]) -> Vec<PathBuf> {
         if !src.enabled {
             continue;
         }
-        if !matches!(src.kind, SourceKind::Markdown | SourceKind::GitHub) {
+        if !matches!(
+            src.kind,
+            SourceKind::Markdown | SourceKind::GitHub | SourceKind::Json | SourceKind::Inbox
+        ) {
             continue;
         }
         let path = src
@@ -185,6 +240,7 @@ pub async fn run(
             Ordering::Relaxed,
         );
         status.touch_client_activity();
+        status.set_inbox_roots(opts.inbox_roots.clone());
     }
 
     if opts.poll {
@@ -603,6 +659,7 @@ mod tests {
 
     fn opts(port: u16, poll: bool, watch: bool, watch_roots: Vec<PathBuf>) -> DaemonOptions {
         DaemonOptions {
+            inbox_roots: Vec::new(),
             port,
             poll,
             poll_interval_secs: if poll { 1 } else { 60 },
@@ -965,17 +1022,23 @@ mod tests {
     }
 
     #[test]
-    fn watch_roots_from_enabled_markdown_and_github() {
+    fn watch_roots_from_enabled_markdown_github_json_inbox() {
         let dir = tempfile::tempdir().unwrap();
         let md = dir.path().join("notes");
         let gh = dir.path().join("code");
         let vault = dir.path().join("vault");
+        let json = dir.path().join("data");
+        let inbox = dir.path().join("inbox");
         fs::create_dir_all(&md).unwrap();
         fs::create_dir_all(&gh).unwrap();
         fs::create_dir_all(&vault).unwrap();
+        fs::create_dir_all(&json).unwrap();
+        fs::create_dir_all(&inbox).unwrap();
         let md = md.canonicalize().unwrap();
         let gh = gh.canonicalize().unwrap();
         let vault = vault.canonicalize().unwrap();
+        let json = json.canonicalize().unwrap();
+        let inbox = inbox.canonicalize().unwrap();
         let missing = dir.path().join("gone");
 
         let sources = vec![
@@ -1001,6 +1064,20 @@ mod tests {
                 extra: HashMap::from([("vault_path".into(), vault.to_string_lossy().into())]),
             },
             SourceConfig {
+                name: "data".into(),
+                kind: SourceKind::Json,
+                enabled: true,
+                poll_interval_secs: 60,
+                extra: HashMap::from([("root_path".into(), json.to_string_lossy().into())]),
+            },
+            SourceConfig {
+                name: "tray".into(),
+                kind: SourceKind::Inbox,
+                enabled: true,
+                poll_interval_secs: 60,
+                extra: HashMap::from([("root_path".into(), inbox.to_string_lossy().into())]),
+            },
+            SourceConfig {
                 name: "pond".into(),
                 kind: SourceKind::Pond,
                 enabled: true,
@@ -1024,9 +1101,11 @@ mod tests {
         ];
 
         let roots = watch_roots_from_sources(&sources);
-        assert_eq!(roots.len(), 3);
+        assert_eq!(roots.len(), 5);
         assert!(roots.contains(&md));
         assert!(roots.contains(&gh));
         assert!(roots.contains(&vault));
+        assert!(roots.contains(&json));
+        assert!(roots.contains(&inbox));
     }
 }

@@ -3,6 +3,7 @@
 //! Default bind is localhost; REST is unauthenticated on loopback.
 //! Hub mode (`KURULTAI_HUB_AUTH=api_key`, `KURULTAI_HUB_BIND=all`) authenticates `/api/*`.
 //! MCP HTTP/SSE (`/mcp`, `/mcp/sse`) is **opt-in** when a shared secret is set.
+//! Loopback dump ingest (`POST /ingest`) is **opt-in** when `KURULTAI_INGEST_SECRET` is set.
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
 mod auth;
@@ -10,8 +11,12 @@ mod mcp;
 mod ui;
 
 pub use auth::{HubAuth, HubGate};
+mod ingest;
+
+pub use ingest::resolve_ingest_secret;
 pub use mcp::resolve_mcp_http_secret;
 
+use crate::brain::AgentAtomView;
 use crate::daemon::DaemonStatus;
 use crate::error::KurultaiError;
 use crate::mcp::brain::BrainService;
@@ -81,7 +86,7 @@ pub async fn serve(brain: BrainService, status: Arc<DaemonStatus>, port: u16) ->
     .await
 }
 
-/// Serve HTTP (+ optional MCP HTTP/SSE) on `127.0.0.1`.
+/// Serve HTTP (+ optional MCP HTTP/SSE + optional loopback `/ingest`) on `127.0.0.1`.
 pub async fn serve_with(
     brain: BrainService,
     status: Arc<DaemonStatus>,
@@ -102,11 +107,24 @@ pub async fn serve_with(
     let mut app = router(state);
     if let Some(secret) = mcp::resolve_mcp_http_secret(opts.mcp_http_secret.as_deref()) {
         tracing::info!("mcp HTTP/SSE enabled at POST /mcp and GET /mcp/sse (bearer auth)");
-        app = app.merge(mcp::routes(mcp::McpHttpState::new(brain, secret)));
+        app = app.merge(mcp::routes(mcp::McpHttpState::new(
+            Arc::clone(&brain),
+            secret,
+        )));
     } else {
         tracing::info!(
             "mcp HTTP/SSE disabled (set KURULTAI_MCP_HTTP_SECRET or [runtime].mcp_http_secret)"
         );
+    }
+    if let Some(secret) = resolve_ingest_secret() {
+        tracing::info!("loopback ingest enabled at POST /ingest (shared secret required)");
+        app = app.merge(ingest::routes(ingest::IngestState {
+            store: brain.store(),
+            embedder: brain.embedder(),
+            secret,
+        }));
+    } else {
+        tracing::info!("loopback ingest disabled (set KURULTAI_INGEST_SECRET to enable)");
     }
     let addr = if bind_all {
         SocketAddr::from(([0, 0, 0, 0], opts.port))
@@ -117,9 +135,12 @@ pub async fn serve_with(
         .await
         .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("bind {addr}: {e}")))?;
     tracing::info!(%addr, bind_all, "http daemon listening");
-    axum::serve(listener, app)
-        .await
-        .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("http serve: {e}")))?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("http serve: {e}")))?;
     Ok(())
 }
 
@@ -134,6 +155,7 @@ fn router(state: AppState) -> Router {
         .route("/api/activity", get(api_activity))
         .route("/api/promote", post(api_promote))
         .route("/api/search", get(search_get).post(search_post))
+        .route("/api/recall", post(recall_post))
         .route("/api/ask", get(ask_get).post(ask_post))
         .route("/api/open", get(api_open))
         .route("/search", get(search_get).post(search_post))
@@ -181,6 +203,7 @@ async fn api_status(
                     }),
                     Err(_) => serde_json::Value::Null,
                 };
+                let inbox = state.status.inbox_summary();
                 Ok(Json(serde_json::json!({
                     "ok": true,
                     "service": "kurultai",
@@ -191,6 +214,7 @@ async fn api_status(
                         "quarantine_count": quarantine,
                         "merge_candidates_pending": merge_pending,
                     },
+                    "inbox": inbox,
                     "memory": memory,
                     "scheduler": state.status.snapshot(),
                     "metrics": state.metrics.summary_json(),
@@ -462,6 +486,16 @@ struct SearchBody {
     source: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct RecallBody {
+    project: String,
+    query: String,
+    #[serde(default = "default_limit")]
+    limit: usize,
+    #[serde(default)]
+    include_quarantine: bool,
+}
+
 async fn search_post(
     State(state): State<AppState>,
     Json(body): Json<SearchBody>,
@@ -492,6 +526,32 @@ async fn search_post(
                 &request_id,
             ))
         }
+    }
+}
+
+async fn recall_post(
+    State(state): State<AppState>,
+    Json(body): Json<RecallBody>,
+) -> Result<Json<Vec<AgentAtomView>>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("recall_post", request_id=%request_id);
+    state.status.touch_client_activity();
+    match state
+        .brain
+        .recall_for_agent(
+            &body.project,
+            &body.query,
+            body.limit,
+            body.include_quarantine,
+        )
+        .await
+    {
+        Ok(views) => Ok(Json(views)),
+        Err(e) => Err(json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            e.to_string(),
+            &request_id,
+        )),
     }
 }
 
@@ -1432,7 +1492,7 @@ mod tests {
             source_id: "/http-q1".into(),
             title: "Quarantine Hit".into(),
             summary: "HTTPTRUSTTOKEN quarantine summary".into(),
-            content: "HTTPTRUSTTOKEN quarantine content body".into(),
+            content: "HTTPTRUSTTOKEN quarantine content body with enough operational detail for promote after tags".into(),
             tags: vec![],
             source_updated_at: Utc::now(),
             indexed_at: Utc::now(),
