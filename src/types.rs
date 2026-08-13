@@ -37,6 +37,42 @@ impl TrustLane {
     }
 }
 
+/// Visibility scope for tiered access (HUB-1 / #178).
+///
+/// Solo / no-hub deployments leave every atom at [`VisibilityScope::Personal`].
+/// Shared hub slices (HUB-2+) honor `team` / `company`; this field does not
+/// imply a remote store by itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VisibilityScope {
+    #[default]
+    Personal,
+    Team,
+    Company,
+}
+
+impl VisibilityScope {
+    /// Canonical DB / wire string.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Personal => "personal",
+            Self::Team => "team",
+            Self::Company => "company",
+        }
+    }
+
+    /// Parse a stored scope. Fail-closed toward private: only exact
+    /// `"team"` / `"company"` promote; anything else → [`VisibilityScope::Personal`].
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "team" => Self::Team,
+            "company" => Self::Company,
+            "personal" => Self::Personal,
+            _ => Self::Personal,
+        }
+    }
+}
+
 /// A single knowledge atom — the unit of indexed information.
 ///
 /// Stored in SQL for speed; agents receive [`crate::brain::AgentAtomView`] via MCP,
@@ -87,6 +123,9 @@ pub struct KnowledgeAtom {
     /// KTD15 per-document visibility labels (e.g. `finance`). Empty = public-within-tier.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub visibility_labels: Vec<String>,
+    /// Tiered visibility (`personal` | `team` | `company`). Default personal (#178).
+    #[serde(default)]
+    pub visibility: VisibilityScope,
 }
 
 impl Default for KnowledgeAtom {
@@ -111,6 +150,7 @@ impl Default for KnowledgeAtom {
             quarantine_reason: None,
             corpus_tier: CorpusTier::Public,
             visibility_labels: Vec::new(),
+            visibility: VisibilityScope::Personal,
         }
     }
 }
@@ -155,6 +195,17 @@ pub struct SoftLabel {
 
 /// Max soft labels persisted per atom (cardinality clamp).
 pub const SOFT_LABEL_MAX: usize = 16;
+
+impl KnowledgeAtom {
+    /// Project / workspace namespace for agent memory sequestering.
+    /// Stored in metadata for the prototype; will become a first-class column.
+    pub fn project_id(&self) -> &str {
+        self.metadata
+            .get("project_id")
+            .map(|s| s.as_str())
+            .unwrap_or("default")
+    }
+}
 
 /// Clamp score into `[0.0, 1.0]` and truncate to [`SOFT_LABEL_MAX`].
 pub fn normalize_soft_labels(labels: &[SoftLabel]) -> Vec<SoftLabel> {
@@ -391,13 +442,42 @@ mod trust_lane_tests {
             TrustLane::Quarantine
         );
     }
+}
+
+#[cfg(test)]
+mod visibility_scope_tests {
+    use super::*;
 
     #[test]
-    fn corpus_tier_parse_and_fail_closed() {
-        assert_eq!(CorpusTier::parse("public"), CorpusTier::Public);
-        assert_eq!(CorpusTier::parse("private"), CorpusTier::Private);
-        assert_eq!(CorpusTier::parse(""), CorpusTier::Private);
-        assert_eq!(CorpusTier::parse("company"), CorpusTier::Private);
+    fn parse_exact_scopes() {
+        assert_eq!(
+            VisibilityScope::parse("personal"),
+            VisibilityScope::Personal
+        );
+        assert_eq!(VisibilityScope::parse("team"), VisibilityScope::Team);
+        assert_eq!(VisibilityScope::parse("company"), VisibilityScope::Company);
+    }
+
+    #[test]
+    fn parse_invalid_fail_closed_to_personal() {
+        assert_eq!(VisibilityScope::parse(""), VisibilityScope::Personal);
+        assert_eq!(VisibilityScope::parse("Team"), VisibilityScope::Personal);
+        assert_eq!(VisibilityScope::parse("unknown"), VisibilityScope::Personal);
+        assert_eq!(
+            VisibilityScope::parse("personal "),
+            VisibilityScope::Personal
+        );
+    }
+
+    #[test]
+    fn as_str_round_trips_with_parse() {
+        for scope in [
+            VisibilityScope::Personal,
+            VisibilityScope::Team,
+            VisibilityScope::Company,
+        ] {
+            assert_eq!(VisibilityScope::parse(scope.as_str()), scope);
+        }
     }
 }
 

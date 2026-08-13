@@ -9,10 +9,26 @@ Related: GitHub login [#81](https://github.com/duketopceo/kurultai/issues/81) ·
 | Capability | Status |
 |------------|--------|
 | Personal kernel (`cargo install`, local `store.db`) | **Shipped** |
-| `web/` Clerk + GitHub sign-in shell | **Shipped** (this PR) |
+| Atom **visibility scope** (`personal` \| `team` \| `company`, default `personal`) | **Shipped** (HUB-1 / [#178](https://github.com/duketopceo/kurultai/issues/178)) — solo search unchanged; hub enforcement later |
+| `web/` Clerk + GitHub sign-in shell | **Shipped** |
 | One team deploy + one Clerk Organization | **Design + partial UI** — auth only; shared store/API enforcement not in this PR |
 | Promote-to-shared-index, device sync (#80) | **Partial** — offline `.kurultai` export/import shipped; encrypted/live sync still roadmap |
+| Hosted hub (Tailscale or public + device API keys) | **Roadmap** — [Wave G](plans/phase-6-next-work-orders.md) HUB-2…HUB-6 |
 | Multi-tenant / VPC, many Orgs / RBAC, audit, retention | **Roadmap / design only** — not shipped |
+
+## Visibility scopes (HUB-1)
+
+Every `KnowledgeAtom` carries a visibility field:
+
+| Scope | Meaning |
+|-------|---------|
+| `personal` | Default. Stays on the originating device; never written to a shared hub in later slices |
+| `team` | Shared with a team tier when a hub exists (optional — deployments may omit `company`) |
+| `company` | Org-wide when both shared tiers exist |
+
+**Solo / no hub:** search and ask return all local atoms regardless of scope tags (no filter yet). Connectors may set scope at ingest; Kurultai does **not** infer it from path or source kind.
+
+Next: Postgres shared store + hub transport — see [phase-6-next-work-orders.md](plans/phase-6-next-work-orders.md).
 
 ## Three layers
 

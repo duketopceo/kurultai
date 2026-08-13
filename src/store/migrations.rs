@@ -270,22 +270,20 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     }
 
     if current < 8 {
+        // HUB-1 / #178 — tiered visibility; fail closed to personal.
         add_column_if_missing(
             conn,
             "knowledge_atoms",
-            "corpus_tier",
-            "TEXT NOT NULL DEFAULT 'public'",
-        )?;
-        add_column_if_missing(
-            conn,
-            "knowledge_atoms",
-            "visibility_labels_json",
-            "TEXT NOT NULL DEFAULT '[]'",
+            "visibility",
+            "TEXT NOT NULL DEFAULT 'personal'",
         )?;
         conn.execute_batch(
             r#"
-            CREATE INDEX IF NOT EXISTS idx_atoms_corpus_tier
-                ON knowledge_atoms(corpus_tier);
+            UPDATE knowledge_atoms
+            SET visibility = 'personal'
+            WHERE visibility IS NULL OR visibility = '';
+            CREATE INDEX IF NOT EXISTS idx_atoms_visibility
+                ON knowledge_atoms(visibility);
             "#,
         )
         .map_err(|e| KurultaiError::Store(format!("migration 008 objects failed: {e}")))?;
