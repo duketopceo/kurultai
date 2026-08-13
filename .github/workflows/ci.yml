@@ -115,3 +115,44 @@ jobs:
 
       - name: Audit dependencies
         run: cargo audit
+
+  postgres-store:
+    name: Postgres store
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: kurultai
+          POSTGRES_DB: kurultai_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kurultai -d kurultai_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KURULTAI_TEST_DATABASE_URL: postgres://kurultai@localhost:5432/kurultai_test
+      KURULTAI_FEATURE_HUB: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+
+      - name: Clippy (postgres feature)
+        run: cargo clippy --all-targets --features postgres -- -D warnings
+
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Postgres store tests
+        run: cargo nextest run --locked --features postgres

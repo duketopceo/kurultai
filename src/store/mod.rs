@@ -1,4 +1,6 @@
 pub mod migrations;
+#[cfg(feature = "postgres")]
+pub mod postgres;
 
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
@@ -14,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use zerocopy::AsBytes;
 
 /// Norm below this is treated as a zero / stub vector — never written to `atoms_vec`.
-const MIN_EMBEDDING_NORM: f32 = 1e-6;
+pub(crate) const MIN_EMBEDDING_NORM: f32 = 1e-6;
 
 /// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
 const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, question, resolution, \
@@ -221,6 +223,31 @@ pub trait Store: Send + Sync {
 pub async fn open_store(config: &crate::types::Config) -> Result<Arc<dyn Store>> {
     let path = crate::config::expand_path(&config.storage_path)?;
     Ok(Arc::new(SqliteVecStore::open(path, config.embed_dim)?) as Arc<dyn Store>)
+}
+
+/// Shared-tier hub store. Never selected by [`open_store`] (solo stays SQLite).
+///
+/// Requires `--features postgres` **and** `KURULTAI_FEATURE_HUB=1`.
+pub async fn open_hub_store(database_url: &str, embed_dim: usize) -> Result<Arc<dyn Store>> {
+    if !crate::features::enabled("hub") {
+        return Err(KurultaiError::Store(
+            "hub store requires KURULTAI_FEATURE_HUB=1 (v0.5.0 flag, default off)".into(),
+        ));
+    }
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (database_url, embed_dim);
+        Err(KurultaiError::Store(
+            "hub store requires `cargo build --features postgres`".into(),
+        ))
+    }
+    #[cfg(feature = "postgres")]
+    {
+        Ok(
+            Arc::new(postgres::PostgresStore::connect(database_url, embed_dim).await?)
+                as Arc<dyn Store>,
+        )
+    }
 }
 
 pub struct SqliteVecStore {
@@ -2155,5 +2182,46 @@ mod tests {
             ids.contains(&"t1"),
             "team atom filtered out of solo search: {ids:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn open_hub_store_requires_hub_flag() {
+        let prev = std::env::var("KURULTAI_FEATURE_HUB").ok();
+        std::env::set_var("KURULTAI_FEATURE_HUB", "0");
+        let err = match super::open_hub_store("postgres://localhost/kurultai", 4).await {
+            Ok(_) => panic!("expected hub-flag error"),
+            Err(e) => e,
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("KURULTAI_FEATURE_HUB"),
+            "unexpected error: {msg}"
+        );
+        match prev {
+            Some(v) => std::env::set_var("KURULTAI_FEATURE_HUB", v),
+            None => std::env::remove_var("KURULTAI_FEATURE_HUB"),
+        }
+    }
+
+    #[tokio::test]
+    async fn open_hub_store_requires_postgres_feature() {
+        if cfg!(feature = "postgres") {
+            return;
+        }
+        let prev = std::env::var("KURULTAI_FEATURE_HUB").ok();
+        std::env::set_var("KURULTAI_FEATURE_HUB", "1");
+        let err = match super::open_hub_store("postgres://localhost/kurultai", 4).await {
+            Ok(_) => panic!("expected --features postgres error"),
+            Err(e) => e,
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("--features postgres"),
+            "unexpected error: {msg}"
+        );
+        match prev {
+            Some(v) => std::env::set_var("KURULTAI_FEATURE_HUB", v),
+            None => std::env::remove_var("KURULTAI_FEATURE_HUB"),
+        }
     }
 }
