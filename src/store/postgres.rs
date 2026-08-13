@@ -39,36 +39,34 @@ impl PostgresStore {
     }
 
     async fn migrate(&self) -> Result<()> {
-        // CREATE EXTENSION IF NOT EXISTS still races under concurrent connects
-        // (pg_extension_name_index). Hold a session advisory lock on one connection.
-        {
-            let mut conn = self
-                .pool
-                .acquire()
-                .await
-                .map_err(|e| KurultaiError::Store(format!("acquire for migrate: {e}")))?;
-            sqlx::query("SELECT pg_advisory_lock(87231401)")
-                .execute(&mut *conn)
-                .await
-                .map_err(|e| KurultaiError::Store(format!("advisory lock: {e}")))?;
-            let ext = sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
-                .execute(&mut *conn)
-                .await;
-            let _ = sqlx::query("SELECT pg_advisory_unlock(87231401)")
-                .execute(&mut *conn)
-                .await;
-            match ext {
-                Ok(_) => {}
-                Err(e) if is_benign_extension_race(&e) => {}
-                Err(e) => {
-                    return Err(KurultaiError::Store(format!(
-                        "create extension vector: {e}"
-                    )));
-                }
-            }
-        }
+        // Concurrent `CREATE … IF NOT EXISTS` still races on catalog unique indexes.
+        // Serialize the whole migration on one connection.
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| KurultaiError::Store(format!("acquire for migrate: {e}")))?;
+        sqlx::query("SELECT pg_advisory_lock(87231401)")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| KurultaiError::Store(format!("advisory lock: {e}")))?;
+        let result = self.migrate_locked(&mut conn).await;
+        let _ = sqlx::query("SELECT pg_advisory_unlock(87231401)")
+            .execute(&mut *conn)
+            .await;
+        result
+    }
 
-        sqlx::query(
+    async fn migrate_locked(&self, conn: &mut sqlx::postgres::PgConnection) -> Result<()> {
+        exec_ddl(
+            conn,
+            "CREATE EXTENSION IF NOT EXISTS vector",
+            "create extension vector",
+        )
+        .await?;
+
+        exec_ddl(
+            conn,
             r#"
             CREATE TABLE IF NOT EXISTS knowledge_atoms (
                 id TEXT PRIMARY KEY,
@@ -92,29 +90,31 @@ impl PostgresStore {
                 soft_labels_json TEXT NOT NULL DEFAULT '[]'
             )
             "#,
+            "create knowledge_atoms",
         )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| KurultaiError::Store(format!("create knowledge_atoms: {e}")))?;
+        .await?;
 
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_hub_atoms_source ON knowledge_atoms(source)")
-            .execute(&self.pool)
-            .await
-            .map_err(|e| KurultaiError::Store(format!("idx source: {e}")))?;
-        sqlx::query(
+        exec_ddl(
+            conn,
+            "CREATE INDEX IF NOT EXISTS idx_hub_atoms_source ON knowledge_atoms(source)",
+            "idx source",
+        )
+        .await?;
+        exec_ddl(
+            conn,
             "CREATE INDEX IF NOT EXISTS idx_hub_atoms_visibility ON knowledge_atoms(visibility)",
+            "idx visibility",
         )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| KurultaiError::Store(format!("idx visibility: {e}")))?;
-        sqlx::query(
+        .await?;
+        exec_ddl(
+            conn,
             "CREATE INDEX IF NOT EXISTS idx_hub_atoms_hash_trusted ON knowledge_atoms(content_hash) WHERE trust_lane = 'trusted'",
+            "idx hash",
         )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| KurultaiError::Store(format!("idx hash: {e}")))?;
+        .await?;
 
-        sqlx::query(
+        exec_ddl(
+            conn,
             r#"
             ALTER TABLE knowledge_atoms
             ADD COLUMN IF NOT EXISTS search_tsv tsvector
@@ -122,16 +122,15 @@ impl PostgresStore {
                 to_tsvector('english', coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(content,''))
             ) STORED
             "#,
+            "search_tsv column",
         )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| KurultaiError::Store(format!("search_tsv column: {e}")))?;
-        sqlx::query(
+        .await?;
+        exec_ddl(
+            conn,
             "CREATE INDEX IF NOT EXISTS idx_hub_atoms_fts ON knowledge_atoms USING GIN (search_tsv)",
+            "fts gin",
         )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| KurultaiError::Store(format!("fts gin: {e}")))?;
+        .await?;
 
         let vec_sql = format!(
             r#"
@@ -142,17 +141,14 @@ impl PostgresStore {
             "#,
             embed_dim = self.embed_dim
         );
-        sqlx::query(&vec_sql)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| KurultaiError::Store(format!("create atoms_vec: {e}")))?;
+        exec_ddl(conn, &vec_sql, "create atoms_vec").await?;
 
         let (vec_type,): (String,) = sqlx::query_as(
             "SELECT format_type(atttypid, atttypmod)
              FROM pg_attribute
              WHERE attrelid = 'atoms_vec'::regclass AND attname = 'embedding'",
         )
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *conn)
         .await
         .map_err(|e| KurultaiError::Store(format!("atoms_vec typmod: {e}")))?;
         let expected = format!("vector({})", self.embed_dim);
@@ -162,7 +158,8 @@ impl PostgresStore {
             )));
         }
 
-        sqlx::query(
+        exec_ddl(
+            conn,
             r#"
             CREATE TABLE IF NOT EXISTS quality_audit (
                 id BIGSERIAL PRIMARY KEY,
@@ -173,12 +170,12 @@ impl PostgresStore {
                 detail_json TEXT NOT NULL DEFAULT '{}'
             )
             "#,
+            "quality_audit",
         )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| KurultaiError::Store(format!("quality_audit: {e}")))?;
+        .await?;
 
-        sqlx::query(
+        exec_ddl(
+            conn,
             r#"
             CREATE TABLE IF NOT EXISTS merge_candidates (
                 id BIGSERIAL PRIMARY KEY,
@@ -190,12 +187,12 @@ impl PostgresStore {
                 UNIQUE(atom_a, atom_b)
             )
             "#,
+            "merge_candidates",
         )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| KurultaiError::Store(format!("merge_candidates: {e}")))?;
+        .await?;
 
-        sqlx::query(
+        exec_ddl(
+            conn,
             r#"
             CREATE TABLE IF NOT EXISTS ingestion_jobs (
                 id BIGSERIAL PRIMARY KEY,
@@ -209,10 +206,9 @@ impl PostgresStore {
                 completed_at TEXT
             )
             "#,
+            "ingestion_jobs",
         )
-        .execute(&self.pool)
-        .await
-        .map_err(|e| KurultaiError::Store(format!("ingestion_jobs: {e}")))?;
+        .await?;
 
         Ok(())
     }
@@ -444,14 +440,25 @@ fn parse_dt(s: &str) -> DateTime<Utc> {
         .unwrap_or_else(|_| Utc::now())
 }
 
-fn is_benign_extension_race(err: &sqlx::Error) -> bool {
+async fn exec_ddl(conn: &mut sqlx::postgres::PgConnection, sql: &str, ctx: &str) -> Result<()> {
+    match sqlx::query(sql).execute(&mut *conn).await {
+        Ok(_) => Ok(()),
+        Err(e) if is_benign_catalog_race(&e) => Ok(()),
+        Err(e) => Err(KurultaiError::Store(format!("{ctx}: {e}"))),
+    }
+}
+
+fn is_benign_catalog_race(err: &sqlx::Error) -> bool {
     match err {
         sqlx::Error::Database(db) => {
             matches!(db.code().as_deref(), Some("23505" | "42710"))
         }
         _ => {
             let msg = err.to_string();
-            msg.contains("pg_extension_name_index") || msg.contains("already exists")
+            msg.contains("already exists")
+                || msg.contains("pg_extension_name_index")
+                || msg.contains("pg_type_typname_nsp_index")
+                || msg.contains("pg_class_relname_nsp_index")
         }
     }
 }
