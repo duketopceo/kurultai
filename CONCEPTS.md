@@ -42,6 +42,22 @@ Tiered access field on every atom (HUB-1 / [#178](https://github.com/duketopceo/
 
 See: [docs/plans/phase-6-next-work-orders.md](docs/plans/phase-6-next-work-orders.md) · [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md)
 
+### Trust lane
+
+Whether an atom is eligible for default retrieval. Trusted atoms are searchable; quarantine atoms stay stored and are skipped unless the caller opts in.
+
+### Corpus tier
+
+Two-way isolation for a shared company brain: public (everyone) vs private (IT). Not a per-person SaaS tenant. Unknown stored values fail closed to private.
+
+### Visibility labels
+
+Per-document access tags on an atom (for example finance vs general). Empty means public-within-tier. Distinct from corpus tier and from search tags.
+
+### Hashtag-line tags
+
+A markdown line made only of `#tag` tokens. Used as tags when YAML frontmatter has none, so corpora without frontmatter are not wholesale-quarantined.
+
 ## Orchestration
 
 ### Graph orchestration (diamond)

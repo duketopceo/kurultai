@@ -28,7 +28,7 @@ Kurultai’s doctrine is FTS-first: full-text search is always available; vector
 3. **Search:** FTS always runs; vector arm runs only when the embedder is live and produces a non-zero query vector. Embed failures warn and fall back to FTS.
 4. **Status honesty:** CLI reports `Embedder: none (FTS-only …)` when not live.
 
-Pin **sqlite-vec `=0.1.6`** in `Cargo.toml`. Newer alphas (e.g. `0.1.10-alpha.4`) failed to compile (missing `diskann.c`) in this repo’s CI/toolchain.
+Pin **sqlite-vec `=0.1.9`** in `Cargo.toml`. Newer alphas (e.g. `0.1.10-alpha.4`) failed to compile (missing `diskann.c`) in this repo’s CI/toolchain.
 
 ## Why This Matters
 

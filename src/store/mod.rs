@@ -3,7 +3,9 @@ pub mod migrations;
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
-use crate::types::{normalize_soft_labels, KnowledgeAtom, SoftLabel, TrustLane, VisibilityScope};
+use crate::types::{
+    normalize_soft_labels, CorpusTier, KnowledgeAtom, SoftLabel, TrustLane, VisibilityScope,
+};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
@@ -1472,6 +1474,8 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
         trust_lane: TrustLane::parse(&trust_lane),
         quarantine_reason,
         soft_labels: Vec::new(),
+        corpus_tier: CorpusTier::Public,
+        visibility_labels: Vec::new(),
         visibility: VisibilityScope::parse(&visibility_raw),
     })
 }
