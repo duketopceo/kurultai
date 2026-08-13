@@ -39,10 +39,34 @@ impl PostgresStore {
     }
 
     async fn migrate(&self) -> Result<()> {
-        sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
-            .execute(&self.pool)
-            .await
-            .map_err(|e| KurultaiError::Store(format!("create extension vector: {e}")))?;
+        // CREATE EXTENSION IF NOT EXISTS still races under concurrent connects
+        // (pg_extension_name_index). Hold a session advisory lock on one connection.
+        {
+            let mut conn = self
+                .pool
+                .acquire()
+                .await
+                .map_err(|e| KurultaiError::Store(format!("acquire for migrate: {e}")))?;
+            sqlx::query("SELECT pg_advisory_lock(87231401)")
+                .execute(&mut *conn)
+                .await
+                .map_err(|e| KurultaiError::Store(format!("advisory lock: {e}")))?;
+            let ext = sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
+                .execute(&mut *conn)
+                .await;
+            let _ = sqlx::query("SELECT pg_advisory_unlock(87231401)")
+                .execute(&mut *conn)
+                .await;
+            match ext {
+                Ok(_) => {}
+                Err(e) if is_benign_extension_race(&e) => {}
+                Err(e) => {
+                    return Err(KurultaiError::Store(format!(
+                        "create extension vector: {e}"
+                    )));
+                }
+            }
+        }
 
         sqlx::query(
             r#"
@@ -418,6 +442,18 @@ fn parse_dt(s: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(s)
         .map(|d| d.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now())
+}
+
+fn is_benign_extension_race(err: &sqlx::Error) -> bool {
+    match err {
+        sqlx::Error::Database(db) => {
+            matches!(db.code().as_deref(), Some("23505" | "42710"))
+        }
+        _ => {
+            let msg = err.to_string();
+            msg.contains("pg_extension_name_index") || msg.contains("already exists")
+        }
+    }
 }
 
 #[async_trait::async_trait]
