@@ -3,7 +3,7 @@ pub mod migrations;
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
-use crate::types::{normalize_soft_labels, KnowledgeAtom, SoftLabel, TrustLane};
+use crate::types::{normalize_soft_labels, KnowledgeAtom, SoftLabel, TrustLane, VisibilityScope};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
@@ -17,7 +17,7 @@ const MIN_EMBEDDING_NORM: f32 = 1e-6;
 /// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
 const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, question, resolution, \
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
-     last_accessed_at";
+     last_accessed_at, visibility";
 
 /// Retrieval filter — default skips quarantine.
 #[derive(Debug, Clone, Copy)]
@@ -444,6 +444,7 @@ impl SqliteVecStore {
 
         let trust_lane = atom.trust_lane.as_str();
         let quarantine_reason = atom.quarantine_reason.as_deref();
+        let visibility = atom.visibility.as_str();
         let last_accessed = if atom.last_accessed_at.timestamp() == 0 {
             atom.indexed_at
         } else {
@@ -455,8 +456,8 @@ impl SqliteVecStore {
                 id, source, source_id, title, summary, content,
                 question, resolution, tags_json,
                 source_updated_at, indexed_at, metadata_json, content_hash,
-                trust_lane, quarantine_reason, last_accessed_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                trust_lane, quarantine_reason, last_accessed_at, visibility
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
             ON CONFLICT(id) DO UPDATE SET
                 source = excluded.source,
                 source_id = excluded.source_id,
@@ -475,7 +476,8 @@ impl SqliteVecStore {
                 metadata_json = excluded.metadata_json,
                 content_hash = excluded.content_hash,
                 trust_lane = excluded.trust_lane,
-                quarantine_reason = excluded.quarantine_reason
+                quarantine_reason = excluded.quarantine_reason,
+                visibility = excluded.visibility
             "#,
             params![
                 atom.id,
@@ -494,6 +496,7 @@ impl SqliteVecStore {
                 trust_lane,
                 quarantine_reason,
                 last_accessed.to_rfc3339(),
+                visibility,
             ],
         )
         .map_err(|e| KurultaiError::Store(format!("upsert atom failed: {e}")))?;
@@ -1431,6 +1434,7 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
     let trust_lane: String = row.get(12)?;
     let quarantine_reason: Option<String> = row.get(13)?;
     let last_accessed_raw: String = row.get(14).unwrap_or_default();
+    let visibility_raw: String = row.get(15).unwrap_or_else(|_| "personal".into());
 
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
     let metadata: HashMap<String, String> =
@@ -1460,6 +1464,7 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
         trust_lane: TrustLane::parse(&trust_lane),
         quarantine_reason,
         soft_labels: Vec::new(),
+        visibility: VisibilityScope::parse(&visibility_raw),
     })
 }
 
@@ -1864,6 +1869,7 @@ mod tests {
         };
         assert!(has_col("trust_lane"));
         assert!(has_col("quarantine_reason"));
+        assert!(has_col("visibility"));
 
         let index_count = |name: &str| -> i32 {
             conn.query_row(
@@ -1876,6 +1882,7 @@ mod tests {
         assert_eq!(index_count("idx_atoms_indexed_at"), 1);
         assert_eq!(index_count("idx_atoms_trust_lane"), 1);
         assert_eq!(index_count("idx_atoms_hash_trusted"), 1);
+        assert_eq!(index_count("idx_atoms_visibility"), 1);
 
         let table_count = |name: &str| -> i32 {
             conn.query_row(
@@ -2091,5 +2098,50 @@ mod tests {
         let la = store.get("a").await.unwrap().unwrap();
         let lb = store.get("b").await.unwrap().unwrap();
         assert_eq!(la.soft_labels[0].label_id, lb.soft_labels[0].label_id);
+    }
+
+    #[tokio::test]
+    async fn visibility_defaults_personal_and_round_trips() {
+        let store = temp_store(4);
+        let atom = sample_atom("vis-default", "Vis", "default personal body", None);
+        store.upsert(&atom).await.unwrap();
+        let loaded = store.get("vis-default").await.unwrap().unwrap();
+        assert_eq!(loaded.visibility, VisibilityScope::Personal);
+
+        let mut team = sample_atom("vis-team", "Team", "explicit team body", None);
+        team.visibility = VisibilityScope::Team;
+        store.upsert(&team).await.unwrap();
+        let loaded_team = store.get("vis-team").await.unwrap().unwrap();
+        assert_eq!(loaded_team.visibility, VisibilityScope::Team);
+
+        let mut company = sample_atom("vis-co", "Co", "company body here", None);
+        company.visibility = VisibilityScope::Company;
+        store.upsert(&company).await.unwrap();
+        assert_eq!(
+            store.get("vis-co").await.unwrap().unwrap().visibility,
+            VisibilityScope::Company
+        );
+    }
+
+    #[tokio::test]
+    async fn visibility_does_not_filter_solo_fts_search() {
+        // AE1 / KTD4: no hub → local search returns all lanes of visibility.
+        let store = temp_store(4);
+        let personal = sample_atom("p1", "Alpha personal", "visibility search personal", None);
+        let mut team = sample_atom("t1", "Alpha team", "visibility search team", None);
+        team.visibility = VisibilityScope::Team;
+        store.upsert(&personal).await.unwrap();
+        store.upsert(&team).await.unwrap();
+
+        let hits = store
+            .fts_search("visibility search", 10, SearchFilter::default())
+            .await
+            .unwrap();
+        let ids: Vec<_> = hits.iter().map(|(a, _)| a.id.as_str()).collect();
+        assert!(ids.contains(&"p1"), "personal atom missing: {ids:?}");
+        assert!(
+            ids.contains(&"t1"),
+            "team atom filtered out of solo search: {ids:?}"
+        );
     }
 }
