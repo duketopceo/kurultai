@@ -117,6 +117,12 @@ pub struct KnowledgeAtom {
     /// Why the atom was quarantined (when `trust_lane = quarantine`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quarantine_reason: Option<String>,
+    /// Two-tier corpus: public (everyone) vs private (IT). Solo default is public.
+    #[serde(default)]
+    pub corpus_tier: CorpusTier,
+    /// KTD15 per-document visibility labels (e.g. `finance`). Empty = public-within-tier.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub visibility_labels: Vec<String>,
     /// Tiered visibility (`personal` | `team` | `company`). Default personal (#178).
     #[serde(default)]
     pub visibility: VisibilityScope,
@@ -142,7 +148,36 @@ impl Default for KnowledgeAtom {
             metadata: HashMap::new(),
             trust_lane: TrustLane::Trusted,
             quarantine_reason: None,
+            corpus_tier: CorpusTier::Public,
+            visibility_labels: Vec::new(),
             visibility: VisibilityScope::Personal,
+        }
+    }
+}
+
+/// Bartlett-sized corpus isolation. Not a multi-person SaaS tenant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CorpusTier {
+    #[default]
+    Public,
+    Private,
+}
+
+impl CorpusTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::Private => "private",
+        }
+    }
+
+    /// Unknown values fail closed to private so a corrupt row cannot leak as public.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "public" => Self::Public,
+            "private" => Self::Private,
+            _ => Self::Private,
         }
     }
 }
@@ -306,6 +341,29 @@ pub struct SourceConfig {
     pub enabled: bool,
     pub poll_interval_secs: u64,
     pub extra: HashMap<String, String>,
+}
+
+impl SourceConfig {
+    /// `extra.default_corpus_tier` = `public` | `private`. Missing → public (solo default).
+    pub fn default_corpus_tier(&self) -> CorpusTier {
+        self.extra
+            .get("default_corpus_tier")
+            .map(|s| CorpusTier::parse(s.trim()))
+            .unwrap_or(CorpusTier::Public)
+    }
+
+    /// `extra.default_visibility_labels` = comma-separated KTD15 labels.
+    pub fn default_visibility_labels(&self) -> Vec<String> {
+        self.extra
+            .get("default_visibility_labels")
+            .map(|raw| {
+                raw.split(',')
+                    .map(|t| t.trim().to_string())
+                    .filter(|t| !t.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

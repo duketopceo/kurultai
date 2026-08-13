@@ -17,6 +17,16 @@ enabled = true
 kind = "markdown"                # dump formats: .md / .json / .jsonl / .ndjson / .txt
 root_path = "/Users/you/Documents/notes"
 poll_interval_secs = 60
+# default_corpus_tier = "public"          # public | private (solo default: public)
+# default_visibility_labels = "finance"  # comma-separated KTD15 labels
+
+# kb-it-docs: hashtag-line tags, no YAML frontmatter. Mark private for IT.
+# [sources.it_docs]
+# enabled = true
+# kind = "markdown"
+# root_path = "/path/to/kb-it-docs"
+# default_corpus_tier = "private"
+# default_visibility_labels = "it"
 # Use ONE source per mixed folder (do not also point json/inbox at the same root).
 
 [sources.data]

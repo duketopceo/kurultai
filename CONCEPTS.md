@@ -49,6 +49,21 @@ Atom visibility: `personal`, `team`, or `company`. Personal never leaves the ori
 ### Hub
 
 Optional shared store for one organization (not a multi-company SaaS). Personal kernel stays local SQLite; the hub is Postgres+pgvector behind Tailscale or public API keys.
+### Trust lane
+
+Whether an atom is eligible for default retrieval. Trusted atoms are searchable; quarantine atoms stay stored and are skipped unless the caller opts in.
+
+### Corpus tier
+
+Two-way isolation for a shared company brain: public (everyone) vs private (IT). Not a per-person SaaS tenant. Unknown stored values fail closed to private.
+
+### Visibility labels
+
+Per-document access tags on an atom (for example finance vs general). Empty means public-within-tier. Distinct from corpus tier and from search tags.
+
+### Hashtag-line tags
+
+A markdown line made only of `#tag` tokens. Used as tags when YAML frontmatter has none, so corpora without frontmatter are not wholesale-quarantined.
 
 ## Orchestration
 

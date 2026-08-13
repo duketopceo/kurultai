@@ -74,6 +74,7 @@ kurultai import brain.kurultai --combine  # merge into an existing store
 
 **Brain UI:** open [`http://127.0.0.1:8421/ui/`](http://127.0.0.1:8421/ui/) (trailing slash matters). Assets live in `ui/` and are embedded in the daemon binary — that is the only Brain dashboard. Do not add a parallel brain under `website/` or `web/`.
 
+Markdown atoms need **≥1 tag** (YAML frontmatter `tags:` **or** a dedicated hashtag line such as `#vpn #snipe-it`); untagged writes land in quarantine and are skipped by default search. YAML tags win when present. Promote after fixing: `kurultai promote <atom_id>`.
 Atoms need **≥1 tag** (YAML frontmatter `tags:` or JSON `tags`); untagged writes land in quarantine and are skipped by default search. Soft labels never satisfy the tag gate. Cheap length/thin heuristics also quarantine low-quality dumps (`low_quality:too_short` / `low_quality:thin`) — no LLM judge. Promote after fixing: `kurultai promote <atom_id>`.
 
 **Dump adapters:** markdown and json folder sources accept the same formats (`.md`, `.json`/`.jsonl`/`.ndjson`, `.txt`) via a shared atomizer. Prefer **one source per mixed folder**. Inbox trays (`kind = "inbox"`) move successes to `processed/` and failures to `failed/` (+ `.reason.txt`); `kurultai index` drains the tray offline. Loopback push: `POST /ingest` with `KURULTAI_INGEST_SECRET` (not under `/api/`).
