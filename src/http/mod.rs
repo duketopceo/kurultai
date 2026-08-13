@@ -442,6 +442,8 @@ struct SearchQuery {
     limit: usize,
     #[serde(default)]
     include_quarantine: bool,
+    #[serde(default)]
+    source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -456,6 +458,8 @@ struct SearchBody {
     limit: usize,
     #[serde(default)]
     include_quarantine: bool,
+    #[serde(default)]
+    source: Option<String>,
 }
 
 async fn search_post(
@@ -468,7 +472,12 @@ async fn search_post(
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Search);
     match state
         .brain
-        .search_filtered(&body.query, body.limit, body.include_quarantine)
+        .search_scoped(
+            &body.query,
+            body.limit,
+            body.include_quarantine,
+            body.source.as_deref(),
+        )
         .await
     {
         Ok(results) => {
@@ -496,7 +505,12 @@ async fn search_get(
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Search);
     match state
         .brain
-        .search_filtered(&query.q, query.limit, query.include_quarantine)
+        .search_scoped(
+            &query.q,
+            query.limit,
+            query.include_quarantine,
+            query.source.as_deref(),
+        )
         .await
     {
         Ok(results) => {

@@ -242,13 +242,14 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
         vec![
             json!({
                 "name": TOOL_SEARCH,
-                "description": "Search the Kurultai knowledge brain. Returns token-capped excerpts, not full documents. Default skips quarantine; set include_quarantine=true to include.",
+                "description": "Search the Kurultai knowledge brain. Returns token-capped excerpts, not full documents. Default skips quarantine. Unscoped results mix sources (pond cannot fill every slot). Pass source to pin a connector (notes, pond, code, …).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "query": { "type": "string" },
                         "limit": { "type": "integer", "default": 10 },
-                        "include_quarantine": { "type": "boolean", "default": false }
+                        "include_quarantine": { "type": "boolean", "default": false },
+                        "source": { "type": "string", "description": "Optional connector name (e.g. notes, pond, code)" }
                     },
                     "required": ["query"]
                 }
@@ -354,6 +355,8 @@ struct SearchArgs {
     limit: usize,
     #[serde(default)]
     include_quarantine: bool,
+    #[serde(default)]
+    source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -411,7 +414,12 @@ async fn call_tool(brain: &BrainService, params: Value, surface: ToolSurface) ->
             let args: SearchArgs = serde_json::from_value(call.arguments)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad search args: {e}")))?;
             let views = brain
-                .search_views_filtered(&args.query, args.limit, args.include_quarantine)
+                .search_views_scoped(
+                    &args.query,
+                    args.limit,
+                    args.include_quarantine,
+                    args.source.as_deref(),
+                )
                 .await?;
             serde_json::to_string(&views)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?

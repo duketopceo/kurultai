@@ -8,6 +8,8 @@ import { ActivityPanel } from './components/ActivityPanel';
 import { InspectorPanel } from './components/InspectorPanel';
 import { AskPanel } from './components/AskPanel';
 import { StatsPanel } from './components/StatsPanel';
+import { RepoStrip, countCodeRepos } from './components/RepoBrain';
+import { isCodeSource } from './repoLattice';
 import type { Atom, LayoutMode, LoadTier } from './types';
 import { LOAD_TIER_CAPS } from './types';
 
@@ -23,6 +25,7 @@ export function App() {
   const [selected, setSelected] = useState<Atom | null>(null);
   const [live, setLive] = useState(true);
   const [loadMsg, setLoadMsg] = useState('Loading memories…');
+  const [codeRepos, setCodeRepos] = useState<{ name: string; count: number }[]>([]);
   const [loadTier, setLoadTier] = useState<LoadTier>('low');
   const abortRef = useRef<AbortController | null>(null);
   const brainRef = useRef<BrainStageHandle | null>(null);
@@ -45,12 +48,14 @@ export function App() {
       setLoadMsg(`Loading ${tier}…`);
       const t0 = performance.now();
       const all = await fetchGraph(ac.signal);
+      const brainAtoms = all.filter((a) => !isCodeSource(a.source));
+      setCodeRepos(countCodeRepos(all));
       const cap = LOAD_TIER_CAPS[tier];
-      const atoms = all.slice(0, cap);
+      const atoms = brainAtoms.slice(0, cap);
       const elapsed = (performance.now() - t0).toFixed(0);
-      dbg(`fetchGraph done: ${atoms.length}/${all.length} atoms in ${elapsed}ms (tier: ${tier})`);
+      dbg(`fetchGraph done: ${atoms.length}/${brainAtoms.length} brain atoms (${all.length} total) in ${elapsed}ms (tier: ${tier})`);
       setLoadMsg(`${atoms.length} memories · ${tier}`);
-      dispatch({ type: 'SET_ATOMS', atoms, total: all.length });
+      dispatch({ type: 'SET_ATOMS', atoms, total: brainAtoms.length });
     } catch (e) {
       if ((e as Error)?.name !== 'AbortError') {
         dbg('fetchGraph error:', e);
@@ -148,6 +153,7 @@ export function App() {
           <AskPanel />
           <StatsPanel atoms={visible} atomTotal={state.atomTotal} />
         </section>
+        <RepoStrip repos={codeRepos} />
       </main>
       <footer>Kurultai runs locally. Your knowledge remains yours.</footer>
     </AppContext.Provider>

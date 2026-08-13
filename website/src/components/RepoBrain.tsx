@@ -1,12 +1,44 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrainView } from '../brain/BrainView';
 import { fetchGraph } from '../api';
+import { codeLatticeOf } from '../repoLattice';
 import type { Atom } from '../types';
 
 const dbg = (...args: unknown[]) => console.debug('[kurultai:repo-brain]', ...args);
 
-function repoOf(atom: Atom): string {
-  return atom.source_id.split('/')[0] ?? '';
+export function countCodeRepos(atoms: Atom[]): { name: string; count: number }[] {
+  const counts = new Map<string, number>();
+  atoms.forEach((a) => {
+    const r = codeLatticeOf(a);
+    if (r) counts.set(r, (counts.get(r) ?? 0) + 1);
+  });
+  return Array.from(counts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+export function RepoStrip({ repos }: { repos: { name: string; count: number }[] }) {
+  return (
+    <section className="repo-strip" aria-label="Code repositories">
+      <hr className="repo-strip-rule" />
+      <div className="repo-strip-head">
+        <h2>Repos <span className="beta-badge">beta</span></h2>
+        <p>Code lattices — kept off the main brain so file chunks do not crowd notes and sessions.</p>
+      </div>
+      {repos.length === 0 ? (
+        <p className="repo-strip-empty">No code repositories indexed. Enable a github/code source, then they appear here instead of on the cortex.</p>
+      ) : (
+        <div className="repo-grid">
+          {repos.map(({ name, count }) => (
+            <a key={name} href={`#/repo/${encodeURIComponent(name)}`} className="repo-card">
+              <strong>{name}</strong>
+              <span>{count} memories</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 export function RepoBrainPage() {
@@ -23,15 +55,7 @@ function RepoListPage() {
 
   useEffect(() => {
     fetchGraph().then((atoms) => {
-      const counts = new Map<string, number>();
-      atoms.forEach((a) => {
-        const r = repoOf(a);
-        if (r) counts.set(r, (counts.get(r) ?? 0) + 1);
-      });
-      const sorted = Array.from(counts.entries())
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count);
-      setRepos(sorted);
+      setRepos(countCodeRepos(atoms));
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -41,16 +65,15 @@ function RepoListPage() {
       <div className="repo-list-header">
         <a href="#/" className="back-link">← brain</a>
         <h2>Repo Brains <span className="beta-badge">beta</span></h2>
-        <p className="repo-list-sub">Each repository mapped as its own memory lattice.</p>
+        <p className="repo-list-sub">Git repositories only. Notes, pond, and dayflow stay on the main brain.</p>
       </div>
       {loading && <p className="repo-list-loading">Loading repositories…</p>}
+      {!loading && repos.length === 0 && (
+        <p className="repo-strip-empty">No code repositories indexed. Enable a github/code source to map each repo as its own lattice.</p>
+      )}
       <div className="repo-grid">
         {repos.map(({ name, count }) => (
-          <a
-            key={name}
-            href={`#/repo/${encodeURIComponent(name)}`}
-            className="repo-card"
-          >
+          <a key={name} href={`#/repo/${encodeURIComponent(name)}`} className="repo-card">
             <strong>{name}</strong>
             <span>{count} memories</span>
           </a>
@@ -79,7 +102,7 @@ function RepoBrainView({ repo }: { repo: string }) {
       onReady: () => {
         dbg('ready');
         fetchGraph().then((all) => {
-          const atoms = all.filter((a) => repoOf(a) === repo);
+          const atoms = all.filter((a) => codeLatticeOf(a) === repo);
           dbg(`${atoms.length} atoms for repo ${repo}`);
           setStatus(`${atoms.length} memories`);
           const links = buildLinks(atoms);
