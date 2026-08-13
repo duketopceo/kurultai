@@ -50,8 +50,16 @@ fn serve_asset(path: &str) -> Response {
     match UiAssets::get(path) {
         Some(file) => {
             let mime = mime_guess::from_path(path).first_or_octet_stream();
+            let cache = if path.starts_with("assets/") {
+                "public, max-age=31536000, immutable"
+            } else {
+                "no-store"
+            };
             (
-                [(header::CONTENT_TYPE, mime.essence_str())],
+                [
+                    (header::CONTENT_TYPE, mime.essence_str()),
+                    (header::CACHE_CONTROL, cache),
+                ],
                 file.data.into_owned(),
             )
                 .into_response()
@@ -81,6 +89,12 @@ mod tests {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
         assert!(ct.starts_with("text/html"), "content-type={ct}");
+        let cache = resp
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert_eq!(cache, "no-store");
         let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
             .await
             .unwrap();
@@ -88,6 +102,10 @@ mod tests {
         assert!(
             body.contains("Brain") || body.contains("kurultai"),
             "expected brain UI html"
+        );
+        assert!(
+            body.contains("kurultai-ui-version"),
+            "brain.html should stamp UI version"
         );
     }
 
@@ -152,5 +170,14 @@ mod tests {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
         assert!(ct.contains("css"), "content-type={ct}");
+        let cache = resp
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            cache.contains("immutable"),
+            "hashed assets should be immutable, got {cache}"
+        );
     }
 }

@@ -54,7 +54,11 @@ const dbg = (...args: unknown[]) => console.debug('[kurultai:api]', ...args);
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   dbg('GET', path);
   const t0 = performance.now();
-  const r = await fetch(path, { headers: { Accept: 'application/json' }, signal });
+  const r = await fetch(path, {
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+    signal,
+  });
   if (!r.ok) {
     dbg('GET failed', path, r.status);
     throw new Error(`${path} failed (${r.status})`);

@@ -25,10 +25,10 @@ use crate::metrics::{MetricOp, MetricsRegistry, TimedObserve};
 use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
 use auth::hub_api_auth;
-use axum::extract::{Query, State};
+use axum::extract::{Query, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
-use axum::middleware;
-use axum::response::IntoResponse;
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
@@ -167,8 +167,20 @@ fn router(state: AppState) -> Router {
             state.hub.clone(),
             hub_api_auth,
         ))
+        .layer(middleware::from_fn(no_store_api))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+/// Browsers must not reuse `/api/*` JSON (graph/status used to boot from a stale cache).
+async fn no_store_api(req: Request, next: Next) -> Response {
+    let is_api = req.uri().path().starts_with("/api/");
+    let mut res = next.run(req).await;
+    if is_api {
+        res.headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    res
 }
 
 async fn health() -> Json<serde_json::Value> {
@@ -207,6 +219,7 @@ async fn api_status(
                 Ok(Json(serde_json::json!({
                     "ok": true,
                     "service": "kurultai",
+                    "version": env!("CARGO_PKG_VERSION"),
                     "atoms": atoms,
                     "request_id": &request_id,
                     "brain": {
@@ -231,6 +244,7 @@ async fn api_status(
             Json(serde_json::json!({
                 "ok": false,
                 "service": "kurultai",
+                "version": env!("CARGO_PKG_VERSION"),
                 "atoms": null,
                 "error": e.to_string(),
                 "request_id": &request_id,
@@ -1322,11 +1336,18 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+        let cache = resp
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert_eq!(cache, "no-store");
         let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
             .await
             .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["ok"], true);
+        assert_eq!(v["version"], env!("CARGO_PKG_VERSION"));
         assert!(v["atoms"].is_number());
         assert!(v["memory"]["hot"].is_number());
         assert!(v["memory"]["warm"].is_number());

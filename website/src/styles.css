@@ -169,6 +169,11 @@ button, input, textarea { font: inherit; }
   color: var(--electric-strong);
   border: 1px solid var(--line-strong);
 }
+.brand small.version-mark {
+  color: var(--text-muted);
+  letter-spacing: .04em;
+  font-weight: 500;
+}
 .topbar-status {
   display: flex;
   align-items: center;

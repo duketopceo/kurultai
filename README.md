@@ -20,7 +20,7 @@
 
 A local knowledge brain for agents and humans. Index notes, chats, JSON dumps, Dayflow, Pond, and code checkouts into one SQLite store — then `search` / `ask` / MCP with excerpts and citations, not whole-vault dumps.
 
-**Current release:** [v0.4.0](https://github.com/duketopceo/kurultai/releases/tag/v0.4.0) · crate **0.4.1** (tag after this lands)
+**Current release:** [v0.4.1](https://github.com/duketopceo/kurultai/releases/tag/v0.4.1)
 
 ## Install
 
@@ -39,7 +39,7 @@ irm https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.p
 From source ([Rust](https://rustup.rs)):
 
 ```bash
-cargo install --git https://github.com/duketopceo/kurultai --tag v0.4.0 --locked
+cargo install --git https://github.com/duketopceo/kurultai --tag v0.4.1 --locked
 ```
 
 Binaries ship for macOS (arm64 / amd64), Linux amd64, and Windows amd64 via [`.github/workflows/release.yml`](.github/workflows/release.yml).
