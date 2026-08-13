@@ -213,14 +213,15 @@ To create staging (admin): `gh api -X PUT repos/duketopceo/kurultai/environments
 - Plans / Agent Zero drafts: [`docs/plans/`](docs/plans/) · [`docs/agent-zero/`](docs/agent-zero/)
 
 Roadmap: developer → solo → team → company ([#25](https://github.com/duketopceo/kurultai/issues/25), [#27](https://github.com/duketopceo/kurultai/issues/27)).  
-Phase 6 next work orders (post–v0.4.0): [docs/plans/phase-6-work-orders.md](docs/plans/phase-6-work-orders.md) — P6-1 MCP HTTP/SSE ([#104](https://github.com/duketopceo/kurultai/issues/104)).
+Phase 6 work orders: [docs/plans/phase-6-work-orders.md](docs/plans/phase-6-work-orders.md) (Wave B foundation ✅).  
+**Next `/lfg` queue:** [docs/plans/phase-6-next-work-orders.md](docs/plans/phase-6-next-work-orders.md) — Wave G Tiered Access + Hosted Hub (HUB-1 atom scope [#178](https://github.com/duketopceo/kurultai/issues/178)).
 
 | Phase | Status |
 |-------|--------|
 | 1–3 Foundation / search / synthesis | ✅ |
 | 4 Expansion (Dayflow · Pond · GitHub FS) | ✅ [complete](docs/plans/phase-4-complete.md) |
 | 5 Production (poll · watch · local ONNX · MCP agents) | ✅ [complete](docs/plans/phase-5-complete.md) · [closeout](docs/plans/phase-5-closeout.md) |
-| 6 Launch (yurt · Brain UI v0.4.0 · remote MCP next) | 📋 [#10](https://github.com/duketopceo/kurultai/issues/10) · [work orders](docs/plans/phase-6-work-orders.md) |
+| 6 Launch (yurt · Brain UI · MCP HTTP/SSE · **Tiered Hub next**) | 📋 [#10](https://github.com/duketopceo/kurultai/issues/10) · [next queue](docs/plans/phase-6-next-work-orders.md) |
 
 Deferred ops (not Phase 5 product exit): [#20](https://github.com/duketopceo/kurultai/issues/20) ARC · [#29](https://github.com/duketopceo/kurultai/issues/29) env hardening · [#35](https://github.com/duketopceo/kurultai/issues/35) GlitchTip — see [phase-5-complete.md](docs/plans/phase-5-complete.md).
 
