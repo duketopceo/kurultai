@@ -14,15 +14,22 @@ path = "~/.local/share/kurultai/dev/store.db"
 
 [sources.notes]
 enabled = true
-kind = "markdown"
+kind = "markdown"                # dump formats: .md / .json / .jsonl / .ndjson / .txt
 root_path = "/Users/you/Documents/notes"
 poll_interval_secs = 60
+# Use ONE source per mixed folder (do not also point json/inbox at the same root).
 
 [sources.data]
 enabled = false
-kind = "json"                    # .json arrays or .jsonl / .ndjson
+kind = "json"                    # dump formats: .json / .jsonl / .ndjson / .md / .txt
 root_path = "/Users/you/data"
-# optional: id_field = "url"     # stable source_id field (default: id)
+# Use ONE source per mixed folder (do not also point markdown/inbox at the same root).
+
+[sources.inbox]
+enabled = false
+kind = "inbox"                   # dump tray: successes → processed/, failures → failed/
+root_path = "/Users/you/kurultai-inbox"
+# Offline: `kurultai index` drains the tray without the daemon.
 
 [sources.dayflow]
 enabled = false
@@ -57,6 +64,7 @@ poll_interval_secs = 300
 # inactivity_threshold_hours = 24     # skip poll when idle this many hours
 # reranker_model = "openai/gpt-4o-mini"
 # mcp_http_secret = "…"               # optional; prefer env KURULTAI_MCP_HTTP_SECRET
+# Loopback dump ingest (POST /ingest) uses env KURULTAI_INGEST_SECRET only — no config key.
 
 # --- CLI presentation -------------------------------------------------------
 

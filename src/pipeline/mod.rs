@@ -89,15 +89,37 @@ impl IndexPipeline {
         }
 
         let mut enriched = atoms;
-        let mut skipped_embed = 0usize;
 
+        // Gate each atom before embed (KTD7: don't pay embed on junk / quarantine).
+        // Track in-batch content hashes so exact dupes in the same connector batch
+        // quarantine even before commit.
+        let mut batch_seen_hashes = std::collections::HashSet::new();
+        for atom in &mut enriched {
+            let hash = sha256_hex(&atom.content);
+            let outcome = if batch_seen_hashes.contains(&hash) {
+                crate::quality::GateOutcome::Quarantine {
+                    reason: format!("exact_duplicate:batch:{hash}"),
+                }
+            } else {
+                evaluate(self.store.as_ref(), atom).await?
+            };
+            batch_seen_hashes.insert(hash);
+            apply_gate(atom, outcome);
+            if atom.trust_lane == crate::types::TrustLane::Quarantine {
+                atom.embedding = None;
+            }
+        }
+
+        let mut skipped_embed = 0usize;
         if self.embedder.is_live() {
-            // Collect texts that need embeddings, batch call, assign back.
-            // Hash-skip: unchanged content_hash + existing vector → leave embedding None
-            // so upsert preserves the stored vec row.
+            // Embed trusted atoms only. Hash-skip: unchanged content_hash + existing
+            // vector → leave embedding None so upsert preserves the stored vec row.
             let mut pending_idx = Vec::new();
             let mut pending_texts = Vec::new();
             for (i, atom) in enriched.iter().enumerate() {
+                if atom.trust_lane != crate::types::TrustLane::Trusted {
+                    continue;
+                }
                 if atom.embedding.is_some() {
                     continue;
                 }
@@ -132,27 +154,16 @@ impl IndexPipeline {
             );
         }
 
-        // Gate each atom; track in-batch content hashes so exact dupes in the
-        // same connector batch quarantine even before commit.
-        let mut batch_seen_hashes = std::collections::HashSet::new();
-        for atom in &mut enriched {
-            let hash = sha256_hex(&atom.content);
-            let outcome = if batch_seen_hashes.contains(&hash) {
-                crate::quality::GateOutcome::Quarantine {
-                    reason: format!("exact_duplicate:batch:{hash}"),
-                }
-            } else {
-                evaluate(self.store.as_ref(), atom).await?
-            };
-            batch_seen_hashes.insert(hash);
-            apply_gate(atom, outcome);
-        }
-
         if !enriched.is_empty() {
             self.store
                 .upsert_batch(&enriched)
                 .await
                 .map_err(|e| KurultaiError::Store(format!("upsert_batch failed: {e}")))?;
+        }
+
+        // Inbox tray finalization (trusted → processed/, quarantine → failed/).
+        if let Err(e) = crate::connectors::inbox::finalize_inbox_batch(&enriched) {
+            tracing::warn!(source = %source_name, error = %e, "inbox tray finalize failed");
         }
 
         let duration_ms = started.elapsed().as_millis();

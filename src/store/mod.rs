@@ -517,32 +517,38 @@ impl SqliteVecStore {
 
         // Vector: write when a new embedding is provided; preserve existing when
         // content_hash is unchanged and caller skipped re-embed (hash-skip).
-        match &atom.embedding {
-            Some(emb) => {
-                conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
-                    .map_err(|e| KurultaiError::Store(format!("vec delete failed: {e}")))?;
-                if emb.len() != embed_dim {
-                    return Err(KurultaiError::Store(format!(
-                        "embedding dim {} != store embed_dim {embed_dim} for atom {}",
-                        emb.len(),
-                        atom.id
-                    )));
+        // Quarantine always clears vec (KTD7 — don't pollute atoms_vec with junk).
+        if atom.trust_lane == TrustLane::Quarantine {
+            conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
+                .map_err(|e| KurultaiError::Store(format!("vec delete failed: {e}")))?;
+        } else {
+            match &atom.embedding {
+                Some(emb) => {
+                    conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
+                        .map_err(|e| KurultaiError::Store(format!("vec delete failed: {e}")))?;
+                    if emb.len() != embed_dim {
+                        return Err(KurultaiError::Store(format!(
+                            "embedding dim {} != store embed_dim {embed_dim} for atom {}",
+                            emb.len(),
+                            atom.id
+                        )));
+                    }
+                    if embedding_norm(emb) >= MIN_EMBEDDING_NORM {
+                        conn.execute(
+                            "INSERT INTO atoms_vec(rowid, embedding) VALUES (?1, ?2)",
+                            params![rowid, emb.as_bytes()],
+                        )
+                        .map_err(|e| KurultaiError::Store(format!("vec insert failed: {e}")))?;
+                    } else {
+                        tracing::debug!(id = %atom.id, "skipping near-zero embedding for vec index");
+                    }
                 }
-                if embedding_norm(emb) >= MIN_EMBEDDING_NORM {
-                    conn.execute(
-                        "INSERT INTO atoms_vec(rowid, embedding) VALUES (?1, ?2)",
-                        params![rowid, emb.as_bytes()],
-                    )
-                    .map_err(|e| KurultaiError::Store(format!("vec insert failed: {e}")))?;
-                } else {
-                    tracing::debug!(id = %atom.id, "skipping near-zero embedding for vec index");
+                None if !hash_unchanged => {
+                    conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
+                        .map_err(|e| KurultaiError::Store(format!("vec delete failed: {e}")))?;
                 }
+                None => {}
             }
-            None if !hash_unchanged => {
-                conn.execute("DELETE FROM atoms_vec WHERE rowid = ?1", [rowid])
-                    .map_err(|e| KurultaiError::Store(format!("vec delete failed: {e}")))?;
-            }
-            None => {}
         }
 
         // Soft labels: replace when caller provided any; preserve existing when empty

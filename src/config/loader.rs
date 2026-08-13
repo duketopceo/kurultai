@@ -180,6 +180,7 @@ fn parse_source_kind(kind: &str) -> SourceKind {
         "tech_tracker" | "techtracker" => SourceKind::TechTracker,
         "github" => SourceKind::GitHub,
         "json" => SourceKind::Json,
+        "inbox" => SourceKind::Inbox,
         other => SourceKind::Custom(other.to_string()),
     }
 }

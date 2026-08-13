@@ -1,27 +1,25 @@
+//! Markdown folder connector with dump format parity (md / json / ndjson / txt).
+
 use crate::connectors::Connector;
 use crate::error::{KurultaiError, Result};
+use crate::ingest::dump;
 use crate::security::validate_readable_path;
 use crate::types::{KnowledgeAtom, SourceConfig};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
-/// Max words per heading chunk (mdvault-inspired).
-const MAX_CHUNK_WORDS: usize = 400;
-
-/// Indexes `.md` files from any directory on disk.
+/// Indexes dump files from any directory on disk (markdown-primary, format-parity dumps).
 ///
-/// Obsidian, Logseq, git wikis, etc. are just folders — no desktop app integration.
 /// Config: `kind = "markdown"`, `root_path = "/path/to/notes"`.
+/// Accepts `.md`, `.json`/`.jsonl`/`.ndjson`, and `.txt` via the shared dump atomizer.
+/// Use **one source per mixed folder** (do not also point a `json` source at the same root).
 pub struct MarkdownConnector {
-    /// Config source name (e.g. `notes`) — stored on each atom for delete_source.
     source_name: String,
     root_path: Option<PathBuf>,
-    /// Watermark for incremental poll (mtime).
     last_poll: Mutex<Option<SystemTime>>,
 }
 
@@ -34,7 +32,7 @@ impl MarkdownConnector {
         }
     }
 
-    /// `root_path` preferred; `vault_path` accepted as deprecated alias (Obsidian-era naming).
+    /// `root_path` preferred; `vault_path` accepted as deprecated alias.
     fn resolve_root(config: &SourceConfig) -> Result<String> {
         if let Some(path) = config.extra.get("root_path") {
             return Ok(path.clone());
@@ -59,8 +57,8 @@ impl MarkdownConnector {
             .ok_or_else(|| KurultaiError::connector("markdown", "not initialized"))?;
 
         let mut atoms = Vec::new();
-        walk_md_files(root, &mut |path| {
-            let meta = fs::metadata(path).map_err(|e| {
+        dump::walk_dump_files(root, &[], &mut |path| {
+            let meta = std::fs::metadata(path).map_err(|e| {
                 KurultaiError::connector("markdown", format!("stat {}: {e}", path.display()))
             })?;
             let mtime = meta.modified().ok();
@@ -70,22 +68,17 @@ impl MarkdownConnector {
                 }
             }
 
-            let text = fs::read_to_string(path).map_err(|e| {
-                KurultaiError::connector("markdown", format!("read {}: {e}", path.display()))
-            })?;
-
-            let rel = path
-                .strip_prefix(root)
-                .unwrap_or(path)
-                .to_string_lossy()
-                .replace('\\', "/");
-
             let updated = mtime
                 .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
                 .map(|d| DateTime::from_timestamp(d.as_secs() as i64, 0).unwrap_or_else(Utc::now))
                 .unwrap_or_else(Utc::now);
 
-            atoms.extend(file_to_atoms(&self.source_name, &rel, &text, updated));
+            atoms.extend(dump::atomize_path(
+                &self.source_name,
+                root,
+                path,
+                updated,
+            )?);
             Ok(())
         })?;
 
@@ -139,299 +132,12 @@ impl Connector for MarkdownConnector {
     }
 }
 
-fn walk_md_files(root: &Path, visit: &mut dyn FnMut(&Path) -> Result<()>) -> Result<()> {
-    let entries = fs::read_dir(root).map_err(|e| {
-        KurultaiError::connector("markdown", format!("read_dir {}: {e}", root.display()))
-    })?;
-    for entry in entries {
-        let entry = entry.map_err(|e| KurultaiError::connector("markdown", e.to_string()))?;
-        let path = entry.path();
-        if path.is_dir() {
-            // Skip hidden dirs like .obsidian
-            if path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with('.'))
-            {
-                continue;
-            }
-            walk_md_files(&path, visit)?;
-        } else if path
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| e.eq_ignore_ascii_case("md"))
-        {
-            visit(&path)?;
-        }
-    }
-    Ok(())
-}
-
-/// Parse optional YAML-ish frontmatter and body.
-fn split_frontmatter(text: &str) -> (HashMap<String, String>, &str) {
-    let text = text.trim_start_matches('\u{feff}');
-    if let Some(rest) = text.strip_prefix("---\n") {
-        if let Some(end) = rest.find("\n---\n") {
-            let yaml = &rest[..end];
-            let body = &rest[end + 5..];
-            return (parse_simple_yaml(yaml), body);
-        }
-        if let Some(end) = rest.find("\n---") {
-            // trailing --- at EOF
-            if rest[end + 4..].trim().is_empty() {
-                return (parse_simple_yaml(&rest[..end]), "");
-            }
-        }
-    }
-    (HashMap::new(), text)
-}
-
-fn parse_simple_yaml(yaml: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    for line in yaml.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some((k, v)) = line.split_once(':') {
-            let key = k.trim().to_string();
-            let mut val = v.trim().to_string();
-            if (val.starts_with('"') && val.ends_with('"'))
-                || (val.starts_with('\'') && val.ends_with('\''))
-            {
-                val = val[1..val.len() - 1].to_string();
-            }
-            // tags: [a, b] → store raw; also support tags: a, b
-            map.insert(key, val);
-        }
-    }
-    map
-}
-
-fn file_to_atoms(
-    source: &str,
-    rel_path: &str,
-    text: &str,
-    source_updated_at: DateTime<Utc>,
-) -> Vec<KnowledgeAtom> {
-    let (fm, body) = split_frontmatter(text);
-    let file_title = fm
-        .get("title")
-        .cloned()
-        .unwrap_or_else(|| title_from_path(rel_path));
-    let tags = parse_tags(fm.get("tags").map(String::as_str));
-
-    let chunks = chunk_markdown(body);
-    let mut atoms = Vec::with_capacity(chunks.len().max(1));
-
-    if chunks.is_empty() {
-        let content = body.trim();
-        if content.is_empty() {
-            return atoms;
-        }
-        atoms.push(make_atom(
-            source,
-            rel_path,
-            None,
-            &file_title,
-            content,
-            &tags,
-            source_updated_at,
-            0,
-            1,
-        ));
-        return atoms;
-    }
-
-    let chunk_count = chunks.len();
-    for (chunk_index, chunk) in chunks.into_iter().enumerate() {
-        let title = if chunk.heading.is_empty() {
-            file_title.clone()
-        } else {
-            format!("{} — {}", file_title, chunk.heading)
-        };
-        let prefix = format!("[{rel_path} > {file_title} > {}]", chunk.heading);
-        let content = if chunk.heading.is_empty() {
-            chunk.body
-        } else {
-            format!("{prefix}\n{}", chunk.body)
-        };
-        atoms.push(make_atom(
-            source,
-            rel_path,
-            Some(&chunk.heading),
-            &title,
-            &content,
-            &tags,
-            source_updated_at,
-            chunk_index as u32,
-            chunk_count as u32,
-        ));
-    }
-    atoms
-}
-
-struct Chunk {
-    heading: String,
-    body: String,
-}
-
-fn chunk_markdown(body: &str) -> Vec<Chunk> {
-    let mut chunks: Vec<Chunk> = Vec::new();
-    let mut current_heading = String::new();
-    let mut current_body = String::new();
-
-    for line in body.lines() {
-        let is_heading = line.starts_with("## ") || line.starts_with("### ");
-        if is_heading {
-            flush_chunk(&mut chunks, &current_heading, &mut current_body);
-            current_heading = line.trim_start_matches('#').trim().to_string();
-        } else {
-            current_body.push_str(line);
-            current_body.push('\n');
-        }
-    }
-    flush_chunk(&mut chunks, &current_heading, &mut current_body);
-
-    // Split oversized chunks by word count
-    let mut out = Vec::new();
-    for chunk in chunks {
-        for piece in split_by_words(&chunk.body, MAX_CHUNK_WORDS) {
-            if piece.trim().is_empty() {
-                continue;
-            }
-            out.push(Chunk {
-                heading: chunk.heading.clone(),
-                body: piece,
-            });
-        }
-    }
-    out
-}
-
-fn flush_chunk(chunks: &mut Vec<Chunk>, heading: &str, body: &mut String) {
-    let trimmed = body.trim().to_string();
-    if !trimmed.is_empty() || !heading.is_empty() {
-        chunks.push(Chunk {
-            heading: heading.to_string(),
-            body: trimmed,
-        });
-    }
-    body.clear();
-}
-
-fn split_by_words(text: &str, max_words: usize) -> Vec<String> {
-    let words: Vec<&str> = text.split_whitespace().collect();
-    if words.len() <= max_words {
-        return vec![text.trim().to_string()];
-    }
-    words.chunks(max_words).map(|c| c.join(" ")).collect()
-}
-
-#[allow(clippy::too_many_arguments)]
-fn make_atom(
-    source: &str,
-    rel_path: &str,
-    heading: Option<&str>,
-    title: &str,
-    content: &str,
-    tags: &[String],
-    source_updated_at: DateTime<Utc>,
-    chunk_index: u32,
-    chunk_count: u32,
-) -> KnowledgeAtom {
-    // Include chunk_index so repeated headings / split pieces stay unique for cite.
-    let source_id = match heading {
-        Some(h) if !h.is_empty() => format!("{rel_path}#{h}#c{chunk_index}"),
-        _ if chunk_count > 1 => format!("{rel_path}#c{chunk_index}"),
-        _ => rel_path.to_string(),
-    };
-    let hash = crate::hashutil::sha256_hex(content);
-    let id = crate::hashutil::atom_id_from_hash(source, &source_id, &hash);
-    let summary: String = content.chars().take(280).collect();
-
-    let mut metadata = HashMap::from([
-        ("content_hash".into(), hash),
-        ("rel_path".into(), rel_path.to_string()),
-        ("chunk_index".into(), chunk_index.to_string()),
-        ("chunk_count".into(), chunk_count.to_string()),
-    ]);
-    if let Some(h) = heading.filter(|h| !h.is_empty()) {
-        metadata.insert("heading".into(), h.to_string());
-    }
-
-    KnowledgeAtom {
-        id,
-        source: source.to_string(),
-        source_id,
-        title: title.to_string(),
-        summary,
-        content: content.to_string(),
-        question: None,
-        resolution: None,
-        tags: tags.to_vec(),
-        soft_labels: vec![],
-        source_updated_at,
-        indexed_at: Utc::now(),
-        embedding: None,
-        metadata,
-        ..Default::default()
-    }
-}
-
-fn title_from_path(rel: &str) -> String {
-    Path::new(rel)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or(rel)
-        .replace(['-', '_'], " ")
-}
-
-fn parse_tags(raw: Option<&str>) -> Vec<String> {
-    let Some(raw) = raw else {
-        return vec![];
-    };
-    let raw = raw.trim().trim_start_matches('[').trim_end_matches(']');
-    raw.split(',')
-        .map(|t| t.trim().trim_matches('"').trim_matches('\'').to_string())
-        .filter(|t| !t.is_empty())
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::SourceKind;
+    use std::fs;
     use std::io::Write;
-
-    #[test]
-    fn frontmatter_and_chunks() {
-        let text = r#"---
-title: Deploy Guide
-tags: [ops, k8s]
----
-Intro paragraph.
-
-## Database migration
-Run the database migration scripts carefully.
-
-## Rollback
-How to rollback a bad deploy.
-"#;
-        let atoms = file_to_atoms("notes", "ops/deploy.md", text, Utc::now());
-        assert!(atoms.len() >= 2);
-        assert!(atoms
-            .iter()
-            .any(|a| a.content.contains("database migration")));
-        assert!(atoms.iter().all(|a| a.source == "notes"));
-        assert!(atoms.iter().any(|a| a.tags.contains(&"ops".into())));
-        assert!(atoms.iter().all(|a| a.metadata.contains_key("rel_path")));
-        assert!(atoms.iter().all(|a| a.metadata.contains_key("chunk_index")));
-        let indexes: Vec<u32> = atoms
-            .iter()
-            .filter_map(|a| a.metadata.get("chunk_index")?.parse().ok())
-            .collect();
-        assert!(indexes.contains(&0));
-    }
 
     #[tokio::test]
     async fn full_sync_indexes_fixture_files() {
@@ -443,7 +149,7 @@ How to rollback a bad deploy.
         let mut f = fs::File::create(dir.join("sub/note.md")).unwrap();
         writeln!(
             f,
-            "---\ntitle: Fixture Note\n---\n\n## Section\nKNOWN_PHRASE_KURULTAI_42 appears here.\n"
+            "---\ntitle: Fixture Note\ntags: [fixture]\n---\n\n## Section\nKNOWN_PHRASE_KURULTAI_42 appears here with enough detail for the quality gate.\n"
         )
         .unwrap();
 
@@ -452,7 +158,7 @@ How to rollback a bad deploy.
         extra.insert("root_path".into(), dir.to_string_lossy().into_owned());
         let config = SourceConfig {
             name: "notes".into(),
-            kind: crate::types::SourceKind::Markdown,
+            kind: SourceKind::Markdown,
             enabled: true,
             poll_interval_secs: 60,
             extra,
@@ -464,5 +170,38 @@ How to rollback a bad deploy.
             .iter()
             .any(|a| a.content.contains("KNOWN_PHRASE_KURULTAI_42")));
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn format_parity_reads_json_and_txt() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("a.json"),
+            r#"[{"title":"J","content":"JSON dump body with operational detail for parity test case.","tags":["j"]}]"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("b.txt"),
+            "plain text dump body with operational detail for parity test case.\n",
+        )
+        .unwrap();
+
+        let mut connector = MarkdownConnector::new();
+        connector
+            .init(&SourceConfig {
+                name: "notes".into(),
+                kind: SourceKind::Markdown,
+                enabled: true,
+                poll_interval_secs: 60,
+                extra: HashMap::from([(
+                    "root_path".into(),
+                    dir.path().to_string_lossy().into_owned(),
+                )]),
+            })
+            .await
+            .unwrap();
+        let atoms = connector.full_sync().await.unwrap();
+        assert!(atoms.iter().any(|a| a.content.contains("JSON dump body")));
+        assert!(atoms.iter().any(|a| a.content.contains("plain text dump")));
     }
 }

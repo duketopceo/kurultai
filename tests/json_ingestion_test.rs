@@ -150,8 +150,8 @@ async fn ingestion_jobs_finish_failure_records_error() {
 async fn json_connector_full_sync_indexes_json_array() {
     let dir = tempfile::tempdir().unwrap();
     let content = r#"[
-      {"id": "j1", "title": "Record One",   "content": "INTEGRATION_JSON_KNOWN_55", "tags": ["integration"]},
-      {"id": "j2", "title": "Record Two",   "content": "second record content"}
+      {"id": "j1", "title": "Record One",   "content": "INTEGRATION_JSON_KNOWN_55 with enough operational detail for the quality gate.", "tags": ["integration"]},
+      {"id": "j2", "title": "Record Two",   "content": "second record content with enough operational detail for indexing."}
     ]"#;
     std::fs::write(dir.path().join("data.json"), content).unwrap();
 
@@ -206,8 +206,8 @@ async fn json_connector_full_sync_indexes_json_array() {
 async fn json_connector_full_sync_indexes_ndjson() {
     let dir = tempfile::tempdir().unwrap();
     let content = [
-        r#"{"uid": "n1", "title": "NDJSON One", "content": "INTEGRATION_NDJSON_KNOWN_99", "tags": ["ndjson"]}"#,
-        r#"{"uid": "n2", "title": "NDJSON Two", "content": "second ndjson line", "tags": ["ndjson"]}"#,
+        r#"{"uid": "n1", "title": "NDJSON One", "content": "INTEGRATION_NDJSON_KNOWN_99 with enough operational detail for the quality gate.", "tags": ["ndjson"]}"#,
+        r#"{"uid": "n2", "title": "NDJSON Two", "content": "second ndjson line with enough operational detail for indexing.", "tags": ["ndjson"]}"#,
     ]
     .join("\n");
     std::fs::write(dir.path().join("data.ndjson"), &content).unwrap();
@@ -250,10 +250,11 @@ async fn json_connector_full_sync_indexes_ndjson() {
             .any(|a| a.content.contains("INTEGRATION_NDJSON_KNOWN_99")),
         "expected NDJSON phrase in indexed atoms"
     );
-    // stable source_id from id_field
+    // Path-stable source_id (relative path + record index).
     assert!(
-        atoms.iter().any(|a| a.source_id == "n1"),
-        "expected source_id=n1 (from uid field)"
+        atoms.iter().any(|a| a.source_id.ends_with("/0")),
+        "expected path-index source_id, got {:?}",
+        atoms.iter().map(|a| &a.source_id).collect::<Vec<_>>()
     );
 }
 
@@ -283,10 +284,10 @@ async fn json_connector_rejects_malformed_json_file() {
 }
 
 #[tokio::test]
-async fn json_connector_stable_source_id_with_id_field() {
+async fn json_connector_stable_source_id_from_relative_path() {
     let dir = tempfile::tempdir().unwrap();
     let content = r#"[
-      {"record_id": "stable-001", "title": "Stable ID Test", "content": "hello"}
+      {"record_id": "stable-001", "title": "Stable ID Test", "content": "hello with enough detail for a dump atom"}
     ]"#;
     std::fs::write(dir.path().join("stable.json"), content).unwrap();
 
@@ -296,21 +297,23 @@ async fn json_connector_stable_source_id_with_id_field() {
         kind: SourceKind::Json,
         enabled: true,
         poll_interval_secs: 60,
-        extra: HashMap::from([
-            (
-                "root_path".into(),
-                dir.path().to_string_lossy().into_owned(),
-            ),
-            ("id_field".into(), "record_id".into()),
-        ]),
+        extra: HashMap::from([(
+            "root_path".into(),
+            dir.path().to_string_lossy().into_owned(),
+        )]),
     };
     connector.init(&config).await.unwrap();
     let atoms = connector.full_sync().await.unwrap();
 
     assert_eq!(atoms.len(), 1);
     assert_eq!(
-        atoms[0].source_id, "stable-001",
-        "source_id should use id_field value"
+        atoms[0].source_id, "stable.json/0",
+        "source_id should be relative path + record index"
+    );
+    assert_eq!(
+        atoms[0].metadata.get("external_id").map(String::as_str),
+        None,
+        "record_id is not the default id field; external_id only from `id`"
     );
 }
 
