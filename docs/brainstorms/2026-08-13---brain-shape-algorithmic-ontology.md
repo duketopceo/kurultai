@@ -1,6 +1,6 @@
 # Dual-state Brain: volumetric FDG + algorithmic ontology
 
-**Status:** Research only — no visual or schema code in this note  
+**Status:** Research accepted · implementation plan [`docs/plans/2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md`](../plans/2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md)  
 **Date:** 2026-08-13  
 **Origin:** Product direction after v0.4.1: default **brain-shape** layout; **ontology** is the other real mode; **galaxy/solar is out**; current ontology toggle is useless.  
 **Related:** [#116](https://github.com/duketopceo/kurultai/issues/116) O1 primitives · [#117](https://github.com/duketopceo/kurultai/issues/117) O2 graph UI · [#118](https://github.com/duketopceo/kurultai/issues/118) agent propose → human approve · [`phase-6-atlas-gaps.md`](../plans/phase-6-atlas-gaps.md) · [`phase-6-work-orders.md`](../plans/phase-6-work-orders.md) Wave E

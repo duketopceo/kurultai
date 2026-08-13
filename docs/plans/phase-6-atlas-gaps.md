@@ -71,7 +71,7 @@ T1 Postgres ──► T1b objects+edges on shared backend
 
 One Brain product (`ui/` embedded in daemon). Atlas is a **mode / projection set**, not a second Vite app or `website/` dashboard.
 
-Intended Brain toggles (research, 2026-08-13): **brain-shape** volumetric FDG inside the cortex hull, and **algorithmic ontology** (schema scaffold, instances on expand). Galaxy/solar is not a peer mode. See [`docs/brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md`](../brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md). Ontology **layout** still waits on O1.
+Intended Brain toggles (research, 2026-08-13): **brain-shape** volumetric FDG inside the cortex hull, and **algorithmic ontology** (schema scaffold, instances on expand). Galaxy/solar is not a peer mode. See [`docs/brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md`](../brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md) and plan [`2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md`](2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md). Ontology **layout** still waits on O1.
 
 ## Explicit non-goals (this gap fill)
 
