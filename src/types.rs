@@ -161,6 +161,17 @@ pub struct SoftLabel {
 /// Max soft labels persisted per atom (cardinality clamp).
 pub const SOFT_LABEL_MAX: usize = 16;
 
+impl KnowledgeAtom {
+    /// Project / workspace namespace for agent memory sequestering.
+    /// Stored in metadata for the prototype; will become a first-class column.
+    pub fn project_id(&self) -> &str {
+        self.metadata
+            .get("project_id")
+            .map(|s| s.as_str())
+            .unwrap_or("default")
+    }
+}
+
 /// Clamp score into `[0.0, 1.0]` and truncate to [`SOFT_LABEL_MAX`].
 pub fn normalize_soft_labels(labels: &[SoftLabel]) -> Vec<SoftLabel> {
     labels
