@@ -9,8 +9,8 @@ mod auth;
 mod mcp;
 mod ui;
 
-pub use mcp::resolve_mcp_http_secret;
 pub use auth::{HubAuth, HubGate};
+pub use mcp::resolve_mcp_http_secret;
 
 use crate::daemon::DaemonStatus;
 use crate::error::KurultaiError;
@@ -19,13 +19,13 @@ use crate::mcp::interface::AgentRead;
 use crate::metrics::{MetricOp, MetricsRegistry, TimedObserve};
 use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
+use auth::hub_api_auth;
 use axum::extract::{Query, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use auth::hub_api_auth;
 use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::Arc;

@@ -340,10 +340,7 @@ impl BrainService {
 /// Cap how many hits any one connector can take in an unscoped search.
 const MAX_HITS_PER_SOURCE: usize = 3;
 
-pub(crate) fn diversify_by_source(
-    results: Vec<SearchResult>,
-    limit: usize,
-) -> Vec<SearchResult> {
+pub(crate) fn diversify_by_source(results: Vec<SearchResult>, limit: usize) -> Vec<SearchResult> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     let mut kept = Vec::new();
     let mut overflow = Vec::new();

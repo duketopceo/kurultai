@@ -27,7 +27,10 @@ pub fn parse_hub_auth(raw: Option<&str>) -> HubAuth {
 }
 
 pub fn parse_hub_bind_all(raw: Option<&str>) -> bool {
-    matches!(raw.map(str::trim).unwrap_or(""), "all" | "0.0.0.0" | "public")
+    matches!(
+        raw.map(str::trim).unwrap_or(""),
+        "all" | "0.0.0.0" | "public"
+    )
 }
 
 pub fn keys_from_csv(raw: Option<&str>) -> Vec<String> {
