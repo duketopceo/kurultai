@@ -13,7 +13,7 @@ Related: GitHub login [#81](https://github.com/duketopceo/kurultai/issues/81) ·
 | `web/` Clerk + GitHub sign-in shell | **Shipped** |
 | One team deploy + one Clerk Organization | **Design + partial UI** — auth only; shared store/API enforcement not in this PR |
 | Promote-to-shared-index, device sync (#80) | **Partial** — offline `.kurultai` export/import shipped; encrypted/live sync still roadmap |
-| Hosted hub (Tailscale or public + device API keys) | **Roadmap** — [Wave G](plans/phase-6-next-work-orders.md) HUB-2…HUB-6 |
+| Hosted hub (Tailscale or public + device API keys) | **Partial** — HUB-2 Postgres `Store` exists behind `--features postgres` + `KURULTAI_FEATURE_HUB=1`; transport is HUB-3 |
 | Multi-tenant / VPC, many Orgs / RBAC, audit, retention | **Roadmap / design only** — not shipped |
 
 ## Visibility scopes (HUB-1)
@@ -28,7 +28,23 @@ Every `KnowledgeAtom` carries a visibility field:
 
 **Solo / no hub:** search and ask return all local atoms regardless of scope tags (no filter yet). Connectors may set scope at ingest; Kurultai does **not** infer it from path or source kind.
 
-Next: Postgres shared store + hub transport — see [phase-6-next-work-orders.md](plans/phase-6-next-work-orders.md).
+## Shared hub store (HUB-2)
+
+`PostgresStore` is a second `Store` implementation for **shared** atoms only.
+
+| Rule | Detail |
+|------|--------|
+| Isolation | **One Postgres database per organization.** Not many orgs on one Kurultai-operated platform. `team_id` is reserved (nullable) and unused in this slice. |
+| Write gate (AE4) | `personal` atoms error on upsert; they are never inserted. |
+| Allowed visibility | `team` and `company` only (CHECK constraint). |
+| Solo kernel | `open_store` / CLI / daemon still open SQLite. Construct the hub with `open_hub_store` after `cargo build --features postgres` and `KURULTAI_FEATURE_HUB=1`. |
+| SQLite → hub | **Copy** of `team`/`company` atoms into Postgres. Never personal. Never convert `store.db` in place. `.kurultai` export/import stays SQLite-only. |
+| Dual-store ask/search | Out (HUB-3 / R8). This slice does not merge local + hub results. |
+| Product flag | `hub` is v0.5.0, default **off**. |
+
+Tests against Postgres skip unless `KURULTAI_TEST_DATABASE_URL` is set (CI job **Postgres store** provides it).
+
+Next: hub transport — see [phase-6-next-work-orders.md](plans/phase-6-next-work-orders.md).
 
 ## Three layers
 

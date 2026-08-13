@@ -77,6 +77,11 @@ poll_interval_secs = 300
 # mcp_http_secret = "…"               # optional; prefer env KURULTAI_MCP_HTTP_SECRET
 # Hub mode (optional): prefer env KURULTAI_HUB_AUTH=api_key, KURULTAI_HUB_API_KEYS, KURULTAI_HUB_BIND=all
 # Loopback dump ingest (POST /ingest) uses env KURULTAI_INGEST_SECRET only — no config key.
+#
+# Shared hub Postgres (HUB-2) is NOT selected by [storage].path / open_store.
+# Build with --features postgres, set KURULTAI_FEATURE_HUB=1, then open via
+# open_hub_store("postgres://…", embed_dim). One database per organization.
+# Copy team/company atoms only — never personal, never in-place convert of store.db.
 
 # --- CLI presentation -------------------------------------------------------
 

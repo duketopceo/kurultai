@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0] — unreleased
+
+Shared hub track (product flag `hub`, default **off**). Crate version stays 0.4.1 until this line ships.
+
+- HUB-2: optional `--features postgres` `PostgresStore` (pgvector) for `team`/`company` atoms. `open_store` remains SQLite. Personal upserts are rejected (AE4). One Postgres database per organization; copy shared-tier atoms only — never personal, never in-place convert of `store.db`.
+
 ## [0.4.1] — unreleased
 
 Production-prep for the next GitHub Release (tag `v0.4.1` after merge to `main`).

@@ -43,7 +43,7 @@ Ship **visibility scopes + shared hub** before Atlas UI or enterprise connector 
 |------:|----|------------|-------|------|----------------|------------|
 | 0 | **REL-1** | **v0.4.1 production tag** — crate/docs/UI embed in sync; human tags `v0.4.1` after merge | this tree | S | v0.4.1 | After this PR |
 | 1 | **HUB-1** | **Atom visibility scope** `personal \| team \| company` + merged local query shape (solo unchanged) | [#178](https://github.com/duketopceo/kurultai/issues/178) | M | v0.4.x (`hub` still off) | ✅ `#192` |
-| 2 | **HUB-2** | Postgres + pgvector `Store` for **shared** tier | [#176](https://github.com/duketopceo/kurultai/issues/176) · legacy [#111](https://github.com/duketopceo/kurultai/issues/111) | L | v0.5.0 `hub` | **Yes — next `/lfg`** |
+| 2 | **HUB-2** | Postgres + pgvector `Store` for **shared** tier | [#176](https://github.com/duketopceo/kurultai/issues/176) · legacy [#111](https://github.com/duketopceo/kurultai/issues/111) | L | v0.5.0 `hub` | **This PR** |
 | 3 | HUB-3 | Hub mode daemon — Tailscale-only **or** public + per-device API key | [#177](https://github.com/duketopceo/kurultai/issues/177) | L | v0.5.0 `hub` | After HUB-2 · [#190](https://github.com/duketopceo/kurultai/pull/190) shipped API-key scaffold |
 | 4 | HUB-4 | Admin CLI — issue/revoke device keys; `team_id` / `org_id` boundaries | [#179](https://github.com/duketopceo/kurultai/issues/179) | M | v0.5.0 `hub` | With/after HUB-3 |
 | 5 | HUB-5 | Connector ingest tags visibility scope at source (never infer later) | [#180](https://github.com/duketopceo/kurultai/issues/180) · narrows [#114](https://github.com/duketopceo/kurultai/issues/114) | M | v0.5.0 `hub` | After HUB-1 · restart on `main` ([#193](https://github.com/duketopceo/kurultai/pull/193) closed unmerged) |
@@ -92,8 +92,8 @@ Atlas sequencing still lives in [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md)
 ## `/lfg` playbook (this queue)
 
 1. ~~HUB-1 atom scope~~ ✅ `#192`.  
-2. ~~v0.4.1 prep~~ ✅ `#196` (CLI map · UI build · versioned flags). Solo docs: this PR (`init --docs`). Human tags **`v0.4.1`** on `main` after both land.  
-3. **Next `/lfg`:** **HUB-2** Postgres Store ([#176](https://github.com/duketopceo/kurultai/issues/176), Linear PRO-760) under flag `hub` / v0.5.0. SQLite stays the solo kernel.  
+2. ~~v0.4.1 prep~~ ✅ `#196` (CLI map · UI build · versioned flags). Solo docs: `#195` (`init --docs`). Human tags **`v0.4.1`** on `main` after both land.  
+3. **HUB-2** Postgres Store ([#176](https://github.com/duketopceo/kurultai/issues/176), Linear PRO-760) — this PR. SQLite stays the solo kernel.  
 4. Then remaining HUB-3 (Tailscale bind + tenant identity; API-key scaffold is `#190`) → HUB-4 admin → HUB-5 connector tagging (restart; `#193` did not land) → HUB-6 green.
 
 ### Hygiene

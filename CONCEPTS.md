@@ -48,7 +48,8 @@ Atom visibility: `personal`, `team`, or `company`. Personal never leaves the ori
 
 ### Hub
 
-Optional shared store for one organization (not a multi-company SaaS). Personal kernel stays local SQLite; the hub is Postgres+pgvector behind Tailscale or public API keys.
+Optional shared store for **one organization** (not a multi-company SaaS). Personal kernel stays local SQLite forever. HUB-2 adds `PostgresStore` behind `--features postgres` and `KURULTAI_FEATURE_HUB=1`; CLI/`open_store` still opens SQLite. Transport (Tailscale or public API keys) is HUB-3.
+
 ### Trust lane
 
 Whether an atom is eligible for default retrieval. Trusted atoms are searchable; quarantine atoms stay stored and are skipped unless the caller opts in.

@@ -67,6 +67,10 @@ glob = "0.3"
 libc = "0.2"
 fastembed = { version = "5", optional = true }
 
+# Optional hub store (HUB-2). Default builds stay SQLite-only.
+sqlx = { version = "=0.8.6", optional = true, default-features = false, features = ["runtime-tokio-rustls", "postgres"] }
+pgvector = { version = "=0.4.1", optional = true, default-features = false, features = ["sqlx"] }
+
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
@@ -75,3 +79,5 @@ tempfile = "3"
 [features]
 # Opt-in local ONNX embeddings (fastembed). Default builds stay FTS/cloud-only for CI.
 local-embed = ["dep:fastembed"]
+# Shared-tier Postgres + pgvector (v0.5.0 hub). Also needs KURULTAI_FEATURE_HUB=1 at runtime.
+postgres = ["dep:sqlx", "dep:pgvector"]
