@@ -183,8 +183,19 @@ impl BrainService {
         limit: usize,
         include_quarantine: bool,
     ) -> Result<Vec<AgentAtomView>> {
+        self.search_views_scoped(query, limit, include_quarantine, None)
+            .await
+    }
+
+    pub async fn search_views_scoped(
+        &self,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+        source: Option<&str>,
+    ) -> Result<Vec<AgentAtomView>> {
         let results = self
-            .search_filtered(query, limit, include_quarantine)
+            .search_scoped(query, limit, include_quarantine, source)
             .await?;
         Ok(results
             .into_iter()
@@ -259,10 +270,35 @@ impl BrainService {
         limit: usize,
         include_quarantine: bool,
     ) -> Result<Vec<SearchResult>> {
+        self.search_scoped(query, limit, include_quarantine, None)
+            .await
+    }
+
+    /// Search, optionally pinned to one connector `source`.
+    /// Unscoped results are diversified so pond/dayflow cannot fill every slot.
+    pub async fn search_scoped(
+        &self,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+        source: Option<&str>,
+    ) -> Result<Vec<SearchResult>> {
         let filter = SearchFilter {
             trusted_only: !include_quarantine,
         };
-        let results = self.hybrid_hits_filtered(query, limit, filter).await?;
+        let src = source.map(str::trim).filter(|s| !s.is_empty());
+        let fetch = if src.is_some() {
+            (limit.max(1) * 8).min(80)
+        } else {
+            (limit.max(1) * 4).min(40)
+        };
+        let mut results = self.hybrid_hits_filtered(query, fetch, filter).await?;
+        if let Some(src) = src {
+            results.retain(|r| r.atom.source == src);
+        } else {
+            results = diversify_by_source(results, limit);
+        }
+        results.truncate(limit);
         let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
         self.touch_access_many(&ids).await;
         self.activity.record("search", query, ids, None);
@@ -325,6 +361,34 @@ impl BrainService {
             let _ = self.store.touch_access(id).await;
         }
     }
+}
+
+/// Cap how many hits any one connector can take in an unscoped search.
+const MAX_HITS_PER_SOURCE: usize = 3;
+
+pub(crate) fn diversify_by_source(results: Vec<SearchResult>, limit: usize) -> Vec<SearchResult> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    let mut kept = Vec::new();
+    let mut overflow = Vec::new();
+    for r in results {
+        let n = counts.get(&r.atom.source).copied().unwrap_or(0);
+        if n < MAX_HITS_PER_SOURCE {
+            counts.insert(r.atom.source.clone(), n + 1);
+            kept.push(r);
+            if kept.len() >= limit {
+                return kept;
+            }
+        } else {
+            overflow.push(r);
+        }
+    }
+    for r in overflow {
+        if kept.len() >= limit {
+            break;
+        }
+        kept.push(r);
+    }
+    kept
 }
 
 fn citation_from_atom(atom: &KnowledgeAtom, score: f64, include_url: bool) -> Citation {
@@ -602,5 +666,31 @@ mod tests {
 
         let err = brain.remember(" ", "ok", &[], &[]).await.unwrap_err();
         assert!(err.to_string().contains("non-empty"));
+    }
+
+    #[test]
+    fn diversify_caps_one_source_then_fills() {
+        fn hit(id: &str, source: &str) -> SearchResult {
+            SearchResult {
+                atom: KnowledgeAtom {
+                    id: id.into(),
+                    source: source.into(),
+                    ..Default::default()
+                },
+                score: 1.0,
+                rank: 0,
+                matched_by: vec!["fts".into()],
+            }
+        }
+        let pond: Vec<_> = (0..8).map(|i| hit(&format!("p{i}"), "pond")).collect();
+        let notes = hit("n1", "notes");
+        let mut input = pond;
+        input.insert(3, notes);
+        let out = super::diversify_by_source(input, 5);
+        let pond_n = out.iter().filter(|r| r.atom.source == "pond").count();
+        let notes_n = out.iter().filter(|r| r.atom.source == "notes").count();
+        assert_eq!(notes_n, 1);
+        assert_eq!(out.len(), 5);
+        assert!(pond_n <= 4);
     }
 }

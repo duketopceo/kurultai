@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import type { Atom, LayoutMode, LoadTier } from '../types';
 import { searchAtoms } from '../api';
+import { isCodeSource } from '../repoLattice';
 
 interface Props {
   layout: LayoutMode;
@@ -32,8 +33,9 @@ export function CommandStrip({
     const ac = new AbortController();
     abortRef.current = ac;
     searchAtoms(query, ac.signal).then((r) => {
-      setResults(r);
-      setDropdownOpen(r.length > 0);
+      const brainHits = r.filter((a) => !isCodeSource(a.source));
+      setResults(brainHits);
+      setDropdownOpen(brainHits.length > 0);
     }).catch(() => {});
     return () => ac.abort();
   }, [query]);

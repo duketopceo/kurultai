@@ -1017,6 +1017,27 @@ header.topbar {
 .repo-card strong { color: var(--fg, #e0e0f0); font-size: .95rem; }
 .repo-card span { color: var(--fg-muted, #888); font-size: .8rem; }
 
+.repo-strip {
+  max-width: 1100px;
+  margin: 0 auto 3rem;
+  padding: 0 1.5rem 2rem;
+}
+.repo-strip-rule {
+  border: 0;
+  border-top: 1px solid var(--line, rgba(168, 85, 247, .22));
+  margin: 2.5rem 0 1.4rem;
+}
+.repo-strip-head h2 {
+  font-size: 1.15rem;
+  margin: 0 0 .35rem;
+}
+.repo-strip-head p,
+.repo-strip-empty {
+  color: var(--text-muted, #8a82a8);
+  font-size: .88rem;
+  margin: 0 0 1rem;
+}
+
 .repo-brain-page {
   display: flex;
   flex-direction: column;

@@ -42,6 +42,13 @@ Tiered access field on every atom (HUB-1 / [#178](https://github.com/duketopceo/
 
 See: [docs/plans/phase-6-next-work-orders.md](docs/plans/phase-6-next-work-orders.md) · [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md)
 
+### Visibility scope
+
+Atom visibility: `personal`, `team`, or `company`. Personal never leaves the originating device. Team and company live on an optional shared hub. A deployment may enable zero, one, or two shared tiers.
+
+### Hub
+
+Optional shared store for one organization (not a multi-company SaaS). Personal kernel stays local SQLite; the hub is Postgres+pgvector behind Tailscale or public API keys.
 ### Trust lane
 
 Whether an atom is eligible for default retrieval. Trusted atoms are searchable; quarantine atoms stay stored and are skipped unless the caller opts in.
