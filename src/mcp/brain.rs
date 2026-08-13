@@ -269,6 +269,27 @@ impl BrainService {
         Ok(results)
     }
 
+    /// Agent-optimized recall: search then filter by `project_id`, returning token-capped views.
+    /// Prototype implementation filters in-memory; production should push `project_id` into SQL.
+    pub async fn recall_for_agent(
+        &self,
+        project: &str,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+    ) -> Result<Vec<AgentAtomView>> {
+        // Over-fetch so project filtering still yields useful results.
+        let mut results = self
+            .search_filtered(query, limit * 2, include_quarantine)
+            .await?;
+        results.retain(|r| r.atom.project_id() == project);
+        results.truncate(limit);
+        Ok(results
+            .into_iter()
+            .map(|r| AgentAtomView::from_atom(&r.atom, r.score, DEFAULT_EXCERPT_CAP))
+            .collect())
+    }
+
     /// Hot / warm / cold counts under default [`TierPolicy`].
     pub async fn tier_counts(&self) -> Result<(u64, u64, u64)> {
         self.store.count_by_tier(TierPolicy::default()).await

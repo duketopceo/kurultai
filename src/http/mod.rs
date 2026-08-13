@@ -12,6 +12,7 @@ mod ui;
 pub use ingest::resolve_ingest_secret;
 pub use mcp::resolve_mcp_http_secret;
 
+use crate::brain::AgentAtomView;
 use crate::daemon::DaemonStatus;
 use crate::error::KurultaiError;
 use crate::mcp::brain::BrainService;
@@ -132,6 +133,7 @@ fn router(state: AppState) -> Router {
         .route("/api/activity", get(api_activity))
         .route("/api/promote", post(api_promote))
         .route("/api/search", get(search_get).post(search_post))
+        .route("/api/recall", post(recall_post))
         .route("/api/ask", get(ask_get).post(ask_post))
         .route("/api/open", get(api_open))
         .route("/search", get(search_get).post(search_post))
@@ -454,6 +456,16 @@ struct SearchBody {
     include_quarantine: bool,
 }
 
+#[derive(Debug, Deserialize)]
+struct RecallBody {
+    project: String,
+    query: String,
+    #[serde(default = "default_limit")]
+    limit: usize,
+    #[serde(default)]
+    include_quarantine: bool,
+}
+
 async fn search_post(
     State(state): State<AppState>,
     Json(body): Json<SearchBody>,
@@ -479,6 +491,32 @@ async fn search_post(
                 &request_id,
             ))
         }
+    }
+}
+
+async fn recall_post(
+    State(state): State<AppState>,
+    Json(body): Json<RecallBody>,
+) -> Result<Json<Vec<AgentAtomView>>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("recall_post", request_id=%request_id);
+    state.status.touch_client_activity();
+    match state
+        .brain
+        .recall_for_agent(
+            &body.project,
+            &body.query,
+            body.limit,
+            body.include_quarantine,
+        )
+        .await
+    {
+        Ok(views) => Ok(Json(views)),
+        Err(e) => Err(json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            e.to_string(),
+            &request_id,
+        )),
     }
 }
 

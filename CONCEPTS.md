@@ -34,7 +34,13 @@ On incremental index, if an atom’s content hash is unchanged and a vector alre
 
 ### KnowledgeAtom
 
-One structured knowledge unit: title, summary, content, tags, provenance (source and source id), optional embedding. Markdown files are one ingest source, not the system of record.
+One structured knowledge unit: title, summary, content, tags, provenance (source and source id), optional embedding, and **visibility scope** (`personal` | `team` | `company`, default `personal`). Markdown files are one ingest source, not the system of record.
+
+### Visibility scope
+
+Tiered access field on every atom (HUB-1 / [#178](https://github.com/duketopceo/kurultai/issues/178)). Solo / no-hub installs leave atoms at `personal` and search/ask behave as before. Shared hub slices (HUB-2+) will honor `team` / `company`; local search does **not** filter by scope until a hub is configured.
+
+See: [docs/plans/phase-6-next-work-orders.md](docs/plans/phase-6-next-work-orders.md) · [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md)
 
 ## Orchestration
 
