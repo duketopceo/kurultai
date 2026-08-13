@@ -16,7 +16,8 @@ use std::sync::Arc;
 #[command(
     name = "kurultai",
     version,
-    about = "Unified knowledge retrieval layer. Assemble what you know."
+    about = "Assemble what you know, from wherever it lives.",
+    after_help = "Setup        kurultai init --agent <cursor|claude|codex|hermes|all>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated"
 )]
 struct Cli {
     /// Log filter (overrides KURULTAI_LOG). Example: kurultai=trace,info
@@ -41,30 +42,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Write default config and wire MCP into an agent
+    /// Write config and wire MCP (`--agent cursor|claude|codex|hermes|all`)
     Init {
         /// Agent to wire: cursor, claude, codex, hermes, or all
         #[arg(long, default_value = "cursor")]
         agent: AgentTarget,
     },
-    /// Index all configured sources
+    /// Ingest configured sources into the brain
     Index {
         /// Full re-index instead of incremental
         #[arg(long)]
         full: bool,
-    },
-    /// Ask a question
-    Ask {
-        /// The question to answer
-        question: String,
-    },
-    /// Which sources know about a topic
-    WhoKnows {
-        /// Topic / query
-        topic: String,
-        /// Max search hits to aggregate
-        #[arg(long, default_value = "20")]
-        limit: usize,
     },
     /// Search the knowledge base
     Search {
@@ -74,7 +62,21 @@ enum Commands {
         #[arg(long, default_value = "10")]
         limit: usize,
     },
-    /// List configured sources and status
+    /// Ask a question (extractive without an API key)
+    Ask {
+        /// The question to answer
+        question: String,
+    },
+    /// Which sources know about a topic
+    #[command(name = "who-knows", visible_alias = "who_knows")]
+    WhoKnows {
+        /// Topic / query
+        topic: String,
+        /// Max search hits to aggregate
+        #[arg(long, default_value = "20")]
+        limit: usize,
+    },
+    /// Environment, sources, atom counts, feature flags
     Status {
         /// Print Prometheus metrics from a running local daemon (`GET /api/metrics`)
         #[arg(long)]
@@ -83,7 +85,7 @@ enum Commands {
         #[arg(long, default_value = "8421")]
         port: u16,
     },
-    /// Promote a quarantined atom to trusted (re-runs quality gate)
+    /// Promote a quarantined atom to trusted
     Promote {
         /// Atom id
         atom_id: String,
@@ -91,9 +93,9 @@ enum Commands {
         #[arg(long)]
         reason: Option<String>,
     },
-    /// Run MCP server on stdio (for Cursor / Claude)
+    /// MCP server on stdio (Cursor / Claude / Codex / Hermes)
     Mcp,
-    /// Start the daemon (serves HTTP, polls sources, watches filesystem roots)
+    /// HTTP API + Brain UI (`http://127.0.0.1:8421/ui/`) + poll/watch
     Daemon {
         /// Port for the HTTP server
         #[arg(long, default_value = "8421")]
@@ -108,19 +110,13 @@ enum Commands {
         #[arg(long)]
         no_watch: bool,
     },
-    /// Export this Kurultai setup to a `.kurultai` pack (multi-device handoff)
+    /// Export this setup to a `.kurultai` pack
     Export {
         /// Output path (default: kurultai-export-YYYYMMDD-HHMMSS.kurultai)
         #[arg(short = 'o', long)]
         output: Option<PathBuf>,
     },
-    /// Delete already-indexed atoms matching known generated-file path patterns
-    Prune {
-        /// Remove atoms whose source_id contains Next.js / webpack generated-file path segments
-        #[arg(long)]
-        generated: bool,
-    },
-    /// Import a `.kurultai` pack into a new or existing setup
+    /// Import a `.kurultai` pack
     Import {
         /// Path to a `.kurultai` pack
         pack: PathBuf,
@@ -133,6 +129,12 @@ enum Commands {
         /// If destination config.toml is missing, write the pack's config there
         #[arg(long, default_value_t = false)]
         write_config: bool,
+    },
+    /// Remove generated-file noise already in the index
+    Prune {
+        /// Remove atoms whose source_id contains Next.js / webpack generated-file path segments
+        #[arg(long)]
+        generated: bool,
     },
 }
 
@@ -282,6 +284,10 @@ async fn main() -> Result<()> {
             println!("  Trusted: {}", trusted);
             println!("  Quarantine: {}", quarantine);
             println!("  Merge candidates (pending): {}", merge_pending);
+            println!("  Features (KURULTAI_FEATURE_<ID>=0|1):");
+            for line in kurultai::features::status_lines() {
+                println!("{line}");
+            }
 
             let inbox_roots = kurultai::daemon::inbox_roots_from_sources(&app.config.sources);
             if !inbox_roots.is_empty() {

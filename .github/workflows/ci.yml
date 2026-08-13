@@ -64,6 +64,24 @@ jobs:
       - name: Release build
         run: cargo build --release --locked
 
+  ui:
+    name: Brain UI build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Build website/ → ui/
+        run: bash scripts/build-ui.sh
+      - name: Embedded ui/ matches website source
+        run: |
+          git add -- ui/
+          git diff --cached --exit-code -- ui/
+
   macos-smoke:
     name: macOS smoke
     runs-on: macos-latest

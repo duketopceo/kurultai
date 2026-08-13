@@ -40,6 +40,17 @@ cargo test --locked
 cargo audit
 ```
 
+### Brain UI (`website/` → `ui/`)
+
+Source lives in `website/`. The daemon embeds `ui/` (`GET /ui/`). After changing `website/src/`:
+
+```bash
+bash scripts/build-ui.sh   # Node 22 (see `.nvmrc`); writes ui/
+cargo build                # embed the new assets
+```
+
+CI job **Brain UI build** fails if `ui/` is stale relative to `website/`. Do not edit hashed files under `ui/assets/` by hand.
+
 ## Coding Standards
 
 ### Rust Conventions

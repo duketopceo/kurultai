@@ -20,7 +20,7 @@
 
 A local knowledge brain for agents and humans. Index notes, chats, JSON dumps, Dayflow, Pond, and code checkouts into one SQLite store — then `search` / `ask` / MCP with excerpts and citations, not whole-vault dumps.
 
-**Current release:** [v0.3.0](https://github.com/duketopceo/kurultai/releases/tag/v0.3.0)
+**Current release:** [v0.4.0](https://github.com/duketopceo/kurultai/releases/tag/v0.4.0) · crate **0.4.1** (tag after this lands)
 
 ## Install
 
@@ -39,7 +39,7 @@ irm https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.p
 From source ([Rust](https://rustup.rs)):
 
 ```bash
-cargo install --git https://github.com/duketopceo/kurultai --tag v0.3.0 --locked
+cargo install --git https://github.com/duketopceo/kurultai --tag v0.4.0 --locked
 ```
 
 Binaries ship for macOS (arm64 / amd64), Linux amd64, and Windows amd64 via [`.github/workflows/release.yml`](.github/workflows/release.yml).
@@ -81,11 +81,11 @@ Atoms need **≥1 tag** (YAML frontmatter `tags:` or JSON `tags`); untagged writ
 
 Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md). Concepts: [CONCEPTS.md](CONCEPTS.md). Plan: [docs/plans/2026-08-12-002-feat-config-not-code-adapters-plan.md](docs/plans/2026-08-12-002-feat-config-not-code-adapters-plan.md).
 
-## What ships (v0.3.0)
+## What ships (v0.4.1)
 
 | Layer | Reality |
 |-------|---------|
-| **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon` |
+| **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon`, `prune` |
 | **Connectors** | Markdown · JSON · Inbox tray · Dayflow · Pond · GitHub (local checkout). AppFlowy deferred ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
 | **Store** | SQLite + FTS5 + sqlite-vec · hot / warm / cold memory · ingestion staging |
 | **Search** | FTS ∥ vector → RRF → soft-label / quality boost → optional rerank |
@@ -217,7 +217,7 @@ To create staging (admin): `gh api -X PUT repos/duketopceo/kurultai/environments
 
 ## Docs & contributing
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [CONCEPTS.md](CONCEPTS.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [CONCEPTS.md](CONCEPTS.md) · [CHANGELOG.md](CHANGELOG.md)
 - Mac / laptop: [docs/mac-dev.md](docs/mac-dev.md)
 - Upstream notes: [docs/upstream-inspiration.md](docs/upstream-inspiration.md)
 - Plans / Agent Zero drafts: [`docs/plans/`](docs/plans/) · [`docs/agent-zero/`](docs/agent-zero/)
