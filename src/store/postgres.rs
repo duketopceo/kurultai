@@ -2,7 +2,7 @@
 //!
 //! Solo [`super::open_store`] stays SQLite. Personal atoms are refused (AE4).
 
-use super::{IngestionJob, SearchFilter, Store, MIN_EMBEDDING_NORM};
+use super::{IngestionJob, SearchFilter, Store, DEFAULT_PROJECT, MIN_EMBEDDING_NORM};
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
@@ -564,23 +564,29 @@ impl Store for PostgresStore {
         if limit == 0 || query.trim().is_empty() {
             return Ok(vec![]);
         }
-        let sql = if filter.trusted_only {
+        // Predicates in SQL so project scoping precedes LIMIT (see sqlite impl).
+        let mut predicates = String::new();
+        if filter.trusted_only {
+            predicates.push_str(" AND trust_lane = 'trusted'");
+        }
+        let project = filter.project_scope();
+        if project.is_some() {
+            predicates.push_str(&format!(
+                " AND COALESCE(CAST(metadata_json AS jsonb)->>'project_id', '{DEFAULT_PROJECT}') = $3"
+            ));
+        }
+        let sql = format!(
             "SELECT id, ts_rank(search_tsv, plainto_tsquery('english', $1))::float8 AS score
              FROM knowledge_atoms
-             WHERE search_tsv @@ plainto_tsquery('english', $1)
-               AND trust_lane = 'trusted'
+             WHERE search_tsv @@ plainto_tsquery('english', $1){predicates}
              ORDER BY score DESC
              LIMIT $2"
-        } else {
-            "SELECT id, ts_rank(search_tsv, plainto_tsquery('english', $1))::float8 AS score
-             FROM knowledge_atoms
-             WHERE search_tsv @@ plainto_tsquery('english', $1)
-             ORDER BY score DESC
-             LIMIT $2"
-        };
-        let rows = sqlx::query(sql)
-            .bind(query)
-            .bind(limit as i64)
+        );
+        let mut q = sqlx::query(&sql).bind(query).bind(limit as i64);
+        if let Some(p) = project {
+            q = q.bind(p.to_string());
+        }
+        let rows = q
             .fetch_all(&self.pool)
             .await
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids: {e}")))?;
@@ -621,20 +627,31 @@ impl Store for PostgresStore {
         } else {
             limit
         };
+        let project = filter.project_scope();
         let vec = Vector::from(query_embed.to_vec());
         // L2 `<->`, score `1/(1+distance)` — same shape as sqlite-vec MATCH distance.
-        let rows = sqlx::query(
+        let project_pred = if project.is_some() {
+            format!(
+                " WHERE COALESCE(CAST(a.metadata_json AS jsonb)->>'project_id', '{DEFAULT_PROJECT}') = $3"
+            )
+        } else {
+            String::new()
+        };
+        let sql = format!(
             "SELECT a.id, (v.embedding <-> $1)::float8 AS distance, a.trust_lane
              FROM atoms_vec v
-             JOIN knowledge_atoms a ON a.id = v.atom_id
+             JOIN knowledge_atoms a ON a.id = v.atom_id{project_pred}
              ORDER BY v.embedding <-> $1
-             LIMIT $2",
-        )
-        .bind(vec)
-        .bind(k as i64)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| KurultaiError::Store(format!("vector_search_ids: {e}")))?;
+             LIMIT $2"
+        );
+        let mut q = sqlx::query(&sql).bind(vec).bind(k as i64);
+        if let Some(p) = project {
+            q = q.bind(p.to_string());
+        }
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| KurultaiError::Store(format!("vector_search_ids: {e}")))?;
         let mut out = Vec::new();
         for row in rows {
             let id: String = row
@@ -766,8 +783,8 @@ impl Store for PostgresStore {
         let sql = format!(
             "SELECT {ATOM_SELECT} FROM knowledge_atoms
              WHERE source = $1
-               AND metadata_json::jsonb->>'rel_path' = $2
-               AND (metadata_json::jsonb->>'chunk_index')::int = $3
+               AND CAST(metadata_json AS jsonb)->>'rel_path' = $2
+               AND (CAST(metadata_json AS jsonb)->>'chunk_index')::int = $3
              LIMIT 1"
         );
         let row = sqlx::query(&sql)
@@ -1240,13 +1257,7 @@ mod tests {
             .unwrap();
         assert!(!trusted.iter().any(|(a, _)| a.id == id));
         let all = store
-            .fts_search(
-                "quarantine-fts-token",
-                10,
-                SearchFilter {
-                    trusted_only: false,
-                },
-            )
+            .fts_search("quarantine-fts-token", 10, SearchFilter::trusted(false))
             .await
             .unwrap();
         assert!(all.iter().any(|(a, _)| a.id == id));
