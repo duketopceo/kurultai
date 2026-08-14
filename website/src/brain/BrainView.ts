@@ -306,6 +306,10 @@ export class BrainView {
     try {
       this.layoutWorker = createFdgWorker();
       this.layoutWorker.onmessage = (event: MessageEvent<FdgWorkerOut>) => this.onWorkerPositions(event.data);
+      this.layoutWorker.onerror = () => {
+        this.layoutWorker?.terminate();
+        this.layoutWorker = null;
+      };
     } catch {
       this.layoutWorker = null;
     }
@@ -406,7 +410,7 @@ export class BrainView {
     const index = geometry.getIndex();
     const sdf = bakeSdfFromPositions(
       this.verts,
-      index ? Array.from(index.array) : null,
+      index ? index.array : null,
       SDF_RESOLUTION,
     );
     this.sdfPacked = sdf ? packSdf(sdf) : null;
