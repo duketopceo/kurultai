@@ -25,9 +25,7 @@ pub async fn run_near_dupe_pass(
         return Ok((0, 0));
     }
 
-    let trusted = store
-        .list_atoms(SCAN_CAP, SearchFilter::trusted())
-        .await?;
+    let trusted = store.list_atoms(SCAN_CAP, SearchFilter::trusted()).await?;
     for t in trusted {
         if !candidates.iter().any(|c| c.id == t.id) {
             candidates.push(t);

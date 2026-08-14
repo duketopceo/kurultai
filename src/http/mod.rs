@@ -513,10 +513,8 @@ async fn api_promote(
         .brain
         .promote(
             &body.atom_id,
-            &crate::write_policy::WriteContext::from_env(
-                crate::write_policy::WriteTransport::Http,
-            )
-            .actor(),
+            &crate::write_policy::WriteContext::from_env(crate::write_policy::WriteTransport::Http)
+                .actor(),
             body.reason.as_deref(),
         )
         .await

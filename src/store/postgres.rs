@@ -576,8 +576,8 @@ impl Store for PostgresStore {
              FROM knowledge_atoms
              WHERE search_tsv @@ plainto_tsquery('english', $1){lane}
                AND ($3::text IS NULL
-                    OR metadata_json->>'project_id' = $3
-                    OR metadata_json->>'project_id' IS NULL)
+                    OR CAST(metadata_json AS jsonb)->>'project_id' = $3
+                    OR CAST(metadata_json AS jsonb)->>'project_id' IS NULL)
              ORDER BY score DESC
              LIMIT $2"
         );
@@ -630,7 +630,7 @@ impl Store for PostgresStore {
         // L2 `<->`, score `1/(1+distance)` — same shape as sqlite-vec MATCH distance.
         let rows = sqlx::query(
             "SELECT a.id, (v.embedding <-> $1)::float8 AS distance, a.trust_lane,
-                    a.metadata_json->>'project_id' AS project_id
+                    CAST(a.metadata_json AS jsonb)->>'project_id' AS project_id
              FROM atoms_vec v
              JOIN knowledge_atoms a ON a.id = v.atom_id
              ORDER BY v.embedding <-> $1
@@ -781,8 +781,8 @@ impl Store for PostgresStore {
         let sql = format!(
             "SELECT {ATOM_SELECT} FROM knowledge_atoms
              WHERE source = $1
-               AND metadata_json::jsonb->>'rel_path' = $2
-               AND (metadata_json::jsonb->>'chunk_index')::int = $3
+               AND CAST(metadata_json AS jsonb)->>'rel_path' = $2
+               AND (CAST(metadata_json AS jsonb)->>'chunk_index')::int = $3
              LIMIT 1"
         );
         let row = sqlx::query(&sql)
@@ -823,8 +823,8 @@ impl Store for PostgresStore {
             "SELECT {ATOM_SELECT} FROM knowledge_atoms
              WHERE {lane}
                AND ($2::text IS NULL
-                    OR metadata_json->>'project_id' = $2
-                    OR metadata_json->>'project_id' IS NULL)
+                    OR CAST(metadata_json AS jsonb)->>'project_id' = $2
+                    OR CAST(metadata_json AS jsonb)->>'project_id' IS NULL)
              ORDER BY indexed_at DESC LIMIT $1"
         );
         let rows = sqlx::query(&sql)

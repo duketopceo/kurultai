@@ -90,9 +90,18 @@ async fn remember_stamps_agent_and_namespace_provenance() {
         .unwrap();
 
     let atom = store.get(&id).await.unwrap().unwrap();
-    assert_eq!(atom.metadata.get(META_AGENT_ID).map(String::as_str), Some("session-3"));
-    assert_eq!(atom.metadata.get(META_PROJECT_ID).map(String::as_str), Some("proj-a"));
-    assert_eq!(atom.metadata.get(META_WRITE_TRANSPORT).map(String::as_str), Some("mcp"));
+    assert_eq!(
+        atom.metadata.get(META_AGENT_ID).map(String::as_str),
+        Some("session-3")
+    );
+    assert_eq!(
+        atom.metadata.get(META_PROJECT_ID).map(String::as_str),
+        Some("proj-a")
+    );
+    assert_eq!(
+        atom.metadata.get(META_WRITE_TRANSPORT).map(String::as_str),
+        Some("mcp")
+    );
     assert_eq!(atom.project_id(), "proj-a");
 }
 
@@ -107,7 +116,12 @@ async fn caller_metadata_cannot_forge_another_sessions_provenance() {
             &good_summary("FORGEMARKER"),
             &["ops".to_string()],
             &[("agent_id", "victim-session"), ("project_id", "victim-ns")],
-            &ctx(WriteMode::Solo, WriteTransport::Mcp, "attacker", "attacker-ns"),
+            &ctx(
+                WriteMode::Solo,
+                WriteTransport::Mcp,
+                "attacker",
+                "attacker-ns",
+            ),
         )
         .await
         .unwrap();
@@ -138,7 +152,10 @@ async fn solo_mode_remember_is_immediately_searchable() {
     let atom = store.get(&id).await.unwrap().unwrap();
     assert_eq!(atom.trust_lane, TrustLane::Trusted);
 
-    let hits = brain.search_filtered("SOLOMARKER", 10, false).await.unwrap();
+    let hits = brain
+        .search_filtered("SOLOMARKER", 10, false)
+        .await
+        .unwrap();
     assert!(hits.iter().any(|h| h.atom.id == id));
 }
 
@@ -153,7 +170,12 @@ async fn closed_policy_forces_quarantine_even_when_gate_passes() {
             // Tagged + long + unique: the gate on its own would return Trusted.
             &["ops".to_string()],
             &[],
-            &ctx(WriteMode::SharedClosed, WriteTransport::Mcp, "session-3", "proj-a"),
+            &ctx(
+                WriteMode::SharedClosed,
+                WriteTransport::Mcp,
+                "session-3",
+                "proj-a",
+            ),
         )
         .await
         .unwrap();
@@ -182,21 +204,32 @@ async fn contained_write_is_invisible_to_another_sessions_search() {
             &good_summary("POISONMARKER"),
             &["ops".to_string()],
             &[],
-            &ctx(WriteMode::SharedClosed, WriteTransport::Mcp, "session-a", "ns-a"),
+            &ctx(
+                WriteMode::SharedClosed,
+                WriteTransport::Mcp,
+                "session-a",
+                "ns-a",
+            ),
         )
         .await
         .unwrap();
 
     // Session B, same shared store, default search (trusted lane only).
     let reader = brain_over(Arc::clone(&store));
-    let hits = reader.search_filtered("POISONMARKER", 10, false).await.unwrap();
+    let hits = reader
+        .search_filtered("POISONMARKER", 10, false)
+        .await
+        .unwrap();
     assert!(
         hits.is_empty(),
         "contained write leaked into another session's default search: {hits:?}"
     );
 
     // Still recoverable by the operator when explicitly asking for quarantine.
-    let with_q = reader.search_filtered("POISONMARKER", 10, true).await.unwrap();
+    let with_q = reader
+        .search_filtered("POISONMARKER", 10, true)
+        .await
+        .unwrap();
     assert_eq!(with_q.len(), 1);
 }
 
@@ -369,8 +402,14 @@ async fn fts_namespace_scope_admits_own_and_unnamespaced_only() {
         .await
         .unwrap();
     let ids: Vec<&str> = scoped.iter().map(|(a, _)| a.id.as_str()).collect();
-    assert!(ids.contains(&"ns-a"), "own namespace must be visible: {ids:?}");
-    assert!(ids.contains(&"ns-global"), "shared atoms stay visible: {ids:?}");
+    assert!(
+        ids.contains(&"ns-a"),
+        "own namespace must be visible: {ids:?}"
+    );
+    assert!(
+        ids.contains(&"ns-global"),
+        "shared atoms stay visible: {ids:?}"
+    );
     assert!(!ids.contains(&"ns-b"), "other namespace leaked: {ids:?}");
 }
 
@@ -393,7 +432,10 @@ async fn vector_arm_applies_the_same_namespace_rule_as_fts() {
     let ids: Vec<&str> = hits.iter().map(|(id, _)| id.as_str()).collect();
     assert!(ids.contains(&"v-a"), "{ids:?}");
     assert!(ids.contains(&"v-global"), "{ids:?}");
-    assert!(!ids.contains(&"v-b"), "other namespace leaked via vector arm: {ids:?}");
+    assert!(
+        !ids.contains(&"v-b"),
+        "other namespace leaked via vector arm: {ids:?}"
+    );
 }
 
 #[tokio::test]
@@ -420,8 +462,15 @@ async fn search_default_is_still_unscoped() {
     let brain = brain_over(Arc::clone(&store));
     seed_namespaced(&store, "d-a", Some("proj-a"), "DEFAULTMARKER").await;
     seed_namespaced(&store, "d-b", Some("proj-b"), "DEFAULTMARKER").await;
-    let hits = brain.search_filtered("DEFAULTMARKER", 10, false).await.unwrap();
-    assert_eq!(hits.len(), 2, "search must stay unscoped until the decision lands");
+    let hits = brain
+        .search_filtered("DEFAULTMARKER", 10, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        hits.len(),
+        2,
+        "search must stay unscoped until the decision lands"
+    );
 }
 
 #[tokio::test]
@@ -558,12 +607,7 @@ const SECRET: &str = "test-ingest-secret";
 
 fn ingest_app(store: Arc<SqliteVecStore>, mode: WriteMode) -> axum::Router {
     let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
-    kurultai::http::build_ingest_app(
-        store as Arc<dyn Store>,
-        embedder,
-        SECRET.to_string(),
-        mode,
-    )
+    kurultai::http::build_ingest_app(store as Arc<dyn Store>, embedder, SECRET.to_string(), mode)
 }
 
 /// Markdown whose frontmatter `tags:` is attacker-controlled — this is what clears the
@@ -587,11 +631,14 @@ async fn post_ingest(
         .header("x-kurultai-ingest-secret", secret)
         .body(Body::from(body))
         .unwrap();
-    req.extensions_mut()
-        .insert(ConnectInfo("127.0.0.1:54321".parse::<std::net::SocketAddr>().unwrap()));
+    req.extensions_mut().insert(ConnectInfo(
+        "127.0.0.1:54321".parse::<std::net::SocketAddr>().unwrap(),
+    ));
     let resp = app.oneshot(req).await.unwrap();
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
     (status, serde_json::from_slice(&bytes).unwrap())
 }
 
@@ -627,7 +674,10 @@ async fn ingest_closed_policy_quarantines_despite_attacker_supplied_tags() {
         .fts_search("INGESTMARKER", 10, SearchFilter::trusted())
         .await
         .unwrap();
-    assert!(hits.is_empty(), "injected content reached the shared trusted lane");
+    assert!(
+        hits.is_empty(),
+        "injected content reached the shared trusted lane"
+    );
 }
 
 #[tokio::test]
