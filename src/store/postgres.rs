@@ -17,7 +17,8 @@ use sqlx::{Row, Transaction};
 
 const ATOM_SELECT: &str = "id, source, source_id, title, summary, content, question, resolution, \
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
-     last_accessed_at, visibility, team_id, content_hash, soft_labels_json";
+     last_accessed_at, visibility, team_id, content_hash, soft_labels_json, \
+     corpus_tier, visibility_labels_json";
 
 pub struct PostgresStore {
     pool: PgPool,
@@ -90,7 +91,9 @@ impl PostgresStore {
                 last_accessed_at TEXT NOT NULL DEFAULT '',
                 visibility TEXT NOT NULL CHECK (visibility IN ('team', 'company')),
                 team_id TEXT,
-                soft_labels_json TEXT NOT NULL DEFAULT '[]'
+                soft_labels_json TEXT NOT NULL DEFAULT '[]',
+                corpus_tier TEXT NOT NULL DEFAULT 'public',
+                visibility_labels_json TEXT NOT NULL DEFAULT '[]'
             )
             "#,
             "create knowledge_atoms",
@@ -132,6 +135,19 @@ impl PostgresStore {
             conn,
             "CREATE INDEX IF NOT EXISTS idx_hub_atoms_fts ON knowledge_atoms USING GIN (search_tsv)",
             "fts gin",
+        )
+        .await?;
+
+        exec_ddl(
+            conn,
+            "ALTER TABLE knowledge_atoms ADD COLUMN IF NOT EXISTS corpus_tier TEXT NOT NULL DEFAULT 'public'",
+            "corpus_tier column",
+        )
+        .await?;
+        exec_ddl(
+            conn,
+            "ALTER TABLE knowledge_atoms ADD COLUMN IF NOT EXISTS visibility_labels_json TEXT NOT NULL DEFAULT '[]'",
+            "visibility_labels_json column",
         )
         .await?;
 
@@ -251,6 +267,12 @@ impl PostgresStore {
             .try_get("trust_lane")
             .map_err(|e| KurultaiError::Store(format!("trust_lane: {e}")))?;
         let visibility_raw: String = row.try_get("visibility").unwrap_or_else(|_| "team".into());
+        let corpus_tier_raw: String = row
+            .try_get("corpus_tier")
+            .unwrap_or_else(|_| "public".into());
+        let visibility_labels_json: String = row
+            .try_get("visibility_labels_json")
+            .unwrap_or_else(|_| "[]".into());
         let indexed = parse_dt(&indexed_at);
         let last_accessed_at = if last_accessed_raw.is_empty() {
             indexed
@@ -287,8 +309,8 @@ impl PostgresStore {
             trust_lane: TrustLane::parse(&trust_lane),
             quarantine_reason: row.try_get("quarantine_reason").ok(),
             soft_labels: serde_json::from_str(&soft_json).unwrap_or_default(),
-            corpus_tier: CorpusTier::Public,
-            visibility_labels: Vec::new(),
+            corpus_tier: CorpusTier::parse(&corpus_tier_raw),
+            visibility_labels: serde_json::from_str(&visibility_labels_json).unwrap_or_default(),
             visibility: VisibilityScope::parse(&visibility_raw),
         })
     }
@@ -305,6 +327,9 @@ impl PostgresStore {
             .map_err(|e| KurultaiError::Store(format!("metadata serialize: {e}")))?;
         let soft_json = serde_json::to_string(&normalize_soft_labels(&atom.soft_labels))
             .map_err(|e| KurultaiError::Store(format!("soft_labels serialize: {e}")))?;
+        let visibility_labels_json = serde_json::to_string(&atom.visibility_labels)
+            .map_err(|e| KurultaiError::Store(format!("visibility_labels serialize: {e}")))?;
+        let corpus_tier = atom.corpus_tier.as_str();
         let content_hash = sha256_hex(&atom.content);
         let last_accessed = if atom.last_accessed_at.timestamp() == 0 {
             atom.indexed_at
@@ -328,8 +353,8 @@ impl PostgresStore {
                 question, resolution, tags_json,
                 source_updated_at, indexed_at, metadata_json, content_hash,
                 trust_lane, quarantine_reason, last_accessed_at, visibility,
-                team_id, soft_labels_json
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+                team_id, soft_labels_json, corpus_tier, visibility_labels_json
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
             ON CONFLICT (id) DO UPDATE SET
                 source = excluded.source,
                 source_id = excluded.source_id,
@@ -354,7 +379,9 @@ impl PostgresStore {
                 soft_labels_json = CASE
                     WHEN excluded.soft_labels_json = '[]' THEN knowledge_atoms.soft_labels_json
                     ELSE excluded.soft_labels_json
-                END
+                END,
+                corpus_tier = excluded.corpus_tier,
+                visibility_labels_json = excluded.visibility_labels_json
             "#,
         )
         .bind(&atom.id)
@@ -376,6 +403,8 @@ impl PostgresStore {
         .bind(atom.visibility.as_str())
         .bind(&team_id)
         .bind(&soft_json)
+        .bind(corpus_tier)
+        .bind(&visibility_labels_json)
         .execute(&mut **tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("upsert atom: {e}")))?;

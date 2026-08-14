@@ -112,10 +112,9 @@ fn corpus_tier_default_is_public() {
     assert_eq!(CorpusTier::default(), CorpusTier::Public);
 }
 
-// ── TA-3: Corpus tier persistence (BROKEN — see ACCEPTANCE_REPORT.md) ────────
+// ── TA-3: Corpus tier persistence ─────────────────────────────────────────
 
 #[tokio::test]
-#[ignore = "KHAN-251: corpus_tier not persisted by SQLite store; see ACCEPTANCE_REPORT.md"]
 async fn corpus_tier_private_round_trips_through_store() {
     let store = temp_store();
     let mut atom = sample_atom("c-priv");
@@ -125,10 +124,9 @@ async fn corpus_tier_private_round_trips_through_store() {
     assert_eq!(loaded.corpus_tier, CorpusTier::Private);
 }
 
-// ── TA-4: Visibility labels persistence (BROKEN — see ACCEPTANCE_REPORT.md) ──
+// ── TA-4: Visibility labels persistence ─────────────────────────────────────
 
 #[tokio::test]
-#[ignore = "KHAN-251: visibility_labels not persisted by SQLite store; see ACCEPTANCE_REPORT.md"]
 async fn visibility_labels_round_trip_through_store() {
     let store = temp_store();
     let mut atom = sample_atom("v-labels");

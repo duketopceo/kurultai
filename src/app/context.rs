@@ -53,7 +53,8 @@ impl App {
         let reranker = build_reranker(&config);
         let synthesizer = synthesizer_from_env(None);
         let connectors = ConnectorRegistry::from_config(&config).await?;
-        let pipeline = IndexPipeline::new(Arc::clone(&store), Arc::clone(&embedder));
+        let mut pipeline = IndexPipeline::new(Arc::clone(&store), Arc::clone(&embedder));
+        pipeline.register_sources(&config.sources);
 
         tracing::info!(
             env = %environment,

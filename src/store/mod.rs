@@ -22,7 +22,7 @@ pub(crate) const MIN_EMBEDDING_NORM: f32 = 1e-6;
 /// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
 const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, question, resolution, \
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
-     last_accessed_at, visibility";
+     last_accessed_at, visibility, corpus_tier, visibility_labels_json";
 
 /// Retrieval filter — default skips quarantine.
 #[derive(Debug, Clone, Copy)]
@@ -371,8 +371,8 @@ impl SqliteVecStore {
         let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<KnowledgeAtom> {
             let mut atom = row_to_atom(row)?;
             if with_embeddings {
-                // ATOM_COLUMNS ends at index 15 (`visibility`); embedding is the next select.
-                const EMBEDDING_COL: usize = 16;
+                // ATOM_COLUMNS ends at index 17 (`visibility_labels_json`); embedding is the next select.
+                const EMBEDDING_COL: usize = 18;
                 let blob: Option<Vec<u8>> = row.get(EMBEDDING_COL)?;
                 if let Some(bytes) = blob {
                     atom.embedding = Some(embedding_f32s_from_blob(&bytes).map_err(|e| {
@@ -490,6 +490,9 @@ impl SqliteVecStore {
         let trust_lane = atom.trust_lane.as_str();
         let quarantine_reason = atom.quarantine_reason.as_deref();
         let visibility = atom.visibility.as_str();
+        let corpus_tier = atom.corpus_tier.as_str();
+        let visibility_labels_json = serde_json::to_string(&atom.visibility_labels)
+            .map_err(|e| KurultaiError::Store(format!("visibility_labels serialize: {e}")))?;
         let last_accessed = if atom.last_accessed_at.timestamp() == 0 {
             atom.indexed_at
         } else {
@@ -501,8 +504,9 @@ impl SqliteVecStore {
                 id, source, source_id, title, summary, content,
                 question, resolution, tags_json,
                 source_updated_at, indexed_at, metadata_json, content_hash,
-                trust_lane, quarantine_reason, last_accessed_at, visibility
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+                trust_lane, quarantine_reason, last_accessed_at, visibility,
+                corpus_tier, visibility_labels_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
             ON CONFLICT(id) DO UPDATE SET
                 source = excluded.source,
                 source_id = excluded.source_id,
@@ -522,7 +526,9 @@ impl SqliteVecStore {
                 content_hash = excluded.content_hash,
                 trust_lane = excluded.trust_lane,
                 quarantine_reason = excluded.quarantine_reason,
-                visibility = excluded.visibility
+                visibility = excluded.visibility,
+                corpus_tier = excluded.corpus_tier,
+                visibility_labels_json = excluded.visibility_labels_json
             "#,
             params![
                 atom.id,
@@ -542,6 +548,8 @@ impl SqliteVecStore {
                 quarantine_reason,
                 last_accessed.to_rfc3339(),
                 visibility,
+                corpus_tier,
+                visibility_labels_json,
             ],
         )
         .map_err(|e| KurultaiError::Store(format!("upsert atom failed: {e}")))?;
@@ -1668,6 +1676,8 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
     let quarantine_reason: Option<String> = row.get(13)?;
     let last_accessed_raw: String = row.get(14).unwrap_or_default();
     let visibility_raw: String = row.get(15).unwrap_or_else(|_| "personal".into());
+    let corpus_tier_raw: String = row.get(16).unwrap_or_else(|_| "public".into());
+    let visibility_labels_json: String = row.get(17).unwrap_or_else(|_| "[]".into());
 
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
     let metadata: HashMap<String, String> =
@@ -1697,8 +1707,8 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
         trust_lane: TrustLane::parse(&trust_lane),
         quarantine_reason,
         soft_labels: Vec::new(),
-        corpus_tier: CorpusTier::Public,
-        visibility_labels: Vec::new(),
+        corpus_tier: CorpusTier::parse(&corpus_tier_raw),
+        visibility_labels: serde_json::from_str(&visibility_labels_json).unwrap_or_default(),
         visibility: VisibilityScope::parse(&visibility_raw),
     })
 }
