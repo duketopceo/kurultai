@@ -3,6 +3,7 @@ import type { Atom, OntologyResponse } from '../types';
 import { touchAtom, openFile, fetchOntology } from '../api';
 
 interface OntologyEdgeView {
+  key: string;
   rel: string;
   other: string;
 }
@@ -21,6 +22,7 @@ function approvedLinksForAtom(atomId: string, onto: OntologyResponse): OntologyE
     if (!fromHit && !toHit) continue;
     const otherId = fromHit ? link.to_id : link.from_id;
     out.push({
+      key: link.id || `${link.from_id}:${link.rel}:${link.to_id}`,
       rel: link.rel,
       other: byId.get(otherId)?.name ?? otherId,
     });
@@ -144,7 +146,7 @@ export function InspectorPanel({ atom, allAtoms }: Props) {
             {ontoLinks.length > 0 && (
               <ul className="inspector-links">
                 {ontoLinks.map((edge) => (
-                  <li key={`${edge.rel}:${edge.other}`}>
+                  <li key={edge.key}>
                     <span className="inspector-rel">{edge.rel}</span> {edge.other}
                   </li>
                 ))}
