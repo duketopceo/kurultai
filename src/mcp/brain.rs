@@ -14,6 +14,7 @@ use crate::rerank::Reranker;
 use crate::store::{SearchFilter, Store};
 use crate::synthesize::{who_knows_from_hits, Synthesizer, WhoKnowsEntry};
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
+use crate::write_policy::{WriteContext, WriteTransport};
 use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -459,12 +460,40 @@ impl AgentRead for BrainService {
 
 #[async_trait::async_trait]
 impl AgentWrite for BrainService {
+    /// Legacy entry point. Resolves the write context from the environment so the
+    /// closed-write policy applies to callers that predate [`WriteContext`].
     async fn remember(
         &self,
         title: &str,
         summary: &str,
         tags: &[String],
         metadata: &[(&str, &str)],
+    ) -> Result<String> {
+        self.remember_with(
+            title,
+            summary,
+            tags,
+            metadata,
+            &WriteContext::from_env(WriteTransport::Mcp),
+        )
+        .await
+    }
+}
+
+impl BrainService {
+    /// Store an agent-authored atom, stamped with the caller's provenance.
+    ///
+    /// Under [`crate::write_policy::WriteMode::SharedClosed`] the resulting atom is
+    /// forced into quarantine **regardless of the quality gate outcome**: on a shared
+    /// store no agent-reachable path may write to the globally-searchable lane.
+    /// Only `kurultai promote`, run by the operator, moves it out.
+    pub async fn remember_with(
+        &self,
+        title: &str,
+        summary: &str,
+        tags: &[String],
+        metadata: &[(&str, &str)],
+        ctx: &WriteContext,
     ) -> Result<String> {
         if title.trim().is_empty() || summary.trim().is_empty() {
             return Err(KurultaiError::config(
@@ -484,6 +513,8 @@ impl AgentWrite for BrainService {
         // Caller-supplied project_id wins; otherwise KURULTAI_PROJECT, else "default".
         let project = resolve_project(meta.get(PROJECT_METADATA_KEY).map(String::as_str));
         meta.insert(PROJECT_METADATA_KEY.to_string(), project.clone());
+        // Stamp last: caller-supplied agent_id / project_id must not forge provenance.
+        ctx.stamp(&mut meta);
 
         let source = "agent";
         let source_id = format!(
@@ -514,6 +545,17 @@ impl AgentWrite for BrainService {
 
         let outcome = evaluate(self.store.as_ref(), &atom).await?;
         apply_gate(&mut atom, outcome);
+
+        // Containment: agent-reachable writes never land in the trusted lane on a
+        // shared store, even when the quality gate would have passed them.
+        if ctx.contains_writes() && atom.trust_lane == crate::types::TrustLane::Trusted {
+            apply_gate(
+                &mut atom,
+                crate::quality::GateOutcome::Quarantine {
+                    reason: crate::write_policy::CONTAINED_REASON.to_string(),
+                },
+            );
+        }
 
         // KTD7: skip embed on quarantine (don't pay / pollute atoms_vec).
         if atom.trust_lane == crate::types::TrustLane::Trusted && self.embedder.is_live() {

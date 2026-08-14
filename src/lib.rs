@@ -29,6 +29,7 @@ pub mod security;
 pub mod store;
 pub mod synthesize;
 pub mod types;
+pub mod write_policy;
 
 pub use environment::Environment;
 pub use error::{KurultaiError, Result};

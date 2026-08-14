@@ -4,6 +4,7 @@ use crate::error::{KurultaiError, Result};
 use crate::quality::gate::{apply_gate, evaluate, GateOutcome};
 use crate::store::Store;
 use crate::types::TrustLane;
+use crate::write_policy::{promote_allowed, WriteMode};
 
 #[derive(Debug, Clone)]
 pub struct PromoteResult {
@@ -12,12 +13,36 @@ pub struct PromoteResult {
 }
 
 /// Promote a quarantined atom after re-running the gate. Never a side effect of remember.
+///
+/// Write mode is resolved from the environment; see [`promote_atom_with_mode`].
 pub async fn promote_atom(
     store: &dyn Store,
     atom_id: &str,
     actor: &str,
     reason_note: Option<&str>,
 ) -> Result<PromoteResult> {
+    promote_atom_with_mode(store, atom_id, actor, reason_note, WriteMode::from_env()).await
+}
+
+/// [`promote_atom`] with an explicit write mode (env-free; used by tests and callers
+/// that already resolved policy).
+pub async fn promote_atom_with_mode(
+    store: &dyn Store,
+    atom_id: &str,
+    actor: &str,
+    reason_note: Option<&str>,
+    mode: WriteMode,
+) -> Result<PromoteResult> {
+    // Containment: on a shared store, an agent-reachable transport must not be able to
+    // promote the atom it just wrote. Only the operator-run CLI may cross the lane.
+    if !promote_allowed(actor, mode) {
+        return Err(KurultaiError::config(format!(
+            "promote refused: actor '{actor}' is agent-reachable and the shared_write \
+             containment policy is active; promote from the operator CLI \
+             (`kurultai promote <atom_id>`)"
+        )));
+    }
+
     let Some(mut atom) = store.get(atom_id).await? else {
         return Err(KurultaiError::Store(format!("atom not found: {atom_id}")));
     };

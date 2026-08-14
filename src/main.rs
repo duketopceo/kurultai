@@ -12,6 +12,7 @@ use kurultai::mcp::{
     ensure_default_config, init_walkthrough, provision_docs, wire_agent, AgentRead, AgentTarget,
     BrainService,
 };
+use kurultai::write_policy::{WriteContext, WriteTransport};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -103,7 +104,17 @@ enum Commands {
         reason: Option<String>,
     },
     /// MCP server on stdio (Cursor / Claude / Codex / Hermes)
-    Mcp,
+    Mcp {
+        /// Self-asserted session identity stamped on writes (env: KURULTAI_AGENT_ID).
+        ///
+        /// NOT an authorization claim: on a shared box any session can assert any
+        /// value. Used for write provenance and bulk revocation only.
+        #[arg(long)]
+        agent_id: Option<String>,
+        /// Namespace (`project_id`) stamped on writes (env: KURULTAI_NAMESPACE).
+        #[arg(long)]
+        namespace: Option<String>,
+    },
     /// HTTP API + Brain UI (`http://127.0.0.1:8421/ui/`) + poll/watch
     Daemon {
         /// Port for the HTTP server
@@ -201,13 +212,26 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Mcp => {
+        Commands::Mcp {
+            ref agent_id,
+            ref namespace,
+        } => {
             // Never print art on MCP stdio — protocol must stay clean.
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
+            let ctx = WriteContext::resolve(
+                WriteTransport::Mcp,
+                agent_id.as_deref(),
+                namespace.as_deref(),
+            );
             // MCP must not spam logs to stdout — stderr only via tracing.
-            tracing::info!("mcp stdio server starting");
-            kurultai::mcp::run_stdio(brain).await?;
+            tracing::info!(
+                agent_id = ?ctx.agent_id,
+                namespace = ?ctx.namespace,
+                mode = ?ctx.mode,
+                "mcp stdio server starting"
+            );
+            kurultai::mcp::run_stdio_with(brain, ctx).await?;
         }
         Commands::Index { full } => {
             let app = bootstrap_app(&cli).await?;
@@ -281,7 +305,8 @@ async fn main() -> Result<()> {
         } => {
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
-            let res = brain.promote(atom_id, "cli", reason.as_deref()).await?;
+            let actor = WriteContext::resolve(WriteTransport::Cli, None, None).actor();
+            let res = brain.promote(atom_id, &actor, reason.as_deref()).await?;
             println!("promoted {} (actor={})", res.atom_id, res.actor);
         }
         Commands::Status { metrics, port } => {

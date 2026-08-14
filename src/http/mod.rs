@@ -10,7 +10,10 @@ mod auth;
 mod mcp;
 mod ui;
 
-pub use auth::{HubAuth, HubGate};
+pub use auth::{
+    resolve_admin_token, write_route_decision, HubAuth, HubGate, WriteRouteDecision,
+    ENV_ADMIN_TOKEN,
+};
 mod ingest;
 
 pub use ingest::resolve_ingest_secret;
@@ -122,6 +125,7 @@ pub async fn serve_with(
             store: brain.store(),
             embedder: brain.embedder(),
             secret,
+            mode: crate::write_policy::WriteMode::from_env(),
         }));
     } else {
         tracing::info!("loopback ingest disabled (set KURULTAI_INGEST_SECRET to enable)");
@@ -168,9 +172,30 @@ fn router(state: AppState) -> Router {
             state.hub.clone(),
             hub_api_auth,
         ))
+        // Outermost of the two: runs before hub auth, and fails closed on write
+        // routes regardless of `HubAuth` (which is `None` by default).
+        .layer(middleware::from_fn(auth::write_route_guard))
         .layer(middleware::from_fn(no_store_api))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+/// Build the loopback `POST /ingest` router for integration tests / external embedding.
+///
+/// Mirrors the route mounted by [`serve_with`] without binding a socket, with the
+/// write containment `mode` injected rather than read from the environment.
+pub fn build_ingest_app(
+    store: std::sync::Arc<dyn crate::store::Store>,
+    embedder: std::sync::Arc<dyn crate::embed::Embedder>,
+    secret: String,
+    mode: crate::write_policy::WriteMode,
+) -> Router {
+    ingest::routes(ingest::IngestState {
+        store,
+        embedder,
+        secret,
+        mode,
+    })
 }
 
 /// Build the application router for integration tests / external embedding.
@@ -486,7 +511,12 @@ async fn api_promote(
     state.status.touch_client_activity();
     match state
         .brain
-        .promote(&body.atom_id, "http", body.reason.as_deref())
+        .promote(
+            &body.atom_id,
+            &crate::write_policy::WriteContext::from_env(crate::write_policy::WriteTransport::Http)
+                .actor(),
+            body.reason.as_deref(),
+        )
         .await
     {
         Ok(res) => Ok(Json(serde_json::json!({
