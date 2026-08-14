@@ -324,6 +324,11 @@ pub async fn import_pack(
                 }
             }
             copy_private(&pack_store_path, &dest)?;
+            // The destination database was replaced byte-for-byte. Any `-wal` /
+            // `-shm` left over from the previous database belongs to a file
+            // that no longer exists; SQLite would otherwise replay it over the
+            // imported one. See `store::remove_wal_sidecars`.
+            crate::store::remove_wal_sidecars(&dest)?;
             maybe_write_config(&pack_config_path, dest_config_path, write_config_if_missing)?;
             Ok(ImportReport {
                 mode: if force { "replace-force" } else { "replace" },
