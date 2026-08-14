@@ -89,7 +89,7 @@ impl App {
     }
 }
 
-fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>> {
+pub fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>> {
     // API keys come from env only — never from config files.
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
         .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));

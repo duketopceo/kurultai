@@ -34,6 +34,7 @@ impl IndexPipeline {
         registry: &ConnectorRegistry,
         full: bool,
     ) -> Result<Vec<IndexStats>> {
+        let _span = tracing::info_span!("ingest_index_all", full, connectors = registry.len());
         let mut results = Vec::new();
 
         for (name, connector) in registry.iter() {

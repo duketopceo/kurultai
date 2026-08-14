@@ -86,6 +86,7 @@ pub fn atomize_path(
     path: &Path,
     source_updated_at: DateTime<Utc>,
 ) -> Result<Vec<KnowledgeAtom>> {
+    let _span = tracing::debug_span!("ingest_atomize", source, path = %path.display());
     let format = detect_format(path).ok_or_else(|| {
         KurultaiError::connector(
             source,
@@ -110,6 +111,7 @@ pub fn atomize_bytes(
     format: DumpFormat,
     source_updated_at: DateTime<Utc>,
 ) -> Result<Vec<KnowledgeAtom>> {
+    let _span = tracing::debug_span!("ingest_atomize", source, rel_path, format = ?format);
     let text = std::str::from_utf8(bytes)
         .map_err(|e| KurultaiError::connector(source, format!("utf-8 decode {rel_path}: {e}")))?;
     match format {
