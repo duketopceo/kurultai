@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 //! Acceptance tests — HTTP API surface (KHAN-251).
 //!
 //! Covers: health, /api/status, /api/atoms, /api/search (GET+POST), /ask

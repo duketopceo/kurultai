@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 //! Acceptance tests — ingest surface (KHAN-251).
 //!
 //! Covers: markdown ingest (frontmatter + heading chunks), format parity

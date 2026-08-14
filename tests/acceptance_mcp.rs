@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 //! Acceptance tests — MCP tool surface (KHAN-251).
 //!
 //! Covers all 8 MCP tools via the in-process `handle_message` JSON-RPC path:

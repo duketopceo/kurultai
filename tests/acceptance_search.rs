@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 //! Acceptance tests — search surface (KHAN-251).
 //!
 //! Covers: FTS5 search, vector search, hybrid search, source-scoped search,

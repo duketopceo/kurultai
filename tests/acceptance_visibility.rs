@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 //! Acceptance tests — visibility / tiered access (KHAN-251).
 //!
 //! Covers: atom visibility scope (personal/team/company) round-trip,

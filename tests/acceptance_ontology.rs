@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 //! Acceptance tests — ontology O1 (KHAN-251).
 //!
 //! Covers: seeded class tree, entity CRUD, typed links, promote atom→entity
