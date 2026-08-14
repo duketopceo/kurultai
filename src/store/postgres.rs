@@ -6,7 +6,10 @@ use super::{IngestionJob, SearchFilter, Store, MIN_EMBEDDING_NORM};
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
-use crate::types::{normalize_soft_labels, CorpusTier, KnowledgeAtom, TrustLane, VisibilityScope};
+use crate::types::{
+    normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink, TrustLane,
+    VisibilityScope,
+};
 use chrono::{DateTime, Utc};
 use pgvector::Vector;
 use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
@@ -1041,6 +1044,26 @@ impl Store for PostgresStore {
             });
         }
         Ok(out)
+    }
+
+    async fn upsert_ontology_entity(&self, _e: &OntologyEntity) -> Result<()> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn get_ontology_entity(&self, _id: &str) -> Result<Option<OntologyEntity>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn list_ontology_entities(&self, _limit: usize) -> Result<Vec<OntologyEntity>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn upsert_ontology_link(&self, _l: &OntologyLink) -> Result<()> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn list_ontology_links(&self, _endpoint: Option<&str>) -> Result<Vec<OntologyLink>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
     }
 }
 
