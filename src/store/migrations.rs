@@ -380,6 +380,16 @@ pub fn ensure_vec_table(conn: &Connection, embed_dim: usize) -> Result<()> {
     Ok(())
 }
 
+/// Read the highest applied migration version from `schema_migrations` (0 if none).
+pub fn current_applied_version(conn: &Connection) -> i32 {
+    conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap_or(0)
+}
+
 pub fn meta_get(conn: &Connection, key: &str) -> Result<Option<String>> {
     let mut stmt = conn
         .prepare("SELECT value FROM store_meta WHERE key = ?1")

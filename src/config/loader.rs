@@ -28,9 +28,14 @@ pub fn load_config() -> Result<Config> {
 
 /// Load config with optional path and `--env` / `KURULTAI_ENV` override.
 pub fn load_config_with_env(path: Option<&Path>, env_override: Option<&str>) -> Result<Config> {
-    let path = path
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| config_path().expect("home directory required"));
+    let path = match path {
+        Some(p) => p.to_path_buf(),
+        None => config_path().map_err(|e| {
+            KurultaiError::config(format!(
+                "could not resolve config path: {e}. Set KURULTAI_CONFIG or run `kurultai init`"
+            ))
+        })?,
+    };
     load_config_from_with_env(&path, env_override)
 }
 

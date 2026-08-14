@@ -437,6 +437,7 @@ struct WhoKnowsArgs {
 async fn call_tool(brain: &BrainService, params: Value, surface: ToolSurface) -> Result<Value> {
     let call: ToolCallParams = serde_json::from_value(params)
         .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad tools/call params: {e}")))?;
+    let _span = tracing::info_span!("mcp_tool_call", tool = %call.name);
 
     if surface == ToolSurface::ReadOnly
         && matches!(

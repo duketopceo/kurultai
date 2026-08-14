@@ -20,7 +20,7 @@ use std::sync::Arc;
     name = "kurultai",
     version,
     about = "Assemble what you know, from wherever it lives.",
-    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated"
+    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
 )]
 struct Cli {
     /// Log filter (overrides KURULTAI_LOG). Example: kurultai=trace,info
@@ -145,6 +145,8 @@ enum Commands {
         #[arg(long)]
         generated: bool,
     },
+    /// Run diagnostic checks (DB, config, MCP, HTTP, embeddings, ontology, connectors)
+    Doctor,
 }
 
 #[tokio::main]
@@ -479,6 +481,9 @@ async fn main() -> Result<()> {
                 }
                 println!("Deleted {deleted} / {total} atoms.");
             }
+        }
+        Commands::Doctor => {
+            kurultai::doctor::run(cli.env.as_deref(), cli.config.as_deref()).await?;
         }
         Commands::Export { output } => {
             let cfg_file = resolve_config_file(cli.config.as_deref())?;
