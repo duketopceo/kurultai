@@ -1,26 +1,38 @@
 # Acceptance Report — KHAN-251
 
-Findings from building the comprehensive acceptance/integration test suite.
-Each broken / partial feature is documented with: feature name, what's
-broken, the error (or behavioral gap), and a suggested fix.
+Findings from building the comprehensive acceptance/integration test suite
+in `7cdeb36` (#216). Each broken / partial feature below is documented with:
+feature name, what was broken, the error (or behavioral gap), and a
+suggested fix — **as it stood at #216.**
 
-The acceptance suite itself is green: **71 passing tests** across 6 files,
-plus **3 `#[ignore]`'d tests** that pin the broken features below so they
-surface without failing CI.
+**Update (`110f371`, #217, HEAD):** Items 1–4 below were fixed in the very
+next PR. The `#[ignore]` attributes on the three pinning tests have been
+removed and the fix is implemented; only item 5 (deliberate feature-gate)
+still reflects current reality unchanged. Verified directly against source
+on HEAD, not taken on faith — see the "Fixed" note under each item for the
+exact function/column/line. This report is kept for its original
+root-cause analysis, not as a live status board — check `FEATURE_MATRIX.md`
+for current status first.
 
 ## Summary
 
-| # | Feature | Status | Test |
-|---|---------|--------|------|
-| 1 | Hashtag-line ingest | ❌ broken (not implemented) | `acceptance_ingest::hashtag_line_tags_without_frontmatter` (ignored) |
-| 2 | Corpus tier persistence | ❌ broken (not persisted) | `acceptance_visibility::corpus_tier_private_round_trips_through_store` (ignored) |
-| 3 | Visibility labels persistence | ❌ broken (not persisted) | `acceptance_visibility::visibility_labels_round_trip_through_store` (ignored) |
-| 4 | SourceConfig tier/label helpers unused at ingest | ⚠️ partial | covered by passing type-level tests |
-| 5 | Hub store behind feature flag + env toggle | ⚠️ partial (by design) | `acceptance_visibility::open_hub_store_refuses_without_feature_flag` |
+| # | Feature | Status (#216, historical) | Status (HEAD, `110f371`) | Test |
+|---|---------|---------------------------|---------------------------|------|
+| 1 | Hashtag-line ingest | ❌ broken (not implemented) | ✅ fixed — `parse_hashtag_line_tags` in `src/ingest/dump.rs` | `acceptance_ingest::hashtag_line_tags_without_frontmatter` (no longer ignored) |
+| 2 | Corpus tier persistence | ❌ broken (not persisted) | ✅ fixed — schema v10 column, SQLite + Postgres | `acceptance_visibility::corpus_tier_private_round_trips_through_store` (no longer ignored) |
+| 3 | Visibility labels persistence | ❌ broken (not persisted) | ✅ fixed — schema v10 column, SQLite + Postgres | `acceptance_visibility::visibility_labels_round_trip_through_store` (no longer ignored) |
+| 4 | SourceConfig tier/label helpers unused at ingest | ⚠️ partial | ✅ fixed — `IndexPipeline::index_connector` in `src/pipeline/mod.rs` now applies the defaults | covered by passing type-level tests |
+| 5 | Hub store behind feature flag + env toggle | ⚠️ partial (by design) | ⚠️ unchanged — still deliberate | `acceptance_visibility::open_hub_store_refuses_without_feature_flag` |
 
 ---
 
-## 1. Hashtag-line ingest — BROKEN (not implemented)
+## 1. Hashtag-line ingest — FIXED in `110f371` (#217)
+
+> Historical analysis below is from #216, before the fix. Current
+> implementation: `parse_hashtag_line_tags` (`src/ingest/dump.rs:249`),
+> called as a fallback when frontmatter tags are empty
+> (`src/ingest/dump.rs:140-142`) — YAML frontmatter still wins, matching the
+> suggested fix below. Test no longer `#[ignore]`'d.
 
 **Feature (TA-6):** Markdown corpora without YAML frontmatter (e.g. the
 `kb-it-docs` pattern) should have their tags parsed from dedicated
@@ -59,7 +71,13 @@ the line to be a `#tag` with no trailing prose.
 
 ---
 
-## 2. Corpus tier persistence — BROKEN (not persisted)
+## 2. Corpus tier persistence — FIXED in `110f371` (#217)
+
+> Historical analysis below is from #216, before the fix. Current
+> implementation: schema v10 migration adds `corpus_tier TEXT NOT NULL
+> DEFAULT 'public'` (`src/store/migrations.rs:342-347`); `ATOM_COLUMNS`,
+> `upsert_sync`, and `row_to_atom` all read/write it in `src/store/mod.rs`;
+> mirrored in `src/store/postgres.rs`. Test no longer `#[ignore]`'d.
 
 **Feature (TA-3):** `KnowledgeAtom.corpus_tier` (`public` / `private`) should
 round-trip through the SQLite store so the two-tier corpus isolation
@@ -94,7 +112,14 @@ removing the ignore makes it fail with `left: Public, right: Private`).
 
 ---
 
-## 3. Visibility labels persistence — BROKEN (not persisted)
+## 3. Visibility labels persistence — FIXED in `110f371` (#217)
+
+> Historical analysis below is from #216, before the fix. Current
+> implementation: schema v10 migration adds `visibility_labels_json TEXT
+> NOT NULL DEFAULT '[]'` (`src/store/migrations.rs:348-353`), serialized via
+> `serde_json` in `upsert_sync` and deserialized in `row_to_atom`
+> (`src/store/mod.rs`); mirrored in `src/store/postgres.rs`. Test no longer
+> `#[ignore]`'d.
 
 **Feature (TA-4):** KTD15 per-document visibility labels (e.g. `finance`,
 `exec`) on `KnowledgeAtom.visibility_labels` should round-trip through the
@@ -124,7 +149,14 @@ Postgres. (Could share the migration with #2.)
 
 ---
 
-## 4. SourceConfig tier/label helpers unused at ingest — PARTIAL
+## 4. SourceConfig tier/label helpers unused at ingest — FIXED in `110f371` (#217)
+
+> Historical analysis below is from #216, before the fix. Current
+> implementation: `IndexPipeline::index_connector` (`src/pipeline/mod.rs`,
+> ~line 116) calls `default_corpus_tier()` / `default_visibility_labels()`
+> after fetch and fills in atoms that are still at the default `Public`
+> tier with no labels — frontmatter/connector-supplied values still win,
+> matching the suggested fix below.
 
 **Feature (TA-5):** `SourceConfig::default_corpus_tier()` and
 `default_visibility_labels()` parse `extra.default_corpus_tier` /
