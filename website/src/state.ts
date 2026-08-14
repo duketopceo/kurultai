@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import { normalizeLayout } from './brain/layout/mode';
 import type { Atom, LayoutMode } from './types';
 
 export interface AppState {
@@ -47,13 +48,10 @@ export function reducer(state: AppState, action: AppAction): AppState {
   }
 }
 
-const VALID_LAYOUTS: readonly LayoutMode[] = ['brain', 'ontology', 'galaxy'];
-
 /** Restores the persisted layout, falling back to 'brain' on missing/corrupt values or storage errors. */
 function initialLayout(): LayoutMode {
   try {
-    const stored = localStorage.getItem('kurultai-layout');
-    return VALID_LAYOUTS.includes(stored as LayoutMode) ? (stored as LayoutMode) : 'brain';
+    return normalizeLayout(localStorage.getItem('kurultai-layout'));
   } catch {
     return 'brain';
   }

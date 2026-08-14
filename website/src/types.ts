@@ -77,7 +77,7 @@ export interface ActivityItem {
   ts?: string;
 }
 
-export type LayoutMode = 'brain' | 'ontology' | 'galaxy';
+export type LayoutMode = 'brain' | 'ontology';
 export type LoadTier = 'low' | 'mid' | 'high' | 'max';
 export const LOAD_TIER_CAPS: Record<LoadTier, number> = { low: 500, mid: 2000, high: 6000, max: 20000 };
 export type Theme = 'dark' | 'light';

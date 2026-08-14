@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:layout": "node --experimental-strip-types --test src/brain/layout/*.test.ts"
   },
   "dependencies": {
     "react": "^19.2.8",

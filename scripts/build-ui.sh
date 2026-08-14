@@ -3,7 +3,7 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 # Drop previous hashed bundles so a stale brain-*.js cannot outlive brain.html.
-rm -f "$root/ui/assets/"brain-*.js "$root/ui/assets/"brain-*.css
+rm -f "$root/ui/assets/"*.js "$root/ui/assets/"*.css
 cd "$root/website"
 if [[ -f package-lock.json ]]; then
   npm ci
