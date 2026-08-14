@@ -492,7 +492,9 @@ async fn recall_scopes_to_namespace_via_sql() {
 }
 
 #[tokio::test]
-async fn list_atoms_namespace_scope_is_pushed_into_sql() {
+async fn list_atoms_is_not_project_scoped() {
+    // `list_atoms` is an operator/export scan, not recall. Project scoping
+    // lives on FTS/vector/`recall` (#220). Do not treat this as a leak.
     let (store, _d) = temp_db();
     seed_namespaced(&store, "l-a", Some("proj-a"), "LISTMARKER").await;
     seed_namespaced(&store, "l-b", Some("proj-b"), "LISTMARKER").await;
@@ -502,7 +504,7 @@ async fn list_atoms_namespace_scope_is_pushed_into_sql() {
         .unwrap();
     let ids: Vec<&str> = scoped.iter().map(|a| a.id.as_str()).collect();
     assert!(ids.contains(&"l-a"), "{ids:?}");
-    assert!(!ids.contains(&"l-b"), "{ids:?}");
+    assert!(ids.contains(&"l-b"), "{ids:?}");
 }
 
 // ── daemon write routes fail closed ──────────────────────────────────────────
