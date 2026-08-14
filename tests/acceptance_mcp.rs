@@ -370,7 +370,7 @@ async fn tool_ontology_promote_maps_atom_to_instance() {
     // The instance_of link now exists.
     let links = brain
         .store()
-        .list_ontology_links(Some(&entity["id"].as_str().unwrap().to_string()))
+        .list_ontology_links(Some(entity["id"].as_str().unwrap()))
         .await
         .unwrap();
     assert!(
