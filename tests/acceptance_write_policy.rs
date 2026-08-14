@@ -388,7 +388,7 @@ async fn fts_namespace_scope_admits_own_and_unnamespaced_only() {
     seed_namespaced(&store, "ns-global", None, "NSMARKER").await;
 
     let unscoped = store
-        .fts_search("NSMARKER", 10, SearchFilter::trusted())
+        .fts_search("NSMARKER", 10, SearchFilter::trusted(true))
         .await
         .unwrap();
     assert_eq!(unscoped.len(), 3, "unscoped search is unchanged");
@@ -397,7 +397,7 @@ async fn fts_namespace_scope_admits_own_and_unnamespaced_only() {
         .fts_search(
             "NSMARKER",
             10,
-            SearchFilter::trusted().with_namespace(Some("proj-a")),
+            SearchFilter::trusted(true).with_project(Some("proj-a")),
         )
         .await
         .unwrap();
@@ -407,8 +407,8 @@ async fn fts_namespace_scope_admits_own_and_unnamespaced_only() {
         "own namespace must be visible: {ids:?}"
     );
     assert!(
-        ids.contains(&"ns-global"),
-        "shared atoms stay visible: {ids:?}"
+        !ids.contains(&"ns-global"),
+        "unscoped atoms are project `default`, not visible in proj-a: {ids:?}"
     );
     assert!(!ids.contains(&"ns-b"), "other namespace leaked: {ids:?}");
 }
@@ -425,13 +425,16 @@ async fn vector_arm_applies_the_same_namespace_rule_as_fts() {
         .vector_search_ids(
             &[0.9, 0.1, 0.0, 0.0],
             10,
-            SearchFilter::trusted().with_namespace(Some("proj-a")),
+            SearchFilter::trusted(true).with_project(Some("proj-a")),
         )
         .await
         .unwrap();
     let ids: Vec<&str> = hits.iter().map(|(id, _)| id.as_str()).collect();
     assert!(ids.contains(&"v-a"), "{ids:?}");
-    assert!(ids.contains(&"v-global"), "{ids:?}");
+    assert!(
+        !ids.contains(&"v-global"),
+        "unscoped atoms are project `default`, not visible in proj-a: {ids:?}"
+    );
     assert!(
         !ids.contains(&"v-b"),
         "other namespace leaked via vector arm: {ids:?}"
@@ -447,7 +450,7 @@ async fn empty_namespace_is_treated_as_unscoped() {
         .fts_search(
             "EMPTYMARKER",
             10,
-            SearchFilter::trusted().with_namespace(Some("   ")),
+            SearchFilter::trusted(true).with_project(Some("   ")),
         )
         .await
         .unwrap();
@@ -494,7 +497,7 @@ async fn list_atoms_namespace_scope_is_pushed_into_sql() {
     seed_namespaced(&store, "l-a", Some("proj-a"), "LISTMARKER").await;
     seed_namespaced(&store, "l-b", Some("proj-b"), "LISTMARKER").await;
     let scoped = store
-        .list_atoms(50, SearchFilter::trusted().with_namespace(Some("proj-a")))
+        .list_atoms(50, SearchFilter::trusted(true).with_project(Some("proj-a")))
         .await
         .unwrap();
     let ids: Vec<&str> = scoped.iter().map(|a| a.id.as_str()).collect();
@@ -652,7 +655,7 @@ async fn ingest_solo_mode_trusts_tagged_content_unchanged() {
     assert_eq!(body["lane"], "trusted");
 
     let hits = store
-        .fts_search("INGESTMARKER", 10, SearchFilter::trusted())
+        .fts_search("INGESTMARKER", 10, SearchFilter::trusted(true))
         .await
         .unwrap();
     assert!(!hits.is_empty(), "solo default must remain searchable");
@@ -671,7 +674,7 @@ async fn ingest_closed_policy_quarantines_despite_attacker_supplied_tags() {
 
     // The whole point: it is not in any other session's default search.
     let hits = store
-        .fts_search("INGESTMARKER", 10, SearchFilter::trusted())
+        .fts_search("INGESTMARKER", 10, SearchFilter::trusted(true))
         .await
         .unwrap();
     assert!(

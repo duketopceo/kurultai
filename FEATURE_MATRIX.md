@@ -41,7 +41,9 @@ Status legend:
 | TA-4 | KTD15 visibility labels (per-document) | `store/mod`, `store/postgres` | `acceptance_visibility.rs` | ✅ |
 | TA-5 | `SourceConfig::default_corpus_tier()` / `default_visibility_labels()` | `types`, `pipeline/mod` | `acceptance_visibility.rs` | ✅ |
 | TA-6 | Hashtag-line ingest (whitespace `#tag` lines) | `ingest/dump` | `acceptance_ingest.rs` | ✅ |
-| TA-7 | Project-scoped recall API (`POST /api/recall`, `recall_for_agent`) | `http/mod`, `mcp/brain` | `acceptance_search.rs`, `acceptance_http.rs` | ✅ |
+| TA-7 | Project-scoped recall API (`POST /api/recall`, `recall_for_agent`, MCP `recall`) | `http/mod`, `mcp/brain`, `mcp/server` | `acceptance_search.rs`, `acceptance_http.rs`, `acceptance_mcp.rs` | ✅ |
+| TA-7a | `project_id` write path (MCP `remember` `project` arg, `KURULTAI_PROJECT`) | `project`, `mcp/server`, `mcp/brain` | `acceptance_mcp.rs`, `acceptance_search.rs` | ✅ |
+| TA-7b | Project filter pushed into SQL (applies before truncation) | `store/mod`, `store/postgres`, `query/hybrid` | `acceptance_search.rs` | ✅ |
 | TA-8 | Hub API-key auth middleware (`HubGate`, `hub_api_auth`) | `http/auth` | `acceptance_http.rs` | ✅ |
 | TA-9 | Config-not-code adapters: inbox connector | `connectors/inbox` | `acceptance_ingest.rs` | ✅ |
 | TA-10 | Config-not-code adapters: loopback `POST /ingest` | `http/ingest` | `acceptance_ingest.rs`, `acceptance_http.rs` | ✅ |

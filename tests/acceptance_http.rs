@@ -296,6 +296,73 @@ async fn http_recall_returns_agent_views() {
     assert!(views.iter().any(|v| v.id == "recall-http"));
 }
 
+/// Negative case: recall scoped to a namespace with no matching atoms returns
+/// an empty list rather than leaking another session's hits.
+#[tokio::test]
+async fn http_recall_does_not_leak_other_projects() {
+    let brain = fixture_brain().await;
+    use kurultai::types::KnowledgeAtom;
+    let mut atom = KnowledgeAtom::default();
+    atom.id = "recall-acme-only".into();
+    atom.source = "agent".into();
+    atom.source_id = "/recall-acme-only".into();
+    atom.title = "Acme Only".into();
+    atom.content = "KNOWN_PHRASE_KURULTAI_42 recall project detail for http leak test".into();
+    atom.metadata.insert("project_id".into(), "acme".into());
+    brain.store().upsert(&atom).await.unwrap();
+
+    let app = app(brain, HubGate::default());
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/recall")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"project":"crew-yam","query":"KNOWN_PHRASE_KURULTAI_42","limit":10}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let views: Vec<kurultai::brain::AgentAtomView> =
+        serde_json::from_str(&body_str(resp).await).unwrap();
+    assert!(
+        !views.iter().any(|v| v.id == "recall-acme-only"),
+        "acme atom must not appear in crew-yam recall"
+    );
+    assert!(
+        views.iter().all(|v| v.project == "crew-yam"),
+        "every hit must belong to the requested project: {views:?}"
+    );
+}
+
+/// `project` is optional; omitting it falls back to the "default" namespace
+/// rather than 400-ing or spanning every project.
+#[tokio::test]
+async fn http_recall_without_project_uses_default_namespace() {
+    let brain = fixture_brain().await;
+    let app = app(brain, HubGate::default());
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/recall")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"query":"KNOWN_PHRASE_KURULTAI_42","limit":5}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let views: Vec<kurultai::brain::AgentAtomView> =
+        serde_json::from_str(&body_str(resp).await).unwrap();
+    assert!(views.iter().all(|v| v.project == "default"));
+}
+
 // ── /api/ontology ────────────────────────────────────────────────────────────
 
 #[tokio::test]

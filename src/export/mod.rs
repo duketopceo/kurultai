@@ -358,10 +358,7 @@ pub async fn import_pack(
                 let mut page = src.list_atoms_page_sync(
                     after_id.as_deref(),
                     PAGE,
-                    SearchFilter {
-                        trusted_only: false,
-                        namespace: None,
-                    },
+                    SearchFilter::trusted(false),
                     !skip_vectors,
                 )?;
                 if page.is_empty() {

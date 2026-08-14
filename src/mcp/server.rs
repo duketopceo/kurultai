@@ -1,12 +1,14 @@
 //! Minimal MCP stdio JSON-RPC server (Phase 1 #11 + Phase 3 #7).
 //!
 //! Speaks newline-delimited JSON-RPC 2.0 over stdin/stdout.
-//! Tools: `search`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, `ontology_promote`.
+//! Tools: `search`, `recall`, `cite`, `remember`, `ask`, `who_knows`, `promote`,
+//! `ontology_get`, `ontology_promote`.
 
 use crate::error::{KurultaiError, Result};
 use crate::mcp::brain::BrainService;
 use crate::mcp::interface::AgentRead;
 use crate::ontology;
+use crate::project::{resolve_project, PROJECT_METADATA_KEY};
 use crate::write_policy::{WriteContext, WriteTransport};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -27,6 +29,7 @@ const TOOL_WHO_KNOWS: &str = "who_knows";
 const TOOL_PROMOTE: &str = "promote";
 const TOOL_ONTOLOGY_GET: &str = "ontology_get";
 const TOOL_ONTOLOGY_PROMOTE: &str = "ontology_promote";
+const TOOL_RECALL: &str = "recall";
 
 enum StdinFrame {
     Eof,
@@ -285,6 +288,20 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
                 }
             }),
             json!({
+                "name": TOOL_RECALL,
+                "description": "Project-scoped agent recall. Returns token-capped excerpts from one project namespace only, so other sessions sharing this brain do not pollute results. Omit project to use $KURULTAI_PROJECT (else 'default'). Namespacing, not isolation.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "project": { "type": "string", "description": "Namespace, e.g. crew-itdash. Defaults to $KURULTAI_PROJECT." },
+                        "limit": { "type": "integer", "default": 10 },
+                        "include_quarantine": { "type": "boolean", "default": false }
+                    },
+                    "required": ["query"]
+                }
+            }),
+            json!({
                 "name": TOOL_CITE,
                 "description": "Fetch one citation-sized excerpt by source + source_id.",
                 "inputSchema": {
@@ -298,7 +315,7 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
             }),
             json!({
                 "name": TOOL_REMEMBER,
-                "description": "Store a distilled fact (title + summary + tags). Do not dump raw chat.",
+                "description": "Store a distilled fact (title + summary + tags). Do not dump raw chat. Tagged with a project namespace so other sessions' recall stays clean.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -308,7 +325,8 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
                             "type": "array",
                             "items": { "type": "string" },
                             "default": []
-                        }
+                        },
+                        "project": { "type": "string", "description": "Namespace, e.g. crew-itdash. Defaults to $KURULTAI_PROJECT." }
                     },
                     "required": ["title", "summary"]
                 }
@@ -381,6 +399,7 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
                         matches!(
                             t.get("name").and_then(|n| n.as_str()),
                             Some(TOOL_SEARCH)
+                                | Some(TOOL_RECALL)
                                 | Some(TOOL_CITE)
                                 | Some(TOOL_ASK)
                                 | Some(TOOL_WHO_KNOWS)
@@ -447,6 +466,20 @@ struct RememberArgs {
     summary: String,
     #[serde(default)]
     tags: Vec<String>,
+    /// Project namespace; falls back to `$KURULTAI_PROJECT`, then `"default"`.
+    #[serde(default)]
+    project: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RecallArgs {
+    query: String,
+    #[serde(default)]
+    project: Option<String>,
+    #[serde(default = "default_limit")]
+    limit: usize,
+    #[serde(default)]
+    include_quarantine: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -498,6 +531,16 @@ async fn call_tool(
             serde_json::to_string(&views)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
         }
+        TOOL_RECALL => {
+            let args: RecallArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad recall args: {e}")))?;
+            let project = resolve_project(args.project.as_deref());
+            let views = brain
+                .recall_for_agent(&project, &args.query, args.limit, args.include_quarantine)
+                .await?;
+            serde_json::to_string(&views)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
+        }
         TOOL_CITE => {
             let args: CiteArgs = serde_json::from_value(call.arguments)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad cite args: {e}")))?;
@@ -510,8 +553,15 @@ async fn call_tool(
         TOOL_REMEMBER => {
             let args: RememberArgs = serde_json::from_value(call.arguments)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad remember args: {e}")))?;
+            let project = resolve_project(args.project.as_deref());
             let id = brain
-                .remember_with(&args.title, &args.summary, &args.tags, &[], ctx)
+                .remember_with(
+                    &args.title,
+                    &args.summary,
+                    &args.tags,
+                    &[(PROJECT_METADATA_KEY, project.as_str())],
+                    ctx,
+                )
                 .await?;
             let lane = brain
                 .store()
@@ -522,7 +572,7 @@ async fn call_tool(
                     None => a.trust_lane.as_str().to_string(),
                 })
                 .unwrap_or_else(|| "unknown".into());
-            format!("remembered atom id={id} lane={lane}")
+            format!("remembered atom id={id} lane={lane} project={project}")
         }
         TOOL_PROMOTE => {
             let args: PromoteArgs = serde_json::from_value(call.arguments)
@@ -657,6 +707,7 @@ mod tests {
         assert!(names.contains(&"promote"));
         assert!(names.contains(&"ontology_get"));
         assert!(names.contains(&"ontology_promote"));
+        assert!(names.contains(&"recall"));
         let mut read_names: Vec<&str> = tool_defs_for(ToolSurface::ReadOnly)
             .iter()
             .filter_map(|t| t.get("name").and_then(|n| n.as_str()))
@@ -664,7 +715,14 @@ mod tests {
         read_names.sort_unstable();
         assert_eq!(
             read_names,
-            vec!["ask", "cite", "ontology_get", "search", "who_knows"]
+            vec![
+                "ask",
+                "cite",
+                "ontology_get",
+                "recall",
+                "search",
+                "who_knows"
+            ]
         );
     }
 

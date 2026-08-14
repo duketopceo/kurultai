@@ -21,6 +21,7 @@ pub mod memory;
 pub mod metrics;
 pub mod ontology;
 pub mod pipeline;
+pub mod project;
 pub mod quality;
 pub mod query;
 pub mod rerank;

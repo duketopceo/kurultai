@@ -581,7 +581,9 @@ struct SearchBody {
 
 #[derive(Debug, Deserialize)]
 struct RecallBody {
-    project: String,
+    /// Project namespace. Omit to fall back to `$KURULTAI_PROJECT`, then `"default"`.
+    #[serde(default)]
+    project: Option<String>,
     query: String,
     #[serde(default = "default_limit")]
     limit: usize,
@@ -632,7 +634,7 @@ async fn recall_post(
     match state
         .brain
         .recall_for_agent(
-            &body.project,
+            &crate::project::resolve_project(body.project.as_deref()),
             &body.query,
             body.limit,
             body.include_quarantine,
