@@ -596,10 +596,9 @@ fn print_table(results: &[CheckResult]) {
         .max(8);
 
     println!(
-        "{:<width$}  {:<6}  {}",
+        "{:<width$}  {:<6}  DETAIL",
         "CHECK",
         "STATUS",
-        "DETAIL",
         width = name_w
     );
     println!("{:-<width$}  {:-<6}  {:-<40}", "", "", "", width = name_w);
