@@ -24,15 +24,70 @@ const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, ques
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
      last_accessed_at, visibility, corpus_tier, visibility_labels_json";
 
-/// Retrieval filter — default skips quarantine.
-#[derive(Debug, Clone, Copy)]
+/// Retrieval filter — default skips quarantine and does not scope by namespace.
+#[derive(Debug, Clone)]
 pub struct SearchFilter {
     pub trusted_only: bool,
+    /// Optional namespace scope, matched against `metadata_json.$.project_id`.
+    ///
+    /// When set, results are restricted to atoms in this namespace **plus** atoms
+    /// carrying no namespace at all (treated as shared/global). See
+    /// [`crate::write_policy`] — the cross-namespace read default is an open design
+    /// decision; this "own namespace + unnamespaced" rule is the conservative seam,
+    /// not a settled answer.
+    pub namespace: Option<String>,
 }
 
+/// Fail closed: the default must never widen to include quarantine. A derived
+/// `Default` would set `trusted_only: false` and expose quarantined atoms to every
+/// caller that uses `SearchFilter::default()`.
 impl Default for SearchFilter {
     fn default() -> Self {
-        Self { trusted_only: true }
+        Self::trusted()
+    }
+}
+
+impl SearchFilter {
+    /// Trusted lane only, no namespace scope. The historical `Default`.
+    pub fn trusted() -> Self {
+        Self {
+            trusted_only: true,
+            namespace: None,
+        }
+    }
+
+    /// All lanes, no namespace scope.
+    pub fn all_lanes() -> Self {
+        Self {
+            trusted_only: false,
+            namespace: None,
+        }
+    }
+
+    /// Same filter, scoped to `namespace` (no-op when `namespace` is `None`/empty).
+    pub fn with_namespace(mut self, namespace: Option<&str>) -> Self {
+        self.namespace = namespace
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        self
+    }
+
+    /// SQL fragment scoping `alias` to the namespace, or `None` when unscoped.
+    ///
+    /// The caller must append the namespace value as the next positional parameter.
+    pub(crate) fn namespace_sql(&self, alias: &str) -> Option<String> {
+        self.namespace.as_ref().map(|_| {
+            let col = if alias.is_empty() {
+                "metadata_json".to_string()
+            } else {
+                format!("{alias}.metadata_json")
+            };
+            format!(
+                "(json_extract({col}, '$.project_id') = ? \
+                 OR json_extract({col}, '$.project_id') IS NULL)"
+            )
+        })
     }
 }
 
@@ -317,23 +372,30 @@ impl SqliteVecStore {
         filter: SearchFilter,
     ) -> Result<Vec<KnowledgeAtom>> {
         let conn = self.lock()?;
-        let sql = if filter.trusted_only {
-            format!(
-                "SELECT {} FROM knowledge_atoms WHERE trust_lane = 'trusted' \
-                 ORDER BY indexed_at DESC LIMIT ?1",
-                ATOM_COLUMNS
-            )
+        let mut where_parts: Vec<String> = Vec::new();
+        let mut binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        if filter.trusted_only {
+            where_parts.push("trust_lane = 'trusted'".to_string());
+        }
+        if let Some(ns_sql) = filter.namespace_sql("") {
+            where_parts.push(ns_sql);
+            binds.push(Box::new(filter.namespace.clone().unwrap_or_default()));
+        }
+        binds.push(Box::new(limit as i64));
+        let where_clause = if where_parts.is_empty() {
+            String::new()
         } else {
-            format!(
-                "SELECT {} FROM knowledge_atoms ORDER BY indexed_at DESC LIMIT ?1",
-                ATOM_COLUMNS
-            )
+            format!("WHERE {} ", where_parts.join(" AND "))
         };
+        let sql = format!(
+            "SELECT {ATOM_COLUMNS} FROM knowledge_atoms {where_clause}\
+             ORDER BY indexed_at DESC LIMIT ?"
+        );
         let mut stmt = conn
             .prepare(&sql)
             .map_err(|e| KurultaiError::Store(format!("list_atoms prepare: {e}")))?;
         let atoms = stmt
-            .query_map([limit as i64], row_to_atom)
+            .query_map(rusqlite::params_from_iter(binds.iter()), row_to_atom)
             .map_err(|e| KurultaiError::Store(format!("list_atoms query: {e}")))?;
         let mut atoms = atoms
             .collect::<std::result::Result<Vec<_>, _>>()
@@ -684,31 +746,30 @@ impl Store for SqliteVecStore {
         }
 
         let conn = self.lock()?;
-        let sql = if filter.trusted_only {
-            r#"
-                SELECT a.id, bm25(atoms_fts) AS score
-                FROM atoms_fts
-                JOIN knowledge_atoms a ON a.id = atoms_fts.id
-                WHERE atoms_fts MATCH ?1 AND a.trust_lane = 'trusted'
-                ORDER BY score
-                LIMIT ?2
-                "#
-        } else {
-            r#"
-                SELECT a.id, bm25(atoms_fts) AS score
-                FROM atoms_fts
-                JOIN knowledge_atoms a ON a.id = atoms_fts.id
-                WHERE atoms_fts MATCH ?1
-                ORDER BY score
-                LIMIT ?2
-                "#
-        };
+        // Positional params are appended in order: match, [namespace], limit.
+        let mut where_parts = vec!["atoms_fts MATCH ?".to_string()];
+        let mut binds: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(fts_query.clone())];
+        if filter.trusted_only {
+            where_parts.push("a.trust_lane = 'trusted'".to_string());
+        }
+        if let Some(ns_sql) = filter.namespace_sql("a") {
+            where_parts.push(ns_sql);
+            binds.push(Box::new(filter.namespace.clone().unwrap_or_default()));
+        }
+        binds.push(Box::new(limit as i64));
+        let sql = format!(
+            "SELECT a.id, bm25(atoms_fts) AS score \
+             FROM atoms_fts \
+             JOIN knowledge_atoms a ON a.id = atoms_fts.id \
+             WHERE {} ORDER BY score LIMIT ?",
+            where_parts.join(" AND ")
+        );
         let mut stmt = conn
-            .prepare(sql)
+            .prepare(&sql)
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids prepare: {e}")))?;
 
         let rows = stmt
-            .query_map(params![fts_query, limit as i64], |r| {
+            .query_map(rusqlite::params_from_iter(binds.iter()), |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
             })
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids query: {e}")))?;
@@ -743,8 +804,8 @@ impl Store for SqliteVecStore {
             return Ok(vec![]);
         }
 
-        // Over-fetch when filtering trusted so k-nearest still fills after lane filter.
-        let k = if filter.trusted_only {
+        // Over-fetch when post-filtering so k-nearest still fills after lane/namespace filter.
+        let k = if filter.trusted_only || filter.namespace.is_some() {
             (limit.saturating_mul(3)).max(limit)
         } else {
             limit
@@ -754,7 +815,8 @@ impl Store for SqliteVecStore {
         let mut stmt = conn
             .prepare(
                 r#"
-                SELECT a.id, v.distance, a.trust_lane
+                SELECT a.id, v.distance, a.trust_lane,
+                       json_extract(a.metadata_json, '$.project_id')
                 FROM atoms_vec v
                 JOIN knowledge_atoms a ON a.rowid = v.rowid
                 WHERE v.embedding MATCH ?1 AND k = ?2
@@ -769,16 +831,23 @@ impl Store for SqliteVecStore {
                     r.get::<_, String>(0)?,
                     r.get::<_, f64>(1)?,
                     r.get::<_, String>(2)?,
+                    r.get::<_, Option<String>>(3)?,
                 ))
             })
             .map_err(|e| KurultaiError::Store(format!("vector_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
-            let (id, distance, lane) =
+            let (id, distance, lane, project_id) =
                 row.map_err(|e| KurultaiError::Store(format!("vector_search_ids row: {e}")))?;
             if filter.trusted_only && lane != "trusted" {
                 continue;
+            }
+            // Mirrors `SearchFilter::namespace_sql`: own namespace + unnamespaced atoms.
+            if let Some(ns) = &filter.namespace {
+                if project_id.as_deref().is_some_and(|p| p != ns) {
+                    continue;
+                }
             }
             let score = 1.0 / (1.0 + distance);
             out.push((id, score));
@@ -2196,6 +2265,7 @@ mod tests {
                 10,
                 SearchFilter {
                     trusted_only: false,
+                    namespace: None,
                 },
             )
             .await

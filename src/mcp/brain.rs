@@ -13,6 +13,7 @@ use crate::rerank::Reranker;
 use crate::store::{SearchFilter, Store};
 use crate::synthesize::{who_knows_from_hits, Synthesizer, WhoKnowsEntry};
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
+use crate::write_policy::{WriteContext, WriteTransport};
 use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -236,6 +237,7 @@ impl BrainService {
                 limit,
                 SearchFilter {
                     trusted_only: !include_quarantine,
+                    namespace: None,
                 },
             )
             .await
@@ -283,9 +285,29 @@ impl BrainService {
         include_quarantine: bool,
         source: Option<&str>,
     ) -> Result<Vec<SearchResult>> {
+        self.search_scoped_ns(query, limit, include_quarantine, source, None)
+            .await
+    }
+
+    /// [`Self::search_scoped`] restricted to a namespace.
+    ///
+    /// SEAM — cross-namespace read policy is an OPEN DESIGN DECISION (per-session vs
+    /// per-project namespaces, and whether cross-namespace reads default open or closed).
+    /// Callers must opt in by passing `Some(ns)`; nothing defaults to scoped yet, so
+    /// `search`/`ask` behaviour is unchanged until that decision is made.
+    pub async fn search_scoped_ns(
+        &self,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+        source: Option<&str>,
+        namespace: Option<&str>,
+    ) -> Result<Vec<SearchResult>> {
         let filter = SearchFilter {
             trusted_only: !include_quarantine,
-        };
+            namespace: None,
+        }
+        .with_namespace(namespace);
         let src = source.map(str::trim).filter(|s| !s.is_empty());
         let fetch = if src.is_some() {
             (limit.max(1) * 8).min(80)
@@ -314,11 +336,12 @@ impl BrainService {
         limit: usize,
         include_quarantine: bool,
     ) -> Result<Vec<AgentAtomView>> {
-        // Over-fetch so project filtering still yields useful results.
+        // Namespace predicate is pushed into SQL (was an in-memory `retain` prototype).
         let mut results = self
-            .search_filtered(query, limit * 2, include_quarantine)
+            .search_scoped_ns(query, limit * 2, include_quarantine, None, Some(project))
             .await?;
-        results.retain(|r| r.atom.project_id() == project);
+        // Belt-and-braces: `search_scoped_ns` also admits unnamespaced (shared) atoms,
+        // which `recall` deliberately keeps — they are the global corpus.
         results.truncate(limit);
         Ok(results
             .into_iter()
@@ -344,6 +367,7 @@ impl BrainService {
                 limit,
                 SearchFilter {
                     trusted_only: !include_quarantine,
+                    namespace: None,
                 },
                 TierPolicy::default(),
             )
@@ -453,12 +477,40 @@ impl AgentRead for BrainService {
 
 #[async_trait::async_trait]
 impl AgentWrite for BrainService {
+    /// Legacy entry point. Resolves the write context from the environment so the
+    /// closed-write policy applies to callers that predate [`WriteContext`].
     async fn remember(
         &self,
         title: &str,
         summary: &str,
         tags: &[String],
         metadata: &[(&str, &str)],
+    ) -> Result<String> {
+        self.remember_with(
+            title,
+            summary,
+            tags,
+            metadata,
+            &WriteContext::from_env(WriteTransport::Mcp),
+        )
+        .await
+    }
+}
+
+impl BrainService {
+    /// Store an agent-authored atom, stamped with the caller's provenance.
+    ///
+    /// Under [`crate::write_policy::WriteMode::SharedClosed`] the resulting atom is
+    /// forced into quarantine **regardless of the quality gate outcome**: on a shared
+    /// store no agent-reachable path may write to the globally-searchable lane.
+    /// Only `kurultai promote`, run by the operator, moves it out.
+    pub async fn remember_with(
+        &self,
+        title: &str,
+        summary: &str,
+        tags: &[String],
+        metadata: &[(&str, &str)],
+        ctx: &WriteContext,
     ) -> Result<String> {
         if title.trim().is_empty() || summary.trim().is_empty() {
             return Err(KurultaiError::config(
@@ -474,6 +526,8 @@ impl AgentWrite for BrainService {
         for (k, v) in metadata {
             meta.insert((*k).to_string(), (*v).to_string());
         }
+        // Stamp last: caller-supplied agent_id / project_id must not forge provenance.
+        ctx.stamp(&mut meta);
 
         let source = "agent";
         let source_id = format!(
@@ -504,6 +558,17 @@ impl AgentWrite for BrainService {
 
         let outcome = evaluate(self.store.as_ref(), &atom).await?;
         apply_gate(&mut atom, outcome);
+
+        // Containment: agent-reachable writes never land in the trusted lane on a
+        // shared store, even when the quality gate would have passed them.
+        if ctx.contains_writes() && atom.trust_lane == crate::types::TrustLane::Trusted {
+            apply_gate(
+                &mut atom,
+                crate::quality::GateOutcome::Quarantine {
+                    reason: crate::write_policy::CONTAINED_REASON.to_string(),
+                },
+            );
+        }
 
         // KTD7: skip embed on quarantine (don't pay / pollute atoms_vec).
         if atom.trust_lane == crate::types::TrustLane::Trusted && self.embedder.is_live() {

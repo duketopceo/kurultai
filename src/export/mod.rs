@@ -355,6 +355,7 @@ pub async fn import_pack(
                     PAGE,
                     SearchFilter {
                         trusted_only: false,
+                        namespace: None,
                     },
                     !skip_vectors,
                 )?;

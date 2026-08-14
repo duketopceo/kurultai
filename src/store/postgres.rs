@@ -564,23 +564,28 @@ impl Store for PostgresStore {
         if limit == 0 || query.trim().is_empty() {
             return Ok(vec![]);
         }
-        let sql = if filter.trusted_only {
-            "SELECT id, ts_rank(search_tsv, plainto_tsquery('english', $1))::float8 AS score
-             FROM knowledge_atoms
-             WHERE search_tsv @@ plainto_tsquery('english', $1)
-               AND trust_lane = 'trusted'
-             ORDER BY score DESC
-             LIMIT $2"
+        let lane = if filter.trusted_only {
+            " AND trust_lane = 'trusted'"
         } else {
+            ""
+        };
+        // `$3 IS NULL` short-circuits the scope when no namespace is requested, so a
+        // single statement serves both cases without string-building a predicate.
+        let sql = format!(
             "SELECT id, ts_rank(search_tsv, plainto_tsquery('english', $1))::float8 AS score
              FROM knowledge_atoms
-             WHERE search_tsv @@ plainto_tsquery('english', $1)
+             WHERE search_tsv @@ plainto_tsquery('english', $1){lane}
+               AND ($3::text IS NULL
+                    OR metadata_json->>'project_id' = $3
+                    OR metadata_json->>'project_id' IS NULL)
              ORDER BY score DESC
              LIMIT $2"
-        };
+        );
+        let sql = sql.as_str();
         let rows = sqlx::query(sql)
             .bind(query)
             .bind(limit as i64)
+            .bind(filter.namespace.as_deref())
             .fetch_all(&self.pool)
             .await
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids: {e}")))?;
@@ -616,7 +621,7 @@ impl Store for PostgresStore {
         if Self::embedding_norm(query_embed) < MIN_EMBEDDING_NORM {
             return Ok(vec![]);
         }
-        let k = if filter.trusted_only {
+        let k = if filter.trusted_only || filter.namespace.is_some() {
             (limit.saturating_mul(3)).max(limit)
         } else {
             limit
@@ -624,7 +629,8 @@ impl Store for PostgresStore {
         let vec = Vector::from(query_embed.to_vec());
         // L2 `<->`, score `1/(1+distance)` — same shape as sqlite-vec MATCH distance.
         let rows = sqlx::query(
-            "SELECT a.id, (v.embedding <-> $1)::float8 AS distance, a.trust_lane
+            "SELECT a.id, (v.embedding <-> $1)::float8 AS distance, a.trust_lane,
+                    a.metadata_json->>'project_id' AS project_id
              FROM atoms_vec v
              JOIN knowledge_atoms a ON a.id = v.atom_id
              ORDER BY v.embedding <-> $1
@@ -648,6 +654,15 @@ impl Store for PostgresStore {
                 .map_err(|e| KurultaiError::Store(e.to_string()))?;
             if filter.trusted_only && lane != "trusted" {
                 continue;
+            }
+            // Mirrors `SearchFilter::namespace_sql`: own namespace + unnamespaced atoms.
+            if let Some(ns) = &filter.namespace {
+                let project_id: Option<String> = row
+                    .try_get("project_id")
+                    .map_err(|e| KurultaiError::Store(e.to_string()))?;
+                if project_id.as_deref().is_some_and(|p| p != ns) {
+                    continue;
+                }
             }
             out.push((id, 1.0 / (1.0 + distance)));
             if out.len() >= limit {
@@ -799,16 +814,22 @@ impl Store for PostgresStore {
     }
 
     async fn list_atoms(&self, limit: usize, filter: SearchFilter) -> Result<Vec<KnowledgeAtom>> {
-        let sql = if filter.trusted_only {
-            format!(
-                "SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE trust_lane = 'trusted'
-                 ORDER BY indexed_at DESC LIMIT $1"
-            )
+        let lane = if filter.trusted_only {
+            "trust_lane = 'trusted'"
         } else {
-            format!("SELECT {ATOM_SELECT} FROM knowledge_atoms ORDER BY indexed_at DESC LIMIT $1")
+            "TRUE"
         };
+        let sql = format!(
+            "SELECT {ATOM_SELECT} FROM knowledge_atoms
+             WHERE {lane}
+               AND ($2::text IS NULL
+                    OR metadata_json->>'project_id' = $2
+                    OR metadata_json->>'project_id' IS NULL)
+             ORDER BY indexed_at DESC LIMIT $1"
+        );
         let rows = sqlx::query(&sql)
             .bind(limit as i64)
+            .bind(filter.namespace.as_deref())
             .fetch_all(&self.pool)
             .await
             .map_err(|e| KurultaiError::Store(format!("list_atoms: {e}")))?;
@@ -1244,6 +1265,7 @@ mod tests {
                 "quarantine-fts-token",
                 10,
                 SearchFilter {
+                    namespace: None,
                     trusted_only: false,
                 },
             )

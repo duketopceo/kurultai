@@ -90,6 +90,7 @@ async fn ae2_untagged_plain_text_inbox_fails_but_stores() {
             50,
             SearchFilter {
                 trusted_only: false,
+                namespace: None,
             },
         )
         .await
@@ -124,6 +125,7 @@ async fn ae3_too_short_quarantines() {
             20,
             SearchFilter {
                 trusted_only: false,
+                namespace: None,
             },
         )
         .await
@@ -158,6 +160,7 @@ async fn ae4_thin_boilerplate_quarantines() {
             20,
             SearchFilter {
                 trusted_only: false,
+                namespace: None,
             },
         )
         .await

@@ -5,8 +5,9 @@
 
 use crate::error::{KurultaiError, Result};
 use crate::mcp::brain::BrainService;
-use crate::mcp::interface::{AgentRead, AgentWrite};
+use crate::mcp::interface::AgentRead;
 use crate::ontology;
+use crate::write_policy::{WriteContext, WriteTransport};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::OnceLock;
@@ -127,8 +128,16 @@ async fn write_response(stdout: &mut (impl AsyncWriteExt + Unpin), response: &Va
     Ok(())
 }
 
-/// Run the MCP server until stdin closes.
+/// Run the MCP server until stdin closes, using a solo (unidentified) write context.
 pub async fn run_stdio(brain: BrainService) -> Result<()> {
+    run_stdio_with(brain, WriteContext::from_env(WriteTransport::Mcp)).await
+}
+
+/// Run the MCP server until stdin closes, carrying the session's write context.
+///
+/// `ctx.agent_id` is self-asserted (see [`crate::write_policy`]); it is used for
+/// provenance and namespacing, never as an authorization claim.
+pub async fn run_stdio_with(brain: BrainService, ctx: WriteContext) -> Result<()> {
     let stdin = tokio::io::stdin();
     let mut reader = BufReader::new(stdin);
     let mut stdout = tokio::io::stdout();
@@ -163,7 +172,9 @@ pub async fn run_stdio(brain: BrainService) -> Result<()> {
                     }
                 };
 
-                let Some(response) = handle_message(&brain, msg, ToolSurface::Full).await? else {
+                let Some(response) =
+                    handle_message_with(&brain, msg, ToolSurface::Full, &ctx).await?
+                else {
                     continue;
                 };
                 write_response(&mut stdout, &response).await?;
@@ -183,11 +194,27 @@ pub enum ToolSurface {
     ReadOnly,
 }
 
-/// Handle one JSON-RPC message. Returns `None` for notifications (no response).
+/// Handle one JSON-RPC message with a solo (unidentified) write context.
 pub async fn handle_message(
     brain: &BrainService,
     msg: Value,
     surface: ToolSurface,
+) -> Result<Option<Value>> {
+    handle_message_with(
+        brain,
+        msg,
+        surface,
+        &WriteContext::from_env(WriteTransport::Mcp),
+    )
+    .await
+}
+
+/// Handle one JSON-RPC message. Returns `None` for notifications (no response).
+pub async fn handle_message_with(
+    brain: &BrainService,
+    msg: Value,
+    surface: ToolSurface,
+    ctx: &WriteContext,
 ) -> Result<Option<Value>> {
     let id = msg.get("id").cloned();
     let method = msg.get("method").and_then(|m| m.as_str()).unwrap_or("");
@@ -211,7 +238,7 @@ pub async fn handle_message(
         "tools/list" => Ok(json!({ "tools": tool_defs_for(surface) })),
         "tools/call" => {
             let params = msg.get("params").cloned().unwrap_or(json!({}));
-            call_tool(brain, params, surface).await
+            call_tool(brain, params, surface, ctx).await
         }
         _ => {
             error_code = -32601;
@@ -434,7 +461,12 @@ struct WhoKnowsArgs {
     limit: usize,
 }
 
-async fn call_tool(brain: &BrainService, params: Value, surface: ToolSurface) -> Result<Value> {
+async fn call_tool(
+    brain: &BrainService,
+    params: Value,
+    surface: ToolSurface,
+    ctx: &WriteContext,
+) -> Result<Value> {
     let call: ToolCallParams = serde_json::from_value(params)
         .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad tools/call params: {e}")))?;
     let _span = tracing::info_span!("mcp_tool_call", tool = %call.name);
@@ -479,7 +511,7 @@ async fn call_tool(brain: &BrainService, params: Value, surface: ToolSurface) ->
             let args: RememberArgs = serde_json::from_value(call.arguments)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad remember args: {e}")))?;
             let id = brain
-                .remember(&args.title, &args.summary, &args.tags, &[])
+                .remember_with(&args.title, &args.summary, &args.tags, &[], ctx)
                 .await?;
             let lane = brain
                 .store()
@@ -496,7 +528,7 @@ async fn call_tool(brain: &BrainService, params: Value, surface: ToolSurface) ->
             let args: PromoteArgs = serde_json::from_value(call.arguments)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad promote args: {e}")))?;
             let res = brain
-                .promote(&args.atom_id, "mcp", args.reason.as_deref())
+                .promote(&args.atom_id, &ctx.actor(), args.reason.as_deref())
                 .await?;
             format!("promoted atom id={} actor={}", res.atom_id, res.actor)
         }
@@ -538,7 +570,7 @@ async fn call_tool(brain: &BrainService, params: Value, surface: ToolSurface) ->
                 brain.store().as_ref(),
                 &args.atom_id,
                 &args.class_id,
-                "mcp",
+                &ctx.actor(),
             )
             .await?;
             serde_json::to_string(&entity)
