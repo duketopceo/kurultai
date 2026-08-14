@@ -31,7 +31,7 @@ rust-embed = { version = "8", features = ["mime-guess"] }
 mime_guess = "2"
 
 # SQLite with vector support (pin 0.1.6 — newer alphas fail to compile)
-rusqlite = { version = "0.31", features = ["bundled", "backup"] }
+rusqlite = { version = "0.40", features = ["bundled", "backup"] }
 tempfile = "3"
 tar = "0.4"
 flate2 = "1"
