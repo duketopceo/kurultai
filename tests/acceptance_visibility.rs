@@ -7,8 +7,8 @@
 
 use chrono::Utc;
 use kurultai::store::{SqliteVecStore, Store};
-use std::collections::HashMap;
 use kurultai::types::{CorpusTier, KnowledgeAtom, SourceConfig, SourceKind, VisibilityScope};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 fn temp_store() -> SqliteVecStore {

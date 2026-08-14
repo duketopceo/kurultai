@@ -176,11 +176,7 @@ fn router(state: AppState) -> Router {
 /// Build the application router for integration tests / external embedding.
 ///
 /// Mirrors the routes mounted by [`serve_with`] without binding a socket.
-pub fn build_app(
-    brain: BrainService,
-    status: Arc<DaemonStatus>,
-    hub: HubGate,
-) -> Router {
+pub fn build_app(brain: BrainService, status: Arc<DaemonStatus>, hub: HubGate) -> Router {
     let state = AppState {
         brain: Arc::new(brain),
         status,
