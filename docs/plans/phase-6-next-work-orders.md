@@ -76,6 +76,8 @@ Maps brainstorm R1–R3, R8 (local half) and AE1. Year-1 WO-201…204 → releas
 
 Atlas sequencing still lives in [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md) — do not LFG A2–A5 before O1 / structured contract.
 
+Brain dual-mode research (brain-shape FDG + algorithmic ontology; galaxy out): [`docs/brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md`](../brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md). Plan: [`2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md`](2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md). Slice A (visual) and Slice B (O1) are independent LFGs; Slice C (ontology layout) waits on B. Do not LFG ontology **layout** before O1 ([#116](https://github.com/duketopceo/kurultai/issues/116)).
+
 ---
 
 ## Explicitly deferred
