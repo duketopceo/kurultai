@@ -319,6 +319,105 @@ pub async fn open_hub_store(database_url: &str, embed_dim: usize) -> Result<Arc<
     }
 }
 
+/// How long a connection waits on a lock held by another process before
+/// returning `SQLITE_BUSY`. Sized for many concurrent MCP stdio processes on
+/// one box sharing a single `store.db`.
+pub const BUSY_TIMEOUT_MS: u32 = 5_000;
+
+/// Env override for [`BUSY_TIMEOUT_MS`], in milliseconds.
+pub const BUSY_TIMEOUT_ENV: &str = "KURULTAI_SQLITE_BUSY_TIMEOUT_MS";
+
+fn busy_timeout_ms() -> u32 {
+    std::env::var(BUSY_TIMEOUT_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .unwrap_or(BUSY_TIMEOUT_MS)
+}
+
+/// Put a freshly opened connection into a state safe for concurrent
+/// multi-process access.
+///
+/// Kurultai's shared deployment shape is N independent OS processes (one
+/// `kurultai mcp` per agent session, plus `kurultai index` runs) each opening
+/// the same `store.db`. The in-process `Mutex<Connection>` does nothing across
+/// process boundaries, so the database itself has to be configured for it:
+///
+/// * `journal_mode = WAL` — readers no longer block on the writer. Under the
+///   default `DELETE` journal a single writer takes an exclusive lock over the
+///   whole file, so every concurrent `search` fails for the duration of an
+///   index run. WAL is persisted in the database header, so this only has to
+///   take effect once, but setting it on every open is cheap and correct.
+/// * `busy_timeout` — per-connection, must be set every open. Without it the
+///   losing process gets `SQLITE_BUSY` immediately instead of waiting.
+/// * `synchronous = NORMAL` — per-connection, the standard companion to WAL.
+///
+/// `journal_mode` is a *query* pragma: `execute_batch` silently swallows a
+/// failed switch, so the result is read back and verified. A failure to reach
+/// WAL is a warning, not an error — a store on a filesystem that cannot do WAL
+/// (e.g. a network mount) should still open for single-process use.
+fn configure_multiprocess(conn: &Connection, path: &std::path::Path) -> Result<()> {
+    let timeout = busy_timeout_ms();
+
+    // busy_timeout first, so the journal_mode switch below can itself wait on
+    // another process that currently holds the lock.
+    conn.pragma_update(None, "busy_timeout", timeout)
+        .map_err(|e| KurultaiError::Store(format!("set busy_timeout: {e}")))?;
+
+    let mode: String = conn
+        .pragma_update_and_check(None, "journal_mode", "WAL", |row| row.get(0))
+        .map_err(|e| KurultaiError::Store(format!("set journal_mode=WAL: {e}")))?;
+
+    if !mode.eq_ignore_ascii_case("wal") {
+        tracing::warn!(
+            path = %path.display(),
+            journal_mode = %mode,
+            "sqlite did not switch to WAL — concurrent readers will block on writes"
+        );
+    }
+
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(|e| KurultaiError::Store(format!("set synchronous=NORMAL: {e}")))?;
+
+    tracing::debug!(
+        path = %path.display(),
+        journal_mode = %mode,
+        busy_timeout_ms = timeout,
+        "sqlite configured for multi-process access"
+    );
+    Ok(())
+}
+
+/// Sidecar files SQLite creates alongside `store.db` in WAL mode.
+///
+/// These must be removed whenever `store.db` is replaced wholesale by a file
+/// copy, or SQLite will apply the old WAL over the new database.
+pub fn wal_sidecar_paths(db: &std::path::Path) -> [PathBuf; 2] {
+    let name = db.file_name().unwrap_or_default().to_os_string();
+    let mut wal = name.clone();
+    wal.push("-wal");
+    let mut shm = name;
+    shm.push("-shm");
+    let parent = db.parent().unwrap_or_else(|| std::path::Path::new("."));
+    [parent.join(wal), parent.join(shm)]
+}
+
+/// Remove stale `-wal` / `-shm` sidecars next to `db`. Missing files are fine.
+pub fn remove_wal_sidecars(db: &std::path::Path) -> Result<()> {
+    for side in wal_sidecar_paths(db) {
+        match std::fs::remove_file(&side) {
+            Ok(()) => tracing::debug!(path = %side.display(), "removed stale sqlite sidecar"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(KurultaiError::Store(format!(
+                    "remove {}: {e}",
+                    side.display()
+                )))
+            }
+        }
+    }
+    Ok(())
+}
+
 pub struct SqliteVecStore {
     conn: Mutex<Connection>,
     path: PathBuf,
@@ -336,6 +435,8 @@ impl SqliteVecStore {
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(|e| KurultaiError::Store(format!("enable foreign_keys: {e}")))?;
 
+        configure_multiprocess(&conn, &path)?;
+
         migrations::migrate(&conn)?;
         migrations::ensure_vec_table(&conn, embed_dim)?;
 
@@ -349,6 +450,24 @@ impl SqliteVecStore {
             path,
             embed_dim,
         })
+    }
+
+    /// Read an integer pragma off this connection (e.g. `busy_timeout`).
+    ///
+    /// Exposed so deployment/acceptance checks can assert on the connection
+    /// state set up by [`configure_multiprocess`] rather than trusting it.
+    pub fn pragma_i64(&self, name: &str) -> Result<i64> {
+        let conn = self.lock()?;
+        conn.query_row(&format!("PRAGMA {name}"), [], |r| r.get(0))
+            .map_err(|e| KurultaiError::Store(format!("read pragma {name}: {e}")))
+    }
+
+    /// The journal mode this database is actually in — `"wal"` when
+    /// multi-process access is safe.
+    pub fn journal_mode(&self) -> Result<String> {
+        let conn = self.lock()?;
+        conn.query_row("PRAGMA journal_mode", [], |r| r.get::<_, String>(0))
+            .map_err(|e| KurultaiError::Store(format!("read pragma journal_mode: {e}")))
     }
 
     pub fn path(&self) -> &PathBuf {
