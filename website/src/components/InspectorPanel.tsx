@@ -1,6 +1,32 @@
 import { useEffect, useState } from 'react';
-import type { Atom } from '../types';
-import { touchAtom, openFile } from '../api';
+import type { Atom, OntologyResponse } from '../types';
+import { touchAtom, openFile, fetchOntology } from '../api';
+
+interface OntologyEdgeView {
+  rel: string;
+  other: string;
+}
+
+function approvedLinksForAtom(atomId: string, onto: OntologyResponse): OntologyEdgeView[] {
+  const byId = new Map(onto.entities.map((e) => [e.id, e]));
+  const related = new Set<string>([atomId]);
+  for (const e of onto.entities) {
+    if (e.id === atomId || e.atom_id === atomId) related.add(e.id);
+  }
+  const out: OntologyEdgeView[] = [];
+  for (const link of onto.links) {
+    if (link.status && link.status !== 'approved') continue;
+    const fromHit = related.has(link.from_id);
+    const toHit = related.has(link.to_id);
+    if (!fromHit && !toHit) continue;
+    const otherId = fromHit ? link.to_id : link.from_id;
+    out.push({
+      rel: link.rel,
+      other: byId.get(otherId)?.name ?? otherId,
+    });
+  }
+  return out;
+}
 
 interface Props {
   atom: Atom | null;
@@ -52,6 +78,7 @@ function labelGradientCss(label: string): string {
 
 export function InspectorPanel({ atom, allAtoms }: Props) {
   const [enriched, setEnriched] = useState<Atom | null>(null);
+  const [ontoLinks, setOntoLinks] = useState<OntologyEdgeView[]>([]);
 
   useEffect(() => {
     if (!atom) { setEnriched(null); return; }
@@ -60,6 +87,22 @@ export function InspectorPanel({ atom, allAtoms }: Props) {
     touchAtom(atom.id).then((full) => {
       if (full) setEnriched(full);
     });
+  }, [atom]);
+
+  useEffect(() => {
+    if (!atom) {
+      setOntoLinks([]);
+      return;
+    }
+    const ac = new AbortController();
+    fetchOntology(ac.signal)
+      .then((onto) => {
+        if (!ac.signal.aborted) setOntoLinks(approvedLinksForAtom(atom.id, onto));
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setOntoLinks([]);
+      });
+    return () => ac.abort();
   }, [atom]);
 
   const display = enriched ?? atom;
@@ -97,6 +140,15 @@ export function InspectorPanel({ atom, allAtoms }: Props) {
                   </span>
                 ))}
               </div>
+            )}
+            {ontoLinks.length > 0 && (
+              <ul className="inspector-links">
+                {ontoLinks.map((edge) => (
+                  <li key={`${edge.rel}:${edge.other}`}>
+                    <span className="inspector-rel">{edge.rel}</span> {edge.other}
+                  </li>
+                ))}
+              </ul>
             )}
             {display.file && (
               <button

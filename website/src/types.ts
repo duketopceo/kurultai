@@ -62,6 +62,30 @@ export interface Link {
   strength: number;
 }
 
+export interface OntologyEntity {
+  id: string;
+  kind: string;
+  name: string;
+  atom_id?: string | null;
+  attributes?: unknown;
+}
+
+export interface OntologyLink {
+  id: string;
+  from_id: string;
+  to_id: string;
+  rel: string;
+  confidence?: number;
+  status?: string;
+  actor?: string;
+}
+
+export interface OntologyResponse {
+  ok: boolean;
+  entities: OntologyEntity[];
+  links: OntologyLink[];
+}
+
 export interface StatusResponse {
   ok: boolean;
   version?: string;

@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 8;
+pub const CURRENT_SCHEMA_VERSION: i32 = 9;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -106,6 +106,45 @@ CREATE TABLE IF NOT EXISTS atom_soft_labels (
 
 CREATE INDEX IF NOT EXISTS idx_atom_soft_labels_label
     ON atom_soft_labels(label_id);
+"#;
+
+const MIGRATION_009: &str = r#"
+CREATE TABLE IF NOT EXISTS ontology_entities (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    atom_id TEXT,
+    attributes_json TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY (atom_id) REFERENCES knowledge_atoms(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS ontology_links (
+    id TEXT PRIMARY KEY,
+    from_id TEXT NOT NULL,
+    to_id TEXT NOT NULL,
+    rel TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    status TEXT NOT NULL DEFAULT 'approved',
+    actor TEXT NOT NULL DEFAULT 'system',
+    UNIQUE(from_id, to_id, rel)
+);
+CREATE INDEX IF NOT EXISTS idx_ontology_links_from ON ontology_links(from_id);
+CREATE INDEX IF NOT EXISTS idx_ontology_links_to ON ontology_links(to_id);
+CREATE INDEX IF NOT EXISTS idx_ontology_entities_atom ON ontology_entities(atom_id);
+
+INSERT OR IGNORE INTO ontology_entities (id, kind, name, atom_id, attributes_json) VALUES
+    ('class:memory', 'class', 'Memory', NULL, '{}'),
+    ('class:note', 'class', 'Note', NULL, '{}'),
+    ('class:code', 'class', 'Code', NULL, '{}'),
+    ('class:decision', 'class', 'Decision', NULL, '{}'),
+    ('class:person', 'class', 'Person', NULL, '{}'),
+    ('class:system', 'class', 'System', NULL, '{}');
+
+INSERT OR IGNORE INTO ontology_links (id, from_id, to_id, rel, confidence, status, actor) VALUES
+    ('link:note-is-a-memory', 'class:note', 'class:memory', 'is_a', 1.0, 'approved', 'system'),
+    ('link:code-is-a-memory', 'class:code', 'class:memory', 'is_a', 1.0, 'approved', 'system'),
+    ('link:decision-is-a-memory', 'class:decision', 'class:memory', 'is_a', 1.0, 'approved', 'system'),
+    ('link:person-is-a-memory', 'class:person', 'class:memory', 'is_a', 1.0, 'approved', 'system'),
+    ('link:system-is-a-memory', 'class:system', 'class:memory', 'is_a', 1.0, 'approved', 'system');
 "#;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
@@ -289,6 +328,13 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         .map_err(|e| KurultaiError::Store(format!("migration 008 objects failed: {e}")))?;
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [8])
             .map_err(|e| KurultaiError::Store(format!("migration 008 record failed: {e}")))?;
+    }
+
+    if current < 9 {
+        conn.execute_batch(MIGRATION_009)
+            .map_err(|e| KurultaiError::Store(format!("migration 009 failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [9])
+            .map_err(|e| KurultaiError::Store(format!("migration 009 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");

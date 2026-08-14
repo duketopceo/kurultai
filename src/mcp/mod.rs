@@ -14,7 +14,9 @@
 //! | `cite` | read | Single citation slice |
 //! | `ask` | read | Synthesized answer + citations + confidence |
 //! | `who_knows` | read | Distinct sources matching a topic |
-//! | `remember` | write | Distilled atom: title, summary, tags |
+//! | `promote` | write | Quarantine → trusted (never a side effect of remember) |
+//! | `ontology_get` | read | Entities + typed links (seeded classes when empty) |
+//! | `ontology_promote` | write | Atom → instance entity + `instance_of` (does not change trust_lane) |
 
 pub mod brain;
 pub mod init;
