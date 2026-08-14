@@ -12,7 +12,9 @@ depth: standard
 
 # feat: brain-shape FDG + algorithmic ontology
 
-> **For agentic workers:** implement **one slice per PR**. Slice A and Slice B are independent. Slice C is blocked on Slice B. Do not mix O1 schema with the first visual PR. Version/tag `main` before Slice A lands.
+> **LFG execution pin (2026-08-14):** this `/lfg` ships **Slice A only (U1–U3)**. Do not implement U4–U8, schema v9, MCP ontology tools, or Sugiyama in this PR. Slice A and Slice B remain independent later LFGs. Slice C stays blocked on B. Version/tag `main` before Slice A lands (`v0.4.1` is sufficient rollback).
+
+> **For later agentic workers:** implement **one slice per PR**. Do not mix O1 schema with the first visual PR.
 
 **Target repo:** `duketopceo/kurultai`  
 **Base:** `main` after v0.4.1 (`bab103a`+)  
@@ -83,16 +85,16 @@ Wave G hub work remains a competing queue; this plan does not steal HUB-3…6.
 
 ### Key Technical Decisions
 
-- KTD1. **GLB signed-distance / inside test, not \(F(x,y,z)\le 1\).** Bake a coarse SDF (or occupancy grid) from `website/src/assets/brain.glb` once after load. `(session-settled: research — chosen over a parametric envelope: the cortex mesh is already the product shape)`
-- KTD2. **No new layout npm deps in Slice A.** Octree + Verlet live in `website/src/brain/layout/` and a worker. Do not add `d3-force-3d` or `3d-force-graph`. `(chosen over wrapping 3d-force-graph: AGENTS.md unpkg/egress; custom Three renderer stays)`
+- KTD1. **GLB signed-distance / inside test, not \(F(x,y,z)\le 1\).** Bake a coarse SDF (or occupancy grid) from `website/src/assets/brain.glb` once after load. Occupancy uses even-odd +X winding plus a cheap distance transform — not a naive \(48^3\times T\) raycast. `(session-settled: user-approved — chosen over a parametric envelope: the cortex mesh is already the product shape)`
+- KTD2. **No new layout npm deps in Slice A.** Octree + Verlet live in `website/src/brain/layout/` and a worker. Do not add `d3-force-3d` or `3d-force-graph`. `(session-settled: user-approved — wrapping 3d-force-graph rejected: AGENTS.md unpkg/egress; custom Three renderer stays)`
 - KTD3. **Extract layout out of `BrainView.ts`.** File is already ~1800 lines. `BrainView` renders and tweens; it does not own n-body math. `(Karpathy #8 — don't keep growing the god file)`
 - KTD4. **Tag cliques stay client-side for Slice A.** `/api/graph` stays nodes-only until Slice B adds `/api/ontology`. `(YAGNI)`
-- KTD5. **`LayoutMode = 'brain' \| 'ontology'`.** `localStorage['kurultai-layout'] === 'galaxy'` → `'brain'`. `(user: galaxy sucks)`
-- KTD6. **SQLite schema v9 = `ontology_entities` + `ontology_links`.** Seed five classes + four `is_a` edges in the migration. `(#116)`
+- KTD5. **`LayoutMode = 'brain' \| 'ontology'`.** `localStorage['kurultai-layout'] === 'galaxy'` → `'brain'`. `(session-settled: user-directed — galaxy sucks; rejected keeping galaxy as a peer mode)`
+- KTD6. **SQLite schema v9 = `ontology_entities` + `ontology_links`.** Seed six class entities (`Memory` + five children) and five `is_a` edges in the migration. `(#116)`
 - KTD7. **Promote-to-entity does not delete or un-index the atom.** Link `instance_of` from a new or existing entity; atom id stays in `knowledge_atoms`. Distinct from trust-lane `promote`. `(#116 acceptance)`
 - KTD8. **Suggest, don't write:** tags/soft-labels may propose `instance_of` in the inspector as *suggestions* (Slice B UI copy only). Persistence of those links is explicit MCP/CLI. `(#118 boundary)`
 - KTD9. **Postgres:** new `Store` methods must exist on `PostgresStore` so `--features postgres` compiles. Body may `Err(Store("ontology not on hub store yet"))` until T1b. `(HUB-2 compile gate)`
-- KTD10. **Ontology default camera is classes only** (≤ tens of nodes). Expanding a class loads `instance_of` children up to a cap (e.g. 80), not the whole corpus. `(research canvas C)`
+- KTD10. **Ontology default camera is classes only** (≤ tens of nodes). Expanding a class loads `instance_of` children up to a cap (e.g. 80), not the whole corpus. `(session-settled: user-approved — ontology canvas C; rejected dumping 7k leaves into one Sugiyama drawing)`
 - KTD11. **Typed edges in ontology mode are visible and directed.** `is_a` / `instance_of` use the existing purple/white language; transversal types differ by dash/opacity, not a fourth hue. `(AGENTS.md three colors)`
 - KTD12. **Node 22 test runner** for layout math: `node --experimental-strip-types --test website/src/brain/layout/*.test.ts`. No vitest unless already present. `(CONTRIBUTING / .nvmrc)`
 
@@ -415,7 +417,7 @@ Unknown `rel` on read: skip (KTD / R10). Duplicate `(from,to,rel)` upsert update
 
 **Test scenarios:**
 
-- Fresh store `schema_version == 9`; six class entities present; four `is_a` links (note/code/decision/person/system → memory) — **five** child `is_a` edges.
+- Fresh store `schema_version == 9`; six class entities present; five `is_a` links (note, code, decision, person, system → memory).
 - Upsert instance entity with `atom_id`; get round-trips.
 - Upsert `instance_of` link; `list_ontology_links(Some(atom_or_entity_id))` returns it.
 - Atom-only corpus: `fts_search` still hits fixture phrase (existing smoke).
@@ -529,7 +531,7 @@ Cycle: reverse a back-edge for layering only (do not mutate store). Long edges: 
 
 **Manual verification:**
 
-- Empty personal brain: five/six class nodes in layers, Memory at the base.
+- Empty personal brain: six class nodes in layers, Memory at the base.
 - After `ontology_promote` of a note: expand Note → instance appears; atom inspector still works.
 - 2000-atom corpus: ontology default view still ~6 nodes, 60fps orbit.
 - Brain toggle returns to hull cloud.
@@ -575,6 +577,10 @@ Cycle: reverse a back-edge for layering only (do not mutate store). Long edges: 
 - [ ] Expand cap documented in code constant
 - [ ] Tween + reduced motion
 - [ ] `ui/` rebuilt
+
+## Confidence check
+
+Standard plan + load-bearing layout research. Section scores (trigger + critical-section bonus): Implementation Units 2, Key Technical Decisions 2, Risks 2. No section needed a deepening rewrite after the Slice A pin and occupancy-bake note. **Confidence check passed.**
 
 ## Stop / handoff
 
