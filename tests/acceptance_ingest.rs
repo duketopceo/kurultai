@@ -264,13 +264,10 @@ async fn inbox_connector_moves_unparseable_to_failed() {
 }
 
 // ── TA-6: Hashtag-line ingest (whitespace #tag lines) ───────────────────────
-// NOTE: This feature is declared in commit b43d43d ("feat(connectors): accept
-// dedicated hashtag-line tags") but no parsing implementation exists on main.
-// The markdown connector only reads YAML-frontmatter tags. This test is
-// #[ignore]'d and the gap is documented in ACCEPTANCE_REPORT.md.
+// Dedicated hashtag-line tags are parsed from the markdown body as a fallback
+// when no YAML frontmatter tags are present (the kb-it-docs corpora pattern).
 
 #[tokio::test]
-#[ignore = "KHAN-251: hashtag-line ingest not implemented; see ACCEPTANCE_REPORT.md"]
 async fn hashtag_line_tags_without_frontmatter() {
     let dir = tempfile::tempdir().unwrap();
     // No YAML frontmatter; tags declared on a dedicated whitespace-separated
