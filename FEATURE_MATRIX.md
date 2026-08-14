@@ -36,11 +36,11 @@ Status legend:
 | # | Feature | Module | Test file | Status |
 |---|---------|--------|-----------|--------|
 | TA-1 | Visibility scope `personal` / `team` / `company` (round-trips in store) | `types`, `store/mod` | `acceptance_visibility.rs` | ✅ |
-| TA-2 | Corpus tiers `public` / `private` (type + parse) | `types` | `acceptance_visibility.rs` | ⚠️ |
-| TA-3 | Corpus tier persistence in SQLite store | `store/mod` | `acceptance_visibility.rs` | ❌ |
-| TA-4 | KTD15 visibility labels (per-document) | `types` | `acceptance_visibility.rs` | ❌ |
-| TA-5 | `SourceConfig::default_corpus_tier()` / `default_visibility_labels()` | `types` | `acceptance_visibility.rs` | ⚠️ |
-| TA-6 | Hashtag-line ingest (whitespace `#tag` lines) | — (none) | `acceptance_ingest.rs` | ❌ |
+| TA-2 | Corpus tiers `public` / `private` (type + parse) | `types` | `acceptance_visibility.rs` | ✅ |
+| TA-3 | Corpus tier persistence in SQLite store | `store/mod`, `store/postgres` | `acceptance_visibility.rs` | ✅ |
+| TA-4 | KTD15 visibility labels (per-document) | `store/mod`, `store/postgres` | `acceptance_visibility.rs` | ✅ |
+| TA-5 | `SourceConfig::default_corpus_tier()` / `default_visibility_labels()` | `types`, `pipeline/mod` | `acceptance_visibility.rs` | ✅ |
+| TA-6 | Hashtag-line ingest (whitespace `#tag` lines) | `ingest/dump` | `acceptance_ingest.rs` | ✅ |
 | TA-7 | Project-scoped recall API (`POST /api/recall`, `recall_for_agent`) | `http/mod`, `mcp/brain` | `acceptance_search.rs`, `acceptance_http.rs` | ✅ |
 | TA-8 | Hub API-key auth middleware (`HubGate`, `hub_api_auth`) | `http/auth` | `acceptance_http.rs` | ✅ |
 | TA-9 | Config-not-code adapters: inbox connector | `connectors/inbox` | `acceptance_ingest.rs` | ✅ |
@@ -54,11 +54,17 @@ Status legend:
 
 ## Summary
 
-- **Working features exercised by passing tests:** 25
-- **Partial features:** 3 (corpus tier type exists but not persisted; hub
-  store behind a feature flag + env toggle; SourceConfig helpers unused by
-  pipeline)
-- **Broken / missing features:** 3 (corpus-tier persistence, visibility
-  labels persistence, hashtag-line ingest)
+_Last verified against HEAD (`110f371`, PR #217) — see `ACCEPTANCE_REPORT.md` for detail._
 
-See `ACCEPTANCE_REPORT.md` for the broken-feature detail.
+- **Working features exercised by passing tests:** 30
+- **Partial features:** 1 (Postgres/pgvector hub store gated behind a
+  compile-time feature flag + runtime env toggle — deliberate, by design,
+  not a bug)
+- **Broken / missing features:** 0
+
+Corpus-tier persistence, visibility-labels persistence, hashtag-line ingest,
+and SourceConfig tier/label defaults at ingest (TA-2 through TA-6) were all
+fixed in commit `110f371` (#217), which landed after the acceptance suite in
+`7cdeb36` (#216) first surfaced them as broken. See `ACCEPTANCE_REPORT.md`
+for the broken-feature detail as it stood before that fix, and the "Fixed"
+notes added to each section for where the fix actually lives.
