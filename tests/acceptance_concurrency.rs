@@ -136,11 +136,7 @@ async fn nine_concurrent_handles_interleave_writes_and_searches() {
                     .await
                     .expect("upsert must not hit SQLITE_BUSY");
                 let hits = store
-                    .fts_search(
-                        "kurultai",
-                        10,
-                        SearchFilter::all_lanes(),
-                    )
+                    .fts_search("kurultai", 10, SearchFilter::all_lanes())
                     .await
                     .expect("fts_search must not hit SQLITE_BUSY");
                 assert!(!hits.is_empty(), "seed atom should always be findable");
