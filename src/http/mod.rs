@@ -173,6 +173,23 @@ fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// Build the application router for integration tests / external embedding.
+///
+/// Mirrors the routes mounted by [`serve_with`] without binding a socket.
+pub fn build_app(
+    brain: BrainService,
+    status: Arc<DaemonStatus>,
+    hub: HubGate,
+) -> Router {
+    let state = AppState {
+        brain: Arc::new(brain),
+        status,
+        metrics: MetricsRegistry::shared(),
+        hub,
+    };
+    router(state)
+}
+
 /// Browsers must not reuse `/api/*` JSON (graph/status used to boot from a stale cache).
 async fn no_store_api(req: Request, next: Next) -> Response {
     let is_api = req.uri().path().starts_with("/api/");
