@@ -88,9 +88,7 @@ async fn ae2_untagged_plain_text_inbox_fails_but_stores() {
     let all = store
         .list_atoms(
             50,
-            SearchFilter {
-                trusted_only: false,
-            },
+            SearchFilter::trusted(false),
         )
         .await
         .unwrap();
@@ -122,9 +120,7 @@ async fn ae3_too_short_quarantines() {
     let atoms = store
         .list_atoms(
             20,
-            SearchFilter {
-                trusted_only: false,
-            },
+            SearchFilter::trusted(false),
         )
         .await
         .unwrap();
@@ -156,9 +152,7 @@ async fn ae4_thin_boilerplate_quarantines() {
     let atoms = store
         .list_atoms(
             20,
-            SearchFilter {
-                trusted_only: false,
-            },
+            SearchFilter::trusted(false),
         )
         .await
         .unwrap();

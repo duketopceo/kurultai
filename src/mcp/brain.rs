@@ -9,6 +9,7 @@ use crate::mcp::interface::{AgentRead, AgentWrite};
 use crate::memory::{GraphNode, MemoryTier, TierPolicy};
 use crate::quality::{apply_gate, evaluate, promote_atom, PromoteResult};
 use crate::query::{expand_markdown_context, hybrid_search_filtered};
+use crate::project::{normalize_project, resolve_project, PROJECT_METADATA_KEY};
 use crate::rerank::Reranker;
 use crate::store::{SearchFilter, Store};
 use crate::synthesize::{who_knows_from_hits, Synthesizer, WhoKnowsEntry};
@@ -234,9 +235,7 @@ impl BrainService {
         self.store
             .list_atoms(
                 limit,
-                SearchFilter {
-                    trusted_only: !include_quarantine,
-                },
+                SearchFilter::trusted(!include_quarantine),
             )
             .await
     }
@@ -283,9 +282,7 @@ impl BrainService {
         include_quarantine: bool,
         source: Option<&str>,
     ) -> Result<Vec<SearchResult>> {
-        let filter = SearchFilter {
-            trusted_only: !include_quarantine,
-        };
+        let filter = SearchFilter::trusted(!include_quarantine);
         let src = source.map(str::trim).filter(|s| !s.is_empty());
         let fetch = if src.is_some() {
             (limit.max(1) * 8).min(80)
@@ -305,8 +302,15 @@ impl BrainService {
         Ok(results)
     }
 
-    /// Agent-optimized recall: search then filter by `project_id`, returning token-capped views.
-    /// Prototype implementation filters in-memory; production should push `project_id` into SQL.
+    /// Agent-optimized recall: project-scoped search returning token-capped views.
+    ///
+    /// The `project_id` predicate is pushed into SQL (see [`SearchFilter::with_project`])
+    /// so scoping happens before any candidate truncation. Filtering after truncation —
+    /// the previous prototype behaviour — returned `[]` whenever other sessions'
+    /// atoms filled the candidate window, which is exactly the shared-box case.
+    ///
+    /// This is namespacing, not isolation: any local process running as the same
+    /// unix user can pass any project string.
     pub async fn recall_for_agent(
         &self,
         project: &str,
@@ -314,12 +318,19 @@ impl BrainService {
         limit: usize,
         include_quarantine: bool,
     ) -> Result<Vec<AgentAtomView>> {
-        // Over-fetch so project filtering still yields useful results.
+        let project = normalize_project(project);
+        let filter = SearchFilter::trusted(!include_quarantine).with_project(Some(&project));
+        let limit = limit.max(1);
         let mut results = self
-            .search_filtered(query, limit * 2, include_quarantine)
+            .hybrid_hits_filtered(query, (limit * 4).min(40), filter)
             .await?;
+        // Belt and braces: SQL already scoped, this catches any store impl that ignores it.
         results.retain(|r| r.atom.project_id() == project);
         results.truncate(limit);
+        let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
+        self.touch_access_many(&ids).await;
+        self.activity
+            .record("recall", query, ids, Some(format!("project={project}")));
         Ok(results
             .into_iter()
             .map(|r| AgentAtomView::from_atom(&r.atom, r.score, DEFAULT_EXCERPT_CAP))
@@ -342,9 +353,7 @@ impl BrainService {
             .list_graph_nodes(
                 tier,
                 limit,
-                SearchFilter {
-                    trusted_only: !include_quarantine,
-                },
+                SearchFilter::trusted(!include_quarantine),
                 TierPolicy::default(),
             )
             .await
@@ -474,6 +483,10 @@ impl AgentWrite for BrainService {
         for (k, v) in metadata {
             meta.insert((*k).to_string(), (*v).to_string());
         }
+        // Always stamp a namespace so agent writes are recallable by project.
+        // Caller-supplied project_id wins; otherwise KURULTAI_PROJECT, else "default".
+        let project = resolve_project(meta.get(PROJECT_METADATA_KEY).map(String::as_str));
+        meta.insert(PROJECT_METADATA_KEY.to_string(), project.clone());
 
         let source = "agent";
         let source_id = format!(

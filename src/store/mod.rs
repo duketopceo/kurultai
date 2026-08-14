@@ -24,15 +24,58 @@ const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, ques
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
      last_accessed_at, visibility, corpus_tier, visibility_labels_json";
 
-/// Retrieval filter — default skips quarantine.
-#[derive(Debug, Clone, Copy)]
+/// Retrieval filter — default skips quarantine and spans every project.
+///
+/// `project` is namespacing, not isolation: it keeps one Claude Code session's
+/// recall from being polluted by another session's ingest on the same box. Any
+/// local process running as the same unix user can still pass any project
+/// string. See `docs/PROJECT_SCOPING.md`.
+#[derive(Debug, Clone)]
 pub struct SearchFilter {
     pub trusted_only: bool,
+    /// When set, only atoms whose `metadata.project_id` equals this value match.
+    /// Atoms with no `project_id` are treated as `"default"`.
+    pub project: Option<String>,
 }
 
 impl Default for SearchFilter {
     fn default() -> Self {
-        Self { trusted_only: true }
+        Self {
+            trusted_only: true,
+            project: None,
+        }
+    }
+}
+
+pub use crate::project::{normalize_project, DEFAULT_PROJECT};
+
+/// vec0 KNN takes no WHERE predicates, so project scoping is applied in Rust.
+/// Widen `k` when scoped so other sessions' atoms cannot crowd out our own.
+const VECTOR_PROJECT_OVERFETCH: usize = 8;
+const VECTOR_K_CAP: usize = 2_000;
+
+impl SearchFilter {
+    /// Trust-lane-only filter (no project scoping) — the historical constructor.
+    pub fn trusted(trusted_only: bool) -> Self {
+        Self {
+            trusted_only,
+            project: None,
+        }
+    }
+
+    /// Scope to a project namespace. Empty / whitespace input clears the scope.
+    /// The value is normalized so read scoping matches write tagging exactly.
+    pub fn with_project(mut self, project: Option<&str>) -> Self {
+        self.project = project
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(normalize_project);
+        self
+    }
+
+    /// Project scope as a SQL bind value, if any.
+    pub fn project_scope(&self) -> Option<&str> {
+        self.project.as_deref()
     }
 }
 
@@ -684,34 +727,39 @@ impl Store for SqliteVecStore {
         }
 
         let conn = self.lock()?;
-        let sql = if filter.trusted_only {
+        // Predicates live in SQL so project scoping happens BEFORE LIMIT — an
+        // in-memory retain() after truncation silently drops matching atoms once
+        // several sessions share one store.
+        let mut predicates = String::new();
+        if filter.trusted_only {
+            predicates.push_str(" AND a.trust_lane = 'trusted'");
+        }
+        let project = filter.project_scope();
+        if project.is_some() {
+            predicates.push_str(&format!(
+                " AND COALESCE(json_extract(a.metadata_json, '$.project_id'), '{DEFAULT_PROJECT}') = ?3"
+            ));
+        }
+        let sql = format!(
             r#"
                 SELECT a.id, bm25(atoms_fts) AS score
                 FROM atoms_fts
                 JOIN knowledge_atoms a ON a.id = atoms_fts.id
-                WHERE atoms_fts MATCH ?1 AND a.trust_lane = 'trusted'
+                WHERE atoms_fts MATCH ?1{predicates}
                 ORDER BY score
                 LIMIT ?2
                 "#
-        } else {
-            r#"
-                SELECT a.id, bm25(atoms_fts) AS score
-                FROM atoms_fts
-                JOIN knowledge_atoms a ON a.id = atoms_fts.id
-                WHERE atoms_fts MATCH ?1
-                ORDER BY score
-                LIMIT ?2
-                "#
-        };
+        );
         let mut stmt = conn
-            .prepare(sql)
+            .prepare(&sql)
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids prepare: {e}")))?;
 
-        let rows = stmt
-            .query_map(params![fts_query, limit as i64], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
-            })
-            .map_err(|e| KurultaiError::Store(format!("fts_search_ids query: {e}")))?;
+        let row_map = |r: &rusqlite::Row<'_>| Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?));
+        let rows = match project {
+            Some(p) => stmt.query_map(params![fts_query, limit as i64, p], row_map),
+            None => stmt.query_map(params![fts_query, limit as i64], row_map),
+        }
+        .map_err(|e| KurultaiError::Store(format!("fts_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
@@ -744,17 +792,25 @@ impl Store for SqliteVecStore {
         }
 
         // Over-fetch when filtering trusted so k-nearest still fills after lane filter.
-        let k = if filter.trusted_only {
+        // vec0 KNN cannot take arbitrary WHERE predicates, so lane and project are
+        // applied in Rust — over-fetch harder when project-scoped so a session's own
+        // atoms are not crowded out of the k window by other sessions on the box.
+        let mut k = if filter.trusted_only {
             (limit.saturating_mul(3)).max(limit)
         } else {
             limit
         };
+        let project = filter.project_scope();
+        if project.is_some() {
+            k = k.saturating_mul(VECTOR_PROJECT_OVERFETCH).min(VECTOR_K_CAP);
+        }
 
         let conn = self.lock()?;
         let mut stmt = conn
             .prepare(
                 r#"
-                SELECT a.id, v.distance, a.trust_lane
+                SELECT a.id, v.distance, a.trust_lane,
+                       COALESCE(json_extract(a.metadata_json, '$.project_id'), 'default')
                 FROM atoms_vec v
                 JOIN knowledge_atoms a ON a.rowid = v.rowid
                 WHERE v.embedding MATCH ?1 AND k = ?2
@@ -769,15 +825,19 @@ impl Store for SqliteVecStore {
                     r.get::<_, String>(0)?,
                     r.get::<_, f64>(1)?,
                     r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
                 ))
             })
             .map_err(|e| KurultaiError::Store(format!("vector_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
-            let (id, distance, lane) =
+            let (id, distance, lane, atom_project) =
                 row.map_err(|e| KurultaiError::Store(format!("vector_search_ids row: {e}")))?;
             if filter.trusted_only && lane != "trusted" {
+                continue;
+            }
+            if project.is_some_and(|p| p != atom_project) {
                 continue;
             }
             let score = 1.0 / (1.0 + distance);
@@ -2194,9 +2254,7 @@ mod tests {
             .fts_search(
                 "LANEFILTERTOKEN",
                 10,
-                SearchFilter {
-                    trusted_only: false,
-                },
+                SearchFilter::trusted(false),
             )
             .await
             .unwrap();

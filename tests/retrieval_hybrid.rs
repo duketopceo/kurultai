@@ -472,9 +472,7 @@ next chunk unique UNTAGNEXT
     let all = store
         .list_atoms(
             50,
-            SearchFilter {
-                trusted_only: false,
-            },
+            SearchFilter::trusted(false),
         )
         .await
         .unwrap();

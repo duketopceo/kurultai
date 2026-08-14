@@ -1,8 +1,8 @@
 #![allow(clippy::field_reassign_with_default)]
 //! Acceptance tests — MCP tool surface (KHAN-251).
 //!
-//! Covers all 8 MCP tools via the in-process `handle_message` JSON-RPC path:
-//! search, cite, remember, ask, who_knows, promote, ontology_get,
+//! Covers all 9 MCP tools via the in-process `handle_message` JSON-RPC path:
+//! search, recall, cite, remember, ask, who_knows, promote, ontology_get,
 //! ontology_promote. Also covers the read-only (HTTP/SSE) surface gate.
 
 use chrono::Utc;
@@ -133,6 +133,7 @@ async fn tools_list_exposes_all_eight_tools() {
         "promote",
         "ontology_get",
         "ontology_promote",
+        "recall",
     ] {
         assert!(
             names.iter().any(|n| n == expected),
@@ -216,6 +217,113 @@ async fn tool_remember_creates_searchable_atom() {
         hits.iter()
             .any(|h| h.atom.source == "agent" && h.atom.title == "MCP Remembered Fact"),
         "remembered atom must be searchable"
+    );
+}
+
+// ── recall / project namespacing (#184) ─────────────────────────────────────
+
+/// End-to-end write→read round trip through the MCP surface: `remember` with a
+/// `project` must be recallable under that project and invisible to another.
+/// Before this change `remember` hardcoded empty metadata, so no MCP write could
+/// ever set a project and every atom landed in "default".
+#[tokio::test]
+async fn remember_with_project_round_trips_through_recall() {
+    let brain = brain().await;
+    let resp = call(
+        &brain,
+        "remember",
+        json!({
+            "title":"Yam Ingest Runbook",
+            "summary":"UNIQUEPHRASE_CREWYAM restart the middleman loader before rerunning the nightly ingest",
+            "tags":["runbook"],
+            "project":"crew-yam"
+        }),
+    )
+    .await;
+    assert_eq!(resp["result"]["isError"], false);
+    assert!(text_of(&resp).contains("project=crew-yam"));
+
+    // Recall in the same project sees it.
+    let resp = call(
+        &brain,
+        "recall",
+        json!({ "project":"crew-yam", "query":"UNIQUEPHRASE_CREWYAM", "limit":5 }),
+    )
+    .await;
+    let views: Vec<kurultai::brain::AgentAtomView> =
+        serde_json::from_str(&text_of(&resp)).unwrap();
+    assert!(
+        views.iter().any(|v| v.title == "Yam Ingest Runbook"),
+        "recall in the writing project must return the atom: {views:?}"
+    );
+    assert!(
+        views.iter().all(|v| v.project == "crew-yam"),
+        "every hit must carry the requested project"
+    );
+
+    // A sibling session's namespace does not see it.
+    let resp = call(
+        &brain,
+        "recall",
+        json!({ "project":"crew-itdash", "query":"UNIQUEPHRASE_CREWYAM", "limit":5 }),
+    )
+    .await;
+    let views: Vec<kurultai::brain::AgentAtomView> =
+        serde_json::from_str(&text_of(&resp)).unwrap();
+    assert!(
+        views.is_empty(),
+        "another session's namespace must not see the atom: {views:?}"
+    );
+}
+
+/// Project names are normalized identically on write and read, so casing /
+/// whitespace cannot silently split one session's namespace in two.
+#[tokio::test]
+async fn project_namespace_is_case_and_whitespace_normalized() {
+    let brain = brain().await;
+    call(
+        &brain,
+        "remember",
+        json!({
+            "title":"Casing Check",
+            "summary":"UNIQUEPHRASE_CASING project namespaces are normalized identically on both the write and the read path so that inconsistent casing or stray whitespace cannot silently split one session namespace into two",
+            "tags":["acceptance"],
+            "project":"  Crew-ITDash  "
+        }),
+    )
+    .await;
+    let resp = call(
+        &brain,
+        "recall",
+        json!({ "project":"crew-itdash", "query":"UNIQUEPHRASE_CASING", "limit":5 }),
+    )
+    .await;
+    let views: Vec<kurultai::brain::AgentAtomView> =
+        serde_json::from_str(&text_of(&resp)).unwrap();
+    assert!(
+        views.iter().any(|v| v.title == "Casing Check"),
+        "normalized project must match: {views:?}"
+    );
+}
+
+/// `recall` is a read and must be available on the read-only HTTP/SSE surface.
+#[tokio::test]
+async fn recall_is_available_on_readonly_surface() {
+    let brain = brain().await;
+    let resp = handle_message(
+        &brain,
+        json!({
+            "jsonrpc":"2.0","id":77,"method":"tools/call",
+            "params": { "name":"recall", "arguments": { "query":"anything", "project":"crew-yam" } }
+        }),
+        ToolSurface::ReadOnly,
+    )
+    .await
+    .unwrap()
+    .expect("read-only recall must produce a response");
+    assert!(
+        resp.get("error").is_none(),
+        "recall must not be gated off the read-only surface: {resp}"
     );
 }
 
@@ -406,7 +514,7 @@ async fn readonly_surface_exposes_only_read_tools() {
     names.sort();
     assert_eq!(
         names,
-        vec!["ask", "cite", "ontology_get", "search", "who_knows"],
+        vec!["ask", "cite", "ontology_get", "recall", "search", "who_knows"],
         "read-only surface must exclude remember/promote/ontology_promote"
     );
 }
