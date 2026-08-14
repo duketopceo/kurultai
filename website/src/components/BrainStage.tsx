@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { BrainView } from '../brain/BrainView';
-import type { Atom, LayoutMode } from '../types';
+import type { Atom, LayoutMode, OntologyResponse } from '../types';
 
 const dbg = (...args: unknown[]) => console.debug('[kurultai:brain]', ...args);
 const MAX_LINKS_PER_TAG = 30;
@@ -20,13 +20,14 @@ interface Props {
   atoms: Atom[];
   renderCap: number;
   layout: LayoutMode;
+  ontology: OntologyResponse;
   atomTotal: number;
   onSelect: (atom: Atom) => void;
   onHover: (atom: Atom | null) => void;
   caption: string;
 }
 
-export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, atomTotal, onSelect, onHover, caption }, ref) {
+export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, caption }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const brainRef = useRef<BrainView | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -75,8 +76,18 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
     const links = buildLinks(shown);
     dbg(`buildLinks: ${links.length} links in ${(performance.now() - t0).toFixed(0)}ms`);
     brainRef.current.setData(shown, links);
-    setShowFallback(shown.length === 0);
   }, [atoms, renderCap, ready]);
+
+  useEffect(() => {
+    const noGraph = atoms.slice(0, renderCap).length === 0;
+    const ontoReady = layout === 'ontology' && ontology.entities.length > 0;
+    setShowFallback(noGraph && !ontoReady);
+  }, [atoms, renderCap, layout, ontology]);
+
+  useEffect(() => {
+    if (!brainRef.current || !ready) return;
+    brainRef.current.setOntology(ontology);
+  }, [ontology, ready]);
 
   useEffect(() => {
     if (!brainRef.current || !ready) return;

@@ -1,6 +1,6 @@
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import { reducer, initialState, AppContext } from './state';
-import { fetchStatus, fetchGraph } from './api';
+import { fetchStatus, fetchGraph, fetchOntology } from './api';
 import { TopBar } from './components/TopBar';
 import { BrainStage, BrainStageHandle } from './components/BrainStage';
 import { CommandStrip } from './components/CommandStrip';
@@ -10,7 +10,7 @@ import { AskPanel } from './components/AskPanel';
 import { StatsPanel } from './components/StatsPanel';
 import { RepoStrip, countCodeRepos } from './components/RepoBrain';
 import { isCodeSource } from './repoLattice';
-import type { Atom, LayoutMode, LoadTier } from './types';
+import type { Atom, LayoutMode, LoadTier, OntologyResponse } from './types';
 import { LOAD_TIER_CAPS } from './types';
 
 const dbg = (...args: unknown[]) => console.debug('[kurultai:app]', ...args);
@@ -27,6 +27,7 @@ export function App() {
   const [loadMsg, setLoadMsg] = useState('Loading memories…');
   const [codeRepos, setCodeRepos] = useState<{ name: string; count: number }[]>([]);
   const [loadTier, setLoadTier] = useState<LoadTier>('low');
+  const [ontology, setOntology] = useState<OntologyResponse>({ ok: true, entities: [], links: [] });
   const graphAbortRef = useRef<AbortController | null>(null);
   const statusAbortRef = useRef<AbortController | null>(null);
   const brainRef = useRef<BrainStageHandle | null>(null);
@@ -48,7 +49,11 @@ export function App() {
       dbg('fetchGraph start, tier:', tier);
       setLoadMsg(`Loading ${tier}…`);
       const t0 = performance.now();
-      const all = await fetchGraph(ac.signal);
+      const [all, onto] = await Promise.all([
+        fetchGraph(ac.signal),
+        fetchOntology(ac.signal).catch(() => ({ ok: true, entities: [], links: [] })),
+      ]);
+      if (!ac.signal.aborted) setOntology(onto);
       const brainAtoms = all.filter((a) => !isCodeSource(a.source));
       setCodeRepos(countCodeRepos(all));
       const cap = LOAD_TIER_CAPS[tier];
@@ -136,6 +141,7 @@ export function App() {
             atoms={visible}
             renderCap={renderCap}
             layout={state.layout}
+            ontology={ontology}
             atomTotal={state.atomTotal}
             onSelect={setSelected}
             onHover={(atom) => { if (atom) setSelected(atom); }}

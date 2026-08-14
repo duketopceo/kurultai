@@ -60,6 +60,8 @@ export interface Link {
   a: string;
   b: string;
   strength: number;
+  /** Ontology rel when the edge is typed (`is_a`, `instance_of`, …). */
+  rel?: string;
 }
 
 export interface OntologyEntity {
