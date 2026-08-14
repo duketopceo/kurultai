@@ -139,9 +139,7 @@ async fn nine_concurrent_handles_interleave_writes_and_searches() {
                     .fts_search(
                         "kurultai",
                         10,
-                        SearchFilter {
-                            trusted_only: false,
-                        },
+                        SearchFilter::trusted(false),
                     )
                     .await
                     .expect("fts_search must not hit SQLITE_BUSY");
