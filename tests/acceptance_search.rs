@@ -184,7 +184,6 @@ async fn scoped_search_unknown_source_returns_empty() {
     assert!(hits.is_empty(), "unknown source must yield no hits");
 }
 
-
 /// Regression: project scoping must happen in SQL, before candidate truncation.
 ///
 /// Nine sessions share one store. When many other-project atoms out-rank a

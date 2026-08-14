@@ -682,7 +682,14 @@ mod tests {
         read_names.sort_unstable();
         assert_eq!(
             read_names,
-            vec!["ask", "cite", "ontology_get", "recall", "search", "who_knows"]
+            vec![
+                "ask",
+                "cite",
+                "ontology_get",
+                "recall",
+                "search",
+                "who_knows"
+            ]
         );
     }
 

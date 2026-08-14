@@ -470,10 +470,7 @@ next chunk unique UNTAGNEXT
         .unwrap();
 
     let all = store
-        .list_atoms(
-            50,
-            SearchFilter::trusted(false),
-        )
+        .list_atoms(50, SearchFilter::trusted(false))
         .await
         .unwrap();
     assert!(!all.is_empty());

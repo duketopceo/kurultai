@@ -572,7 +572,7 @@ impl Store for PostgresStore {
         let project = filter.project_scope();
         if project.is_some() {
             predicates.push_str(&format!(
-                " AND COALESCE(metadata_json::jsonb->>'project_id', '{DEFAULT_PROJECT}') = $3"
+                " AND COALESCE(CAST(metadata_json AS jsonb)->>'project_id', '{DEFAULT_PROJECT}') = $3"
             ));
         }
         let sql = format!(
@@ -632,7 +632,7 @@ impl Store for PostgresStore {
         // L2 `<->`, score `1/(1+distance)` — same shape as sqlite-vec MATCH distance.
         let project_pred = if project.is_some() {
             format!(
-                " WHERE COALESCE(a.metadata_json::jsonb->>'project_id', '{DEFAULT_PROJECT}') = $3"
+                " WHERE COALESCE(CAST(a.metadata_json AS jsonb)->>'project_id', '{DEFAULT_PROJECT}') = $3"
             )
         } else {
             String::new()
@@ -783,8 +783,8 @@ impl Store for PostgresStore {
         let sql = format!(
             "SELECT {ATOM_SELECT} FROM knowledge_atoms
              WHERE source = $1
-               AND metadata_json::jsonb->>'rel_path' = $2
-               AND (metadata_json::jsonb->>'chunk_index')::int = $3
+               AND CAST(metadata_json AS jsonb)->>'rel_path' = $2
+               AND (CAST(metadata_json AS jsonb)->>'chunk_index')::int = $3
              LIMIT 1"
         );
         let row = sqlx::query(&sql)
@@ -1257,11 +1257,7 @@ mod tests {
             .unwrap();
         assert!(!trusted.iter().any(|(a, _)| a.id == id));
         let all = store
-            .fts_search(
-                "quarantine-fts-token",
-                10,
-                SearchFilter::trusted(false),
-            )
+            .fts_search("quarantine-fts-token", 10, SearchFilter::trusted(false))
             .await
             .unwrap();
         assert!(all.iter().any(|(a, _)| a.id == id));

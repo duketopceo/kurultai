@@ -7,9 +7,9 @@ use crate::error::{KurultaiError, Result};
 use crate::hashutil::atom_id;
 use crate::mcp::interface::{AgentRead, AgentWrite};
 use crate::memory::{GraphNode, MemoryTier, TierPolicy};
+use crate::project::{normalize_project, resolve_project, PROJECT_METADATA_KEY};
 use crate::quality::{apply_gate, evaluate, promote_atom, PromoteResult};
 use crate::query::{expand_markdown_context, hybrid_search_filtered};
-use crate::project::{normalize_project, resolve_project, PROJECT_METADATA_KEY};
 use crate::rerank::Reranker;
 use crate::store::{SearchFilter, Store};
 use crate::synthesize::{who_knows_from_hits, Synthesizer, WhoKnowsEntry};
@@ -233,10 +233,7 @@ impl BrainService {
         include_quarantine: bool,
     ) -> Result<Vec<KnowledgeAtom>> {
         self.store
-            .list_atoms(
-                limit,
-                SearchFilter::trusted(!include_quarantine),
-            )
+            .list_atoms(limit, SearchFilter::trusted(!include_quarantine))
             .await
     }
 

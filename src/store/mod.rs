@@ -2251,11 +2251,7 @@ mod tests {
         assert_eq!(fts[0].0.id, "t-lane");
 
         let fts_all = store
-            .fts_search(
-                "LANEFILTERTOKEN",
-                10,
-                SearchFilter::trusted(false),
-            )
+            .fts_search("LANEFILTERTOKEN", 10, SearchFilter::trusted(false))
             .await
             .unwrap();
         assert_eq!(fts_all.len(), 2);

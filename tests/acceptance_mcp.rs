@@ -250,8 +250,7 @@ async fn remember_with_project_round_trips_through_recall() {
         json!({ "project":"crew-yam", "query":"UNIQUEPHRASE_CREWYAM", "limit":5 }),
     )
     .await;
-    let views: Vec<kurultai::brain::AgentAtomView> =
-        serde_json::from_str(&text_of(&resp)).unwrap();
+    let views: Vec<kurultai::brain::AgentAtomView> = serde_json::from_str(&text_of(&resp)).unwrap();
     assert!(
         views.iter().any(|v| v.title == "Yam Ingest Runbook"),
         "recall in the writing project must return the atom: {views:?}"
@@ -268,8 +267,7 @@ async fn remember_with_project_round_trips_through_recall() {
         json!({ "project":"crew-itdash", "query":"UNIQUEPHRASE_CREWYAM", "limit":5 }),
     )
     .await;
-    let views: Vec<kurultai::brain::AgentAtomView> =
-        serde_json::from_str(&text_of(&resp)).unwrap();
+    let views: Vec<kurultai::brain::AgentAtomView> = serde_json::from_str(&text_of(&resp)).unwrap();
     assert!(
         views.is_empty(),
         "another session's namespace must not see the atom: {views:?}"
@@ -298,8 +296,7 @@ async fn project_namespace_is_case_and_whitespace_normalized() {
         json!({ "project":"crew-itdash", "query":"UNIQUEPHRASE_CASING", "limit":5 }),
     )
     .await;
-    let views: Vec<kurultai::brain::AgentAtomView> =
-        serde_json::from_str(&text_of(&resp)).unwrap();
+    let views: Vec<kurultai::brain::AgentAtomView> = serde_json::from_str(&text_of(&resp)).unwrap();
     assert!(
         views.iter().any(|v| v.title == "Casing Check"),
         "normalized project must match: {views:?}"
@@ -514,7 +511,14 @@ async fn readonly_surface_exposes_only_read_tools() {
     names.sort();
     assert_eq!(
         names,
-        vec!["ask", "cite", "ontology_get", "recall", "search", "who_knows"],
+        vec![
+            "ask",
+            "cite",
+            "ontology_get",
+            "recall",
+            "search",
+            "who_knows"
+        ],
         "read-only surface must exclude remember/promote/ontology_promote"
     );
 }
