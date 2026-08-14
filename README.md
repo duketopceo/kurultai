@@ -160,13 +160,13 @@ Overrides: `KURULTAI_ENV=dev`, `kurultai --env staging status`. API keys via env
 
 ## Agents (MCP)
 
-**Stdio (default):** `kurultai mcp` — full tools including `remember` / `promote`.  
+**Stdio (default):** `kurultai mcp` — full tools including `remember` / `promote` / `ontology_promote`.  
 **HTTP/SSE (opt-in on daemon):** set `KURULTAI_MCP_HTTP_SECRET` (or `[runtime] mcp_http_secret`) then:
 
 - `POST /mcp` — JSON-RPC (`tools/list`, `tools/call`, …)
 - `GET /mcp/sse` — SSE bootstrap (`endpoint` → `/mcp`)
 - Auth: `Authorization: Bearer <secret>`
-- Surface: **read-only** (`search`, `cite`, `ask`, `who_knows`) — no writes over HTTP MCP
+- Surface: **read-only** (`search`, `cite`, `ask`, `who_knows`, `ontology_get`) — no writes over HTTP MCP
 - Bind stays `127.0.0.1` — do not expose without a tunnel + secret
 
 **Loopback dump ingest (opt-in):** set `KURULTAI_INGEST_SECRET`, then `POST /ingest` (not under `/api/`) with the secret header. Peer must be loopback. Response is `{ ok, atom_ids, lane, quarantine_reason? }` — no brain dump.

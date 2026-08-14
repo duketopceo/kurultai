@@ -18,6 +18,7 @@ pub mod logging;
 pub mod mcp;
 pub mod memory;
 pub mod metrics;
+pub mod ontology;
 pub mod pipeline;
 pub mod quality;
 pub mod query;

@@ -6,7 +6,8 @@ use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
 use crate::types::{
-    normalize_soft_labels, CorpusTier, KnowledgeAtom, SoftLabel, TrustLane, VisibilityScope,
+    normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink,
+    OntologyLinkType, SoftLabel, TrustLane, VisibilityScope,
 };
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -216,6 +217,19 @@ pub trait Store: Send + Sync {
 
     /// Return all ingestion jobs with `status = 'pending'`.
     async fn list_pending_ingestion_jobs(&self) -> Result<Vec<IngestionJob>>;
+
+    /// Insert or replace an ontology entity (O1).
+    async fn upsert_ontology_entity(&self, e: &OntologyEntity) -> Result<()>;
+
+    async fn get_ontology_entity(&self, id: &str) -> Result<Option<OntologyEntity>>;
+
+    async fn list_ontology_entities(&self, limit: usize) -> Result<Vec<OntologyEntity>>;
+
+    /// Insert or update a typed ontology link. Duplicate `(from,to,rel)` updates confidence/actor.
+    async fn upsert_ontology_link(&self, l: &OntologyLink) -> Result<()>;
+
+    /// All links, or those incident on an entity id / atom id.
+    async fn list_ontology_links(&self, endpoint: Option<&str>) -> Result<Vec<OntologyLink>>;
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -1268,6 +1282,135 @@ impl Store for SqliteVecStore {
         let conn = self.lock()?;
         Self::list_pending_ingestion_jobs_sync(&conn)
     }
+
+    async fn upsert_ontology_entity(&self, e: &OntologyEntity) -> Result<()> {
+        let conn = self.lock()?;
+        let attrs = match &e.attributes {
+            serde_json::Value::Object(_) => e.attributes.to_string(),
+            _ => "{}".into(),
+        };
+        conn.execute(
+            r#"
+            INSERT INTO ontology_entities (id, kind, name, atom_id, attributes_json)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(id) DO UPDATE SET
+                kind = excluded.kind,
+                name = excluded.name,
+                atom_id = excluded.atom_id,
+                attributes_json = excluded.attributes_json
+            "#,
+            params![e.id, e.kind, e.name, e.atom_id, attrs],
+        )
+        .map_err(|e| KurultaiError::Store(format!("upsert_ontology_entity: {e}")))?;
+        Ok(())
+    }
+
+    async fn get_ontology_entity(&self, id: &str) -> Result<Option<OntologyEntity>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, kind, name, atom_id, attributes_json FROM ontology_entities WHERE id = ?1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("get_ontology_entity prepare: {e}")))?;
+        stmt.query_row([id], row_to_ontology_entity)
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("get_ontology_entity: {e}")))
+    }
+
+    async fn list_ontology_entities(&self, limit: usize) -> Result<Vec<OntologyEntity>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, kind, name, atom_id, attributes_json FROM ontology_entities ORDER BY id LIMIT ?1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_entities prepare: {e}")))?;
+        let rows = stmt
+            .query_map([limit as i64], row_to_ontology_entity)
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_entities query: {e}")))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_entities collect: {e}")))
+    }
+
+    async fn upsert_ontology_link(&self, l: &OntologyLink) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute(
+            r#"
+            INSERT INTO ontology_links (id, from_id, to_id, rel, confidence, status, actor)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(from_id, to_id, rel) DO UPDATE SET
+                confidence = excluded.confidence,
+                actor = excluded.actor,
+                status = excluded.status
+            "#,
+            params![
+                l.id,
+                l.from_id,
+                l.to_id,
+                l.rel.as_str(),
+                l.confidence as f64,
+                l.status,
+                l.actor
+            ],
+        )
+        .map_err(|e| KurultaiError::Store(format!("upsert_ontology_link: {e}")))?;
+        Ok(())
+    }
+
+    async fn list_ontology_links(&self, endpoint: Option<&str>) -> Result<Vec<OntologyLink>> {
+        let conn = self.lock()?;
+        let mut out = Vec::new();
+        match endpoint {
+            None => {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT id, from_id, to_id, rel, confidence, status, actor FROM ontology_links ORDER BY id",
+                    )
+                    .map_err(|e| KurultaiError::Store(format!("list_ontology_links prepare: {e}")))?;
+                let rows = stmt
+                    .query_map([], row_to_ontology_link_raw)
+                    .map_err(|e| KurultaiError::Store(format!("list_ontology_links query: {e}")))?;
+                for row in rows {
+                    let raw = row.map_err(|e| {
+                        KurultaiError::Store(format!("list_ontology_links row: {e}"))
+                    })?;
+                    if let Some(link) = parse_ontology_link(raw) {
+                        out.push(link);
+                    }
+                }
+            }
+            Some(id) => {
+                let mut stmt = conn
+                    .prepare(
+                        r#"
+                        SELECT l.id, l.from_id, l.to_id, l.rel, l.confidence, l.status, l.actor
+                        FROM ontology_links l
+                        LEFT JOIN ontology_entities e_from ON e_from.id = l.from_id
+                        LEFT JOIN ontology_entities e_to ON e_to.id = l.to_id
+                        WHERE l.from_id = ?1 OR l.to_id = ?1
+                           OR e_from.atom_id = ?1 OR e_to.atom_id = ?1
+                        ORDER BY l.id
+                        "#,
+                    )
+                    .map_err(|e| {
+                        KurultaiError::Store(format!("list_ontology_links endpoint prepare: {e}"))
+                    })?;
+                let rows = stmt
+                    .query_map([id], row_to_ontology_link_raw)
+                    .map_err(|e| {
+                        KurultaiError::Store(format!("list_ontology_links endpoint query: {e}"))
+                    })?;
+                for row in rows {
+                    let raw = row.map_err(|e| {
+                        KurultaiError::Store(format!("list_ontology_links endpoint row: {e}"))
+                    })?;
+                    if let Some(link) = parse_ontology_link(raw) {
+                        out.push(link);
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
 }
 
 /// Hydrate ranked `(id, score)` pairs into atoms, skipping missing ids.
@@ -1305,6 +1448,59 @@ fn register_sqlite_vec() {
 
 fn embedding_norm(v: &[f32]) -> f32 {
     v.iter().map(|x| x * x).sum::<f32>().sqrt()
+}
+
+fn row_to_ontology_entity(row: &rusqlite::Row<'_>) -> rusqlite::Result<OntologyEntity> {
+    let attrs_raw: String = row.get(4)?;
+    let attributes = serde_json::from_str(&attrs_raw).unwrap_or_else(|_| serde_json::json!({}));
+    Ok(OntologyEntity {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        name: row.get(2)?,
+        atom_id: row.get(3)?,
+        attributes,
+    })
+}
+
+struct OntologyLinkRaw {
+    id: String,
+    from_id: String,
+    to_id: String,
+    rel: String,
+    confidence: f64,
+    status: String,
+    actor: String,
+}
+
+fn row_to_ontology_link_raw(row: &rusqlite::Row<'_>) -> rusqlite::Result<OntologyLinkRaw> {
+    Ok(OntologyLinkRaw {
+        id: row.get(0)?,
+        from_id: row.get(1)?,
+        to_id: row.get(2)?,
+        rel: row.get(3)?,
+        confidence: row.get(4)?,
+        status: row.get(5)?,
+        actor: row.get(6)?,
+    })
+}
+
+fn parse_ontology_link(raw: OntologyLinkRaw) -> Option<OntologyLink> {
+    let rel = match OntologyLinkType::parse(&raw.rel) {
+        Some(rel) => rel,
+        None => {
+            tracing::warn!(rel = %raw.rel, id = %raw.id, "skipping ontology link with unknown rel");
+            return None;
+        }
+    };
+    Some(OntologyLink {
+        id: raw.id,
+        from_id: raw.from_id,
+        to_id: raw.to_id,
+        rel,
+        confidence: raw.confidence as f32,
+        status: raw.status,
+        actor: raw.actor,
+    })
 }
 
 /// Build a safe FTS5 MATCH query from free text (AND of quoted tokens).
@@ -1933,6 +2129,16 @@ mod tests {
         };
         assert_eq!(table_count("quality_audit"), 1);
         assert_eq!(table_count("merge_candidates"), 1);
+        assert_eq!(table_count("ontology_entities"), 1);
+        assert_eq!(table_count("ontology_links"), 1);
+        let class_n: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ontology_entities WHERE kind = 'class'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(class_n, 6);
     }
 
     #[tokio::test]

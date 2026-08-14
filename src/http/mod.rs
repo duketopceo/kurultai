@@ -151,6 +151,7 @@ fn router(state: AppState) -> Router {
         .route("/api/metrics", get(api_metrics))
         .route("/api/atoms", get(api_atoms))
         .route("/api/graph", get(api_graph))
+        .route("/api/ontology", get(api_ontology))
         .route("/api/touch", post(api_touch))
         .route("/api/activity", get(api_activity))
         .route("/api/promote", post(api_promote))
@@ -318,6 +319,41 @@ async fn api_atoms(
                 &request_id,
             )
         })
+}
+
+async fn api_ontology(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_ontology", request_id=%request_id);
+    state.status.touch_client_activity();
+    let store = state.brain.store();
+    let entities = match store.list_ontology_entities(500).await {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            ));
+        }
+    };
+    let links = match store.list_ontology_links(None).await {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            ));
+        }
+    };
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "request_id": &request_id,
+        "entities": entities,
+        "links": links,
+    })))
 }
 
 async fn api_graph(
@@ -776,6 +812,38 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_ontology_returns_seeded_classes() {
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/ontology")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        let entities = v["entities"].as_array().expect("entities");
+        assert!(entities.len() >= 6);
+        let ids: Vec<&str> = entities.iter().filter_map(|e| e["id"].as_str()).collect();
+        assert!(ids.contains(&"class:memory"));
+        assert!(ids.contains(&"class:note"));
+        let links = v["links"].as_array().expect("links");
+        assert!(links.len() >= 5);
     }
 
     #[tokio::test]
@@ -1313,6 +1381,33 @@ mod tests {
             &self,
             _patterns: &[&str],
         ) -> crate::Result<Vec<crate::types::KnowledgeAtom>> {
+            Ok(vec![])
+        }
+        async fn upsert_ontology_entity(
+            &self,
+            _e: &crate::types::OntologyEntity,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn get_ontology_entity(
+            &self,
+            _id: &str,
+        ) -> crate::Result<Option<crate::types::OntologyEntity>> {
+            Ok(None)
+        }
+        async fn list_ontology_entities(
+            &self,
+            _limit: usize,
+        ) -> crate::Result<Vec<crate::types::OntologyEntity>> {
+            Ok(vec![])
+        }
+        async fn upsert_ontology_link(&self, _l: &crate::types::OntologyLink) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn list_ontology_links(
+            &self,
+            _endpoint: Option<&str>,
+        ) -> crate::Result<Vec<crate::types::OntologyLink>> {
             Ok(vec![])
         }
     }

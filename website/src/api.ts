@@ -1,4 +1,11 @@
-import type { ApiAtomResult, Atom, StatusResponse, ActivityItem, GraphNode } from './types';
+import type {
+  ApiAtomResult,
+  Atom,
+  StatusResponse,
+  ActivityItem,
+  GraphNode,
+  OntologyResponse,
+} from './types';
 
 function text(value: unknown, fallback = '—'): string {
   if (value == null || value === '') return fallback;
@@ -91,6 +98,15 @@ export async function fetchGraph(signal?: AbortSignal): Promise<Atom[]> {
 export async function fetchActivity(signal?: AbortSignal): Promise<ActivityItem[]> {
   const data = await getJson<ActivityItem[]>('/api/activity', signal);
   return Array.isArray(data) ? data : [];
+}
+
+export async function fetchOntology(signal?: AbortSignal): Promise<OntologyResponse> {
+  const data = await getJson<Partial<OntologyResponse>>('/api/ontology', signal);
+  return {
+    ok: data.ok !== false,
+    entities: Array.isArray(data.entities) ? data.entities : [],
+    links: Array.isArray(data.links) ? data.links : [],
+  };
 }
 
 export async function searchAtoms(query: string, signal?: AbortSignal): Promise<Atom[]> {

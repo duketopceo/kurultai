@@ -73,6 +73,70 @@ impl VisibilityScope {
     }
 }
 
+/// Directed typed edge in the labeled property graph (O1 / #116).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OntologyLinkType {
+    IsA,
+    InstanceOf,
+    AssociatesWith,
+    TriggeredBy,
+    Contradicts,
+}
+
+impl OntologyLinkType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::IsA => "is_a",
+            Self::InstanceOf => "instance_of",
+            Self::AssociatesWith => "associates_with",
+            Self::TriggeredBy => "triggered_by",
+            Self::Contradicts => "contradicts",
+        }
+    }
+
+    /// Unknown wire values return `None` so readers can skip the row.
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "is_a" => Some(Self::IsA),
+            "instance_of" => Some(Self::InstanceOf),
+            "associates_with" => Some(Self::AssociatesWith),
+            "triggered_by" => Some(Self::TriggeredBy),
+            "contradicts" => Some(Self::Contradicts),
+            _ => None,
+        }
+    }
+}
+
+/// A class, instance, or metric node in the ontology (beside `KnowledgeAtom`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OntologyEntity {
+    pub id: String,
+    /// `"class"` | `"instance"` | `"metric"`.
+    pub kind: String,
+    pub name: String,
+    pub atom_id: Option<String>,
+    #[serde(default = "default_ontology_attributes")]
+    pub attributes: serde_json::Value,
+}
+
+fn default_ontology_attributes() -> serde_json::Value {
+    serde_json::json!({})
+}
+
+/// Directed typed link between ontology entities (or an entity and a class).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OntologyLink {
+    pub id: String,
+    pub from_id: String,
+    pub to_id: String,
+    pub rel: OntologyLinkType,
+    pub confidence: f32,
+    /// `"approved"` in O1; `"proposed"` arrives with O3.
+    pub status: String,
+    pub actor: String,
+}
+
 /// A single knowledge atom — the unit of indexed information.
 ///
 /// Stored in SQL for speed; agents receive [`crate::brain::AgentAtomView`] via MCP,

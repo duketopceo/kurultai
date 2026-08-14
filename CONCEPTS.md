@@ -36,6 +36,14 @@ On incremental index, if an atom’s content hash is unchanged and a vector alre
 
 One structured knowledge unit: title, summary, content, tags, provenance (source and source id), optional embedding, and **visibility scope** (`personal` | `team` | `company`, default `personal`). Markdown files are one ingest source, not the system of record.
 
+### Entity
+
+A class, instance, or metric node in the labeled property graph beside `KnowledgeAtom` (O1 / [#116](https://github.com/duketopceo/kurultai/issues/116)). Seeded classes are Memory, Note, Code, Decision, Person, and System. `ontology_promote` creates instance `ent:{atom_id}` and an `instance_of` link; it does not delete, un-index, or change the atom’s trust lane. Distinct from trust-lane `promote`.
+
+### Link
+
+A directed typed edge between entities: `is_a`, `instance_of`, `associates_with`, `triggered_by`, or `contradicts`. O1 stores `approved` links only. Unknown `rel` values are skipped on read. Proposed links and a write-from-inspector path are O3, not this slice.
+
 ### Visibility scope
 
 Tiered access field on every atom (HUB-1 / [#178](https://github.com/duketopceo/kurultai/issues/178)). Solo / no-hub installs leave atoms at `personal` and search/ask behave as before. Shared hub slices (HUB-2+) will honor `team` / `company`; local search does **not** filter by scope until a hub is configured.

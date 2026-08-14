@@ -59,7 +59,7 @@ Kurultai is the knowledge brain. All autonomous agents (Cursor, Claude, Codex, H
 - Build connectors in `src/connectors/` (e.g., `tech_tracker`, `json`) to bridge isolated stores into the brain.
 
 ### 2. MCP Agent Wiring
-Agents discover and connect to the Kurultai knowledge graph using the Model Context Protocol (MCP). Kurultai provides 6 tools: `search`, `cite`, `remember`, `ask`, `who_knows`, and `promote`.
+Agents discover and connect to the Kurultai knowledge graph using the Model Context Protocol (MCP). Kurultai provides 8 tools: `search`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, and `ontology_promote`.
 
 To wire an agent on a new machine or environment:
 1. Build/install the binary (`cargo build --release` → `~/.cargo/bin/kurultai`)
