@@ -12,7 +12,7 @@ depth: standard
 
 # feat: brain-shape FDG + algorithmic ontology
 
-> **LFG execution pin (2026-08-14):** **Slice A (U1–U3)** = volumetric brain-shape FDG + remove galaxy (this PR). **Slice B (U4–U6)** = O1 entities + typed links + MCP/HTTP + inspector (landed on main via #201). Do not implement Sugiyama or change ontology 3D layout (U7–U8 / Slice C) in the Slice A PR. O3 propose/approve stays out. Version/tag `main` before Slice A lands (`v0.4.1` is sufficient rollback).
+> **LFG execution pin (2026-08-14, third run):** this `/lfg` ships **Slice C only (U7–U8)** — Sugiyama `is_a` layers + ontology mode (classes default, instances on expand). Slice A (volumetric FDG + galaxy removal, #200) and Slice B (O1 / #201) are already on `main`. Do not revert FDG. Do not implement O3.
 
 > **For later agentic workers:** implement **one slice per PR**. Do not mix O1 schema with the first visual PR.
 
