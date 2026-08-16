@@ -115,13 +115,20 @@ impl IndexPipeline {
         if let Some(cfg) = self.sources.get(source_name) {
             let default_tier = cfg.default_corpus_tier();
             let default_labels = cfg.default_visibility_labels();
-            if default_tier != CorpusTier::Public || !default_labels.is_empty() {
+            let default_mesh_ids = cfg.default_mesh_ids();
+            if default_tier != CorpusTier::Public
+                || !default_labels.is_empty()
+                || !default_mesh_ids.is_empty()
+            {
                 for atom in &mut enriched {
                     if atom.corpus_tier == CorpusTier::Public {
                         atom.corpus_tier = default_tier;
                     }
                     if atom.visibility_labels.is_empty() {
                         atom.visibility_labels = default_labels.clone();
+                    }
+                    if atom.mesh_ids.is_empty() {
+                        atom.mesh_ids = default_mesh_ids.clone();
                     }
                 }
             }

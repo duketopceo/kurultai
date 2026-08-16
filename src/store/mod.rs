@@ -11,7 +11,7 @@ use crate::types::{
 };
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use zerocopy::AsBytes;
@@ -22,17 +22,37 @@ pub(crate) const MIN_EMBEDDING_NORM: f32 = 1e-6;
 /// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
 const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, question, resolution, \
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
-     last_accessed_at, visibility, corpus_tier, visibility_labels_json";
+     last_accessed_at, visibility, corpus_tier, visibility_labels_json, mesh_ids_json";
 
 /// Retrieval filter — default skips quarantine.
-#[derive(Debug, Clone, Copy)]
+///
+/// `mesh_scope: None` and `max_tier: None` mean "no mesh / tier filtering" — the
+/// pre-mesh, single-consumer default, kept for backward compatibility. This is a
+/// deliberate choice, not an oversight: defaulting `mesh_scope` to fail-closed
+/// (empty results) would silently break every existing caller that has never
+/// heard of mesh partitioning (MCP tools, HTTP API, CLI — none pass a scope
+/// today). Callers that need mesh isolation must opt in by setting
+/// `mesh_scope: Some(...)` explicitly; there is no implicit narrowing.
+#[derive(Debug, Clone)]
 pub struct SearchFilter {
     pub trusted_only: bool,
+    /// Mesh partition ids the caller may see. `None` = unscoped (see every atom
+    /// regardless of `mesh_ids`, matching pre-mesh behavior). `Some(scope)` requires
+    /// `atom.mesh_ids ∩ scope` to be non-empty; `Some(empty set)` matches nothing
+    /// (fail closed for an explicitly-empty scope, as opposed to no scope at all).
+    pub mesh_scope: Option<HashSet<String>>,
+    /// Highest corpus tier the caller may see (`atom.corpus_tier <= max_tier`).
+    /// `None` = no cap (today's behavior).
+    pub max_tier: Option<CorpusTier>,
 }
 
 impl Default for SearchFilter {
     fn default() -> Self {
-        Self { trusted_only: true }
+        Self {
+            trusted_only: true,
+            mesh_scope: None,
+            max_tier: None,
+        }
     }
 }
 
@@ -317,23 +337,28 @@ impl SqliteVecStore {
         filter: SearchFilter,
     ) -> Result<Vec<KnowledgeAtom>> {
         let conn = self.lock()?;
-        let sql = if filter.trusted_only {
-            format!(
-                "SELECT {} FROM knowledge_atoms WHERE trust_lane = 'trusted' \
-                 ORDER BY indexed_at DESC LIMIT ?1",
-                ATOM_COLUMNS
-            )
+        let (mesh_tier_sql, mesh_tier_params) = mesh_tier_predicate_sql(&filter, "knowledge_atoms");
+        let where_clause = if filter.trusted_only {
+            format!("WHERE trust_lane = 'trusted'{mesh_tier_sql}")
+        } else if mesh_tier_sql.is_empty() {
+            String::new()
         } else {
-            format!(
-                "SELECT {} FROM knowledge_atoms ORDER BY indexed_at DESC LIMIT ?1",
-                ATOM_COLUMNS
-            )
+            format!("WHERE 1=1{mesh_tier_sql}")
         };
+        let sql = format!(
+            "SELECT {ATOM_COLUMNS} FROM knowledge_atoms {where_clause} ORDER BY indexed_at DESC LIMIT ?"
+        );
         let mut stmt = conn
             .prepare(&sql)
             .map_err(|e| KurultaiError::Store(format!("list_atoms prepare: {e}")))?;
+        let mut all_params: Vec<&dyn rusqlite::ToSql> = mesh_tier_params
+            .iter()
+            .map(|p| p as &dyn rusqlite::ToSql)
+            .collect();
+        let limit_i64 = limit as i64;
+        all_params.push(&limit_i64);
         let atoms = stmt
-            .query_map([limit as i64], row_to_atom)
+            .query_map(all_params.as_slice(), row_to_atom)
             .map_err(|e| KurultaiError::Store(format!("list_atoms query: {e}")))?;
         let mut atoms = atoms
             .collect::<std::result::Result<Vec<_>, _>>()
@@ -367,12 +392,13 @@ impl SqliteVecStore {
         } else {
             "1=1"
         };
+        let (mesh_tier_sql, mesh_tier_params) = mesh_tier_predicate_sql(&filter, "knowledge_atoms");
 
         let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<KnowledgeAtom> {
             let mut atom = row_to_atom(row)?;
             if with_embeddings {
-                // ATOM_COLUMNS ends at index 17 (`visibility_labels_json`); embedding is the next select.
-                const EMBEDDING_COL: usize = 18;
+                // ATOM_COLUMNS ends at index 18 (`mesh_ids_json`); embedding is the next select.
+                const EMBEDDING_COL: usize = 19;
                 let blob: Option<Vec<u8>> = row.get(EMBEDDING_COL)?;
                 if let Some(bytes) = blob {
                     atom.embedding = Some(embedding_f32s_from_blob(&bytes).map_err(|e| {
@@ -392,22 +418,35 @@ impl SqliteVecStore {
 
         let atoms = match after_id {
             Some(id) => {
-                let sql = format!("{select} WHERE {trusted} AND id > ?1 ORDER BY id LIMIT ?2");
+                let sql = format!(
+                    "{select} WHERE {trusted} AND id > ?{mesh_tier_sql} ORDER BY id LIMIT ?"
+                );
                 let mut stmt = conn
                     .prepare(&sql)
                     .map_err(|e| KurultaiError::Store(format!("list_atoms_page prepare: {e}")))?;
+                let limit_i64 = limit as i64;
+                let id_owned = id.to_string();
+                let mut all_params: Vec<&dyn rusqlite::ToSql> = vec![&id_owned];
+                all_params.extend(mesh_tier_params.iter().map(|p| p as &dyn rusqlite::ToSql));
+                all_params.push(&limit_i64);
                 let rows = stmt
-                    .query_map(params![id, limit as i64], map_row)
+                    .query_map(all_params.as_slice(), map_row)
                     .map_err(|e| KurultaiError::Store(format!("list_atoms_page query: {e}")))?;
                 rows.collect::<std::result::Result<Vec<_>, _>>()
             }
             None => {
-                let sql = format!("{select} WHERE {trusted} ORDER BY id LIMIT ?1");
+                let sql = format!("{select} WHERE {trusted}{mesh_tier_sql} ORDER BY id LIMIT ?");
                 let mut stmt = conn
                     .prepare(&sql)
                     .map_err(|e| KurultaiError::Store(format!("list_atoms_page prepare: {e}")))?;
+                let limit_i64 = limit as i64;
+                let mut all_params: Vec<&dyn rusqlite::ToSql> = mesh_tier_params
+                    .iter()
+                    .map(|p| p as &dyn rusqlite::ToSql)
+                    .collect();
+                all_params.push(&limit_i64);
                 let rows = stmt
-                    .query_map(params![limit as i64], map_row)
+                    .query_map(all_params.as_slice(), map_row)
                     .map_err(|e| KurultaiError::Store(format!("list_atoms_page query: {e}")))?;
                 rows.collect::<std::result::Result<Vec<_>, _>>()
             }
@@ -493,6 +532,8 @@ impl SqliteVecStore {
         let corpus_tier = atom.corpus_tier.as_str();
         let visibility_labels_json = serde_json::to_string(&atom.visibility_labels)
             .map_err(|e| KurultaiError::Store(format!("visibility_labels serialize: {e}")))?;
+        let mesh_ids_json = serde_json::to_string(&atom.mesh_ids)
+            .map_err(|e| KurultaiError::Store(format!("mesh_ids serialize: {e}")))?;
         let last_accessed = if atom.last_accessed_at.timestamp() == 0 {
             atom.indexed_at
         } else {
@@ -505,8 +546,8 @@ impl SqliteVecStore {
                 question, resolution, tags_json,
                 source_updated_at, indexed_at, metadata_json, content_hash,
                 trust_lane, quarantine_reason, last_accessed_at, visibility,
-                corpus_tier, visibility_labels_json
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
+                corpus_tier, visibility_labels_json, mesh_ids_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
             ON CONFLICT(id) DO UPDATE SET
                 source = excluded.source,
                 source_id = excluded.source_id,
@@ -528,7 +569,8 @@ impl SqliteVecStore {
                 quarantine_reason = excluded.quarantine_reason,
                 visibility = excluded.visibility,
                 corpus_tier = excluded.corpus_tier,
-                visibility_labels_json = excluded.visibility_labels_json
+                visibility_labels_json = excluded.visibility_labels_json,
+                mesh_ids_json = excluded.mesh_ids_json
             "#,
             params![
                 atom.id,
@@ -550,6 +592,7 @@ impl SqliteVecStore {
                 visibility,
                 corpus_tier,
                 visibility_labels_json,
+                mesh_ids_json,
             ],
         )
         .map_err(|e| KurultaiError::Store(format!("upsert atom failed: {e}")))?;
@@ -684,31 +727,32 @@ impl Store for SqliteVecStore {
         }
 
         let conn = self.lock()?;
-        let sql = if filter.trusted_only {
-            r#"
-                SELECT a.id, bm25(atoms_fts) AS score
-                FROM atoms_fts
-                JOIN knowledge_atoms a ON a.id = atoms_fts.id
-                WHERE atoms_fts MATCH ?1 AND a.trust_lane = 'trusted'
-                ORDER BY score
-                LIMIT ?2
-                "#
+        let (mesh_tier_sql, mesh_tier_params) = mesh_tier_predicate_sql(&filter, "a");
+        let lane_clause = if filter.trusted_only {
+            " AND a.trust_lane = 'trusted'"
         } else {
-            r#"
-                SELECT a.id, bm25(atoms_fts) AS score
-                FROM atoms_fts
-                JOIN knowledge_atoms a ON a.id = atoms_fts.id
-                WHERE atoms_fts MATCH ?1
-                ORDER BY score
-                LIMIT ?2
-                "#
+            ""
         };
+        let sql = format!(
+            r#"
+            SELECT a.id, bm25(atoms_fts) AS score
+            FROM atoms_fts
+            JOIN knowledge_atoms a ON a.id = atoms_fts.id
+            WHERE atoms_fts MATCH ?{lane_clause}{mesh_tier_sql}
+            ORDER BY score
+            LIMIT ?
+            "#
+        );
         let mut stmt = conn
-            .prepare(sql)
+            .prepare(&sql)
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids prepare: {e}")))?;
 
+        let limit_i64 = limit as i64;
+        let mut all_params: Vec<&dyn rusqlite::ToSql> = vec![&fts_query];
+        all_params.extend(mesh_tier_params.iter().map(|p| p as &dyn rusqlite::ToSql));
+        all_params.push(&limit_i64);
         let rows = stmt
-            .query_map(params![fts_query, limit as i64], |r| {
+            .query_map(all_params.as_slice(), |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
             })
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids query: {e}")))?;
@@ -743,9 +787,24 @@ impl Store for SqliteVecStore {
             return Ok(vec![]);
         }
 
-        // Over-fetch when filtering trusted so k-nearest still fills after lane filter.
-        let k = if filter.trusted_only {
-            (limit.saturating_mul(3)).max(limit)
+        // Over-fetch when any predicate other than the raw kNN applies, so k-nearest
+        // still fills after trust-lane / mesh / tier filtering. sqlite-vec's `vec0`
+        // KNN table accepts no `WHERE` beyond `MATCH`/`k` (same constraint the
+        // unmerged project-scoping branch hit — see `docs/PROJECT_SCOPING.md`), so
+        // trust-lane, mesh, and tier are all applied in Rust below, inside this
+        // widened window and before truncation to `limit` — never after it.
+        let mut mult: usize = 1;
+        if filter.trusted_only {
+            mult = mult.max(3);
+        }
+        if filter.mesh_scope.is_some() {
+            mult = mult.max(5);
+        }
+        if filter.max_tier.is_some() {
+            mult = mult.max(3);
+        }
+        let k = if mult > 1 {
+            (limit.saturating_mul(mult)).max(limit)
         } else {
             limit
         };
@@ -754,7 +813,7 @@ impl Store for SqliteVecStore {
         let mut stmt = conn
             .prepare(
                 r#"
-                SELECT a.id, v.distance, a.trust_lane
+                SELECT a.id, v.distance, a.trust_lane, a.corpus_tier, a.mesh_ids_json
                 FROM atoms_vec v
                 JOIN knowledge_atoms a ON a.rowid = v.rowid
                 WHERE v.embedding MATCH ?1 AND k = ?2
@@ -769,15 +828,20 @@ impl Store for SqliteVecStore {
                     r.get::<_, String>(0)?,
                     r.get::<_, f64>(1)?,
                     r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
                 ))
             })
             .map_err(|e| KurultaiError::Store(format!("vector_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
-            let (id, distance, lane) =
+            let (id, distance, lane, corpus_tier_raw, mesh_ids_json) =
                 row.map_err(|e| KurultaiError::Store(format!("vector_search_ids row: {e}")))?;
             if filter.trusted_only && lane != "trusted" {
+                continue;
+            }
+            if !atom_passes_mesh_tier(&filter, &corpus_tier_raw, &mesh_ids_json) {
                 continue;
             }
             let score = 1.0 / (1.0 + distance);
@@ -1220,18 +1284,17 @@ impl Store for SqliteVecStore {
         policy: TierPolicy,
     ) -> Result<Vec<GraphNode>> {
         let conn = self.lock()?;
-        let sql = if filter.trusted_only {
-            format!(
-                "SELECT {} FROM knowledge_atoms WHERE trust_lane = 'trusted'
-                 ORDER BY last_accessed_at DESC LIMIT ?1",
-                ATOM_COLUMNS
-            )
+        let (mesh_tier_sql, mesh_tier_params) = mesh_tier_predicate_sql(&filter, "knowledge_atoms");
+        let where_clause = if filter.trusted_only {
+            format!("WHERE trust_lane = 'trusted'{mesh_tier_sql}")
+        } else if mesh_tier_sql.is_empty() {
+            String::new()
         } else {
-            format!(
-                "SELECT {} FROM knowledge_atoms ORDER BY last_accessed_at DESC LIMIT ?1",
-                ATOM_COLUMNS
-            )
+            format!("WHERE 1=1{mesh_tier_sql}")
         };
+        let sql = format!(
+            "SELECT {ATOM_COLUMNS} FROM knowledge_atoms {where_clause} ORDER BY last_accessed_at DESC LIMIT ?"
+        );
         // Over-fetch then filter by tier so hot/warm/cold slices stay accurate.
         let fetch_cap = if tier.is_some() {
             (limit.saturating_mul(8)).max(limit).min(50_000)
@@ -1241,8 +1304,14 @@ impl Store for SqliteVecStore {
         let mut stmt = conn
             .prepare(&sql)
             .map_err(|e| KurultaiError::Store(format!("list_graph_nodes prepare: {e}")))?;
+        let fetch_cap_i64 = fetch_cap as i64;
+        let mut all_params: Vec<&dyn rusqlite::ToSql> = mesh_tier_params
+            .iter()
+            .map(|p| p as &dyn rusqlite::ToSql)
+            .collect();
+        all_params.push(&fetch_cap_i64);
         let rows = stmt
-            .query_map(params![fetch_cap as i64], row_to_atom)
+            .query_map(all_params.as_slice(), row_to_atom)
             .map_err(|e| KurultaiError::Store(format!("list_graph_nodes query: {e}")))?;
         let now = Utc::now();
         let mut out = Vec::with_capacity(limit.min(1024));
@@ -1456,6 +1525,74 @@ fn register_sqlite_vec() {
 
 fn embedding_norm(v: &[f32]) -> f32 {
     v.iter().map(|x| x * x).sum::<f32>().sqrt()
+}
+
+/// Corpus tier strings allowed under a `max_tier` cap (`None` = no cap → both).
+/// Relies on `CorpusTier`'s declared variant order (`Public < Private`).
+fn allowed_tier_strs(max_tier: Option<CorpusTier>) -> Option<&'static str> {
+    match max_tier {
+        None => None,
+        Some(CorpusTier::Public) => Some("public"),
+        Some(CorpusTier::Private) => None, // Private cap admits both tiers — no restriction.
+    }
+}
+
+/// Build the `AND ...` SQL fragment (referencing `{alias}.corpus_tier` /
+/// `{alias}.mesh_ids_json`) enforcing `max_tier` + `mesh_scope`, plus the params to
+/// bind for its `?` placeholders, in left-to-right order. Filtered in SQL so the
+/// predicate applies before any candidate-window truncation (LIMIT/OFFSET) —
+/// fetch-then-filter-in-Rust after pagination is the known leak shape here.
+fn mesh_tier_predicate_sql(filter: &SearchFilter, alias: &str) -> (String, Vec<String>) {
+    let mut sql = String::new();
+    let mut params: Vec<String> = Vec::new();
+
+    if let Some(tier) = allowed_tier_strs(filter.max_tier) {
+        sql.push_str(&format!(" AND {alias}.corpus_tier = ?"));
+        params.push(tier.to_string());
+    }
+
+    match &filter.mesh_scope {
+        None => {}
+        Some(scope) if scope.is_empty() => {
+            // Explicit empty scope: fail closed, matches nothing.
+            sql.push_str(" AND 0");
+        }
+        Some(scope) => {
+            let placeholders = std::iter::repeat_n("?", scope.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+            sql.push_str(&format!(
+                " AND EXISTS (SELECT 1 FROM json_each({alias}.mesh_ids_json) je WHERE je.value IN ({placeholders}))"
+            ));
+            params.extend(scope.iter().cloned());
+        }
+    }
+
+    (sql, params)
+}
+
+/// Rust-side mirror of [`mesh_tier_predicate_sql`] for the vector-search arm, where
+/// sqlite-vec's `vec0` KNN table accepts no `WHERE` predicate beyond `MATCH`/`k`
+/// (see `docs/PROJECT_SCOPING.md`'s caveat on the same constraint for `project_id`).
+/// Applied inside the widened-`k` window, before truncation to the caller's
+/// `limit` — same "filter before truncation" rule as the SQL arms, just enforced
+/// in Rust because the engine gives no other option here.
+fn atom_passes_mesh_tier(filter: &SearchFilter, corpus_tier_raw: &str, mesh_ids_json: &str) -> bool {
+    if let Some(tier) = allowed_tier_strs(filter.max_tier) {
+        if corpus_tier_raw != tier {
+            return false;
+        }
+    }
+    if let Some(scope) = &filter.mesh_scope {
+        if scope.is_empty() {
+            return false;
+        }
+        let ids: Vec<String> = serde_json::from_str(mesh_ids_json).unwrap_or_default();
+        if !ids.iter().any(|id| scope.contains(id)) {
+            return false;
+        }
+    }
+    true
 }
 
 fn row_to_ontology_entity(row: &rusqlite::Row<'_>) -> rusqlite::Result<OntologyEntity> {
@@ -1678,6 +1815,7 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
     let visibility_raw: String = row.get(15).unwrap_or_else(|_| "personal".into());
     let corpus_tier_raw: String = row.get(16).unwrap_or_else(|_| "public".into());
     let visibility_labels_json: String = row.get(17).unwrap_or_else(|_| "[]".into());
+    let mesh_ids_json: String = row.get(18).unwrap_or_else(|_| "[]".into());
 
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
     let metadata: HashMap<String, String> =
@@ -1710,6 +1848,7 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
         corpus_tier: CorpusTier::parse(&corpus_tier_raw),
         visibility_labels: serde_json::from_str(&visibility_labels_json).unwrap_or_default(),
         visibility: VisibilityScope::parse(&visibility_raw),
+        mesh_ids: serde_json::from_str(&mesh_ids_json).unwrap_or_default(),
     })
 }
 
@@ -2196,6 +2335,7 @@ mod tests {
                 10,
                 SearchFilter {
                     trusted_only: false,
+                    ..Default::default()
                 },
             )
             .await

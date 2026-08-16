@@ -236,6 +236,7 @@ impl BrainService {
                 limit,
                 SearchFilter {
                     trusted_only: !include_quarantine,
+                    ..Default::default()
                 },
             )
             .await
@@ -285,6 +286,7 @@ impl BrainService {
     ) -> Result<Vec<SearchResult>> {
         let filter = SearchFilter {
             trusted_only: !include_quarantine,
+            ..Default::default()
         };
         let src = source.map(str::trim).filter(|s| !s.is_empty());
         let fetch = if src.is_some() {
@@ -344,6 +346,7 @@ impl BrainService {
                 limit,
                 SearchFilter {
                     trusted_only: !include_quarantine,
+                    ..Default::default()
                 },
                 TierPolicy::default(),
             )

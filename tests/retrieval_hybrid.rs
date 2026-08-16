@@ -474,6 +474,7 @@ next chunk unique UNTAGNEXT
             50,
             SearchFilter {
                 trusted_only: false,
+                ..Default::default()
             },
         )
         .await

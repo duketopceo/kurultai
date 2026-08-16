@@ -18,7 +18,7 @@ use sqlx::{Row, Transaction};
 const ATOM_SELECT: &str = "id, source, source_id, title, summary, content, question, resolution, \
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
      last_accessed_at, visibility, team_id, content_hash, soft_labels_json, \
-     corpus_tier, visibility_labels_json";
+     corpus_tier, visibility_labels_json, mesh_ids_json";
 
 pub struct PostgresStore {
     pool: PgPool,
@@ -150,6 +150,12 @@ impl PostgresStore {
             "visibility_labels_json column",
         )
         .await?;
+        exec_ddl(
+            conn,
+            "ALTER TABLE knowledge_atoms ADD COLUMN IF NOT EXISTS mesh_ids_json TEXT NOT NULL DEFAULT '[]'",
+            "mesh_ids_json column",
+        )
+        .await?;
 
         let vec_sql = format!(
             r#"
@@ -273,6 +279,9 @@ impl PostgresStore {
         let visibility_labels_json: String = row
             .try_get("visibility_labels_json")
             .unwrap_or_else(|_| "[]".into());
+        let mesh_ids_json: String = row
+            .try_get("mesh_ids_json")
+            .unwrap_or_else(|_| "[]".into());
         let indexed = parse_dt(&indexed_at);
         let last_accessed_at = if last_accessed_raw.is_empty() {
             indexed
@@ -312,6 +321,7 @@ impl PostgresStore {
             corpus_tier: CorpusTier::parse(&corpus_tier_raw),
             visibility_labels: serde_json::from_str(&visibility_labels_json).unwrap_or_default(),
             visibility: VisibilityScope::parse(&visibility_raw),
+            mesh_ids: serde_json::from_str(&mesh_ids_json).unwrap_or_default(),
         })
     }
 
@@ -329,6 +339,8 @@ impl PostgresStore {
             .map_err(|e| KurultaiError::Store(format!("soft_labels serialize: {e}")))?;
         let visibility_labels_json = serde_json::to_string(&atom.visibility_labels)
             .map_err(|e| KurultaiError::Store(format!("visibility_labels serialize: {e}")))?;
+        let mesh_ids_json = serde_json::to_string(&atom.mesh_ids)
+            .map_err(|e| KurultaiError::Store(format!("mesh_ids serialize: {e}")))?;
         let corpus_tier = atom.corpus_tier.as_str();
         let content_hash = sha256_hex(&atom.content);
         let last_accessed = if atom.last_accessed_at.timestamp() == 0 {
@@ -353,8 +365,8 @@ impl PostgresStore {
                 question, resolution, tags_json,
                 source_updated_at, indexed_at, metadata_json, content_hash,
                 trust_lane, quarantine_reason, last_accessed_at, visibility,
-                team_id, soft_labels_json, corpus_tier, visibility_labels_json
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                team_id, soft_labels_json, corpus_tier, visibility_labels_json, mesh_ids_json
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
             ON CONFLICT (id) DO UPDATE SET
                 source = excluded.source,
                 source_id = excluded.source_id,
@@ -381,7 +393,8 @@ impl PostgresStore {
                     ELSE excluded.soft_labels_json
                 END,
                 corpus_tier = excluded.corpus_tier,
-                visibility_labels_json = excluded.visibility_labels_json
+                visibility_labels_json = excluded.visibility_labels_json,
+                mesh_ids_json = excluded.mesh_ids_json
             "#,
         )
         .bind(&atom.id)
@@ -405,6 +418,7 @@ impl PostgresStore {
         .bind(&soft_json)
         .bind(corpus_tier)
         .bind(&visibility_labels_json)
+        .bind(&mesh_ids_json)
         .execute(&mut **tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("upsert atom: {e}")))?;
@@ -470,6 +484,53 @@ fn parse_dt(s: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(s)
         .map(|d| d.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now())
+}
+
+/// Postgres mirror of the sqlite `mesh_tier_predicate_sql` helper: builds the
+/// `AND ...` fragment enforcing `max_tier` + `mesh_scope` against an unaliased
+/// `mesh_ids_json` / `corpus_tier` (queries here select from `knowledge_atoms`
+/// directly or via a single-letter `a` alias already baked into callers), plus the
+/// ordered param values to bind starting at placeholder `$first_idx`. Filtered in
+/// SQL, before `LIMIT`, on every arm — pgvector's `<->` operator has no `vec0`-style
+/// restriction, so unlike sqlite this applies to the vector arm too.
+fn mesh_tier_predicate_pg(filter: &SearchFilter, first_idx: usize) -> (String, Vec<String>) {
+    let mut sql = String::new();
+    let mut params: Vec<String> = Vec::new();
+    let mut idx = first_idx;
+
+    match filter.max_tier {
+        None => {}
+        Some(CorpusTier::Public) => {
+            sql.push_str(&format!(" AND corpus_tier = ${idx}"));
+            params.push("public".to_string());
+            idx += 1;
+        }
+        Some(CorpusTier::Private) => {} // Private cap admits both tiers.
+    }
+
+    match &filter.mesh_scope {
+        None => {}
+        Some(scope) if scope.is_empty() => {
+            sql.push_str(" AND false");
+        }
+        Some(scope) => {
+            let placeholders = scope
+                .iter()
+                .map(|_| {
+                    let p = format!("${idx}");
+                    idx += 1;
+                    p
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            sql.push_str(&format!(
+                " AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(mesh_ids_json::jsonb) me WHERE me IN ({placeholders}))"
+            ));
+            params.extend(scope.iter().cloned());
+        }
+    }
+
+    (sql, params)
 }
 
 async fn exec_ddl(conn: &mut sqlx::postgres::PgConnection, sql: &str, ctx: &str) -> Result<()> {
@@ -564,22 +625,26 @@ impl Store for PostgresStore {
         if limit == 0 || query.trim().is_empty() {
             return Ok(vec![]);
         }
-        let sql = if filter.trusted_only {
+        let mut sql = String::from(
             "SELECT id, ts_rank(search_tsv, plainto_tsquery('english', $1))::float8 AS score
              FROM knowledge_atoms
-             WHERE search_tsv @@ plainto_tsquery('english', $1)
-               AND trust_lane = 'trusted'
-             ORDER BY score DESC
-             LIMIT $2"
-        } else {
-            "SELECT id, ts_rank(search_tsv, plainto_tsquery('english', $1))::float8 AS score
-             FROM knowledge_atoms
-             WHERE search_tsv @@ plainto_tsquery('english', $1)
-             ORDER BY score DESC
-             LIMIT $2"
-        };
-        let rows = sqlx::query(sql)
-            .bind(query)
+             WHERE search_tsv @@ plainto_tsquery('english', $1)",
+        );
+        if filter.trusted_only {
+            sql.push_str(" AND trust_lane = 'trusted'");
+        }
+        let (mesh_tier_sql, mesh_tier_params) = mesh_tier_predicate_pg(&filter, 2);
+        sql.push_str(&mesh_tier_sql);
+        sql.push_str(&format!(
+            " ORDER BY score DESC LIMIT ${}",
+            2 + mesh_tier_params.len()
+        ));
+
+        let mut q = sqlx::query(&sql).bind(query);
+        for p in &mesh_tier_params {
+            q = q.bind(p);
+        }
+        let rows = q
             .bind(limit as i64)
             .fetch_all(&self.pool)
             .await
@@ -616,25 +681,36 @@ impl Store for PostgresStore {
         if Self::embedding_norm(query_embed) < MIN_EMBEDDING_NORM {
             return Ok(vec![]);
         }
-        let k = if filter.trusted_only {
-            (limit.saturating_mul(3)).max(limit)
-        } else {
-            limit
-        };
+        // Unlike sqlite-vec's `vec0` (which accepts no WHERE beyond MATCH/k, forcing a
+        // Rust-side post-filter — see the sqlite `vector_search_ids` for that
+        // constraint), pgvector's `<->` operator is a normal expression: trust-lane,
+        // mesh, and tier all push straight into SQL here, applied before `LIMIT`.
         let vec = Vector::from(query_embed.to_vec());
-        // L2 `<->`, score `1/(1+distance)` — same shape as sqlite-vec MATCH distance.
-        let rows = sqlx::query(
-            "SELECT a.id, (v.embedding <-> $1)::float8 AS distance, a.trust_lane
+        let mut sql = String::from(
+            "SELECT a.id, (v.embedding <-> $1)::float8 AS distance
              FROM atoms_vec v
              JOIN knowledge_atoms a ON a.id = v.atom_id
-             ORDER BY v.embedding <-> $1
-             LIMIT $2",
-        )
-        .bind(vec)
-        .bind(k as i64)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| KurultaiError::Store(format!("vector_search_ids: {e}")))?;
+             WHERE 1=1",
+        );
+        if filter.trusted_only {
+            sql.push_str(" AND a.trust_lane = 'trusted'");
+        }
+        let (mesh_tier_sql, mesh_tier_params) = mesh_tier_predicate_pg(&filter, 2);
+        sql.push_str(&mesh_tier_sql);
+        sql.push_str(&format!(
+            " ORDER BY v.embedding <-> $1 LIMIT ${}",
+            2 + mesh_tier_params.len()
+        ));
+
+        let mut q = sqlx::query(&sql).bind(vec);
+        for p in &mesh_tier_params {
+            q = q.bind(p);
+        }
+        let rows = q
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| KurultaiError::Store(format!("vector_search_ids: {e}")))?;
         let mut out = Vec::new();
         for row in rows {
             let id: String = row
@@ -643,12 +719,6 @@ impl Store for PostgresStore {
             let distance: f64 = row
                 .try_get("distance")
                 .map_err(|e| KurultaiError::Store(e.to_string()))?;
-            let lane: String = row
-                .try_get("trust_lane")
-                .map_err(|e| KurultaiError::Store(e.to_string()))?;
-            if filter.trusted_only && lane != "trusted" {
-                continue;
-            }
             out.push((id, 1.0 / (1.0 + distance)));
             if out.len() >= limit {
                 break;
@@ -799,15 +869,22 @@ impl Store for PostgresStore {
     }
 
     async fn list_atoms(&self, limit: usize, filter: SearchFilter) -> Result<Vec<KnowledgeAtom>> {
-        let sql = if filter.trusted_only {
-            format!(
-                "SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE trust_lane = 'trusted'
-                 ORDER BY indexed_at DESC LIMIT $1"
-            )
-        } else {
-            format!("SELECT {ATOM_SELECT} FROM knowledge_atoms ORDER BY indexed_at DESC LIMIT $1")
-        };
-        let rows = sqlx::query(&sql)
+        let mut sql = format!("SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE 1=1");
+        if filter.trusted_only {
+            sql.push_str(" AND trust_lane = 'trusted'");
+        }
+        let (mesh_tier_sql, mesh_tier_params) = mesh_tier_predicate_pg(&filter, 1);
+        sql.push_str(&mesh_tier_sql);
+        sql.push_str(&format!(
+            " ORDER BY indexed_at DESC LIMIT ${}",
+            1 + mesh_tier_params.len()
+        ));
+
+        let mut q = sqlx::query(&sql);
+        for p in &mesh_tier_params {
+            q = q.bind(p);
+        }
+        let rows = q
             .bind(limit as i64)
             .fetch_all(&self.pool)
             .await
@@ -969,22 +1046,26 @@ impl Store for PostgresStore {
         filter: SearchFilter,
         policy: TierPolicy,
     ) -> Result<Vec<GraphNode>> {
-        let sql = if filter.trusted_only {
-            format!(
-                "SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE trust_lane = 'trusted'
-                 ORDER BY last_accessed_at DESC LIMIT $1"
-            )
-        } else {
-            format!(
-                "SELECT {ATOM_SELECT} FROM knowledge_atoms ORDER BY last_accessed_at DESC LIMIT $1"
-            )
-        };
+        let mut sql = format!("SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE 1=1");
+        if filter.trusted_only {
+            sql.push_str(" AND trust_lane = 'trusted'");
+        }
+        let (mesh_tier_sql, mesh_tier_params) = mesh_tier_predicate_pg(&filter, 1);
+        sql.push_str(&mesh_tier_sql);
+        sql.push_str(&format!(
+            " ORDER BY last_accessed_at DESC LIMIT ${}",
+            1 + mesh_tier_params.len()
+        ));
         let fetch_cap = if tier.is_some() {
             (limit.saturating_mul(8)).max(limit).min(50_000)
         } else {
             limit.min(50_000)
         };
-        let rows = sqlx::query(&sql)
+        let mut q = sqlx::query(&sql);
+        for p in &mesh_tier_params {
+            q = q.bind(p);
+        }
+        let rows = q
             .bind(fetch_cap as i64)
             .fetch_all(&self.pool)
             .await
@@ -1245,6 +1326,7 @@ mod tests {
                 10,
                 SearchFilter {
                     trusted_only: false,
+                    ..Default::default()
                 },
             )
             .await

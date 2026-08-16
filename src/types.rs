@@ -190,6 +190,17 @@ pub struct KnowledgeAtom {
     /// Tiered visibility (`personal` | `team` | `company`). Default personal (#178).
     #[serde(default)]
     pub visibility: VisibilityScope,
+    /// Mesh partition ids (KHAN-mesh) — which scoped consumers (agents / services)
+    /// may retrieve this atom. Assigned at ingest: connector-level
+    /// [`SourceConfig::default_mesh_ids`] default, overridable per atom. Empty means
+    /// this atom is not mesh-scoped: it is only reachable by callers that do not
+    /// pass a `mesh_scope` on [`crate::store::SearchFilter`] (today's behavior).
+    /// Distinct from the unmerged `project_id` namespacing work (see
+    /// `docs/PROJECT_SCOPING.md`) — that is same-unix-user ingest namespacing and
+    /// explicitly not a security boundary; `mesh_ids` is enforced at the SQL layer
+    /// on every retrieval path so it can gate cross-consumer visibility.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mesh_ids: Vec<String>,
 }
 
 impl Default for KnowledgeAtom {
@@ -215,12 +226,17 @@ impl Default for KnowledgeAtom {
             corpus_tier: CorpusTier::Public,
             visibility_labels: Vec::new(),
             visibility: VisibilityScope::Personal,
+            mesh_ids: Vec::new(),
         }
     }
 }
 
 /// Bartlett-sized corpus isolation. Not a multi-person SaaS tenant.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+///
+/// Declaration order is the access-requirement order (`Public < Private`) and is
+/// relied on by [`crate::store::SearchFilter::max_tier`]: an atom is visible when
+/// `atom.corpus_tier <= max_tier`. Do not reorder the variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CorpusTier {
     #[default]
@@ -420,6 +436,21 @@ impl SourceConfig {
     pub fn default_visibility_labels(&self) -> Vec<String> {
         self.extra
             .get("default_visibility_labels")
+            .map(|raw| {
+                raw.split(',')
+                    .map(|t| t.trim().to_string())
+                    .filter(|t| !t.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// `extra.default_mesh_ids` = comma-separated mesh partition ids applied to every
+    /// atom this connector produces, unless the atom (frontmatter / connector) already
+    /// set its own `mesh_ids`. Missing → empty (mesh-unscoped, today's default).
+    pub fn default_mesh_ids(&self) -> Vec<String> {
+        self.extra
+            .get("default_mesh_ids")
             .map(|raw| {
                 raw.split(',')
                     .map(|t| t.trim().to_string())

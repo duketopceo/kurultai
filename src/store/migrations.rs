@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 10;
+pub const CURRENT_SCHEMA_VERSION: i32 = 11;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -353,6 +353,18 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         )?;
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [10])
             .map_err(|e| KurultaiError::Store(format!("migration 010 record failed: {e}")))?;
+    }
+
+    if current < 11 {
+        // Mesh partitioning schema — connector/agent-scoped visibility (KHAN-mesh).
+        add_column_if_missing(
+            conn,
+            "knowledge_atoms",
+            "mesh_ids_json",
+            "TEXT NOT NULL DEFAULT '[]'",
+        )?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [11])
+            .map_err(|e| KurultaiError::Store(format!("migration 011 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");

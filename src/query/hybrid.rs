@@ -129,7 +129,7 @@ pub async fn hybrid_search_filtered(
     let cand = candidate_limit(limit);
 
     let fts_fut = async {
-        match store.fts_search_ids(query, cand, filter).await {
+        match store.fts_search_ids(query, cand, filter.clone()).await {
             Ok(hits) => hits,
             Err(err) => {
                 tracing::warn!(error = %err, "FTS search failed; continuing without FTS arm");
@@ -149,7 +149,7 @@ pub async fn hybrid_search_filtered(
                 return Vec::new();
             }
         };
-        match store.vector_search_ids(&emb, cand, filter).await {
+        match store.vector_search_ids(&emb, cand, filter.clone()).await {
             Ok(hits) => hits,
             Err(err) => {
                 tracing::warn!(error = %err, "vector search failed; using FTS only");
