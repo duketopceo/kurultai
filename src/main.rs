@@ -12,6 +12,7 @@ use kurultai::mcp::{
     ensure_default_config, init_walkthrough, provision_docs, wire_agent, AgentRead, AgentTarget,
     BrainService,
 };
+use kurultai::write_policy::{WriteContext, WriteTransport};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -20,7 +21,7 @@ use std::sync::Arc;
     name = "kurultai",
     version,
     about = "Assemble what you know, from wherever it lives.",
-    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated"
+    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
 )]
 struct Cli {
     /// Log filter (overrides KURULTAI_LOG). Example: kurultai=trace,info
@@ -103,7 +104,17 @@ enum Commands {
         reason: Option<String>,
     },
     /// MCP server on stdio (Cursor / Claude / Codex / Hermes)
-    Mcp,
+    Mcp {
+        /// Self-asserted session identity stamped on writes (env: KURULTAI_AGENT_ID).
+        ///
+        /// NOT an authorization claim: on a shared box any session can assert any
+        /// value. Used for write provenance and bulk revocation only.
+        #[arg(long)]
+        agent_id: Option<String>,
+        /// Namespace (`project_id`) stamped on writes (env: KURULTAI_NAMESPACE).
+        #[arg(long)]
+        namespace: Option<String>,
+    },
     /// HTTP API + Brain UI (`http://127.0.0.1:8421/ui/`) + poll/watch
     Daemon {
         /// Port for the HTTP server
@@ -145,6 +156,8 @@ enum Commands {
         #[arg(long)]
         generated: bool,
     },
+    /// Run diagnostic checks (DB, config, MCP, HTTP, embeddings, ontology, connectors)
+    Doctor,
 }
 
 #[tokio::main]
@@ -199,13 +212,26 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Mcp => {
+        Commands::Mcp {
+            ref agent_id,
+            ref namespace,
+        } => {
             // Never print art on MCP stdio — protocol must stay clean.
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
+            let ctx = WriteContext::resolve(
+                WriteTransport::Mcp,
+                agent_id.as_deref(),
+                namespace.as_deref(),
+            );
             // MCP must not spam logs to stdout — stderr only via tracing.
-            tracing::info!("mcp stdio server starting");
-            kurultai::mcp::run_stdio(brain).await?;
+            tracing::info!(
+                agent_id = ?ctx.agent_id,
+                namespace = ?ctx.namespace,
+                mode = ?ctx.mode,
+                "mcp stdio server starting"
+            );
+            kurultai::mcp::run_stdio_with(brain, ctx).await?;
         }
         Commands::Index { full } => {
             let app = bootstrap_app(&cli).await?;
@@ -279,7 +305,8 @@ async fn main() -> Result<()> {
         } => {
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
-            let res = brain.promote(atom_id, "cli", reason.as_deref()).await?;
+            let actor = WriteContext::resolve(WriteTransport::Cli, None, None).actor();
+            let res = brain.promote(atom_id, &actor, reason.as_deref()).await?;
             println!("promoted {} (actor={})", res.atom_id, res.actor);
         }
         Commands::Status { metrics, port } => {
@@ -479,6 +506,9 @@ async fn main() -> Result<()> {
                 }
                 println!("Deleted {deleted} / {total} atoms.");
             }
+        }
+        Commands::Doctor => {
+            kurultai::doctor::run(cli.env.as_deref(), cli.config.as_deref()).await?;
         }
         Commands::Export { output } => {
             let cfg_file = resolve_config_file(cli.config.as_deref())?;

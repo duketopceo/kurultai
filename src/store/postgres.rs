@@ -2,11 +2,14 @@
 //!
 //! Solo [`super::open_store`] stays SQLite. Personal atoms are refused (AE4).
 
-use super::{IngestionJob, SearchFilter, Store, MIN_EMBEDDING_NORM};
+use super::{IngestionJob, SearchFilter, Store, DEFAULT_PROJECT, MIN_EMBEDDING_NORM};
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
-use crate::types::{normalize_soft_labels, CorpusTier, KnowledgeAtom, TrustLane, VisibilityScope};
+use crate::types::{
+    normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink, TrustLane,
+    VisibilityScope,
+};
 use chrono::{DateTime, Utc};
 use pgvector::Vector;
 use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
@@ -14,7 +17,8 @@ use sqlx::{Row, Transaction};
 
 const ATOM_SELECT: &str = "id, source, source_id, title, summary, content, question, resolution, \
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
-     last_accessed_at, visibility, team_id, content_hash, soft_labels_json";
+     last_accessed_at, visibility, team_id, content_hash, soft_labels_json, \
+     corpus_tier, visibility_labels_json";
 
 pub struct PostgresStore {
     pool: PgPool,
@@ -87,7 +91,9 @@ impl PostgresStore {
                 last_accessed_at TEXT NOT NULL DEFAULT '',
                 visibility TEXT NOT NULL CHECK (visibility IN ('team', 'company')),
                 team_id TEXT,
-                soft_labels_json TEXT NOT NULL DEFAULT '[]'
+                soft_labels_json TEXT NOT NULL DEFAULT '[]',
+                corpus_tier TEXT NOT NULL DEFAULT 'public',
+                visibility_labels_json TEXT NOT NULL DEFAULT '[]'
             )
             "#,
             "create knowledge_atoms",
@@ -129,6 +135,19 @@ impl PostgresStore {
             conn,
             "CREATE INDEX IF NOT EXISTS idx_hub_atoms_fts ON knowledge_atoms USING GIN (search_tsv)",
             "fts gin",
+        )
+        .await?;
+
+        exec_ddl(
+            conn,
+            "ALTER TABLE knowledge_atoms ADD COLUMN IF NOT EXISTS corpus_tier TEXT NOT NULL DEFAULT 'public'",
+            "corpus_tier column",
+        )
+        .await?;
+        exec_ddl(
+            conn,
+            "ALTER TABLE knowledge_atoms ADD COLUMN IF NOT EXISTS visibility_labels_json TEXT NOT NULL DEFAULT '[]'",
+            "visibility_labels_json column",
         )
         .await?;
 
@@ -248,6 +267,12 @@ impl PostgresStore {
             .try_get("trust_lane")
             .map_err(|e| KurultaiError::Store(format!("trust_lane: {e}")))?;
         let visibility_raw: String = row.try_get("visibility").unwrap_or_else(|_| "team".into());
+        let corpus_tier_raw: String = row
+            .try_get("corpus_tier")
+            .unwrap_or_else(|_| "public".into());
+        let visibility_labels_json: String = row
+            .try_get("visibility_labels_json")
+            .unwrap_or_else(|_| "[]".into());
         let indexed = parse_dt(&indexed_at);
         let last_accessed_at = if last_accessed_raw.is_empty() {
             indexed
@@ -284,8 +309,8 @@ impl PostgresStore {
             trust_lane: TrustLane::parse(&trust_lane),
             quarantine_reason: row.try_get("quarantine_reason").ok(),
             soft_labels: serde_json::from_str(&soft_json).unwrap_or_default(),
-            corpus_tier: CorpusTier::Public,
-            visibility_labels: Vec::new(),
+            corpus_tier: CorpusTier::parse(&corpus_tier_raw),
+            visibility_labels: serde_json::from_str(&visibility_labels_json).unwrap_or_default(),
             visibility: VisibilityScope::parse(&visibility_raw),
         })
     }
@@ -302,6 +327,9 @@ impl PostgresStore {
             .map_err(|e| KurultaiError::Store(format!("metadata serialize: {e}")))?;
         let soft_json = serde_json::to_string(&normalize_soft_labels(&atom.soft_labels))
             .map_err(|e| KurultaiError::Store(format!("soft_labels serialize: {e}")))?;
+        let visibility_labels_json = serde_json::to_string(&atom.visibility_labels)
+            .map_err(|e| KurultaiError::Store(format!("visibility_labels serialize: {e}")))?;
+        let corpus_tier = atom.corpus_tier.as_str();
         let content_hash = sha256_hex(&atom.content);
         let last_accessed = if atom.last_accessed_at.timestamp() == 0 {
             atom.indexed_at
@@ -325,8 +353,8 @@ impl PostgresStore {
                 question, resolution, tags_json,
                 source_updated_at, indexed_at, metadata_json, content_hash,
                 trust_lane, quarantine_reason, last_accessed_at, visibility,
-                team_id, soft_labels_json
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+                team_id, soft_labels_json, corpus_tier, visibility_labels_json
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
             ON CONFLICT (id) DO UPDATE SET
                 source = excluded.source,
                 source_id = excluded.source_id,
@@ -351,7 +379,9 @@ impl PostgresStore {
                 soft_labels_json = CASE
                     WHEN excluded.soft_labels_json = '[]' THEN knowledge_atoms.soft_labels_json
                     ELSE excluded.soft_labels_json
-                END
+                END,
+                corpus_tier = excluded.corpus_tier,
+                visibility_labels_json = excluded.visibility_labels_json
             "#,
         )
         .bind(&atom.id)
@@ -373,6 +403,8 @@ impl PostgresStore {
         .bind(atom.visibility.as_str())
         .bind(&team_id)
         .bind(&soft_json)
+        .bind(corpus_tier)
+        .bind(&visibility_labels_json)
         .execute(&mut **tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("upsert atom: {e}")))?;
@@ -532,23 +564,29 @@ impl Store for PostgresStore {
         if limit == 0 || query.trim().is_empty() {
             return Ok(vec![]);
         }
-        let sql = if filter.trusted_only {
+        // Predicates in SQL so project scoping precedes LIMIT (see sqlite impl).
+        let mut predicates = String::new();
+        if filter.trusted_only {
+            predicates.push_str(" AND trust_lane = 'trusted'");
+        }
+        let project = filter.project_scope();
+        if project.is_some() {
+            predicates.push_str(&format!(
+                " AND COALESCE(CAST(metadata_json AS jsonb)->>'project_id', '{DEFAULT_PROJECT}') = $3"
+            ));
+        }
+        let sql = format!(
             "SELECT id, ts_rank(search_tsv, plainto_tsquery('english', $1))::float8 AS score
              FROM knowledge_atoms
-             WHERE search_tsv @@ plainto_tsquery('english', $1)
-               AND trust_lane = 'trusted'
+             WHERE search_tsv @@ plainto_tsquery('english', $1){predicates}
              ORDER BY score DESC
              LIMIT $2"
-        } else {
-            "SELECT id, ts_rank(search_tsv, plainto_tsquery('english', $1))::float8 AS score
-             FROM knowledge_atoms
-             WHERE search_tsv @@ plainto_tsquery('english', $1)
-             ORDER BY score DESC
-             LIMIT $2"
-        };
-        let rows = sqlx::query(sql)
-            .bind(query)
-            .bind(limit as i64)
+        );
+        let mut q = sqlx::query(&sql).bind(query).bind(limit as i64);
+        if let Some(p) = project {
+            q = q.bind(p.to_string());
+        }
+        let rows = q
             .fetch_all(&self.pool)
             .await
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids: {e}")))?;
@@ -589,20 +627,31 @@ impl Store for PostgresStore {
         } else {
             limit
         };
+        let project = filter.project_scope();
         let vec = Vector::from(query_embed.to_vec());
         // L2 `<->`, score `1/(1+distance)` — same shape as sqlite-vec MATCH distance.
-        let rows = sqlx::query(
+        let project_pred = if project.is_some() {
+            format!(
+                " WHERE COALESCE(CAST(a.metadata_json AS jsonb)->>'project_id', '{DEFAULT_PROJECT}') = $3"
+            )
+        } else {
+            String::new()
+        };
+        let sql = format!(
             "SELECT a.id, (v.embedding <-> $1)::float8 AS distance, a.trust_lane
              FROM atoms_vec v
-             JOIN knowledge_atoms a ON a.id = v.atom_id
+             JOIN knowledge_atoms a ON a.id = v.atom_id{project_pred}
              ORDER BY v.embedding <-> $1
-             LIMIT $2",
-        )
-        .bind(vec)
-        .bind(k as i64)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| KurultaiError::Store(format!("vector_search_ids: {e}")))?;
+             LIMIT $2"
+        );
+        let mut q = sqlx::query(&sql).bind(vec).bind(k as i64);
+        if let Some(p) = project {
+            q = q.bind(p.to_string());
+        }
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| KurultaiError::Store(format!("vector_search_ids: {e}")))?;
         let mut out = Vec::new();
         for row in rows {
             let id: String = row
@@ -734,8 +783,8 @@ impl Store for PostgresStore {
         let sql = format!(
             "SELECT {ATOM_SELECT} FROM knowledge_atoms
              WHERE source = $1
-               AND metadata_json::jsonb->>'rel_path' = $2
-               AND (metadata_json::jsonb->>'chunk_index')::int = $3
+               AND CAST(metadata_json AS jsonb)->>'rel_path' = $2
+               AND (CAST(metadata_json AS jsonb)->>'chunk_index')::int = $3
              LIMIT 1"
         );
         let row = sqlx::query(&sql)
@@ -1042,6 +1091,26 @@ impl Store for PostgresStore {
         }
         Ok(out)
     }
+
+    async fn upsert_ontology_entity(&self, _e: &OntologyEntity) -> Result<()> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn get_ontology_entity(&self, _id: &str) -> Result<Option<OntologyEntity>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn list_ontology_entities(&self, _limit: usize) -> Result<Vec<OntologyEntity>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn upsert_ontology_link(&self, _l: &OntologyLink) -> Result<()> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn list_ontology_links(&self, _endpoint: Option<&str>) -> Result<Vec<OntologyLink>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
 }
 
 #[cfg(test)]
@@ -1188,13 +1257,7 @@ mod tests {
             .unwrap();
         assert!(!trusted.iter().any(|(a, _)| a.id == id));
         let all = store
-            .fts_search(
-                "quarantine-fts-token",
-                10,
-                SearchFilter {
-                    trusted_only: false,
-                },
-            )
+            .fts_search("quarantine-fts-token", 10, SearchFilter::trusted(false))
             .await
             .unwrap();
         assert!(all.iter().any(|(a, _)| a.id == id));

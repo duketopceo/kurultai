@@ -41,6 +41,12 @@ pub const ALL: &[FeatureSpec] = &[
         summary: "On-device ONNX embeddings (cargo --features local-embed)",
     },
     FeatureSpec {
+        id: "shared_write",
+        since: "0.5.1",
+        default_on: false,
+        summary: "Shared-store write containment (agent writes quarantined + namespaced)",
+    },
+    FeatureSpec {
         id: "hub",
         since: "0.5.0",
         default_on: false,

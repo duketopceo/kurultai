@@ -2,6 +2,12 @@
 //!
 //! Requires `KURULTAI_INGEST_SECRET` (route disabled when unset). Peer must be
 //! loopback. Shared-secret compare is constant-time.
+//!
+//! IMPORTANT — the secret is a footgun-reducer, not an access control. On a shared
+//! box every session runs as the same uid and can read the daemon's environment via
+//! `/proc/<pid>/environ`, and every session already *is* loopback. Containment comes
+//! from [`crate::write_policy`]: under the closed policy ingested atoms are forced to
+//! quarantine and stamped with the caller's claimed provenance.
 
 use crate::embed::Embedder;
 use crate::hashutil::sha256_hex;
@@ -9,6 +15,7 @@ use crate::ingest::dump::{self, DumpFormat};
 use crate::quality::{apply_gate, evaluate};
 use crate::store::Store;
 use crate::types::TrustLane;
+use crate::write_policy::{WriteContext, WriteMode, WriteTransport};
 use axum::body::Bytes;
 use axum::extract::{ConnectInfo, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -70,6 +77,8 @@ pub struct IngestState {
     pub store: Arc<dyn Store>,
     pub embedder: Arc<dyn Embedder>,
     pub secret: String,
+    /// Write containment policy, resolved once at route-mount time (not per request).
+    pub mode: WriteMode,
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,6 +87,20 @@ pub struct IngestQuery {
     pub format: Option<String>,
     /// Optional logical path for stable source_id (default: ingest/body).
     pub name: Option<String>,
+    /// Self-asserted writer identity stamped on the resulting atoms.
+    pub agent_id: Option<String>,
+    /// Namespace (`project_id`) stamped on the resulting atoms.
+    pub namespace: Option<String>,
+}
+
+/// Header fallbacks for the query params, so callers can keep provenance out of URLs.
+fn header_str(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 fn parse_format(raw: Option<&str>, content_type: Option<&str>) -> DumpFormat {
@@ -147,6 +170,8 @@ async fn ingest_post(
         ));
     }
 
+    let agent_header = header_str(&headers, "x-kurultai-agent-id");
+    let namespace_header = header_str(&headers, "x-kurultai-namespace");
     let ct = headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok());
@@ -174,8 +199,17 @@ async fn ingest_post(
         ));
     }
 
+    let mut ctx = WriteContext::resolve(
+        WriteTransport::Ingest,
+        q.agent_id.as_deref().or(agent_header.as_deref()),
+        q.namespace.as_deref().or(namespace_header.as_deref()),
+    );
+    ctx.mode = state.mode;
+
     let mut batch_seen = std::collections::HashSet::new();
     for atom in &mut atoms {
+        // Stamp before the gate so provenance survives quarantine.
+        ctx.stamp(&mut atom.metadata);
         let hash = sha256_hex(&atom.content);
         let outcome = if batch_seen.contains(&hash) {
             crate::quality::GateOutcome::Quarantine {
@@ -191,6 +225,17 @@ async fn ingest_post(
         };
         batch_seen.insert(hash);
         apply_gate(atom, outcome);
+        // Containment: ingested content is attacker-controllable (frontmatter `tags:`
+        // clears the tag gate), so it never enters the globally-searchable lane under
+        // the closed policy.
+        if ctx.contains_writes() && atom.trust_lane == TrustLane::Trusted {
+            apply_gate(
+                atom,
+                crate::quality::GateOutcome::Quarantine {
+                    reason: crate::write_policy::CONTAINED_REASON.to_string(),
+                },
+            );
+        }
         if atom.trust_lane == TrustLane::Quarantine {
             atom.embedding = None;
         } else if state.embedder.is_live() {
@@ -241,6 +286,7 @@ mod tests {
         let store = Arc::new(SqliteVecStore::open(path, 4).unwrap());
         std::mem::forget(dir);
         IngestState {
+            mode: WriteMode::Solo,
             store,
             embedder: Arc::new(NullEmbedder::new(4)),
             secret: secret.into(),

@@ -4,6 +4,8 @@ use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::quality::{apply_gate, evaluate};
 use crate::store::Store;
+use crate::types::{CorpusTier, SourceConfig};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -21,11 +23,26 @@ pub struct IndexStats {
 pub struct IndexPipeline {
     store: Arc<dyn Store>,
     embedder: Arc<dyn Embedder>,
+    /// Resolved source configs keyed by connector name, used to apply
+    /// `default_corpus_tier` / `default_visibility_labels` at ingest time.
+    sources: HashMap<String, SourceConfig>,
 }
 
 impl IndexPipeline {
     pub fn new(store: Arc<dyn Store>, embedder: Arc<dyn Embedder>) -> Self {
-        Self { store, embedder }
+        Self {
+            store,
+            embedder,
+            sources: HashMap::new(),
+        }
+    }
+
+    /// Register source configs so [`IndexPipeline::index_connector`] can apply
+    /// per-source `default_corpus_tier` / `default_visibility_labels` defaults.
+    pub fn register_sources(&mut self, configs: &[SourceConfig]) {
+        for cfg in configs {
+            self.sources.insert(cfg.name.clone(), cfg.clone());
+        }
     }
 
     /// Index all registered connectors.
@@ -34,6 +51,7 @@ impl IndexPipeline {
         registry: &ConnectorRegistry,
         full: bool,
     ) -> Result<Vec<IndexStats>> {
+        let _span = tracing::info_span!("ingest_index_all", full, connectors = registry.len());
         let mut results = Vec::new();
 
         for (name, connector) in registry.iter() {
@@ -89,6 +107,25 @@ impl IndexPipeline {
         }
 
         let mut enriched = atoms;
+
+        // Apply per-source corpus_tier / visibility_labels defaults from the
+        // SourceConfig (only when the atom hasn't already set them — i.e. the
+        // atom is still at the default Public tier with no labels). Frontmatter
+        // or connector-supplied values win; this only fills in blanks.
+        if let Some(cfg) = self.sources.get(source_name) {
+            let default_tier = cfg.default_corpus_tier();
+            let default_labels = cfg.default_visibility_labels();
+            if default_tier != CorpusTier::Public || !default_labels.is_empty() {
+                for atom in &mut enriched {
+                    if atom.corpus_tier == CorpusTier::Public {
+                        atom.corpus_tier = default_tier;
+                    }
+                    if atom.visibility_labels.is_empty() {
+                        atom.visibility_labels = default_labels.clone();
+                    }
+                }
+            }
+        }
 
         // Gate each atom before embed (KTD7: don't pay embed on junk / quarantine).
         // Track in-batch content hashes so exact dupes in the same connector batch

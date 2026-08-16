@@ -77,7 +77,7 @@ kurultai init --agent all        # cursor + claude + codex + hermes
 
 That writes host MCP configs (`kurultai mcp` stdio). **Restart the agent** so tools reload. `--agent none` skips MCP.
 
-MCP tools: `search`, `cite`, `ask`, `who_knows`, `remember`, `promote`.
+MCP tools: `search`, `cite`, `ask`, `who_knows`, `remember`, `promote`, `ontology_get`, `ontology_promote`.
 
 Portable skill to teach agents tool discipline:
 

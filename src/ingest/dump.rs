@@ -86,6 +86,7 @@ pub fn atomize_path(
     path: &Path,
     source_updated_at: DateTime<Utc>,
 ) -> Result<Vec<KnowledgeAtom>> {
+    let _span = tracing::debug_span!("ingest_atomize", source, path = %path.display());
     let format = detect_format(path).ok_or_else(|| {
         KurultaiError::connector(
             source,
@@ -110,6 +111,7 @@ pub fn atomize_bytes(
     format: DumpFormat,
     source_updated_at: DateTime<Utc>,
 ) -> Result<Vec<KnowledgeAtom>> {
+    let _span = tracing::debug_span!("ingest_atomize", source, rel_path, format = ?format);
     let text = std::str::from_utf8(bytes)
         .map_err(|e| KurultaiError::connector(source, format!("utf-8 decode {rel_path}: {e}")))?;
     match format {
@@ -133,7 +135,12 @@ fn atomize_markdown(
         .get("title")
         .cloned()
         .unwrap_or_else(|| title_from_path(rel_path));
-    let tags = parse_tags(fm.get("tags").map(String::as_str));
+    // YAML frontmatter tags take priority; fall back to dedicated hashtag-line
+    // tags scanned from the body when no frontmatter tags are present.
+    let mut tags = parse_tags(fm.get("tags").map(String::as_str));
+    if tags.is_empty() {
+        tags = parse_hashtag_line_tags(body);
+    }
 
     let chunks = chunk_markdown(body);
     let mut atoms = Vec::with_capacity(chunks.len().max(1));
@@ -232,6 +239,55 @@ fn parse_tags(raw: Option<&str>) -> Vec<String> {
         .map(|t| t.trim().trim_matches('"').trim_matches('\'').to_string())
         .filter(|t| !t.is_empty())
         .collect()
+}
+
+/// Scan markdown body for dedicated hashtag lines — lines composed entirely of
+/// `#word` tokens (regex `^(\s*#\w+)+\s*$`). These are tag lines, NOT headings:
+/// a heading like `# IT Doc` has a space after `#`, while a tag line like
+/// `#ops #deploy` has no space between `#` and the word. Returns the deduped tag
+/// set across all matching lines (tag word without the leading `#`).
+fn parse_hashtag_line_tags(body: &str) -> Vec<String> {
+    let mut tags = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for line in body.lines() {
+        if let Some(line_tags) = parse_hashtag_line(line) {
+            for tag in line_tags {
+                if seen.insert(tag.clone()) {
+                    tags.push(tag);
+                }
+            }
+        }
+    }
+    tags
+}
+
+/// Parse a single line as a hashtag tag line. Returns `Some(tags)` when the line
+/// is composed entirely of `#word` tokens (each `#` immediately followed by ≥1
+/// word char), else `None`. A bare `#` or a heading (`# Heading`, `## Sub`)
+/// does not match because the `#` is not immediately followed by a word char.
+fn parse_hashtag_line(line: &str) -> Option<Vec<String>> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut tags = Vec::new();
+    for token in trimmed.split_whitespace() {
+        let word = token.strip_prefix('#').unwrap_or(token);
+        // Token must start with '#' (strip_prefix yielded the rest) and the rest
+        // must be non-empty and all word chars (\w = [A-Za-z0-9_]).
+        if word.len() == token.len()
+            || word.is_empty()
+            || !word.chars().all(|c| c.is_alphanumeric() || c == '_')
+        {
+            return None;
+        }
+        tags.push(word.to_string());
+    }
+    if tags.is_empty() {
+        None
+    } else {
+        Some(tags)
+    }
 }
 
 struct Chunk {

@@ -160,16 +160,18 @@ Overrides: `KURULTAI_ENV=dev`, `kurultai --env staging status`. API keys via env
 
 ## Agents (MCP)
 
-**Stdio (default):** `kurultai mcp` — full tools including `remember` / `promote`.  
+**Stdio (default):** `kurultai mcp` — full tools including `remember` / `promote` / `ontology_promote`.  
 **HTTP/SSE (opt-in on daemon):** set `KURULTAI_MCP_HTTP_SECRET` (or `[runtime] mcp_http_secret`) then:
 
 - `POST /mcp` — JSON-RPC (`tools/list`, `tools/call`, …)
 - `GET /mcp/sse` — SSE bootstrap (`endpoint` → `/mcp`)
 - Auth: `Authorization: Bearer <secret>`
-- Surface: **read-only** (`search`, `cite`, `ask`, `who_knows`) — no writes over HTTP MCP
+- Surface: **read-only** (`search`, `cite`, `ask`, `who_knows`, `ontology_get`) — no writes over HTTP MCP
 - Bind stays `127.0.0.1` — do not expose without a tunnel + secret
 
-**Loopback dump ingest (opt-in):** set `KURULTAI_INGEST_SECRET`, then `POST /ingest` (not under `/api/`) with the secret header. Peer must be loopback. Response is `{ ok, atom_ids, lane, quarantine_reason? }` — no brain dump.
+**Loopback dump ingest (opt-in):** set `KURULTAI_INGEST_SECRET`, then `POST /ingest` (not under `/api/`) with the secret header. Peer must be loopback. Response is `{ ok, atom_ids, lane, quarantine_reason? }` — no brain dump. Optional `?agent_id=&namespace=` (or `X-Kurultai-Agent-Id` / `X-Kurultai-Namespace`) stamp write provenance.
+
+**Shared store, several agent sessions, one unix user?** Set `KURULTAI_FEATURE_SHARED_WRITE=1`. Agent writes (`remember`, `/ingest`, daemon HTTP) are then forced to quarantine and stamped with `agent_id` / `project_id`; only `kurultai promote` can move them to the trusted lane; `POST /api/promote` and `POST /api/touch` require `KURULTAI_ADMIN_TOKEN` and fail closed without it. Start `kurultai mcp --agent-id <session> --namespace <project>`. `agent_id` is self-asserted — it buys provenance and namespacing, not isolation (same uid, same `/proc`, same DB file). Default off; the solo install is unchanged. See [trust lanes](docs/solutions/architecture-patterns/trust-lanes-quality-gate.md).
 
 `init` only writes the host config for stdio MCP:
 

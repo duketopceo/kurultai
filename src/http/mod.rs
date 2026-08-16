@@ -10,7 +10,10 @@ mod auth;
 mod mcp;
 mod ui;
 
-pub use auth::{HubAuth, HubGate};
+pub use auth::{
+    resolve_admin_token, write_route_decision, HubAuth, HubGate, WriteRouteDecision,
+    ENV_ADMIN_TOKEN,
+};
 mod ingest;
 
 pub use ingest::resolve_ingest_secret;
@@ -122,6 +125,7 @@ pub async fn serve_with(
             store: brain.store(),
             embedder: brain.embedder(),
             secret,
+            mode: crate::write_policy::WriteMode::from_env(),
         }));
     } else {
         tracing::info!("loopback ingest disabled (set KURULTAI_INGEST_SECRET to enable)");
@@ -151,6 +155,7 @@ fn router(state: AppState) -> Router {
         .route("/api/metrics", get(api_metrics))
         .route("/api/atoms", get(api_atoms))
         .route("/api/graph", get(api_graph))
+        .route("/api/ontology", get(api_ontology))
         .route("/api/touch", post(api_touch))
         .route("/api/activity", get(api_activity))
         .route("/api/promote", post(api_promote))
@@ -167,9 +172,43 @@ fn router(state: AppState) -> Router {
             state.hub.clone(),
             hub_api_auth,
         ))
+        // Outermost of the two: runs before hub auth, and fails closed on write
+        // routes regardless of `HubAuth` (which is `None` by default).
+        .layer(middleware::from_fn(auth::write_route_guard))
         .layer(middleware::from_fn(no_store_api))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+/// Build the loopback `POST /ingest` router for integration tests / external embedding.
+///
+/// Mirrors the route mounted by [`serve_with`] without binding a socket, with the
+/// write containment `mode` injected rather than read from the environment.
+pub fn build_ingest_app(
+    store: std::sync::Arc<dyn crate::store::Store>,
+    embedder: std::sync::Arc<dyn crate::embed::Embedder>,
+    secret: String,
+    mode: crate::write_policy::WriteMode,
+) -> Router {
+    ingest::routes(ingest::IngestState {
+        store,
+        embedder,
+        secret,
+        mode,
+    })
+}
+
+/// Build the application router for integration tests / external embedding.
+///
+/// Mirrors the routes mounted by [`serve_with`] without binding a socket.
+pub fn build_app(brain: BrainService, status: Arc<DaemonStatus>, hub: HubGate) -> Router {
+    let state = AppState {
+        brain: Arc::new(brain),
+        status,
+        metrics: MetricsRegistry::shared(),
+        hub,
+    };
+    router(state)
 }
 
 /// Browsers must not reuse `/api/*` JSON (graph/status used to boot from a stale cache).
@@ -320,6 +359,41 @@ async fn api_atoms(
         })
 }
 
+async fn api_ontology(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_ontology", request_id=%request_id);
+    state.status.touch_client_activity();
+    let store = state.brain.store();
+    let entities = match store.list_ontology_entities(500).await {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            ));
+        }
+    };
+    let links = match store.list_ontology_links(None).await {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.to_string(),
+                &request_id,
+            ));
+        }
+    };
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "request_id": &request_id,
+        "entities": entities,
+        "links": links,
+    })))
+}
+
 async fn api_graph(
     State(state): State<AppState>,
     Query(params): Query<std::collections::HashMap<String, String>>,
@@ -437,7 +511,12 @@ async fn api_promote(
     state.status.touch_client_activity();
     match state
         .brain
-        .promote(&body.atom_id, "http", body.reason.as_deref())
+        .promote(
+            &body.atom_id,
+            &crate::write_policy::WriteContext::from_env(crate::write_policy::WriteTransport::Http)
+                .actor(),
+            body.reason.as_deref(),
+        )
         .await
     {
         Ok(res) => Ok(Json(serde_json::json!({
@@ -502,7 +581,9 @@ struct SearchBody {
 
 #[derive(Debug, Deserialize)]
 struct RecallBody {
-    project: String,
+    /// Project namespace. Omit to fall back to `$KURULTAI_PROJECT`, then `"default"`.
+    #[serde(default)]
+    project: Option<String>,
     query: String,
     #[serde(default = "default_limit")]
     limit: usize,
@@ -553,7 +634,7 @@ async fn recall_post(
     match state
         .brain
         .recall_for_agent(
-            &body.project,
+            &crate::project::resolve_project(body.project.as_deref()),
             &body.query,
             body.limit,
             body.include_quarantine,
@@ -776,6 +857,38 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_ontology_returns_seeded_classes() {
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+            hub: HubGate::default(),
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/ontology")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        let entities = v["entities"].as_array().expect("entities");
+        assert!(entities.len() >= 6);
+        let ids: Vec<&str> = entities.iter().filter_map(|e| e["id"].as_str()).collect();
+        assert!(ids.contains(&"class:memory"));
+        assert!(ids.contains(&"class:note"));
+        let links = v["links"].as_array().expect("links");
+        assert!(links.len() >= 5);
     }
 
     #[tokio::test]
@@ -1313,6 +1426,33 @@ mod tests {
             &self,
             _patterns: &[&str],
         ) -> crate::Result<Vec<crate::types::KnowledgeAtom>> {
+            Ok(vec![])
+        }
+        async fn upsert_ontology_entity(
+            &self,
+            _e: &crate::types::OntologyEntity,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn get_ontology_entity(
+            &self,
+            _id: &str,
+        ) -> crate::Result<Option<crate::types::OntologyEntity>> {
+            Ok(None)
+        }
+        async fn list_ontology_entities(
+            &self,
+            _limit: usize,
+        ) -> crate::Result<Vec<crate::types::OntologyEntity>> {
+            Ok(vec![])
+        }
+        async fn upsert_ontology_link(&self, _l: &crate::types::OntologyLink) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn list_ontology_links(
+            &self,
+            _endpoint: Option<&str>,
+        ) -> crate::Result<Vec<crate::types::OntologyLink>> {
             Ok(vec![])
         }
     }

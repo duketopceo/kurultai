@@ -53,7 +53,8 @@ impl App {
         let reranker = build_reranker(&config);
         let synthesizer = synthesizer_from_env(None);
         let connectors = ConnectorRegistry::from_config(&config).await?;
-        let pipeline = IndexPipeline::new(Arc::clone(&store), Arc::clone(&embedder));
+        let mut pipeline = IndexPipeline::new(Arc::clone(&store), Arc::clone(&embedder));
+        pipeline.register_sources(&config.sources);
 
         tracing::info!(
             env = %environment,
@@ -89,7 +90,7 @@ impl App {
     }
 }
 
-fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>> {
+pub fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>> {
     // API keys come from env only — never from config files.
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
         .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));

@@ -7,12 +7,14 @@ use crate::error::{KurultaiError, Result};
 use crate::hashutil::atom_id;
 use crate::mcp::interface::{AgentRead, AgentWrite};
 use crate::memory::{GraphNode, MemoryTier, TierPolicy};
+use crate::project::{normalize_project, resolve_project, PROJECT_METADATA_KEY};
 use crate::quality::{apply_gate, evaluate, promote_atom, PromoteResult};
 use crate::query::{expand_markdown_context, hybrid_search_filtered};
 use crate::rerank::Reranker;
 use crate::store::{SearchFilter, Store};
 use crate::synthesize::{who_knows_from_hits, Synthesizer, WhoKnowsEntry};
 use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
+use crate::write_policy::{WriteContext, WriteTransport};
 use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -232,12 +234,7 @@ impl BrainService {
         include_quarantine: bool,
     ) -> Result<Vec<KnowledgeAtom>> {
         self.store
-            .list_atoms(
-                limit,
-                SearchFilter {
-                    trusted_only: !include_quarantine,
-                },
-            )
+            .list_atoms(limit, SearchFilter::trusted(!include_quarantine))
             .await
     }
 
@@ -283,9 +280,7 @@ impl BrainService {
         include_quarantine: bool,
         source: Option<&str>,
     ) -> Result<Vec<SearchResult>> {
-        let filter = SearchFilter {
-            trusted_only: !include_quarantine,
-        };
+        let filter = SearchFilter::trusted(!include_quarantine);
         let src = source.map(str::trim).filter(|s| !s.is_empty());
         let fetch = if src.is_some() {
             (limit.max(1) * 8).min(80)
@@ -305,8 +300,15 @@ impl BrainService {
         Ok(results)
     }
 
-    /// Agent-optimized recall: search then filter by `project_id`, returning token-capped views.
-    /// Prototype implementation filters in-memory; production should push `project_id` into SQL.
+    /// Agent-optimized recall: project-scoped search returning token-capped views.
+    ///
+    /// The `project_id` predicate is pushed into SQL (see [`SearchFilter::with_project`])
+    /// so scoping happens before any candidate truncation. Filtering after truncation —
+    /// the previous prototype behaviour — returned `[]` whenever other sessions'
+    /// atoms filled the candidate window, which is exactly the shared-box case.
+    ///
+    /// This is namespacing, not isolation: any local process running as the same
+    /// unix user can pass any project string.
     pub async fn recall_for_agent(
         &self,
         project: &str,
@@ -314,12 +316,19 @@ impl BrainService {
         limit: usize,
         include_quarantine: bool,
     ) -> Result<Vec<AgentAtomView>> {
-        // Over-fetch so project filtering still yields useful results.
+        let project = normalize_project(project);
+        let filter = SearchFilter::trusted(!include_quarantine).with_project(Some(&project));
+        let limit = limit.max(1);
         let mut results = self
-            .search_filtered(query, limit * 2, include_quarantine)
+            .hybrid_hits_filtered(query, (limit * 4).min(40), filter)
             .await?;
+        // Belt and braces: SQL already scoped, this catches any store impl that ignores it.
         results.retain(|r| r.atom.project_id() == project);
         results.truncate(limit);
+        let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
+        self.touch_access_many(&ids).await;
+        self.activity
+            .record("recall", query, ids, Some(format!("project={project}")));
         Ok(results
             .into_iter()
             .map(|r| AgentAtomView::from_atom(&r.atom, r.score, DEFAULT_EXCERPT_CAP))
@@ -342,9 +351,7 @@ impl BrainService {
             .list_graph_nodes(
                 tier,
                 limit,
-                SearchFilter {
-                    trusted_only: !include_quarantine,
-                },
+                SearchFilter::trusted(!include_quarantine),
                 TierPolicy::default(),
             )
             .await
@@ -453,12 +460,40 @@ impl AgentRead for BrainService {
 
 #[async_trait::async_trait]
 impl AgentWrite for BrainService {
+    /// Legacy entry point. Resolves the write context from the environment so the
+    /// closed-write policy applies to callers that predate [`WriteContext`].
     async fn remember(
         &self,
         title: &str,
         summary: &str,
         tags: &[String],
         metadata: &[(&str, &str)],
+    ) -> Result<String> {
+        self.remember_with(
+            title,
+            summary,
+            tags,
+            metadata,
+            &WriteContext::from_env(WriteTransport::Mcp),
+        )
+        .await
+    }
+}
+
+impl BrainService {
+    /// Store an agent-authored atom, stamped with the caller's provenance.
+    ///
+    /// Under [`crate::write_policy::WriteMode::SharedClosed`] the resulting atom is
+    /// forced into quarantine **regardless of the quality gate outcome**: on a shared
+    /// store no agent-reachable path may write to the globally-searchable lane.
+    /// Only `kurultai promote`, run by the operator, moves it out.
+    pub async fn remember_with(
+        &self,
+        title: &str,
+        summary: &str,
+        tags: &[String],
+        metadata: &[(&str, &str)],
+        ctx: &WriteContext,
     ) -> Result<String> {
         if title.trim().is_empty() || summary.trim().is_empty() {
             return Err(KurultaiError::config(
@@ -474,6 +509,12 @@ impl AgentWrite for BrainService {
         for (k, v) in metadata {
             meta.insert((*k).to_string(), (*v).to_string());
         }
+        // Always stamp a namespace so agent writes are recallable by project.
+        // Caller-supplied project_id wins; otherwise KURULTAI_PROJECT, else "default".
+        let project = resolve_project(meta.get(PROJECT_METADATA_KEY).map(String::as_str));
+        meta.insert(PROJECT_METADATA_KEY.to_string(), project.clone());
+        // Stamp last: caller-supplied agent_id / project_id must not forge provenance.
+        ctx.stamp(&mut meta);
 
         let source = "agent";
         let source_id = format!(
@@ -504,6 +545,17 @@ impl AgentWrite for BrainService {
 
         let outcome = evaluate(self.store.as_ref(), &atom).await?;
         apply_gate(&mut atom, outcome);
+
+        // Containment: agent-reachable writes never land in the trusted lane on a
+        // shared store, even when the quality gate would have passed them.
+        if ctx.contains_writes() && atom.trust_lane == crate::types::TrustLane::Trusted {
+            apply_gate(
+                &mut atom,
+                crate::quality::GateOutcome::Quarantine {
+                    reason: crate::write_policy::CONTAINED_REASON.to_string(),
+                },
+            );
+        }
 
         // KTD7: skip embed on quarantine (don't pay / pollute atoms_vec).
         if atom.trust_lane == crate::types::TrustLane::Trusted && self.embedder.is_live() {

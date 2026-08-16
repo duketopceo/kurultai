@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 8;
+pub const CURRENT_SCHEMA_VERSION: i32 = 10;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -106,6 +106,45 @@ CREATE TABLE IF NOT EXISTS atom_soft_labels (
 
 CREATE INDEX IF NOT EXISTS idx_atom_soft_labels_label
     ON atom_soft_labels(label_id);
+"#;
+
+const MIGRATION_009: &str = r#"
+CREATE TABLE IF NOT EXISTS ontology_entities (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    atom_id TEXT,
+    attributes_json TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY (atom_id) REFERENCES knowledge_atoms(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS ontology_links (
+    id TEXT PRIMARY KEY,
+    from_id TEXT NOT NULL,
+    to_id TEXT NOT NULL,
+    rel TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    status TEXT NOT NULL DEFAULT 'approved',
+    actor TEXT NOT NULL DEFAULT 'system',
+    UNIQUE(from_id, to_id, rel)
+);
+CREATE INDEX IF NOT EXISTS idx_ontology_links_from ON ontology_links(from_id);
+CREATE INDEX IF NOT EXISTS idx_ontology_links_to ON ontology_links(to_id);
+CREATE INDEX IF NOT EXISTS idx_ontology_entities_atom ON ontology_entities(atom_id);
+
+INSERT OR IGNORE INTO ontology_entities (id, kind, name, atom_id, attributes_json) VALUES
+    ('class:memory', 'class', 'Memory', NULL, '{}'),
+    ('class:note', 'class', 'Note', NULL, '{}'),
+    ('class:code', 'class', 'Code', NULL, '{}'),
+    ('class:decision', 'class', 'Decision', NULL, '{}'),
+    ('class:person', 'class', 'Person', NULL, '{}'),
+    ('class:system', 'class', 'System', NULL, '{}');
+
+INSERT OR IGNORE INTO ontology_links (id, from_id, to_id, rel, confidence, status, actor) VALUES
+    ('link:note-is-a-memory', 'class:note', 'class:memory', 'is_a', 1.0, 'approved', 'system'),
+    ('link:code-is-a-memory', 'class:code', 'class:memory', 'is_a', 1.0, 'approved', 'system'),
+    ('link:decision-is-a-memory', 'class:decision', 'class:memory', 'is_a', 1.0, 'approved', 'system'),
+    ('link:person-is-a-memory', 'class:person', 'class:memory', 'is_a', 1.0, 'approved', 'system'),
+    ('link:system-is-a-memory', 'class:system', 'class:memory', 'is_a', 1.0, 'approved', 'system');
 "#;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
@@ -291,6 +330,31 @@ pub fn migrate(conn: &Connection) -> Result<()> {
             .map_err(|e| KurultaiError::Store(format!("migration 008 record failed: {e}")))?;
     }
 
+    if current < 9 {
+        conn.execute_batch(MIGRATION_009)
+            .map_err(|e| KurultaiError::Store(format!("migration 009 failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [9])
+            .map_err(|e| KurultaiError::Store(format!("migration 009 record failed: {e}")))?;
+    }
+
+    if current < 10 {
+        // KHAN-251 — persist corpus_tier + visibility_labels.
+        add_column_if_missing(
+            conn,
+            "knowledge_atoms",
+            "corpus_tier",
+            "TEXT NOT NULL DEFAULT 'public'",
+        )?;
+        add_column_if_missing(
+            conn,
+            "knowledge_atoms",
+            "visibility_labels_json",
+            "TEXT NOT NULL DEFAULT '[]'",
+        )?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [10])
+            .map_err(|e| KurultaiError::Store(format!("migration 010 record failed: {e}")))?;
+    }
+
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");
     Ok(())
 }
@@ -332,6 +396,16 @@ pub fn ensure_vec_table(conn: &Connection, embed_dim: usize) -> Result<()> {
 
     meta_set(conn, "embed_dim", &embed_dim.to_string())?;
     Ok(())
+}
+
+/// Read the highest applied migration version from `schema_migrations` (0 if none).
+pub fn current_applied_version(conn: &Connection) -> i32 {
+    conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap_or(0)
 }
 
 pub fn meta_get(conn: &Connection, key: &str) -> Result<Option<String>> {

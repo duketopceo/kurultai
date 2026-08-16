@@ -14,7 +14,9 @@
 //! | `cite` | read | Single citation slice |
 //! | `ask` | read | Synthesized answer + citations + confidence |
 //! | `who_knows` | read | Distinct sources matching a topic |
-//! | `remember` | write | Distilled atom: title, summary, tags |
+//! | `promote` | write | Quarantine → trusted (never a side effect of remember) |
+//! | `ontology_get` | read | Entities + typed links (seeded classes when empty) |
+//! | `ontology_promote` | write | Atom → instance entity + `instance_of` (does not change trust_lane) |
 
 pub mod brain;
 pub mod init;
@@ -26,4 +28,4 @@ pub use init::{
     ensure_default_config, init_walkthrough, provision_docs, wire_agent, AgentTarget, DocsProvision,
 };
 pub use interface::{AgentRead, AgentWrite};
-pub use server::{handle_message, run_stdio, ToolSurface};
+pub use server::{handle_message, handle_message_with, run_stdio, run_stdio_with, ToolSurface};

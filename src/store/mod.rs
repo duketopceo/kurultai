@@ -6,7 +6,8 @@ use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
 use crate::types::{
-    normalize_soft_labels, CorpusTier, KnowledgeAtom, SoftLabel, TrustLane, VisibilityScope,
+    normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink,
+    OntologyLinkType, SoftLabel, TrustLane, VisibilityScope,
 };
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -21,17 +22,60 @@ pub(crate) const MIN_EMBEDDING_NORM: f32 = 1e-6;
 /// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
 const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, question, resolution, \
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
-     last_accessed_at, visibility";
+     last_accessed_at, visibility, corpus_tier, visibility_labels_json";
 
-/// Retrieval filter — default skips quarantine.
-#[derive(Debug, Clone, Copy)]
+/// Retrieval filter — default skips quarantine and spans every project.
+///
+/// `project` is namespacing, not isolation: it keeps one Claude Code session's
+/// recall from being polluted by another session's ingest on the same box. Any
+/// local process running as the same unix user can still pass any project
+/// string. See `docs/PROJECT_SCOPING.md`.
+#[derive(Debug, Clone)]
 pub struct SearchFilter {
     pub trusted_only: bool,
+    /// When set, only atoms whose `metadata.project_id` equals this value match.
+    /// Atoms with no `project_id` are treated as `"default"`.
+    pub project: Option<String>,
 }
 
 impl Default for SearchFilter {
     fn default() -> Self {
-        Self { trusted_only: true }
+        Self {
+            trusted_only: true,
+            project: None,
+        }
+    }
+}
+
+pub use crate::project::{normalize_project, DEFAULT_PROJECT};
+
+/// vec0 KNN takes no WHERE predicates, so project scoping is applied in Rust.
+/// Widen `k` when scoped so other sessions' atoms cannot crowd out our own.
+const VECTOR_PROJECT_OVERFETCH: usize = 8;
+const VECTOR_K_CAP: usize = 2_000;
+
+impl SearchFilter {
+    /// Trust-lane-only filter (no project scoping) — the historical constructor.
+    pub fn trusted(trusted_only: bool) -> Self {
+        Self {
+            trusted_only,
+            project: None,
+        }
+    }
+
+    /// Scope to a project namespace. Empty / whitespace input clears the scope.
+    /// The value is normalized so read scoping matches write tagging exactly.
+    pub fn with_project(mut self, project: Option<&str>) -> Self {
+        self.project = project
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(normalize_project);
+        self
+    }
+
+    /// Project scope as a SQL bind value, if any.
+    pub fn project_scope(&self) -> Option<&str> {
+        self.project.as_deref()
     }
 }
 
@@ -216,6 +260,19 @@ pub trait Store: Send + Sync {
 
     /// Return all ingestion jobs with `status = 'pending'`.
     async fn list_pending_ingestion_jobs(&self) -> Result<Vec<IngestionJob>>;
+
+    /// Insert or replace an ontology entity (O1).
+    async fn upsert_ontology_entity(&self, e: &OntologyEntity) -> Result<()>;
+
+    async fn get_ontology_entity(&self, id: &str) -> Result<Option<OntologyEntity>>;
+
+    async fn list_ontology_entities(&self, limit: usize) -> Result<Vec<OntologyEntity>>;
+
+    /// Insert or update a typed ontology link. Duplicate `(from,to,rel)` updates confidence/actor.
+    async fn upsert_ontology_link(&self, l: &OntologyLink) -> Result<()>;
+
+    /// All links, or those incident on an entity id / atom id.
+    async fn list_ontology_links(&self, endpoint: Option<&str>) -> Result<Vec<OntologyLink>>;
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -250,6 +307,105 @@ pub async fn open_hub_store(database_url: &str, embed_dim: usize) -> Result<Arc<
     }
 }
 
+/// How long a connection waits on a lock held by another process before
+/// returning `SQLITE_BUSY`. Sized for many concurrent MCP stdio processes on
+/// one box sharing a single `store.db`.
+pub const BUSY_TIMEOUT_MS: u32 = 5_000;
+
+/// Env override for [`BUSY_TIMEOUT_MS`], in milliseconds.
+pub const BUSY_TIMEOUT_ENV: &str = "KURULTAI_SQLITE_BUSY_TIMEOUT_MS";
+
+fn busy_timeout_ms() -> u32 {
+    std::env::var(BUSY_TIMEOUT_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .unwrap_or(BUSY_TIMEOUT_MS)
+}
+
+/// Put a freshly opened connection into a state safe for concurrent
+/// multi-process access.
+///
+/// Kurultai's shared deployment shape is N independent OS processes (one
+/// `kurultai mcp` per agent session, plus `kurultai index` runs) each opening
+/// the same `store.db`. The in-process `Mutex<Connection>` does nothing across
+/// process boundaries, so the database itself has to be configured for it:
+///
+/// * `journal_mode = WAL` — readers no longer block on the writer. Under the
+///   default `DELETE` journal a single writer takes an exclusive lock over the
+///   whole file, so every concurrent `search` fails for the duration of an
+///   index run. WAL is persisted in the database header, so this only has to
+///   take effect once, but setting it on every open is cheap and correct.
+/// * `busy_timeout` — per-connection, must be set every open. Without it the
+///   losing process gets `SQLITE_BUSY` immediately instead of waiting.
+/// * `synchronous = NORMAL` — per-connection, the standard companion to WAL.
+///
+/// `journal_mode` is a *query* pragma: `execute_batch` silently swallows a
+/// failed switch, so the result is read back and verified. A failure to reach
+/// WAL is a warning, not an error — a store on a filesystem that cannot do WAL
+/// (e.g. a network mount) should still open for single-process use.
+fn configure_multiprocess(conn: &Connection, path: &std::path::Path) -> Result<()> {
+    let timeout = busy_timeout_ms();
+
+    // busy_timeout first, so the journal_mode switch below can itself wait on
+    // another process that currently holds the lock.
+    conn.pragma_update(None, "busy_timeout", timeout)
+        .map_err(|e| KurultaiError::Store(format!("set busy_timeout: {e}")))?;
+
+    let mode: String = conn
+        .pragma_update_and_check(None, "journal_mode", "WAL", |row| row.get(0))
+        .map_err(|e| KurultaiError::Store(format!("set journal_mode=WAL: {e}")))?;
+
+    if !mode.eq_ignore_ascii_case("wal") {
+        tracing::warn!(
+            path = %path.display(),
+            journal_mode = %mode,
+            "sqlite did not switch to WAL — concurrent readers will block on writes"
+        );
+    }
+
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(|e| KurultaiError::Store(format!("set synchronous=NORMAL: {e}")))?;
+
+    tracing::debug!(
+        path = %path.display(),
+        journal_mode = %mode,
+        busy_timeout_ms = timeout,
+        "sqlite configured for multi-process access"
+    );
+    Ok(())
+}
+
+/// Sidecar files SQLite creates alongside `store.db` in WAL mode.
+///
+/// These must be removed whenever `store.db` is replaced wholesale by a file
+/// copy, or SQLite will apply the old WAL over the new database.
+pub fn wal_sidecar_paths(db: &std::path::Path) -> [PathBuf; 2] {
+    let name = db.file_name().unwrap_or_default().to_os_string();
+    let mut wal = name.clone();
+    wal.push("-wal");
+    let mut shm = name;
+    shm.push("-shm");
+    let parent = db.parent().unwrap_or_else(|| std::path::Path::new("."));
+    [parent.join(wal), parent.join(shm)]
+}
+
+/// Remove stale `-wal` / `-shm` sidecars next to `db`. Missing files are fine.
+pub fn remove_wal_sidecars(db: &std::path::Path) -> Result<()> {
+    for side in wal_sidecar_paths(db) {
+        match std::fs::remove_file(&side) {
+            Ok(()) => tracing::debug!(path = %side.display(), "removed stale sqlite sidecar"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(KurultaiError::Store(format!(
+                    "remove {}: {e}",
+                    side.display()
+                )))
+            }
+        }
+    }
+    Ok(())
+}
+
 pub struct SqliteVecStore {
     conn: Mutex<Connection>,
     path: PathBuf,
@@ -267,6 +423,8 @@ impl SqliteVecStore {
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(|e| KurultaiError::Store(format!("enable foreign_keys: {e}")))?;
 
+        configure_multiprocess(&conn, &path)?;
+
         migrations::migrate(&conn)?;
         migrations::ensure_vec_table(&conn, embed_dim)?;
 
@@ -280,6 +438,24 @@ impl SqliteVecStore {
             path,
             embed_dim,
         })
+    }
+
+    /// Read an integer pragma off this connection (e.g. `busy_timeout`).
+    ///
+    /// Exposed so deployment/acceptance checks can assert on the connection
+    /// state set up by [`configure_multiprocess`] rather than trusting it.
+    pub fn pragma_i64(&self, name: &str) -> Result<i64> {
+        let conn = self.lock()?;
+        conn.query_row(&format!("PRAGMA {name}"), [], |r| r.get(0))
+            .map_err(|e| KurultaiError::Store(format!("read pragma {name}: {e}")))
+    }
+
+    /// The journal mode this database is actually in — `"wal"` when
+    /// multi-process access is safe.
+    pub fn journal_mode(&self) -> Result<String> {
+        let conn = self.lock()?;
+        conn.query_row("PRAGMA journal_mode", [], |r| r.get::<_, String>(0))
+            .map_err(|e| KurultaiError::Store(format!("read pragma journal_mode: {e}")))
     }
 
     pub fn path(&self) -> &PathBuf {
@@ -357,8 +533,8 @@ impl SqliteVecStore {
         let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<KnowledgeAtom> {
             let mut atom = row_to_atom(row)?;
             if with_embeddings {
-                // ATOM_COLUMNS ends at index 15 (`visibility`); embedding is the next select.
-                const EMBEDDING_COL: usize = 16;
+                // ATOM_COLUMNS ends at index 17 (`visibility_labels_json`); embedding is the next select.
+                const EMBEDDING_COL: usize = 18;
                 let blob: Option<Vec<u8>> = row.get(EMBEDDING_COL)?;
                 if let Some(bytes) = blob {
                     atom.embedding = Some(embedding_f32s_from_blob(&bytes).map_err(|e| {
@@ -476,6 +652,9 @@ impl SqliteVecStore {
         let trust_lane = atom.trust_lane.as_str();
         let quarantine_reason = atom.quarantine_reason.as_deref();
         let visibility = atom.visibility.as_str();
+        let corpus_tier = atom.corpus_tier.as_str();
+        let visibility_labels_json = serde_json::to_string(&atom.visibility_labels)
+            .map_err(|e| KurultaiError::Store(format!("visibility_labels serialize: {e}")))?;
         let last_accessed = if atom.last_accessed_at.timestamp() == 0 {
             atom.indexed_at
         } else {
@@ -487,8 +666,9 @@ impl SqliteVecStore {
                 id, source, source_id, title, summary, content,
                 question, resolution, tags_json,
                 source_updated_at, indexed_at, metadata_json, content_hash,
-                trust_lane, quarantine_reason, last_accessed_at, visibility
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+                trust_lane, quarantine_reason, last_accessed_at, visibility,
+                corpus_tier, visibility_labels_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
             ON CONFLICT(id) DO UPDATE SET
                 source = excluded.source,
                 source_id = excluded.source_id,
@@ -508,7 +688,9 @@ impl SqliteVecStore {
                 content_hash = excluded.content_hash,
                 trust_lane = excluded.trust_lane,
                 quarantine_reason = excluded.quarantine_reason,
-                visibility = excluded.visibility
+                visibility = excluded.visibility,
+                corpus_tier = excluded.corpus_tier,
+                visibility_labels_json = excluded.visibility_labels_json
             "#,
             params![
                 atom.id,
@@ -528,6 +710,8 @@ impl SqliteVecStore {
                 quarantine_reason,
                 last_accessed.to_rfc3339(),
                 visibility,
+                corpus_tier,
+                visibility_labels_json,
             ],
         )
         .map_err(|e| KurultaiError::Store(format!("upsert atom failed: {e}")))?;
@@ -662,34 +846,39 @@ impl Store for SqliteVecStore {
         }
 
         let conn = self.lock()?;
-        let sql = if filter.trusted_only {
+        // Predicates live in SQL so project scoping happens BEFORE LIMIT — an
+        // in-memory retain() after truncation silently drops matching atoms once
+        // several sessions share one store.
+        let mut predicates = String::new();
+        if filter.trusted_only {
+            predicates.push_str(" AND a.trust_lane = 'trusted'");
+        }
+        let project = filter.project_scope();
+        if project.is_some() {
+            predicates.push_str(&format!(
+                " AND COALESCE(json_extract(a.metadata_json, '$.project_id'), '{DEFAULT_PROJECT}') = ?3"
+            ));
+        }
+        let sql = format!(
             r#"
                 SELECT a.id, bm25(atoms_fts) AS score
                 FROM atoms_fts
                 JOIN knowledge_atoms a ON a.id = atoms_fts.id
-                WHERE atoms_fts MATCH ?1 AND a.trust_lane = 'trusted'
+                WHERE atoms_fts MATCH ?1{predicates}
                 ORDER BY score
                 LIMIT ?2
                 "#
-        } else {
-            r#"
-                SELECT a.id, bm25(atoms_fts) AS score
-                FROM atoms_fts
-                JOIN knowledge_atoms a ON a.id = atoms_fts.id
-                WHERE atoms_fts MATCH ?1
-                ORDER BY score
-                LIMIT ?2
-                "#
-        };
+        );
         let mut stmt = conn
-            .prepare(sql)
+            .prepare(&sql)
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids prepare: {e}")))?;
 
-        let rows = stmt
-            .query_map(params![fts_query, limit as i64], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
-            })
-            .map_err(|e| KurultaiError::Store(format!("fts_search_ids query: {e}")))?;
+        let row_map = |r: &rusqlite::Row<'_>| Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?));
+        let rows = match project {
+            Some(p) => stmt.query_map(params![fts_query, limit as i64, p], row_map),
+            None => stmt.query_map(params![fts_query, limit as i64], row_map),
+        }
+        .map_err(|e| KurultaiError::Store(format!("fts_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
@@ -722,17 +911,25 @@ impl Store for SqliteVecStore {
         }
 
         // Over-fetch when filtering trusted so k-nearest still fills after lane filter.
-        let k = if filter.trusted_only {
+        // vec0 KNN cannot take arbitrary WHERE predicates, so lane and project are
+        // applied in Rust — over-fetch harder when project-scoped so a session's own
+        // atoms are not crowded out of the k window by other sessions on the box.
+        let mut k = if filter.trusted_only {
             (limit.saturating_mul(3)).max(limit)
         } else {
             limit
         };
+        let project = filter.project_scope();
+        if project.is_some() {
+            k = k.saturating_mul(VECTOR_PROJECT_OVERFETCH).min(VECTOR_K_CAP);
+        }
 
         let conn = self.lock()?;
         let mut stmt = conn
             .prepare(
                 r#"
-                SELECT a.id, v.distance, a.trust_lane
+                SELECT a.id, v.distance, a.trust_lane,
+                       COALESCE(json_extract(a.metadata_json, '$.project_id'), 'default')
                 FROM atoms_vec v
                 JOIN knowledge_atoms a ON a.rowid = v.rowid
                 WHERE v.embedding MATCH ?1 AND k = ?2
@@ -747,15 +944,19 @@ impl Store for SqliteVecStore {
                     r.get::<_, String>(0)?,
                     r.get::<_, f64>(1)?,
                     r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
                 ))
             })
             .map_err(|e| KurultaiError::Store(format!("vector_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
-            let (id, distance, lane) =
+            let (id, distance, lane, atom_project) =
                 row.map_err(|e| KurultaiError::Store(format!("vector_search_ids row: {e}")))?;
             if filter.trusted_only && lane != "trusted" {
+                continue;
+            }
+            if project.is_some_and(|p| p != atom_project) {
                 continue;
             }
             let score = 1.0 / (1.0 + distance);
@@ -1268,6 +1469,135 @@ impl Store for SqliteVecStore {
         let conn = self.lock()?;
         Self::list_pending_ingestion_jobs_sync(&conn)
     }
+
+    async fn upsert_ontology_entity(&self, e: &OntologyEntity) -> Result<()> {
+        let conn = self.lock()?;
+        let attrs = match &e.attributes {
+            serde_json::Value::Object(_) => e.attributes.to_string(),
+            _ => "{}".into(),
+        };
+        conn.execute(
+            r#"
+            INSERT INTO ontology_entities (id, kind, name, atom_id, attributes_json)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(id) DO UPDATE SET
+                kind = excluded.kind,
+                name = excluded.name,
+                atom_id = excluded.atom_id,
+                attributes_json = excluded.attributes_json
+            "#,
+            params![e.id, e.kind, e.name, e.atom_id, attrs],
+        )
+        .map_err(|e| KurultaiError::Store(format!("upsert_ontology_entity: {e}")))?;
+        Ok(())
+    }
+
+    async fn get_ontology_entity(&self, id: &str) -> Result<Option<OntologyEntity>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, kind, name, atom_id, attributes_json FROM ontology_entities WHERE id = ?1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("get_ontology_entity prepare: {e}")))?;
+        stmt.query_row([id], row_to_ontology_entity)
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("get_ontology_entity: {e}")))
+    }
+
+    async fn list_ontology_entities(&self, limit: usize) -> Result<Vec<OntologyEntity>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, kind, name, atom_id, attributes_json FROM ontology_entities ORDER BY id LIMIT ?1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_entities prepare: {e}")))?;
+        let rows = stmt
+            .query_map([limit as i64], row_to_ontology_entity)
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_entities query: {e}")))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_entities collect: {e}")))
+    }
+
+    async fn upsert_ontology_link(&self, l: &OntologyLink) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute(
+            r#"
+            INSERT INTO ontology_links (id, from_id, to_id, rel, confidence, status, actor)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(from_id, to_id, rel) DO UPDATE SET
+                confidence = excluded.confidence,
+                actor = excluded.actor,
+                status = excluded.status
+            "#,
+            params![
+                l.id,
+                l.from_id,
+                l.to_id,
+                l.rel.as_str(),
+                l.confidence as f64,
+                l.status,
+                l.actor
+            ],
+        )
+        .map_err(|e| KurultaiError::Store(format!("upsert_ontology_link: {e}")))?;
+        Ok(())
+    }
+
+    async fn list_ontology_links(&self, endpoint: Option<&str>) -> Result<Vec<OntologyLink>> {
+        let conn = self.lock()?;
+        let mut out = Vec::new();
+        match endpoint {
+            None => {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT id, from_id, to_id, rel, confidence, status, actor FROM ontology_links ORDER BY id",
+                    )
+                    .map_err(|e| KurultaiError::Store(format!("list_ontology_links prepare: {e}")))?;
+                let rows = stmt
+                    .query_map([], row_to_ontology_link_raw)
+                    .map_err(|e| KurultaiError::Store(format!("list_ontology_links query: {e}")))?;
+                for row in rows {
+                    let raw = row.map_err(|e| {
+                        KurultaiError::Store(format!("list_ontology_links row: {e}"))
+                    })?;
+                    if let Some(link) = parse_ontology_link(raw) {
+                        out.push(link);
+                    }
+                }
+            }
+            Some(id) => {
+                let mut stmt = conn
+                    .prepare(
+                        r#"
+                        SELECT l.id, l.from_id, l.to_id, l.rel, l.confidence, l.status, l.actor
+                        FROM ontology_links l
+                        LEFT JOIN ontology_entities e_from ON e_from.id = l.from_id
+                        LEFT JOIN ontology_entities e_to ON e_to.id = l.to_id
+                        WHERE l.from_id = ?1 OR l.to_id = ?1
+                           OR e_from.atom_id = ?1 OR e_to.atom_id = ?1
+                        ORDER BY l.id
+                        "#,
+                    )
+                    .map_err(|e| {
+                        KurultaiError::Store(format!("list_ontology_links endpoint prepare: {e}"))
+                    })?;
+                let rows = stmt
+                    .query_map([id], row_to_ontology_link_raw)
+                    .map_err(|e| {
+                        KurultaiError::Store(format!("list_ontology_links endpoint query: {e}"))
+                    })?;
+                for row in rows {
+                    let raw = row.map_err(|e| {
+                        KurultaiError::Store(format!("list_ontology_links endpoint row: {e}"))
+                    })?;
+                    if let Some(link) = parse_ontology_link(raw) {
+                        out.push(link);
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
 }
 
 /// Hydrate ranked `(id, score)` pairs into atoms, skipping missing ids.
@@ -1305,6 +1635,59 @@ fn register_sqlite_vec() {
 
 fn embedding_norm(v: &[f32]) -> f32 {
     v.iter().map(|x| x * x).sum::<f32>().sqrt()
+}
+
+fn row_to_ontology_entity(row: &rusqlite::Row<'_>) -> rusqlite::Result<OntologyEntity> {
+    let attrs_raw: String = row.get(4)?;
+    let attributes = serde_json::from_str(&attrs_raw).unwrap_or_else(|_| serde_json::json!({}));
+    Ok(OntologyEntity {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        name: row.get(2)?,
+        atom_id: row.get(3)?,
+        attributes,
+    })
+}
+
+struct OntologyLinkRaw {
+    id: String,
+    from_id: String,
+    to_id: String,
+    rel: String,
+    confidence: f64,
+    status: String,
+    actor: String,
+}
+
+fn row_to_ontology_link_raw(row: &rusqlite::Row<'_>) -> rusqlite::Result<OntologyLinkRaw> {
+    Ok(OntologyLinkRaw {
+        id: row.get(0)?,
+        from_id: row.get(1)?,
+        to_id: row.get(2)?,
+        rel: row.get(3)?,
+        confidence: row.get(4)?,
+        status: row.get(5)?,
+        actor: row.get(6)?,
+    })
+}
+
+fn parse_ontology_link(raw: OntologyLinkRaw) -> Option<OntologyLink> {
+    let rel = match OntologyLinkType::parse(&raw.rel) {
+        Some(rel) => rel,
+        None => {
+            tracing::warn!(rel = %raw.rel, id = %raw.id, "skipping ontology link with unknown rel");
+            return None;
+        }
+    };
+    Some(OntologyLink {
+        id: raw.id,
+        from_id: raw.from_id,
+        to_id: raw.to_id,
+        rel,
+        confidence: raw.confidence as f32,
+        status: raw.status,
+        actor: raw.actor,
+    })
 }
 
 /// Build a safe FTS5 MATCH query from free text (AND of quoted tokens).
@@ -1472,6 +1855,8 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
     let quarantine_reason: Option<String> = row.get(13)?;
     let last_accessed_raw: String = row.get(14).unwrap_or_default();
     let visibility_raw: String = row.get(15).unwrap_or_else(|_| "personal".into());
+    let corpus_tier_raw: String = row.get(16).unwrap_or_else(|_| "public".into());
+    let visibility_labels_json: String = row.get(17).unwrap_or_else(|_| "[]".into());
 
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
     let metadata: HashMap<String, String> =
@@ -1501,8 +1886,8 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
         trust_lane: TrustLane::parse(&trust_lane),
         quarantine_reason,
         soft_labels: Vec::new(),
-        corpus_tier: CorpusTier::Public,
-        visibility_labels: Vec::new(),
+        corpus_tier: CorpusTier::parse(&corpus_tier_raw),
+        visibility_labels: serde_json::from_str(&visibility_labels_json).unwrap_or_default(),
         visibility: VisibilityScope::parse(&visibility_raw),
     })
 }
@@ -1933,6 +2318,16 @@ mod tests {
         };
         assert_eq!(table_count("quality_audit"), 1);
         assert_eq!(table_count("merge_candidates"), 1);
+        assert_eq!(table_count("ontology_entities"), 1);
+        assert_eq!(table_count("ontology_links"), 1);
+        let class_n: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ontology_entities WHERE kind = 'class'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(class_n, 6);
     }
 
     #[tokio::test]
@@ -1975,13 +2370,7 @@ mod tests {
         assert_eq!(fts[0].0.id, "t-lane");
 
         let fts_all = store
-            .fts_search(
-                "LANEFILTERTOKEN",
-                10,
-                SearchFilter {
-                    trusted_only: false,
-                },
-            )
+            .fts_search("LANEFILTERTOKEN", 10, SearchFilter::trusted(false))
             .await
             .unwrap();
         assert_eq!(fts_all.len(), 2);
