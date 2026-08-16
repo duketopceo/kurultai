@@ -158,6 +158,52 @@ enum Commands {
     },
     /// Run diagnostic checks (DB, config, MCP, HTTP, embeddings, ontology, connectors)
     Doctor,
+    /// Mint/revoke/list scoped access tokens for HTTP/MCP API consumers
+    Admin {
+        #[command(subcommand)]
+        command: AdminCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum AdminCommands {
+    /// Manage scoped access tokens
+    Key {
+        #[command(subcommand)]
+        command: AdminKeyCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum AdminKeyCommands {
+    /// Mint a new scoped token. Prints the raw token ONCE — it is hashed at rest and cannot be
+    /// recovered afterward.
+    Issue {
+        /// Human label for this key (must be unique)
+        #[arg(long)]
+        name: String,
+        /// Comma-separated mesh ids this key is granted access to
+        #[arg(long, default_value = "")]
+        mesh: String,
+        /// Tier ceiling for this key: public or private
+        #[arg(long, value_name = "public|private")]
+        max_tier: String,
+        /// Comma-separated allowed tool names, e.g. search,cite,ask,who_knows,remember,promote,ontology_promote
+        #[arg(long, default_value = "")]
+        tools: String,
+        /// Path to a text file of free-text policy shown to the agent at connect time.
+        /// NOT enforced in code — advisory only.
+        #[arg(long, value_name = "PATH")]
+        rules_doc: Option<PathBuf>,
+    },
+    /// Revoke a key by name (soft delete — the row is kept, inactive, for audit)
+    Revoke {
+        /// Name of the key to revoke
+        #[arg(long)]
+        name: String,
+    },
+    /// List all keys (active and revoked). Never prints tokens or hashes.
+    List,
 }
 
 #[tokio::main]
@@ -552,9 +598,90 @@ async fn main() -> Result<()> {
             }
             println!("Next: fix source root_path values if needed, then `kurultai init --agent …` and `kurultai status`.");
         }
+        Commands::Admin {
+            command: AdminCommands::Key { command },
+        } => {
+            let config = load_config_with_env(cli.config.as_deref(), cli.env.as_deref())?;
+            let store_path = kurultai::config::expand_path(&config.storage_path)?;
+            let admin_store = kurultai::security::AdminKeyStore::open(
+                &kurultai::security::default_admin_keys_path(&store_path),
+            )?;
+            match command {
+                AdminKeyCommands::Issue {
+                    name,
+                    mesh,
+                    max_tier,
+                    tools,
+                    rules_doc,
+                } => {
+                    let max_tier = kurultai::security::MaxTier::parse(&max_tier)?;
+                    let mesh = split_csv(&mesh);
+                    let tools = split_csv(&tools);
+                    let rules_doc = match rules_doc {
+                        Some(path) => Some(std::fs::read_to_string(&path).map_err(|e| {
+                            kurultai::KurultaiError::config(format!(
+                                "reading --rules-doc {}: {e}",
+                                path.display()
+                            ))
+                        })?),
+                        None => None,
+                    };
+                    let claims = kurultai::security::KeyClaims {
+                        name: name.clone(),
+                        mesh,
+                        max_tier,
+                        tools,
+                        rules_doc,
+                    };
+                    let token = admin_store.issue(&claims)?;
+                    println!("Key '{name}' issued.");
+                    println!();
+                    println!("  {token}");
+                    println!();
+                    println!(
+                        "STORE THIS NOW — it is hashed at rest and cannot be shown again. \
+                         Anyone holding it can authenticate as this key until it is revoked."
+                    );
+                }
+                AdminKeyCommands::Revoke { name } => {
+                    if admin_store.revoke_by_name(&name)? {
+                        println!("Key '{name}' revoked (row kept, inactive, for audit).");
+                    } else {
+                        println!("No active key named '{name}' found (already revoked, or never existed).");
+                    }
+                }
+                AdminKeyCommands::List => {
+                    let records = admin_store.list()?;
+                    if records.is_empty() {
+                        println!("No keys issued.");
+                    } else {
+                        for r in records {
+                            let status = if r.active { "active" } else { "revoked" };
+                            println!(
+                                "  {} [{}] tier={} mesh=[{}] tools=[{}]",
+                                r.name,
+                                status,
+                                r.max_tier,
+                                r.mesh.join(","),
+                                r.tools.join(",")
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Ok(())
+}
+
+/// Split a comma-separated CLI value into trimmed, non-empty parts.
+fn split_csv(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 fn brain_from_app(app: &App) -> BrainService {
