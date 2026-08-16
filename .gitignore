@@ -51,3 +51,7 @@ web/.env.*.local
 # Agent workspace directories
 .harness/
 .a0proj/
+
+# Python
+__pycache__/
+*.py[cod]

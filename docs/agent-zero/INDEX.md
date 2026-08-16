@@ -1,4 +1,39 @@
 ---
+index: kurultai/v1
+folder: docs/agent-zero
+parent: docs/INDEX.md
+updated: 2026-08-16
+version: 1
+---
+
+# `docs/agent-zero`
+
+**Does:** v1 Agent Zero issue pack (historical)
+**Up:** [`docs/INDEX.md`](../INDEX.md) · **Protocol:** [`docs/agent-index.md`](../../docs/agent-index.md)
+
+## Children
+
+_None._
+
+## Files
+
+| File | Does | Needs | Touches | Stamp | Ver | Changelog |
+|------|------|-------|---------|-------|-----|-----------|
+| [`ISSUE-001-scheduled-background-indexing.md`](ISSUE-001-scheduled-background-indexing.md) | Scheduled Background Indexing | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`ISSUE-002-query-result-citations.md`](ISSUE-002-query-result-citations.md) | Query Result Citations | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`ISSUE-003-multi-hop-reasoning.md`](ISSUE-003-multi-hop-reasoning.md) | ISSUE: Multi-hop Reasoning (Graph Orchestration) | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`ISSUE-004-agent-installer.md`](ISSUE-004-agent-installer.md) | ISSUE: Agent-Level CLI Installer | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`PR-001-dev-dashboard-http-daemon.md`](PR-001-dev-dashboard-http-daemon.md) | PR: Dev Dashboard (HTTP Daemon + WebSocket) | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
+
+## Recent
+
+- 2026-08-16 — indexed this folder (v1 seed)
+
+## Notes
+
+Historical Agent Zero pack follows. Do not treat as the live Phase 6 queue.
+
+---
 tags: [agent-zero, index, v1]
 related:
   - docs/agent-zero/ISSUE-001-scheduled-background-indexing.md
@@ -65,3 +100,4 @@ gh api repos/duketopceo/kurultai/milestones -f title="v1 Release" -f state=open
 
 **Created by:** Agent Zero drafts → imported for duketopceo/kurultai v1  
 **Date:** 2026-07-25
+
