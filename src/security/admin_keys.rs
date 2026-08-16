@@ -326,7 +326,10 @@ mod tests {
         assert!(revoked);
 
         // Row still exists (soft delete / audit trail) but reports inactive.
-        let rec = store.resolve_by_hash(&hash).unwrap().expect("row kept for audit");
+        let rec = store
+            .resolve_by_hash(&hash)
+            .unwrap()
+            .expect("row kept for audit");
         assert!(!rec.active);
         assert!(rec.revoked_at.is_some());
 
