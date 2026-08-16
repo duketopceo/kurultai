@@ -1,11 +1,17 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import brainUrl from '../assets/brain.glb?url';
-import type { Atom, Link, Theme, LayoutMode } from '../types';
+import type { Atom, Link, Theme, LayoutMode, OntologyResponse, OntologyEntity } from '../types';
 import { hashId } from '../state';
 import { createFdgWorker } from './layout/createWorker';
 import { bakeSdfFromPositions, packSdf } from './layout/sdf';
 import type { FdgLink, FdgNode, FdgWorkerOut } from './layout/types';
+import {
+  assignLayers,
+  bucketsFromAssign,
+  hierPositions,
+  orderLayers,
+} from './layout/sugiyama';
 
 /*
  * Particle-cortex renderer. The anatomical brain mesh is dissolved into GPU
@@ -148,6 +154,11 @@ const FDG_MAX_ITERATIONS_BIG_GRAPH = 150;
 const FDG_BIG_GRAPH_N = 1500;
 const SDF_RESOLUTION = 32;
 
+/** Max `instance_of` children added when a class is expanded (KTD10). */
+export const ONTOLOGY_EXPAND_CAP = 80;
+const ONTOLOGY_Y_STEP = 0.55;
+const ONTOLOGY_XZ_STEP = 0.72;
+
 // Dev-only perf instrumentation (U4): flip to true locally to log setData and
 // force-sim timings. Kept behind a module-level const because the repo
 // tsconfig has no vite/client types (import.meta.env doesn't typecheck); when
@@ -247,6 +258,15 @@ export class BrainView {
   private workerBusy = false;
   private workerIters = 0;
   private workerNodeCount = 0;
+
+  /* ── Ontology scaffold (Slice C / O2) ──────────────────────── */
+  private graphAtoms: Atom[] = [];
+  private graphLinks: Link[] = [];
+  private ontologyDoc: OntologyResponse = { ok: true, entities: [], links: [] };
+  private expandedClassIds = new Set<string>();
+  private backingAtomByEntity = new Map<string, Atom>();
+  private ontologyEdges = false;
+  private applyingOntology = false;
 
   /* ── Interactive control state ─────────────────────────────── */
   private connectionThreshold = 0;
@@ -523,6 +543,15 @@ export class BrainView {
     // doesn't compete with the rebuild below (mirrors dispose()).
     if (this.layoutAnimRaf) { cancelAnimationFrame(this.layoutAnimRaf); this.layoutAnimRaf = 0; }
     const perfT0 = PERF_DEBUG ? performance.now() : 0;
+    if (!this.applyingOntology) {
+      this.graphAtoms = atoms;
+      this.graphLinks = links;
+      if (this.layoutMode === 'ontology') {
+        this.applyOntologyScaffold(false);
+        return;
+      }
+      this.ontologyEdges = false;
+    }
     this.atomsById = new Map(atoms.map((a) => [a.id, a]));
     this.links = links;
     this.sortedLinks = links.slice().sort((a, b) => b.strength - a.strength).slice(0, MAX_EDGES);
@@ -594,7 +623,7 @@ export class BrainView {
     this.applyFilters();
     if (!this.spriteMode) this.applyRegionColors();
 
-    this.startWorkerLayout(shown);
+    if (!this.applyingOntology) this.startWorkerLayout(shown);
 
     if (PERF_DEBUG) {
       console.log(
@@ -715,6 +744,11 @@ export class BrainView {
         const a = this.atomPositions.get(link.a);
         const b = this.atomPositions.get(link.b);
         if (!a || !b) return;
+
+        if (this.ontologyEdges) {
+          this.edgeGroup.add(this.makeOntologyLine(link, a, b));
+          return;
+        }
 
         // Build a surface-conformant Catmull-Rom curve through 4-6
         // intermediate points projected onto the brain mesh surface.
@@ -1028,7 +1062,7 @@ export class BrainView {
         const halo = this.haloMap.get(id);
         if (halo) halo.visible = visible;
         const label = this.labelMap.get(id);
-        if (label) label.visible = visible && this.showLabels;
+        if (label) label.visible = visible && (this.showLabels || this.layoutMode === 'ontology');
       });
     }
     this.edgeGroup.children.forEach((line) => {
@@ -1199,19 +1233,29 @@ export class BrainView {
 
   setLayout(mode: LayoutMode) {
     if (this.layoutMode === mode) return;
-    if (mode === 'ontology') this.freezeOntologyPositions();
+    const leavingOntology = this.layoutMode === 'ontology' && mode !== 'ontology';
     this.layoutMode = mode;
-    if (this.opts.reducedMotion) this.snapLayoutTo(mode);
-    else this.animateLayoutTo(mode);
-    if (mode === 'brain') this.requestWorkerTick();
+    if (leavingOntology) {
+      this.expandedClassIds.clear();
+      this.ontologyEdges = false;
+      this.setData(this.graphAtoms, this.graphLinks);
+    }
+    if (mode === 'ontology') {
+      this.applyOntologyScaffold(true);
+    } else if (!leavingOntology) {
+      if (this.opts.reducedMotion) this.snapLayoutTo(mode);
+      else this.animateLayoutTo(mode);
+      if (mode === 'brain') this.requestWorkerTick();
+    }
   }
 
-  private freezeOntologyPositions() {
-    this.ontoPos = new Map();
-    for (const id of this._shownIds) {
-      const p = this.brainPos.get(id) ?? this.atomPositions.get(id);
-      if (p) this.ontoPos.set(id, p.clone());
-    }
+  setOntology(doc: OntologyResponse) {
+    this.ontologyDoc = {
+      ok: doc.ok !== false,
+      entities: Array.isArray(doc.entities) ? doc.entities : [],
+      links: Array.isArray(doc.links) ? doc.links : [],
+    };
+    if (this.layoutMode === 'ontology') this.applyOntologyScaffold(false);
   }
 
   /**
@@ -1281,6 +1325,7 @@ export class BrainView {
           this.spriteHoverLabel.position.y += 0.02;
         }
       }
+      if (this.ontologyEdges) this.syncOntologyEdges();
       return;
     }
     this.nodeObjects.forEach((mesh) => {
@@ -1296,6 +1341,7 @@ export class BrainView {
       if (label) { label.position.copy(mesh.position); label.position.y += 0.02; }
       this.atomPositions.get(atom.id)?.copy(mesh.position);
     });
+    if (this.ontologyEdges) this.syncOntologyEdges();
   }
 
   private targetPos(mode: LayoutMode, atom: Atom, region: Region, out: THREE.Vector3): THREE.Vector3 {
@@ -1352,12 +1398,13 @@ export class BrainView {
     }
     const sdf = this.sdfPacked ? this.sdfPacked.slice(0) : new ArrayBuffer(0);
     this.layoutWorker.postMessage({ type: 'init', nodes, links, sdf, aabb: [] }, sdf.byteLength ? [sdf] : []);
-    if (this.layoutMode === 'ontology') this.freezeOntologyPositions();
+    if (this.layoutMode === 'ontology') return;
     this.requestWorkerTick();
   }
 
   private requestWorkerTick() {
     if (!this.layoutWorker || this.disposed || this.workerBusy) return;
+    if (this.layoutMode === 'ontology') return;
     if (this.workerNodeCount <= 1) return;
     const maxIters = this.workerNodeCount > FDG_BIG_GRAPH_N ? FDG_MAX_ITERATIONS_BIG_GRAPH : FDG_MAX_ITERATIONS;
     if (this.workerIters >= maxIters) return;
@@ -1386,7 +1433,211 @@ export class BrainView {
     if (this.layoutMode === 'brain') this.requestWorkerTick();
   }
 
-  /* ── Theme ─────────────────────────────────────────────────── */
+
+  /* ── Ontology scaffold (Slice C / O2) ──────────────────────── */
+
+  private applyOntologyScaffold(animate: boolean) {
+    if (!this.verts.length) return;
+    this.ontologyEdges = true;
+    this.applyingOntology = true;
+    try {
+      const { atoms, links } = this.ontologyVisibleGraph();
+      this.setData(atoms, links);
+      this.computeOntoPositions();
+      this.setOntologyLabelsVisible(true);
+      if (animate && !this.opts.reducedMotion) this.animateLayoutTo('ontology');
+      else this.snapOntoPositions();
+    } finally {
+      this.applyingOntology = false;
+    }
+  }
+
+  private ontologyVisibleGraph(): { atoms: Atom[]; links: Link[] } {
+    this.backingAtomByEntity = new Map();
+    const entities = this.ontologyDoc.entities;
+    const byId = new Map(entities.map((e) => [e.id, e]));
+    const classes = entities.filter((e) => e.kind === 'class');
+    const visible = new Map<string, OntologyEntity>();
+    for (const c of classes) visible.set(c.id, c);
+
+    const instanceOf = this.ontologyDoc.links.filter((l) => l.rel === 'instance_of');
+    for (const classId of this.expandedClassIds) {
+      const kids = instanceOf
+        .filter((l) => l.to_id === classId)
+        .map((l) => byId.get(l.from_id))
+        .filter((e): e is OntologyEntity => !!e)
+        .slice(0, ONTOLOGY_EXPAND_CAP);
+      for (const kid of kids) visible.set(kid.id, kid);
+    }
+
+    const graphById = new Map(this.graphAtoms.map((a) => [a.id, a]));
+    const atoms: Atom[] = [];
+    for (const e of visible.values()) {
+      atoms.push(this.entityToAtom(e, graphById));
+    }
+
+    const links: Link[] = [];
+    for (const l of this.ontologyDoc.links) {
+      if (l.status && l.status !== 'approved') continue;
+      if (!visible.has(l.from_id) || !visible.has(l.to_id)) continue;
+      links.push({
+        a: l.from_id,
+        b: l.to_id,
+        strength: 1,
+        rel: l.rel,
+      });
+    }
+    return { atoms, links };
+  }
+
+  private entityToAtom(e: OntologyEntity, graphById: Map<string, Atom>): Atom {
+    const backing = e.atom_id ? graphById.get(e.atom_id) : undefined;
+    if (backing) this.backingAtomByEntity.set(e.id, backing);
+    return {
+      id: e.id,
+      title: e.name || backing?.title || e.id,
+      summary: backing?.summary || e.kind,
+      source: backing?.source || 'ontology',
+      source_id: backing?.source_id || e.id,
+      tags: backing?.tags?.length ? backing.tags : [e.kind],
+      file: backing?.file || '',
+      indexed_at: backing?.indexed_at || '',
+      last_accessed_at: backing?.last_accessed_at || '',
+      score: e.kind === 'class' ? 1 : 0.7,
+      tier: backing?.tier || 'hot',
+      lean: false,
+    };
+  }
+
+  private computeOntoPositions() {
+    this.ontoPos = new Map();
+    const classes = this.ontologyDoc.entities.filter((e) => e.kind === 'class');
+    const isA = this.ontologyDoc.links
+      .filter((l) => l.rel === 'is_a' && (!l.status || l.status === 'approved'))
+      .map((l) => ({ from: l.from_id, to: l.to_id }));
+    const assign = assignLayers(classes.map((c) => ({ id: c.id })), isA);
+    const ordered = orderLayers(bucketsFromAssign(assign), isA);
+    const classPos = hierPositions(ordered, ONTOLOGY_Y_STEP, ONTOLOGY_XZ_STEP);
+    for (const [id, p] of classPos) {
+      this.ontoPos.set(id, new THREE.Vector3(p.x, p.y, p.z));
+    }
+
+    const instanceOf = this.ontologyDoc.links.filter((l) => l.rel === 'instance_of');
+    for (const classId of this.expandedClassIds) {
+      const parent = this.ontoPos.get(classId);
+      if (!parent) continue;
+      const kids = instanceOf
+        .filter((l) => l.to_id === classId)
+        .map((l) => l.from_id)
+        .filter((id) => this.atomsById.has(id))
+        .slice(0, ONTOLOGY_EXPAND_CAP);
+      const n = kids.length;
+      const radius = 0.22 + Math.min(n, 12) * 0.012;
+      kids.forEach((id, i) => {
+        const angle = (i / Math.max(n, 1)) * Math.PI * 2;
+        this.ontoPos.set(
+          id,
+          new THREE.Vector3(
+            parent.x + Math.cos(angle) * radius,
+            parent.y - ONTOLOGY_Y_STEP,
+            parent.z + Math.sin(angle) * radius,
+          ),
+        );
+      });
+    }
+  }
+
+  private snapOntoPositions() {
+    const to = new THREE.Vector3();
+    this._shownIds.forEach((id, i) => {
+      const atom = this.atomsById.get(id);
+      if (!atom) return;
+      const settled = this.ontoPos.get(atom.id);
+      if (settled) to.copy(settled);
+      else {
+        const pos = this.atomPositions.get(atom.id);
+        if (pos) to.copy(pos);
+        else to.set(0, 0, 0);
+      }
+      const p = this.atomPositions.get(id);
+      if (p) p.copy(to);
+      if (this.spriteMode && this.spritePosAttr) {
+        this.spritePosAttr.setXYZ(i, to.x, to.y, to.z);
+      } else {
+        const mesh = this.nodeMap.get(id);
+        if (mesh) mesh.position.copy(to);
+        const halo = this.haloMap.get(id);
+        if (halo) halo.position.copy(to);
+        const label = this.labelMap.get(id);
+        if (label) {
+          label.position.copy(to);
+          label.position.y += 0.02;
+        }
+      }
+    });
+    if (this.spriteMode && this.spritePosAttr) this.spritePosAttr.needsUpdate = true;
+    this.syncOntologyEdges();
+  }
+
+  private setOntologyLabelsVisible(on: boolean) {
+    this.labelMap.forEach((label) => {
+      label.visible = on;
+    });
+  }
+
+  private isOntologyClass(id: string): boolean {
+    return this.ontologyDoc.entities.some((e) => e.id === id && e.kind === 'class');
+  }
+
+  private toggleClassExpand(classId: string) {
+    if (this.expandedClassIds.has(classId)) this.expandedClassIds.delete(classId);
+    else this.expandedClassIds.add(classId);
+    this.applyOntologyScaffold(true);
+  }
+
+  private emitSelect(id: string) {
+    const atom = this.backingAtomByEntity.get(id) ?? this.atomsById.get(id);
+    if (atom) this.opts.onSelectAtom(atom);
+  }
+
+  private makeOntologyLine(link: Link, a: THREE.Vector3, b: THREE.Vector3): THREE.Line {
+    const dashed = !!link.rel && link.rel !== 'is_a' && link.rel !== 'instance_of';
+    const geo = new THREE.BufferGeometry().setFromPoints([a.clone(), b.clone()]);
+    const mat = dashed
+      ? new THREE.LineDashedMaterial({
+          color: this.palette.edgeRest,
+          transparent: true,
+          opacity: 0.35,
+          depthWrite: false,
+          dashSize: 0.04,
+          gapSize: 0.03,
+        })
+      : new THREE.LineBasicMaterial({
+          color: this.palette.edgeRest,
+          transparent: true,
+          opacity: link.rel === 'instance_of' ? 0.28 : 0.45,
+          depthWrite: false,
+        });
+    const line = new THREE.Line(geo, mat);
+    line.userData = link;
+    if (dashed) line.computeLineDistances();
+    return line;
+  }
+
+  private syncOntologyEdges() {
+    this.edgeGroup.children.forEach((obj) => {
+      const line = obj as THREE.Line;
+      const link = line.userData as Link;
+      const a = this.atomPositions.get(link.a);
+      const b = this.atomPositions.get(link.b);
+      if (!a || !b) return;
+      line.geometry.setFromPoints([a, b]);
+      if ((line.material as THREE.Material).type === 'LineDashedMaterial') {
+        line.computeLineDistances();
+      }
+    });
+  }
+
   /* ── Theme ─────────────────────────────────────────────────── */
 
   setTheme(theme: Theme) {
@@ -1496,12 +1747,17 @@ export class BrainView {
     const atomId = this.pickAtomId();
     const atom = atomId && this.atomsById.get(atomId);
     if (atom) {
+      if (this.layoutMode === 'ontology' && this.isOntologyClass(atom.id)) {
+        this.toggleClassExpand(atom.id);
+        this.emitSelect(atom.id);
+        return;
+      }
       if (this.zoomAtomId === atomId) {
         this.zoomOut();
       } else {
         this.zoomAtomId = atomId;
       }
-      this.opts.onSelectAtom(atom);
+      this.emitSelect(atom.id);
     } else {
       // Click empty space — return to orbit view.
       this.zoomOut();

@@ -49,6 +49,8 @@ bash scripts/build-ui.sh   # Node 22 (see `.nvmrc`); writes ui/
 cargo build                # embed the new assets
 ```
 
+Layout math: `node --experimental-strip-types --test website/src/brain/layout/*.test.ts` (also `npm run test:layout` in `website/`).
+
 CI job **Brain UI build** fails if `ui/` is stale relative to `website/`. Do not edit hashed files under `ui/assets/` by hand.
 
 ## Coding Standards
