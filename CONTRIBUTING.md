@@ -67,6 +67,10 @@ CI job **Brain UI build** fails if `ui/` is stale relative to `website/`. Do not
 - Update README.md for user-facing changes
 - Update relevant docs/ files for architectural changes
 - Use descriptive commit messages
+- **Agent index:** every in-scope folder has `INDEX.md`. After changing a file, update that folder's row and roll Recent up to root (`docs/agent-index.md`). Run `python3 scripts/audit-agent-index.py` before opening a PR.
+
+### Agent index
+See [`INDEX.md`](INDEX.md) and [`docs/agent-index.md`](docs/agent-index.md). Do not add `INDEX.md` inside ingest fixtures (`tests/fixtures/vault/`, `tests/fixtures/code_repo/`) or hashed `ui/assets/`.
 
 ### Testing
 - Unit tests in `src/` alongside implementation

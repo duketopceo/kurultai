@@ -16,6 +16,15 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
+  agent-index:
+    name: Agent index
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit INDEX.md coverage
+        run: python3 scripts/audit-agent-index.py
+
   check:
     name: Lint & Test
     runs-on: ubuntu-latest

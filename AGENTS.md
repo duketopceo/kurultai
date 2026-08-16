@@ -12,6 +12,7 @@
 
 ## Learned Workspace Facts
 
+- Start at [`INDEX.md`](INDEX.md) (folder map). Schema and update ritual: [`docs/agent-index.md`](docs/agent-index.md). When you change a file, update that folder's `INDEX.md` row (does/needs/touches/stamp/version/3-line changelog) and prepend Recent up to the root index. `python3 scripts/audit-agent-index.py` must stay green.
 - Brain UI assets live in `ui/` and are embedded in the daemon binary; with the daemon running, open `http://127.0.0.1:8421/ui/` — do not maintain a parallel brain dashboard under `website/` or `web/`.
 - Local Vite preview commonly runs from `website/` on `http://127.0.0.1:5174` (`npm run dev -- --host 127.0.0.1 --port 5174`) and can serve live `ui/` files; embedded daemon UI changes need a rebuild.
 - Default local daemon: `./target/debug/kurultai daemon --port 8421` from the repo root.
