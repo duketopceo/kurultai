@@ -75,6 +75,8 @@ jobs:
           node-version-file: ".nvmrc"
           cache: npm
           cache-dependency-path: website/package-lock.json
+      - name: Layout math tests
+        run: node --experimental-strip-types --test website/src/brain/layout/*.test.ts
       - name: Build website/ → ui/
         run: bash scripts/build-ui.sh
       - name: Embedded ui/ matches website source

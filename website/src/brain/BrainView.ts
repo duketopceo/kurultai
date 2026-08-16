@@ -3,13 +3,16 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import brainUrl from '../assets/brain.glb?url';
 import type { Atom, Link, Theme, LayoutMode } from '../types';
 import { hashId } from '../state';
+import { createFdgWorker } from './layout/createWorker';
+import { bakeSdfFromPositions, packSdf } from './layout/sdf';
+import type { FdgLink, FdgNode, FdgWorkerOut } from './layout/types';
 
 /*
  * Particle-cortex renderer. The anatomical brain mesh is dissolved into GPU
- * point sprites (gl.POINTS) — one per mesh vertex. Memories are pinned to
- * cortex vertices by FNV-1a hash; shared-tag or shared-source synapses arc
- * between them. Cursor proximity drives a local electric flare through
- * nearby particles via uPointer/uHover uniforms.
+ * point sprites (gl.POINTS) — one per mesh vertex. Memories start on cortex
+ * vertices then settle as a volumetric FDG cloud inside the GLB hull (worker).
+ * Shared-tag synapses arc between them. Cursor proximity drives a local
+ * electric flare through nearby particles via uPointer/uHover uniforms.
  */
 
 const PARTICLE_VERTEX = /* glsl */ `
@@ -140,23 +143,10 @@ const NODE_SPRITE_SIZE_SCALE = 5;
 // Raycaster threshold (world units) for picking individual node sprites.
 const NODE_RAYCAST_THRESHOLD = 0.02;
 
-// Force-directed layout constants (vanilla JS — no physics library).
-const FORCE_MAX_ITERATIONS = 300;
-const FORCE_DAMPING = 0.85;
-const FORCE_SPRING_REST = 0.35;
-const FORCE_SPRING_K = 0.05;
-const FORCE_REPULSION_K = 0.02;
-const FORCE_REPULSION_MAX_DIST = 1.5; // pairs farther than this don't repel
-const FORCE_REPULSION_EPSILON = 0.01; // guards divide-by-zero on coincident nodes
-const FORCE_CENTER_K = 0.01; // weak pull toward origin
-const FORCE_SETTLE_THRESHOLD = 0.0005; // avg displacement/iter below this ⇒ settled
-// Large-graph iteration cap (U4): at n > FORCE_BIG_GRAPH_N a full
-// FORCE_MAX_ITERATIONS sim is ~25-50s of background slices (n²/2 ≈ 3.1M pair
-// evals/iter at n=2500, ~80-160ms/iter), so the galaxy/cluster shape takes
-// far too long to emerge. 150 iterations still resolves the macro shape, and
-// FORCE_SETTLE_THRESHOLD early-exits warm-started refreshes before either cap.
-const FORCE_BIG_GRAPH_N = 1500;
-const FORCE_MAX_ITERATIONS_BIG_GRAPH = 150;
+const FDG_MAX_ITERATIONS = 300;
+const FDG_MAX_ITERATIONS_BIG_GRAPH = 150;
+const FDG_BIG_GRAPH_N = 1500;
+const SDF_RESOLUTION = 32;
 
 // Dev-only perf instrumentation (U4): flip to true locally to log setData and
 // force-sim timings. Kept behind a module-level const because the repo
@@ -248,25 +238,15 @@ export class BrainView {
   private usedVerts = new Set<number>();
   private degrees = new Map<string, number>();
   private layoutMode: LayoutMode = 'brain';
-  private _solarSunId = '';
-  private _solarPlanets = new Map<string, { orbitR: number; angle: number; tilt: number }>();
-  private _solarMoons = new Map<string, { planetId: string; moonR: number; moonAngle: number }>();
-  private _solarAsteroids = new Map<string, { r: number; angle: number; y: number }>();
 
-  /* ── Force-directed layout state ──────────────────────────── */
-  // Authoritative settled positions (synced once on sim completion).
-  private forcePositions = new Map<string, THREE.Vector3>();
-  // Flat arrays for the O(n²) hot loop — avoids per-iteration Vector3/GC churn.
-  private _forcePosArr = new Float32Array(0);
-  private _forceVelArr = new Float32Array(0);
-  private _forceIds: string[] = [];
-  private _forceIndex = new Map<string, number>();
-  private _forceLinkPairs: { a: number; b: number; strength: number }[] = [];
-  private _forceSimHandle: ReturnType<typeof setTimeout> | null = null;
-  private _forceIterations = 0;
-  // PERF_DEBUG-only sim timers (never written when PERF_DEBUG is false).
-  private _perfSimT0 = 0;
-  private _perfSimActive = 0;
+  /* ── Worker FDG layout ────────────────────────────────────── */
+  private brainPos = new Map<string, THREE.Vector3>();
+  private ontoPos = new Map<string, THREE.Vector3>();
+  private layoutWorker: Worker | null = null;
+  private sdfPacked: ArrayBuffer | null = null;
+  private workerBusy = false;
+  private workerIters = 0;
+  private workerNodeCount = 0;
 
   /* ── Interactive control state ─────────────────────────────── */
   private connectionThreshold = 0;
@@ -323,6 +303,17 @@ export class BrainView {
 
     this.uniforms.uIntro.value = opts.reducedMotion ? 1 : 0;
 
+    try {
+      this.layoutWorker = createFdgWorker();
+      this.layoutWorker.onmessage = (event: MessageEvent<FdgWorkerOut>) => this.onWorkerPositions(event.data);
+      this.layoutWorker.onerror = () => {
+        this.layoutWorker?.terminate();
+        this.layoutWorker = null;
+      };
+    } catch {
+      this.layoutWorker = null;
+    }
+
     this.loadModel();
     this.addListeners();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -356,6 +347,7 @@ export class BrainView {
           : this.deriveNormals(this.verts);
 
         this.classifyVertices();
+        this.bakeHullSdf(geometry);
 
         this.proxy = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial());
         this.proxy.visible = false;
@@ -412,6 +404,16 @@ export class BrainView {
         this.regionVerts.right.push(idx);
       }
     }
+  }
+
+  private bakeHullSdf(geometry: THREE.BufferGeometry) {
+    const index = geometry.getIndex();
+    const sdf = bakeSdfFromPositions(
+      this.verts,
+      index ? index.array : null,
+      SDF_RESOLUTION,
+    );
+    this.sdfPacked = sdf ? packSdf(sdf) : null;
   }
 
   /**
@@ -592,17 +594,7 @@ export class BrainView {
     this.applyFilters();
     if (!this.spriteMode) this.applyRegionColors();
 
-    // Kick off the force-directed layout sim in the background.
-    // Nodes stay at lattice positions until the sim settles; on completion
-    // the existing setLayout transition animates to force positions if the
-    // user is currently in force mode.
-    this.computeForceLayout();
-
-    // Re-apply a non-'brain' layout so live refreshes don't leave new atoms
-    // at lattice positions. 'ontology' is handled by finalizeForceLayout; 'galaxy'
-    // rebuilds role assignment here. 'brain' needs nothing (lattice is the
-    // setData default).
-    if (this.layoutMode === 'galaxy') this.applySolarLayout();
+    this.startWorkerLayout(shown);
 
     if (PERF_DEBUG) {
       console.log(
@@ -736,7 +728,7 @@ export class BrainView {
           // per edge × up to MAX_EDGES edges against the ~5.6k-tri proxy costs
           // ~1-2ms per raycast (multi-second setData at 2500 nodes), blowing
           // the 500ms render budget. At sprite densities surface conformity is
-          // invisible (the force/galaxy layouts leave the brain hull anyway),
+          // invisible (the force layout leaves the brain hull anyway),
           // so fall through to the cheap outward lift.
           if (this.proxy && !this.spriteMode) {
             // Raycast from brain center through p onto the mesh surface.
@@ -1207,81 +1199,27 @@ export class BrainView {
 
   setLayout(mode: LayoutMode) {
     if (this.layoutMode === mode) return;
+    if (mode === 'ontology') this.freezeOntologyPositions();
     this.layoutMode = mode;
-    if (mode === 'galaxy') {
-      this.applySolarLayout();
-    } else {
-      this.animateLayoutTo(mode);
-    }
+    if (this.opts.reducedMotion) this.snapLayoutTo(mode);
+    else this.animateLayoutTo(mode);
+    if (mode === 'brain') this.requestWorkerTick();
   }
 
-  /**
-   * Rebuild the solar role assignment (sun/planets/moons/asteroids) from the
-   * current atomsById and animate to the 'galaxy' layout. Extracted from
-   * setLayout so setData can re-apply it after a live refresh (otherwise new
-   * atoms stay at lattice positions in solar mode). Preserves the exact
-   * role-assignment logic: degree-descending sort, MAX_PLANETS cap, moon
-   * assignment via shared-link planet lookup, and asteroid scatter for the rest.
-   */
-  private applySolarLayout() {
-    const atoms = [...this.atomsById.values()];
-    const sorted = [...atoms].sort(
-      (a, b) => (this.degrees.get(b.id) || 0) - (this.degrees.get(a.id) || 0),
-    );
-    this._solarSunId = sorted[0]?.id ?? '';
-    const MAX_PLANETS = 14;
-    const planets = sorted.slice(1, MAX_PLANETS + 1);
-    this._solarPlanets = new Map();
-    planets.forEach((atom, i) => {
-      const orbitR = 0.8 + (i / Math.max(planets.length - 1, 1)) * 3.5;
-      const angle = (i / planets.length) * Math.PI * 2;
-      const tilt = (Math.random() - 0.5) * 0.6;
-      this._solarPlanets.set(atom.id, { orbitR, angle, tilt });
-    });
-    const planetIds = new Set(planets.map((a) => a.id));
-    const assigned = new Set<string>([this._solarSunId, ...planetIds]);
-    this._solarMoons = new Map();
-    this._solarAsteroids = new Map();
-    const moonCounts = new Map<string, number>();
-    sorted.slice(MAX_PLANETS + 1).forEach((atom) => {
-      // Find the best planet for this atom (shared link).
-      const link = this.links.find(
-        (l) => (l.a === atom.id && planetIds.has(l.b)) || (l.b === atom.id && planetIds.has(l.a)),
-      );
-      if (link) {
-        const planetId = planetIds.has(link.b) ? link.b : link.a;
-        const mc = (moonCounts.get(planetId) || 0) + 1;
-        moonCounts.set(planetId, mc);
-        this._solarMoons.set(atom.id, {
-          planetId,
-          moonR: 0.15 + (mc % 5) * 0.08,
-          moonAngle: (mc * 2.4) % (Math.PI * 2),
-        });
-        assigned.add(atom.id);
-      }
-    });
-    // Remaining atoms become asteroids scattered between orbits.
-    let ai = 0;
-    atoms.forEach((atom) => {
-      if (assigned.has(atom.id)) return;
-      const r = 1.2 + Math.random() * 3.0;
-      const angle = (ai * 2.399963) % (Math.PI * 2);
-      const y = (Math.random() - 0.5) * 0.4;
-      this._solarAsteroids.set(atom.id, { r, angle, y });
-      ai++;
-    });
-    this.animateLayoutTo('galaxy');
+  private freezeOntologyPositions() {
+    this.ontoPos = new Map();
+    for (const id of this._shownIds) {
+      const p = this.brainPos.get(id) ?? this.atomPositions.get(id);
+      if (p) this.ontoPos.set(id, p.clone());
+    }
   }
 
   /**
    * Eased lerp of every node from its current position to the per-mode target.
    * atomPositions is the authoritative store; mesh.position (mesh mode) and
    * the sprite position attribute (sprite mode) are sinks that mirror it.
-   * Extracted from setLayout so the force sim completion can trigger the same
-   * transition without re-entering the layoutMode guard.
    */
   private animateLayoutTo(mode: LayoutMode) {
-    // Cancel any in-flight layout transition so two RAF loops never compete.
     if (this.layoutAnimRaf) cancelAnimationFrame(this.layoutAnimRaf);
     const DURATION = 850;
     const start = performance.now();
@@ -1294,50 +1232,8 @@ export class BrainView {
       if (this.disposed) return;
       const t = Math.min((performance.now() - start) / DURATION, 1);
       const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-      // Scratch target vector — the per-mode pos functions write into it,
-      // avoiding ~n Vector3 allocations per animation frame.
       const to = new THREE.Vector3();
-      if (this.spriteMode && this.spritePosAttr) {
-        const posAttr = this.spritePosAttr;
-        this._shownIds.forEach((id, i) => {
-          const atom = this.atomsById.get(id);
-          if (!atom) return;
-          const from = froms.get(id) ?? new THREE.Vector3();
-          const region = this.spriteRegionOf.get(id) || 'left';
-          if (mode === 'galaxy') this.solarPos(atom, to);
-          else if (mode === 'ontology') this.forcePos(atom, to);
-          else this.latticePos(atom, region, to);
-          const p = this.atomPositions.get(id);
-          if (!p) return;
-          p.lerpVectors(from, to, e);
-          posAttr.setXYZ(i, p.x, p.y, p.z);
-        });
-        posAttr.needsUpdate = true;
-        // Keep the on-demand hover label glued to its node.
-        if (this.spriteHoverLabel && this.hoverAtomId) {
-          const hp = this.atomPositions.get(this.hoverAtomId);
-          if (hp) {
-            this.spriteHoverLabel.position.copy(hp);
-            this.spriteHoverLabel.position.y += 0.02;
-          }
-        }
-      } else {
-        this.nodeObjects.forEach((mesh) => {
-          const atom = this.atomsById.get(mesh.userData.atomId as string);
-          if (!atom) return;
-          const from = froms.get(atom.id) ?? mesh.position;
-          if (mode === 'galaxy') this.solarPos(atom, to);
-          else if (mode === 'ontology') this.forcePos(atom, to);
-          else this.latticePos(atom, mesh.userData.region as Region, to);
-          mesh.position.lerpVectors(from, to, e);
-          const halo = this.haloMap.get(atom.id);
-          if (halo) halo.position.copy(mesh.position);
-          const label = this.labelMap.get(atom.id);
-          if (label) { label.position.copy(mesh.position); label.position.y += 0.02; }
-          // Mirror the sink back into the authoritative store.
-          this.atomPositions.get(atom.id)?.copy(mesh.position);
-        });
-      }
+      this.writeLayoutFrame(mode, froms, e, to);
       if (t < 1) {
         this.layoutAnimRaf = requestAnimationFrame(animate);
       } else {
@@ -1347,264 +1243,150 @@ export class BrainView {
     this.layoutAnimRaf = requestAnimationFrame(animate);
   }
 
-  private solarPos(atom: Atom, out: THREE.Vector3): THREE.Vector3 {
-    if (atom.id === this._solarSunId) return out.set(0, 0, 0);
-    const planet = this._solarPlanets.get(atom.id);
-    if (planet) {
-      const y = Math.sin(planet.tilt) * planet.orbitR * 0.3;
-      return out.set(
-        Math.cos(planet.angle) * planet.orbitR,
-        y,
-        Math.sin(planet.angle) * planet.orbitR,
-      );
+  private snapLayoutTo(mode: LayoutMode) {
+    if (this.layoutAnimRaf) {
+      cancelAnimationFrame(this.layoutAnimRaf);
+      this.layoutAnimRaf = 0;
     }
-    const moon = this._solarMoons.get(atom.id);
-    if (moon) {
-      // Read from the authoritative store so moons track their planet in
-      // both mesh and sprite modes (nodeMap is empty in sprite mode).
-      const planetPos = this.atomPositions.get(moon.planetId);
-      if (planetPos) {
-        return out.set(
-          planetPos.x + Math.cos(moon.moonAngle) * moon.moonR,
-          planetPos.y + Math.sin(moon.moonAngle * 0.7) * moon.moonR * 0.4,
-          planetPos.z + Math.sin(moon.moonAngle) * moon.moonR,
-        );
-      }
-    }
-    const asteroid = this._solarAsteroids.get(atom.id);
-    if (asteroid) {
-      return out.set(
-        Math.cos(asteroid.angle) * asteroid.r,
-        asteroid.y,
-        Math.sin(asteroid.angle) * asteroid.r,
-      );
-    }
-    return out.set(1.5, 0, 0);
+    const froms = new Map<string, THREE.Vector3>();
+    const to = new THREE.Vector3();
+    this.writeLayoutFrame(mode, froms, 1, to);
   }
 
-  /* ── Force-directed layout ─────────────────────────────────── */
-
-  /** Target position for the force layout — mirrors the solarPos/vertexForRegion pattern. */
-  private forcePos(atom: Atom, out: THREE.Vector3): THREE.Vector3 {
-    const idx = this._forceIndex.get(atom.id);
-    if (idx !== undefined) {
-      return out.fromArray(this._forcePosArr, idx * 3);
-    }
-    // Sim not yet seeded or atom absent — fall back to the lattice position.
-    const pos = this.atomPositions.get(atom.id);
-    if (pos) return out.copy(pos);
-    return out.set(0, 0, 0);
-  }
-
-  /** Iterations per idle slice — throttled for large n to keep each slice <500ms (R5). */
-  private forceItersPerSlice(n: number): number {
-    if (n <= 500) return 40;
-    if (n <= 1000) return 15;
-    if (n <= 1500) return 8;
-    return 3;
-  }
-
-  /**
-   * Seed the force sim from the current graph and run it in time-sliced chunks.
-   * Warm-starts from previously settled positions for atoms that persist across
-   * setData() refreshes; new atoms inherit their lattice (vertexForRegion) position.
-   * Stale entries (atoms no longer present) are dropped by rebuilding the maps.
-   */
-  private computeForceLayout() {
-    this.cancelForceSim();
-
-    const ids = [...this.atomsById.keys()].slice(0, MAX_NODES);
-    const n = ids.length;
-
-    this._forceIds = ids;
-    this._forceIndex = new Map(ids.map((id, i) => [id, i]));
-    this._forcePosArr = new Float32Array(n * 3);
-    this._forceVelArr = new Float32Array(n * 3);
-    this._forceIterations = 0;
-
-    // Seed positions: warm start from settled forcePositions, else lattice.
-    for (let i = 0; i < n; i++) {
-      const id = ids[i];
-      const settled = this.forcePositions.get(id);
-      if (settled) {
-        this._forcePosArr[i * 3] = settled.x;
-        this._forcePosArr[i * 3 + 1] = settled.y;
-        this._forcePosArr[i * 3 + 2] = settled.z;
-      } else {
-        const pos = this.atomPositions.get(id);
-        if (pos) {
-          this._forcePosArr[i * 3] = pos.x;
-          this._forcePosArr[i * 3 + 1] = pos.y;
-          this._forcePosArr[i * 3 + 2] = pos.z;
+  private writeLayoutFrame(
+    mode: LayoutMode,
+    froms: Map<string, THREE.Vector3>,
+    e: number,
+    to: THREE.Vector3,
+  ) {
+    if (this.spriteMode && this.spritePosAttr) {
+      const posAttr = this.spritePosAttr;
+      this._shownIds.forEach((id, i) => {
+        const atom = this.atomsById.get(id);
+        if (!atom) return;
+        const from = froms.get(id) ?? this.atomPositions.get(id) ?? new THREE.Vector3();
+        const region = this.spriteRegionOf.get(id) || 'left';
+        this.targetPos(mode, atom, region, to);
+        const p = this.atomPositions.get(id);
+        if (!p) return;
+        if (e >= 1) p.copy(to);
+        else p.lerpVectors(from, to, e);
+        posAttr.setXYZ(i, p.x, p.y, p.z);
+      });
+      posAttr.needsUpdate = true;
+      if (this.spriteHoverLabel && this.hoverAtomId) {
+        const hp = this.atomPositions.get(this.hoverAtomId);
+        if (hp) {
+          this.spriteHoverLabel.position.copy(hp);
+          this.spriteHoverLabel.position.y += 0.02;
         }
       }
-      // Deterministic jitter from atom hash (stable across re-seeds, no Math.random).
-      const h = hashId(id);
-      this._forcePosArr[i * 3] += ((h % 1000) / 1000 - 0.5) * 0.02;
-      this._forcePosArr[i * 3 + 1] += (((h >>> 8) % 1000) / 1000 - 0.5) * 0.02;
-      this._forcePosArr[i * 3 + 2] += (((h >>> 16) % 1000) / 1000 - 0.5) * 0.02;
+      return;
     }
+    this.nodeObjects.forEach((mesh) => {
+      const atom = this.atomsById.get(mesh.userData.atomId as string);
+      if (!atom) return;
+      const from = froms.get(atom.id) ?? mesh.position;
+      this.targetPos(mode, atom, mesh.userData.region as Region, to);
+      if (e >= 1) mesh.position.copy(to);
+      else mesh.position.lerpVectors(from, to, e);
+      const halo = this.haloMap.get(atom.id);
+      if (halo) halo.position.copy(mesh.position);
+      const label = this.labelMap.get(atom.id);
+      if (label) { label.position.copy(mesh.position); label.position.y += 0.02; }
+      this.atomPositions.get(atom.id)?.copy(mesh.position);
+    });
+  }
 
-    // Build link index pairs for spring forces (same MAX_EDGES cap as the edge renderer).
-    this._forceLinkPairs = [];
+  private targetPos(mode: LayoutMode, atom: Atom, region: Region, out: THREE.Vector3): THREE.Vector3 {
+    switch (mode) {
+      case 'ontology': {
+        const frozen = this.ontoPos.get(atom.id);
+        if (frozen) return out.copy(frozen);
+        return this.brainTarget(atom, region, out);
+      }
+      case 'brain':
+        return this.brainTarget(atom, region, out);
+      default: {
+        const _never: never = mode;
+        return _never;
+      }
+    }
+  }
+
+  private brainTarget(atom: Atom, region: Region, out: THREE.Vector3): THREE.Vector3 {
+    const bp = this.brainPos.get(atom.id);
+    if (bp) return out.copy(bp);
+    return this.latticePos(atom, region, out);
+  }
+
+  /* ── Worker FDG ────────────────────────────────────────────── */
+
+  private startWorkerLayout(shown: Atom[]) {
+    this.workerBusy = false;
+    this.workerIters = 0;
+    this.workerNodeCount = shown.length;
+    if (!this.layoutWorker || shown.length === 0) return;
+
+    const index = new Map(shown.map((a, i) => [a.id, i]));
+    const nodes: FdgNode[] = shown.map((atom) => {
+      const warm = this.brainPos.get(atom.id) ?? this.atomPositions.get(atom.id);
+      const h = hashId(atom.id);
+      return {
+        id: atom.id,
+        x: (warm?.x ?? 0) + ((h % 1000) / 1000 - 0.5) * 0.02,
+        y: (warm?.y ?? 0) + (((h >>> 8) % 1000) / 1000 - 0.5) * 0.02,
+        z: (warm?.z ?? 0) + (((h >>> 16) % 1000) / 1000 - 0.5) * 0.02,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        tags: atom.tags ?? [],
+      };
+    });
+    const links: FdgLink[] = [];
     for (const link of this.sortedLinks) {
-      const ai = this._forceIndex.get(link.a);
-      const bi = this._forceIndex.get(link.b);
-      if (ai !== undefined && bi !== undefined && ai !== bi) {
-        this._forceLinkPairs.push({ a: ai, b: bi, strength: link.strength || 0 });
-      }
+      const a = index.get(link.a);
+      const b = index.get(link.b);
+      if (a === undefined || b === undefined || a === b) continue;
+      links.push({ a, b, strength: link.strength || 1 });
     }
-
-    if (PERF_DEBUG) {
-      this._perfSimT0 = performance.now();
-      this._perfSimActive = 0;
-    }
-
-    // Trivial cases: 0 or 1 node — no sim needed, just center.
-    if (n <= 1) {
-      if (n === 1) {
-        this._forcePosArr[0] = 0;
-        this._forcePosArr[1] = 0;
-        this._forcePosArr[2] = 0;
-      }
-      this.finalizeForceLayout();
-      return;
-    }
-
-    this.scheduleForceSlice();
+    const sdf = this.sdfPacked ? this.sdfPacked.slice(0) : new ArrayBuffer(0);
+    this.layoutWorker.postMessage({ type: 'init', nodes, links, sdf, aabb: [] }, sdf.byteLength ? [sdf] : []);
+    if (this.layoutMode === 'ontology') this.freezeOntologyPositions();
+    this.requestWorkerTick();
   }
 
-  private scheduleForceSlice() {
-    this._forceSimHandle = setTimeout(() => {
-      this._forceSimHandle = null;
-      if (this.disposed) return;
-      this.forceSimSlice();
-    }, 0);
+  private requestWorkerTick() {
+    if (!this.layoutWorker || this.disposed || this.workerBusy) return;
+    if (this.workerNodeCount <= 1) return;
+    const maxIters = this.workerNodeCount > FDG_BIG_GRAPH_N ? FDG_MAX_ITERATIONS_BIG_GRAPH : FDG_MAX_ITERATIONS;
+    if (this.workerIters >= maxIters) return;
+    const n = this.workerNodeCount;
+    const steps = n <= 500 ? 40 : n <= 1000 ? 15 : n <= 1500 ? 8 : 3;
+    this.workerBusy = true;
+    this.layoutWorker.postMessage({ type: 'tick', steps });
+    this.workerIters += steps;
   }
 
-  /** Run a chunk of sim iterations, then either finalize or schedule the next slice. */
-  private forceSimSlice() {
-    const n = this._forceIds.length;
-    if (n <= 1) {
-      this.finalizeForceLayout();
-      return;
+  private onWorkerPositions(msg: FdgWorkerOut) {
+    if (this.disposed || msg.type !== 'positions') return;
+    this.workerBusy = false;
+    for (let i = 0; i < msg.ids.length; i++) {
+      const id = msg.ids[i];
+      const x = msg.xyz[i * 3];
+      const y = msg.xyz[i * 3 + 1];
+      const z = msg.xyz[i * 3 + 2];
+      const prev = this.brainPos.get(id);
+      if (prev) prev.set(x, y, z);
+      else this.brainPos.set(id, new THREE.Vector3(x, y, z));
     }
-
-    const sliceT0 = PERF_DEBUG ? performance.now() : 0;
-    const pos = this._forcePosArr;
-    const vel = this._forceVelArr;
-    const iters = this.forceItersPerSlice(n);
-    // U4: cap total iterations lower on big graphs — the settle threshold
-    // already early-exits; this only bounds the worst-case wall-clock.
-    const maxIters = n > FORCE_BIG_GRAPH_N ? FORCE_MAX_ITERATIONS_BIG_GRAPH : FORCE_MAX_ITERATIONS;
-    const maxD2 = FORCE_REPULSION_MAX_DIST * FORCE_REPULSION_MAX_DIST;
-    const eps = FORCE_REPULSION_EPSILON;
-
-    for (let iter = 0; iter < iters; iter++) {
-      this._forceIterations++;
-
-      // Repulsion: O(n²) inverse-square, capped distance.
-      for (let i = 0; i < n; i++) {
-        const ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-        const px = pos[ix], py = pos[iy], pz = pos[iz];
-        let fx = 0, fy = 0, fz = 0;
-        for (let j = i + 1; j < n; j++) {
-          const jx = j * 3, jy = j * 3 + 1, jz = j * 3 + 2;
-          const dx = px - pos[jx];
-          const dy = py - pos[jy];
-          const dz = pz - pos[jz];
-          const d2 = dx * dx + dy * dy + dz * dz;
-          if (d2 >= maxD2 || d2 < eps) continue;
-          const d = Math.sqrt(d2);
-          const f = FORCE_REPULSION_K / d2;
-          const nx = dx / d, ny = dy / d, nz = dz / d;
-          fx += nx * f;
-          fy += ny * f;
-          fz += nz * f;
-          vel[jx] -= nx * f;
-          vel[jy] -= ny * f;
-          vel[jz] -= nz * f;
-        }
-        vel[ix] += fx;
-        vel[iy] += fy;
-        vel[iz] += fz;
-      }
-
-      // Spring attraction along links (rest length, strength-proportional).
-      for (const link of this._forceLinkPairs) {
-        const ax = link.a * 3, ay = link.a * 3 + 1, az = link.a * 3 + 2;
-        const bx = link.b * 3, by = link.b * 3 + 1, bz = link.b * 3 + 2;
-        const dx = pos[bx] - pos[ax];
-        const dy = pos[by] - pos[ay];
-        const dz = pos[bz] - pos[az];
-        const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || eps;
-        const displacement = d - FORCE_SPRING_REST;
-        const f = FORCE_SPRING_K * displacement * (link.strength || 1);
-        const nx = dx / d, ny = dy / d, nz = dz / d;
-        vel[ax] += nx * f;
-        vel[ay] += ny * f;
-        vel[az] += nz * f;
-        vel[bx] -= nx * f;
-        vel[by] -= ny * f;
-        vel[bz] -= nz * f;
-      }
-
-      // Centering + damping + position update; track displacement for settle check.
-      let totalDisp = 0;
-      for (let i = 0; i < n; i++) {
-        const ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
-        vel[ix] -= pos[ix] * FORCE_CENTER_K;
-        vel[iy] -= pos[iy] * FORCE_CENTER_K;
-        vel[iz] -= pos[iz] * FORCE_CENTER_K;
-        vel[ix] *= FORCE_DAMPING;
-        vel[iy] *= FORCE_DAMPING;
-        vel[iz] *= FORCE_DAMPING;
-        pos[ix] += vel[ix];
-        pos[iy] += vel[iy];
-        pos[iz] += vel[iz];
-        totalDisp += Math.abs(vel[ix]) + Math.abs(vel[iy]) + Math.abs(vel[iz]);
-      }
-
-      const avgDisp = totalDisp / (n * 3);
-      if (avgDisp < FORCE_SETTLE_THRESHOLD || this._forceIterations >= maxIters) {
-        if (PERF_DEBUG) this._perfSimActive += performance.now() - sliceT0;
-        this.finalizeForceLayout();
-        return;
-      }
+    if (this.layoutMode === 'brain' && this.layoutAnimRaf === 0) {
+      this.snapLayoutTo('brain');
     }
-
-    if (PERF_DEBUG) this._perfSimActive += performance.now() - sliceT0;
-    this.scheduleForceSlice();
+    if (this.layoutMode === 'brain') this.requestWorkerTick();
   }
 
-  /** Sync flat arrays to the forcePositions map and animate if currently in force mode. */
-  private finalizeForceLayout() {
-    this.cancelForceSim();
-    if (PERF_DEBUG) {
-      console.log(
-        `[brain-perf] forceSim n=${this._forceIds.length} iters=${this._forceIterations}: wall=${(performance.now() - this._perfSimT0).toFixed(0)}ms active=${this._perfSimActive.toFixed(0)}ms`,
-      );
-    }
-    this.forcePositions = new Map();
-    for (let i = 0; i < this._forceIds.length; i++) {
-      this.forcePositions.set(
-        this._forceIds[i],
-        new THREE.Vector3().fromArray(this._forcePosArr, i * 3),
-      );
-    }
-    // If the user is already viewing force mode, animate to the settled positions.
-    if (this.layoutMode === 'ontology') {
-      this.animateLayoutTo('ontology');
-    }
-  }
-
-  private cancelForceSim() {
-    if (this._forceSimHandle !== null) {
-      clearTimeout(this._forceSimHandle);
-      this._forceSimHandle = null;
-    }
-  }
-
+  /* ── Theme ─────────────────────────────────────────────────── */
   /* ── Theme ─────────────────────────────────────────────────── */
 
   setTheme(theme: Theme) {
@@ -1807,7 +1589,8 @@ export class BrainView {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     cancelAnimationFrame(this.layoutAnimRaf);
-    this.cancelForceSim();
+    this.layoutWorker?.terminate();
+    this.layoutWorker = null;
     this.resizeObserver?.disconnect();
     this.removeListeners();
     this.haloTexture.dispose();
