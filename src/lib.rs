@@ -21,6 +21,7 @@ pub mod memory;
 pub mod metrics;
 pub mod ontology;
 pub mod pipeline;
+pub mod project;
 pub mod quality;
 pub mod query;
 pub mod rerank;
@@ -28,6 +29,7 @@ pub mod security;
 pub mod store;
 pub mod synthesize;
 pub mod types;
+pub mod write_policy;
 
 pub use environment::Environment;
 pub use error::{KurultaiError, Result};

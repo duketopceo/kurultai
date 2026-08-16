@@ -661,3 +661,47 @@ fn init_docs_index_makes_starter_searchable() {
                 .or(predicate::str::contains("getting-started")),
         );
 }
+
+// ── Track A / A2: `mcp` gained --agent-id / --namespace ──────────────────────
+
+#[test]
+fn mcp_help_lists_agent_identity_flags() {
+    bin()
+        .args(["mcp", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--agent-id"))
+        .stdout(predicate::str::contains("--namespace"));
+}
+
+#[test]
+fn mcp_accepts_no_flags_and_exits_cleanly_on_closed_stdin() {
+    // The subcommand changed from a unit variant to a struct variant; bare
+    // `kurultai mcp` must still parse and run.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let cfg = fixture_config(&tmp);
+    bin()
+        .args(["--config", cfg.to_str().unwrap(), "mcp"])
+        .write_stdin("")
+        .assert()
+        .success();
+}
+
+#[test]
+fn mcp_accepts_agent_identity_flags() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let cfg = fixture_config(&tmp);
+    bin()
+        .args([
+            "--config",
+            cfg.to_str().unwrap(),
+            "mcp",
+            "--agent-id",
+            "session-3",
+            "--namespace",
+            "proj-a",
+        ])
+        .write_stdin("")
+        .assert()
+        .success();
+}

@@ -26,7 +26,7 @@ pub async fn run_near_dupe_pass(
     }
 
     let trusted = store
-        .list_atoms(SCAN_CAP, SearchFilter { trusted_only: true })
+        .list_atoms(SCAN_CAP, SearchFilter::trusted(true))
         .await?;
     for t in trusted {
         if !candidates.iter().any(|c| c.id == t.id) {
@@ -44,6 +44,12 @@ pub async fn run_near_dupe_pass(
             let a = &candidates[i];
             let b = &candidates[j];
             if removed.contains(&a.id) || removed.contains(&b.id) {
+                continue;
+            }
+            // Never pair across project namespaces (#184): two sessions recording
+            // the same fact under different projects are two atoms on purpose.
+            // Merging them would delete one namespace's copy.
+            if a.project_id() != b.project_id() {
                 continue;
             }
             if !bodies_similar(a, b, JACCARD_CANDIDATE) {

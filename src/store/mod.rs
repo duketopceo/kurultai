@@ -24,15 +24,58 @@ const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, ques
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
      last_accessed_at, visibility, corpus_tier, visibility_labels_json";
 
-/// Retrieval filter — default skips quarantine.
-#[derive(Debug, Clone, Copy)]
+/// Retrieval filter — default skips quarantine and spans every project.
+///
+/// `project` is namespacing, not isolation: it keeps one Claude Code session's
+/// recall from being polluted by another session's ingest on the same box. Any
+/// local process running as the same unix user can still pass any project
+/// string. See `docs/PROJECT_SCOPING.md`.
+#[derive(Debug, Clone)]
 pub struct SearchFilter {
     pub trusted_only: bool,
+    /// When set, only atoms whose `metadata.project_id` equals this value match.
+    /// Atoms with no `project_id` are treated as `"default"`.
+    pub project: Option<String>,
 }
 
 impl Default for SearchFilter {
     fn default() -> Self {
-        Self { trusted_only: true }
+        Self {
+            trusted_only: true,
+            project: None,
+        }
+    }
+}
+
+pub use crate::project::{normalize_project, DEFAULT_PROJECT};
+
+/// vec0 KNN takes no WHERE predicates, so project scoping is applied in Rust.
+/// Widen `k` when scoped so other sessions' atoms cannot crowd out our own.
+const VECTOR_PROJECT_OVERFETCH: usize = 8;
+const VECTOR_K_CAP: usize = 2_000;
+
+impl SearchFilter {
+    /// Trust-lane-only filter (no project scoping) — the historical constructor.
+    pub fn trusted(trusted_only: bool) -> Self {
+        Self {
+            trusted_only,
+            project: None,
+        }
+    }
+
+    /// Scope to a project namespace. Empty / whitespace input clears the scope.
+    /// The value is normalized so read scoping matches write tagging exactly.
+    pub fn with_project(mut self, project: Option<&str>) -> Self {
+        self.project = project
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(normalize_project);
+        self
+    }
+
+    /// Project scope as a SQL bind value, if any.
+    pub fn project_scope(&self) -> Option<&str> {
+        self.project.as_deref()
     }
 }
 
@@ -264,6 +307,105 @@ pub async fn open_hub_store(database_url: &str, embed_dim: usize) -> Result<Arc<
     }
 }
 
+/// How long a connection waits on a lock held by another process before
+/// returning `SQLITE_BUSY`. Sized for many concurrent MCP stdio processes on
+/// one box sharing a single `store.db`.
+pub const BUSY_TIMEOUT_MS: u32 = 5_000;
+
+/// Env override for [`BUSY_TIMEOUT_MS`], in milliseconds.
+pub const BUSY_TIMEOUT_ENV: &str = "KURULTAI_SQLITE_BUSY_TIMEOUT_MS";
+
+fn busy_timeout_ms() -> u32 {
+    std::env::var(BUSY_TIMEOUT_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .unwrap_or(BUSY_TIMEOUT_MS)
+}
+
+/// Put a freshly opened connection into a state safe for concurrent
+/// multi-process access.
+///
+/// Kurultai's shared deployment shape is N independent OS processes (one
+/// `kurultai mcp` per agent session, plus `kurultai index` runs) each opening
+/// the same `store.db`. The in-process `Mutex<Connection>` does nothing across
+/// process boundaries, so the database itself has to be configured for it:
+///
+/// * `journal_mode = WAL` — readers no longer block on the writer. Under the
+///   default `DELETE` journal a single writer takes an exclusive lock over the
+///   whole file, so every concurrent `search` fails for the duration of an
+///   index run. WAL is persisted in the database header, so this only has to
+///   take effect once, but setting it on every open is cheap and correct.
+/// * `busy_timeout` — per-connection, must be set every open. Without it the
+///   losing process gets `SQLITE_BUSY` immediately instead of waiting.
+/// * `synchronous = NORMAL` — per-connection, the standard companion to WAL.
+///
+/// `journal_mode` is a *query* pragma: `execute_batch` silently swallows a
+/// failed switch, so the result is read back and verified. A failure to reach
+/// WAL is a warning, not an error — a store on a filesystem that cannot do WAL
+/// (e.g. a network mount) should still open for single-process use.
+fn configure_multiprocess(conn: &Connection, path: &std::path::Path) -> Result<()> {
+    let timeout = busy_timeout_ms();
+
+    // busy_timeout first, so the journal_mode switch below can itself wait on
+    // another process that currently holds the lock.
+    conn.pragma_update(None, "busy_timeout", timeout)
+        .map_err(|e| KurultaiError::Store(format!("set busy_timeout: {e}")))?;
+
+    let mode: String = conn
+        .pragma_update_and_check(None, "journal_mode", "WAL", |row| row.get(0))
+        .map_err(|e| KurultaiError::Store(format!("set journal_mode=WAL: {e}")))?;
+
+    if !mode.eq_ignore_ascii_case("wal") {
+        tracing::warn!(
+            path = %path.display(),
+            journal_mode = %mode,
+            "sqlite did not switch to WAL — concurrent readers will block on writes"
+        );
+    }
+
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(|e| KurultaiError::Store(format!("set synchronous=NORMAL: {e}")))?;
+
+    tracing::debug!(
+        path = %path.display(),
+        journal_mode = %mode,
+        busy_timeout_ms = timeout,
+        "sqlite configured for multi-process access"
+    );
+    Ok(())
+}
+
+/// Sidecar files SQLite creates alongside `store.db` in WAL mode.
+///
+/// These must be removed whenever `store.db` is replaced wholesale by a file
+/// copy, or SQLite will apply the old WAL over the new database.
+pub fn wal_sidecar_paths(db: &std::path::Path) -> [PathBuf; 2] {
+    let name = db.file_name().unwrap_or_default().to_os_string();
+    let mut wal = name.clone();
+    wal.push("-wal");
+    let mut shm = name;
+    shm.push("-shm");
+    let parent = db.parent().unwrap_or_else(|| std::path::Path::new("."));
+    [parent.join(wal), parent.join(shm)]
+}
+
+/// Remove stale `-wal` / `-shm` sidecars next to `db`. Missing files are fine.
+pub fn remove_wal_sidecars(db: &std::path::Path) -> Result<()> {
+    for side in wal_sidecar_paths(db) {
+        match std::fs::remove_file(&side) {
+            Ok(()) => tracing::debug!(path = %side.display(), "removed stale sqlite sidecar"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(KurultaiError::Store(format!(
+                    "remove {}: {e}",
+                    side.display()
+                )))
+            }
+        }
+    }
+    Ok(())
+}
+
 pub struct SqliteVecStore {
     conn: Mutex<Connection>,
     path: PathBuf,
@@ -281,6 +423,8 @@ impl SqliteVecStore {
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(|e| KurultaiError::Store(format!("enable foreign_keys: {e}")))?;
 
+        configure_multiprocess(&conn, &path)?;
+
         migrations::migrate(&conn)?;
         migrations::ensure_vec_table(&conn, embed_dim)?;
 
@@ -294,6 +438,24 @@ impl SqliteVecStore {
             path,
             embed_dim,
         })
+    }
+
+    /// Read an integer pragma off this connection (e.g. `busy_timeout`).
+    ///
+    /// Exposed so deployment/acceptance checks can assert on the connection
+    /// state set up by [`configure_multiprocess`] rather than trusting it.
+    pub fn pragma_i64(&self, name: &str) -> Result<i64> {
+        let conn = self.lock()?;
+        conn.query_row(&format!("PRAGMA {name}"), [], |r| r.get(0))
+            .map_err(|e| KurultaiError::Store(format!("read pragma {name}: {e}")))
+    }
+
+    /// The journal mode this database is actually in — `"wal"` when
+    /// multi-process access is safe.
+    pub fn journal_mode(&self) -> Result<String> {
+        let conn = self.lock()?;
+        conn.query_row("PRAGMA journal_mode", [], |r| r.get::<_, String>(0))
+            .map_err(|e| KurultaiError::Store(format!("read pragma journal_mode: {e}")))
     }
 
     pub fn path(&self) -> &PathBuf {
@@ -684,34 +846,39 @@ impl Store for SqliteVecStore {
         }
 
         let conn = self.lock()?;
-        let sql = if filter.trusted_only {
+        // Predicates live in SQL so project scoping happens BEFORE LIMIT — an
+        // in-memory retain() after truncation silently drops matching atoms once
+        // several sessions share one store.
+        let mut predicates = String::new();
+        if filter.trusted_only {
+            predicates.push_str(" AND a.trust_lane = 'trusted'");
+        }
+        let project = filter.project_scope();
+        if project.is_some() {
+            predicates.push_str(&format!(
+                " AND COALESCE(json_extract(a.metadata_json, '$.project_id'), '{DEFAULT_PROJECT}') = ?3"
+            ));
+        }
+        let sql = format!(
             r#"
                 SELECT a.id, bm25(atoms_fts) AS score
                 FROM atoms_fts
                 JOIN knowledge_atoms a ON a.id = atoms_fts.id
-                WHERE atoms_fts MATCH ?1 AND a.trust_lane = 'trusted'
+                WHERE atoms_fts MATCH ?1{predicates}
                 ORDER BY score
                 LIMIT ?2
                 "#
-        } else {
-            r#"
-                SELECT a.id, bm25(atoms_fts) AS score
-                FROM atoms_fts
-                JOIN knowledge_atoms a ON a.id = atoms_fts.id
-                WHERE atoms_fts MATCH ?1
-                ORDER BY score
-                LIMIT ?2
-                "#
-        };
+        );
         let mut stmt = conn
-            .prepare(sql)
+            .prepare(&sql)
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids prepare: {e}")))?;
 
-        let rows = stmt
-            .query_map(params![fts_query, limit as i64], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
-            })
-            .map_err(|e| KurultaiError::Store(format!("fts_search_ids query: {e}")))?;
+        let row_map = |r: &rusqlite::Row<'_>| Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?));
+        let rows = match project {
+            Some(p) => stmt.query_map(params![fts_query, limit as i64, p], row_map),
+            None => stmt.query_map(params![fts_query, limit as i64], row_map),
+        }
+        .map_err(|e| KurultaiError::Store(format!("fts_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
@@ -744,17 +911,25 @@ impl Store for SqliteVecStore {
         }
 
         // Over-fetch when filtering trusted so k-nearest still fills after lane filter.
-        let k = if filter.trusted_only {
+        // vec0 KNN cannot take arbitrary WHERE predicates, so lane and project are
+        // applied in Rust — over-fetch harder when project-scoped so a session's own
+        // atoms are not crowded out of the k window by other sessions on the box.
+        let mut k = if filter.trusted_only {
             (limit.saturating_mul(3)).max(limit)
         } else {
             limit
         };
+        let project = filter.project_scope();
+        if project.is_some() {
+            k = k.saturating_mul(VECTOR_PROJECT_OVERFETCH).min(VECTOR_K_CAP);
+        }
 
         let conn = self.lock()?;
         let mut stmt = conn
             .prepare(
                 r#"
-                SELECT a.id, v.distance, a.trust_lane
+                SELECT a.id, v.distance, a.trust_lane,
+                       COALESCE(json_extract(a.metadata_json, '$.project_id'), 'default')
                 FROM atoms_vec v
                 JOIN knowledge_atoms a ON a.rowid = v.rowid
                 WHERE v.embedding MATCH ?1 AND k = ?2
@@ -769,15 +944,19 @@ impl Store for SqliteVecStore {
                     r.get::<_, String>(0)?,
                     r.get::<_, f64>(1)?,
                     r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
                 ))
             })
             .map_err(|e| KurultaiError::Store(format!("vector_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
-            let (id, distance, lane) =
+            let (id, distance, lane, atom_project) =
                 row.map_err(|e| KurultaiError::Store(format!("vector_search_ids row: {e}")))?;
             if filter.trusted_only && lane != "trusted" {
+                continue;
+            }
+            if project.is_some_and(|p| p != atom_project) {
                 continue;
             }
             let score = 1.0 / (1.0 + distance);
@@ -2191,13 +2370,7 @@ mod tests {
         assert_eq!(fts[0].0.id, "t-lane");
 
         let fts_all = store
-            .fts_search(
-                "LANEFILTERTOKEN",
-                10,
-                SearchFilter {
-                    trusted_only: false,
-                },
-            )
+            .fts_search("LANEFILTERTOKEN", 10, SearchFilter::trusted(false))
             .await
             .unwrap();
         assert_eq!(fts_all.len(), 2);

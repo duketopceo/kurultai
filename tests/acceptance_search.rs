@@ -184,6 +184,107 @@ async fn scoped_search_unknown_source_returns_empty() {
     assert!(hits.is_empty(), "unknown source must yield no hits");
 }
 
+/// Regression: project scoping must happen in SQL, before candidate truncation.
+///
+/// Nine sessions share one store. When many other-project atoms out-rank a
+/// session's own atom, the pre-fix implementation (`search_filtered` then
+/// in-memory `retain`) truncated the candidate pool to `limit * 2` first and
+/// returned `[]` even though a matching in-project atom existed in SQL.
+#[tokio::test]
+async fn recall_survives_a_deep_pool_of_other_project_atoms() {
+    use kurultai::types::KnowledgeAtom;
+    let (brain, store) = brain_with_fixture().await;
+
+    // 30 higher-ranking atoms belonging to eight other sessions.
+    for i in 0..30 {
+        let mut noise = KnowledgeAtom::default();
+        noise.id = format!("noise-{i}");
+        noise.source = "agent".into();
+        noise.source_id = format!("/noise/{i}");
+        noise.title = format!("Noise {i}");
+        // Repeated term ranks these above the target under bm25.
+        noise.content = "DEEPPOOL_PHRASE DEEPPOOL_PHRASE DEEPPOOL_PHRASE noise body".into();
+        noise
+            .metadata
+            .insert("project_id".into(), format!("crew-other-{}", i % 8));
+        store.upsert(&noise).await.unwrap();
+    }
+
+    // One weaker-scoring atom belonging to this session.
+    let mut mine = KnowledgeAtom::default();
+    mine.id = "mine".into();
+    mine.source = "agent".into();
+    mine.source_id = "/mine".into();
+    mine.title = "Mine".into();
+    mine.content = "DEEPPOOL_PHRASE the one atom this session actually wrote".into();
+    mine.metadata
+        .insert("project_id".into(), "crew-itdash".into());
+    store.upsert(&mine).await.unwrap();
+
+    let views = brain
+        .recall_for_agent("crew-itdash", "DEEPPOOL_PHRASE", 5, false)
+        .await
+        .unwrap();
+
+    assert!(
+        views.iter().any(|v| v.id == "mine"),
+        "in-project atom must survive a deep pool of other-project atoms; got {} hits",
+        views.len()
+    );
+    assert!(
+        views.iter().all(|v| v.project == "crew-itdash"),
+        "recall must not leak other projects: {views:?}"
+    );
+}
+
+/// Untagged / pre-existing atoms stay reachable under the implicit "default"
+/// namespace — a `COALESCE` regression would make the whole legacy corpus vanish.
+#[tokio::test]
+async fn legacy_untagged_atoms_recall_under_default_project() {
+    let (brain, _store) = brain_with_fixture().await;
+    let views = brain
+        .recall_for_agent("default", "KNOWN_PHRASE_KURULTAI_42", 10, false)
+        .await
+        .unwrap();
+    assert!(
+        !views.is_empty(),
+        "atoms with no project_id must be recallable as 'default'"
+    );
+    assert!(views.iter().all(|v| v.project == "default"));
+}
+
+/// `remember` stamps a project so a real write path — not just a hand-built
+/// `store.upsert` — is recallable by project.
+#[tokio::test]
+async fn remember_write_path_stamps_project_id() {
+    use kurultai::mcp::interface::AgentWrite;
+    let (brain, _store) = brain_with_fixture().await;
+    let id = brain
+        .remember(
+            "Stamped Fact",
+            "REMEMBERSTAMP_PHRASE the remember write path records a project namespace in atom metadata so that a real agent write, not just a hand-built store upsert, is recallable by project",
+            &["acceptance".to_string()],
+            &[("project_id", "crew-itdash")],
+        )
+        .await
+        .unwrap();
+
+    let atom = brain.store().get(&id).await.unwrap().unwrap();
+    assert_eq!(atom.project_id(), "crew-itdash");
+
+    let views = brain
+        .recall_for_agent("crew-itdash", "REMEMBERSTAMP_PHRASE", 5, false)
+        .await
+        .unwrap();
+    assert!(views.iter().any(|v| v.id == id));
+
+    let other = brain
+        .recall_for_agent("crew-yam", "REMEMBERSTAMP_PHRASE", 5, false)
+        .await
+        .unwrap();
+    assert!(other.is_empty(), "must not appear in a sibling namespace");
+}
+
 // ── TA-7: Project-scoped recall ─────────────────────────────────────────────
 
 #[tokio::test]

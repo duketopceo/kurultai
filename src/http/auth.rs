@@ -100,6 +100,85 @@ pub async fn hub_api_auth(
     }
 }
 
+/// Env var holding the operator token required for daemon write routes under the
+/// shared-store closed-write policy.
+pub const ENV_ADMIN_TOKEN: &str = "KURULTAI_ADMIN_TOKEN";
+
+/// POST routes that mutate durable state and must not be reachable unauthenticated.
+const WRITE_ROUTES: &[&str] = &["/api/promote", "/api/touch"];
+
+pub fn resolve_admin_token() -> Option<String> {
+    std::env::var(ENV_ADMIN_TOKEN)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Fail-closed guard on daemon write routes.
+///
+/// `hub_api_auth` returns `next.run(req)` unconditionally whenever
+/// `HubAuth != ApiKey`, and `HubAuth::None` is the default — so in the default solo
+/// daemon configuration any local process could `POST /api/promote` and flip a
+/// quarantined atom to trusted with no credential at all.
+///
+/// Under [`crate::write_policy::WriteMode::SharedClosed`] this guard requires a bearer
+/// token matching `KURULTAI_ADMIN_TOKEN` on those routes, and returns 503 when no token
+/// is configured (fail closed rather than fail open). Under `Solo` it is a no-op, so
+/// the single-operator path is unchanged.
+///
+/// Caveat, stated plainly: on a shared box the admin token is readable from the
+/// daemon's `/proc/<pid>/environ` by the same uid. This guard removes the
+/// zero-credential hole and forces an explicit operator opt-in; it is not isolation.
+pub async fn write_route_guard(req: Request, next: Next) -> Result<Response, StatusCode> {
+    let decision = write_route_decision(
+        req.method(),
+        req.uri().path(),
+        crate::write_policy::WriteMode::from_env(),
+        resolve_admin_token().as_deref(),
+        extract_bearer(req.headers()).as_deref(),
+    );
+    match decision {
+        WriteRouteDecision::Allow => Ok(next.run(req).await),
+        WriteRouteDecision::NoTokenConfigured => {
+            tracing::warn!(
+                path = %req.uri().path(),
+                "write route refused: shared_write policy active but KURULTAI_ADMIN_TOKEN is unset"
+            );
+            Err(StatusCode::SERVICE_UNAVAILABLE)
+        }
+        WriteRouteDecision::Unauthorized => Err(StatusCode::UNAUTHORIZED),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteRouteDecision {
+    Allow,
+    /// Policy is active but no operator token exists — refuse rather than fail open.
+    NoTokenConfigured,
+    Unauthorized,
+}
+
+/// Pure policy decision for [`write_route_guard`] (env-free, directly testable).
+pub fn write_route_decision(
+    method: &axum::http::Method,
+    path: &str,
+    mode: crate::write_policy::WriteMode,
+    admin_token: Option<&str>,
+    bearer: Option<&str>,
+) -> WriteRouteDecision {
+    let is_write = method == axum::http::Method::POST && WRITE_ROUTES.contains(&path);
+    if !is_write || mode != crate::write_policy::WriteMode::SharedClosed {
+        return WriteRouteDecision::Allow;
+    }
+    let Some(expected) = admin_token.filter(|t| !t.is_empty()) else {
+        return WriteRouteDecision::NoTokenConfigured;
+    };
+    match bearer {
+        Some(token) if secrets_equal(token, expected) => WriteRouteDecision::Allow,
+        _ => WriteRouteDecision::Unauthorized,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

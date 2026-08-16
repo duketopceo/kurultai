@@ -43,6 +43,9 @@ pub struct AgentAtomView {
     pub quarantine_reason: Option<String>,
     /// Tiered visibility (`personal` / `team` / `company`) — metadata only (#178).
     pub visibility: String,
+    /// Project namespace the atom was written under (#184). `"default"` when untagged.
+    /// Lets a caller see which session's namespace a hit came from.
+    pub project: String,
     /// Optional routing fields when present (cheap to include, high signal).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub question: Option<String>,
@@ -81,6 +84,7 @@ impl AgentAtomView {
             trust_lane: atom.trust_lane.as_str().to_string(),
             quarantine_reason: atom.quarantine_reason.clone(),
             visibility: atom.visibility.as_str().to_string(),
+            project: atom.project_id().to_string(),
             question: atom.question.clone(),
             resolution: atom.resolution.clone(),
         }

@@ -28,4 +28,4 @@ pub use init::{
     ensure_default_config, init_walkthrough, provision_docs, wire_agent, AgentTarget, DocsProvision,
 };
 pub use interface::{AgentRead, AgentWrite};
-pub use server::{handle_message, run_stdio, ToolSurface};
+pub use server::{handle_message, handle_message_with, run_stdio, run_stdio_with, ToolSurface};
