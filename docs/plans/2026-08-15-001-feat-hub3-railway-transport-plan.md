@@ -6,7 +6,7 @@ artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
 product_contract_source: legacy-requirements
 execution: code
-authority: "User /ce-plan 2026-08-15 — Wave G sequence 001; GitHub #177 · Linear KHAN-255 / PRO-763"
+authority: "User /ce-plan 2026-08-15 — Wave G sequence 001; GitHub #177 · Linear KHAN-255"
 depth: standard
 origin: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md R4–R6; docs/plans/2026-08-15-000-chore-wave-g-railway-sequence-plan.md; #190 hub API-key scaffold; #176 PostgresStore"
 ---
@@ -16,7 +16,7 @@ origin: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md 
 **Target repo:** `duketopceo/kurultai`
 **Audience:** solo (must not regress) → team (one hosted hub every machine can reach)
 **Base:** `main` after HUB-1 (#178) + HUB-2 (#176) + API-key scaffold (#190) + write-policy (#221)
-**Tracking:** [#177](https://github.com/duketopceo/kurultai/issues/177) · Linear [PRO-763](https://linear.app/bartlettroofs-it/issue/PRO-763/hub-3-authenticated-hub-transport) / KHAN-255 · milestone [Tiered Access + Hosted Hub](https://github.com/duketopceo/kurultai/milestone/8)
+**Tracking:** [#177](https://github.com/duketopceo/kurultai/issues/177) · Linear [KHAN-255](https://linear.app/imluketheduke/issue/KHAN-255/hub-3-hub-mode-dual-transport-gh-177) · milestone [Tiered Access + Hosted Hub](https://github.com/duketopceo/kurultai/milestone/8)
 **Queue:** [000 Wave G sequence](2026-08-15-000-chore-wave-g-railway-sequence-plan.md) — **this is the next LFG**
 **Process:** PR-only
 

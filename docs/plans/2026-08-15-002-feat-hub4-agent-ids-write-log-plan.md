@@ -16,7 +16,7 @@ origin: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md 
 **Target repo:** `duketopceo/kurultai`
 **Audience:** hub admin (A3) + team members (A2); solo unchanged
 **Base:** `main` **after** [001 HUB-3 Railway transport](2026-08-15-001-feat-hub3-railway-transport-plan.md) merges
-**Tracking:** [#179](https://github.com/duketopceo/kurultai/issues/179) · milestone [Tiered Access + Hosted Hub](https://github.com/duketopceo/kurultai/milestone/8)
+**Tracking:** [#179](https://github.com/duketopceo/kurultai/issues/179) · Linear [KHAN-253](https://linear.app/imluketheduke/issue/KHAN-253/hub-4-admin-api-keys-team-id-gh-179) · milestone [Tiered Access + Hosted Hub](https://github.com/duketopceo/kurultai/milestone/8)
 **Queue:** [000 Wave G sequence](2026-08-15-000-chore-wave-g-railway-sequence-plan.md) — **do not LFG until 001 is on main**
 **Process:** PR-only
 

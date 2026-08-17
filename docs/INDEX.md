@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-08-16
-version: 1
+updated: 2026-08-17
+version: 2
 ---
 
 # `docs`
@@ -17,7 +17,7 @@ version: 1
 - [`brainstorms/`](brainstorms/INDEX.md) — Requirements / research notes
 - [`eval/`](eval/INDEX.md) — Eval notes
 - [`ideas/`](ideas/INDEX.md) — Parked ideas
-- [`plans/`](plans/INDEX.md) — LFG plans and work-order packs (live queue: phase-6-next)
+- [`plans/`](plans/INDEX.md) — LFG plans and work-order packs (live queue: phase-6-next; next LFG HUB-3)
 - [`residual-review-findings/`](residual-review-findings/INDEX.md) — Review residual records
 - [`solutions/`](solutions/INDEX.md) — Documented past solutions
 
@@ -35,6 +35,7 @@ version: 1
 
 ## Recent
 
+- 2026-08-17 — plans hygiene: live queue HUB-3, Linear Khan, YEAR-1 historical
 - 2026-08-16 — `agent-index.md` protocol for the repo-wide map
 - 2026-08-16 — indexed this folder (v1 seed)
 

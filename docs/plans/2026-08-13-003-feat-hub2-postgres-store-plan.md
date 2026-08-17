@@ -6,7 +6,7 @@ artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
 execution: code
 product_contract_source: legacy-requirements
-authority: "User /lfg — Wave G HUB-2 · GitHub #176 · Linear PRO-760"
+authority: "User /lfg — Wave G HUB-2 · GitHub #176 · Linear KHAN-256"
 depth: standard
 origin: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md R7/AE4; docs/plans/phase-6-next-work-orders.md; GitHub #176"
 ---
@@ -16,7 +16,7 @@ origin: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md 
 **Target repo:** `duketopceo/kurultai`
 **Audience:** solo (must not regress) → team (shared store foundation)
 **Base:** `main` after #195 / #196
-**Tracking:** [#176](https://github.com/duketopceo/kurultai/issues/176) · Linear [PRO-760](https://linear.app/bartlettroofs-it/issue/PRO-760/hub-2-postgres-backed-multi-tenant-store) · milestone [Tiered Access + Hosted Hub](https://github.com/duketopceo/kurultai/milestone/8)
+**Tracking:** [#176](https://github.com/duketopceo/kurultai/issues/176) · Linear [KHAN-256](https://linear.app/imluketheduke/issue/KHAN-256/hub-2-postgrespgvector-store-gh-176) (shipped `#197`) · milestone [Tiered Access + Hosted Hub](https://github.com/duketopceo/kurultai/milestone/8)
 **Process:** PR-only
 
 ## Goal Capsule
@@ -190,7 +190,7 @@ flowchart LR
 - U1–U5 complete; SQLite tests still pass; AE4 covered by a Postgres test that inspects row count
 - `hub` flag still default off; crate version stays **0.4.1** (hub is v0.5.0 track, not a crate bump in this PR)
 - PR against `main`; `@coderabbitai ignore`; no git tag
-- Linear PRO-760 can move to In Review when the PR is up
+- Linear [KHAN-256](https://linear.app/imluketheduke/issue/KHAN-256/hub-2-postgrespgvector-store-gh-176) is Done (`#197`)
 
 ## Appendix
 

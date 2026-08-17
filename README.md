@@ -231,7 +231,7 @@ To create staging (admin): `gh api -X PUT repos/duketopceo/kurultai/environments
 
 Roadmap: developer → solo → team → company ([#25](https://github.com/duketopceo/kurultai/issues/25), [#27](https://github.com/duketopceo/kurultai/issues/27)).  
 Phase 6 work orders: [docs/plans/phase-6-work-orders.md](docs/plans/phase-6-work-orders.md) (Wave B foundation ✅).  
-**Next `/lfg` queue:** [docs/plans/phase-6-next-work-orders.md](docs/plans/phase-6-next-work-orders.md) — Wave G Tiered Access + Hosted Hub (HUB-1 atom scope [#178](https://github.com/duketopceo/kurultai/issues/178)).
+**Next `/lfg` queue:** [docs/plans/phase-6-next-work-orders.md](docs/plans/phase-6-next-work-orders.md) — Wave G Tiered Access + Hosted Hub (HUB-3 Railway/public or Tailscale bind [#177](https://github.com/duketopceo/kurultai/issues/177) · Linear [KHAN-255](https://linear.app/imluketheduke/issue/KHAN-255/hub-3-hub-mode-dual-transport-gh-177)). HUB-1/2/6 and O1+O2 are on `main`; product flag `hub` stays **off**.
 
 | Phase | Status |
 |-------|--------|

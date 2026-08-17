@@ -69,11 +69,11 @@ Kurultai’s equivalent, already in-tree:
 
 ## Open issues this sequence owns
 
-| Order | Plan | Issue | Ship |
-|------:|------|-------|------|
-| 1 | [001 HUB-3 Railway transport](2026-08-15-001-feat-hub3-railway-transport-plan.md) | [#177](https://github.com/duketopceo/kurultai/issues/177) | Public or Tailscale bind, refuse unauth public, Dockerfile + Railway recipe, machines talk to one hub |
-| 2 | [002 HUB-4 agent IDs + write log](2026-08-15-002-feat-hub4-agent-ids-write-log-plan.md) | [#179](https://github.com/duketopceo/kurultai/issues/179) | Issue/revoke device+agent keys, `team_id` filter, queryable write log |
-| 3 | [003 desktop Brain UI wrap](2026-08-15-003-feat-desktop-brain-ui-wrap-plan.md) | none (UI was out of the hub brainstorm) | Thin Tauri/Wails window over `/ui/`. Last. Does not block Railway. |
+| Order | Plan | Issue | Linear | Ship |
+|------:|------|-------|--------|------|
+| 1 | [001 HUB-3 Railway transport](2026-08-15-001-feat-hub3-railway-transport-plan.md) | [#177](https://github.com/duketopceo/kurultai/issues/177) | [KHAN-255](https://linear.app/imluketheduke/issue/KHAN-255/hub-3-hub-mode-dual-transport-gh-177) | Public or Tailscale bind, refuse unauth public, Dockerfile + Railway recipe, machines talk to one hub |
+| 2 | [002 HUB-4 agent IDs + write log](2026-08-15-002-feat-hub4-agent-ids-write-log-plan.md) | [#179](https://github.com/duketopceo/kurultai/issues/179) | [KHAN-253](https://linear.app/imluketheduke/issue/KHAN-253/hub-4-admin-api-keys-team-id-gh-179) | Issue/revoke device+agent keys, `team_id` filter, queryable write log |
+| 3 | [003 desktop Brain UI wrap](2026-08-15-003-feat-desktop-brain-ui-wrap-plan.md) | none (UI was out of the hub brainstorm) | — | Thin Tauri/Wails window over `/ui/`. Last. Does not block Railway. |
 
 HUB-5 ingest tagging (#180) stays after 002. Do not steal it into 001.
 

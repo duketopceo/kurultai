@@ -1,10 +1,12 @@
 # Kurultai Year 1 Milestones & Work Orders
 
+> **Historical.** Drafted ~July 2026 (v0.3.1 by 30 Sep, etc.). Do not LFG from this file. Live product queue: [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md). Crate on `main` is **0.4.1**; product flag `hub` is still **off**. GitHub Release `v0.5.0` is a naming leftover, not “team hub shipped.”
+
 **Timeline:** July 2026 → July 2027  
 **Target Revenue:** $50-100K first year  
 **Strategy:** Any cashflow is good — start with team tier, layer in enterprise
 
-**Version note:** Product **v0.4.0** already shipped as Brain UI (solar · pulse · purple · max). This Year-1 cashflow track starts team pricing at **v0.5.0** (not v0.4.0).
+**Version note:** Product **v0.4.1** is the current crate. This Year-1 cashflow track still brands team pricing as **v0.5.0** (not a crate bump until hub actually ships).
 
 
 ---
