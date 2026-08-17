@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-08-16
-version: 1
+updated: 2026-08-17
+version: 2
 ---
 
 # `.`
@@ -23,7 +23,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 - [`.github/`](.github/INDEX.md) — CI, templates, CODEOWNERS
 - [`docs/`](docs/INDEX.md) — Product + agent docs
-- [`plans/`](plans/INDEX.md) — Legacy root-level plans (prefer docs/plans/)
+- [`plans/`](plans/INDEX.md) — Legacy stub (canonical plans: `docs/plans/`)
 - [`scripts/`](scripts/INDEX.md) — Install, UI build, closeout, index audit
 - [`skills/`](skills/INDEX.md) — Repo-shipped agent skills
 - [`src/`](src/INDEX.md) — Rust CLI + daemon (main product)
@@ -41,7 +41,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`.gitignore`](.gitignore) | Ignored build, env, and agent workspace paths | — | — | 2026-08-16 | 2 | 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-08-16 | 2 | 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
+| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-08-17 | 3 | 2026-08-17 Linear Khan + live HUB-3 queue · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Prompt snippet for wiring agents to Kurultai | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor covenant | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -53,14 +53,15 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`README.md`](README.md) | User-facing product README and quick start | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`README.md`](README.md) | User-facing product README and quick start | — | — | 2026-08-17 | 2 | 2026-08-17 next LFG HUB-3 not HUB-1 · 2026-08-16 indexed (v1 seed) |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`config.example.toml`](config.example.toml) | Example config.toml for sources and models | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`hey.md`](hey.md) | Informal notes / scratch | — | — | 2026-08-08 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`hey.md`](hey.md) | Wave G board (crate v0.4.1; next LFG HUB-3 / KHAN-255) | — | — | 2026-08-17 | 2 | 2026-08-17 crate v0.4.1 + Khan Linear · 2026-08-16 indexed (v1 seed) |
 | [`rust-toolchain.toml`](rust-toolchain.toml) | Rust toolchain pin | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-08-17 — repo hygiene: live queue HUB-3, Linear Khan (not Bartlett), fold root `plans/`
 - 2026-08-16 — seeded hierarchical agent `INDEX.md` tree (v1); protocol in `docs/agent-index.md`
 - 2026-08-16 — `AGENTS.md` / `CONTRIBUTING.md` point at the map; CI job **Agent index**
 

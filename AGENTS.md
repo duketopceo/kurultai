@@ -7,7 +7,7 @@
 - Keep the dashboard layout with the brain as the main focal point; do not replace it with a full-viewport-only redesign unless asked.
 - Brain synaptic visualization: deep black background; black/white plus slight purple only (three colors); neurons/synapses with electric zap/shimmer (not plain white orbs); hovering a node highlights its connections; avoid extra chrome (control buttons and live/suggested/showcase MCP callouts).
 - Brain camera should start with the whole graph in view (no opening live zoom-in); search needs a clear/reset control.
-- Intended Brain layouts: volumetric **brain-shape** (constrained FDG inside the cortex hull) and **algorithmic ontology** (typed hierarchy). Galaxy/solar is deprecated. Do not ship an ontology layout until O1 primitives exist. Research: `docs/brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md`. Plan: `docs/plans/2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md`.
+- Intended Brain layouts: volumetric **brain-shape** (constrained FDG inside the cortex hull; Slice A #200) and **algorithmic ontology** (O1 #201, Sugiyama O2 #202). Galaxy/solar is deprecated. Do not LFG O3 silent writes. Research: `docs/brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md`. Plan: `docs/plans/2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md`.
 - Version/tag before risky Brain UI experiments so rollback is easy.
 
 ## Learned Workspace Facts
@@ -19,6 +19,7 @@
 - Large brain graphs should use tiered loading (hot/warm/cold, timestamped) rather than shipping all nodes to the browser at once.
 - `docs/solutions/` — documented solutions to past problems (bugs, architecture, workflow), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
 - `CONCEPTS.md` — shared domain vocabulary. Read when orienting to the codebase or before discussing domain concepts.
+- Linear for Kurultai is workspace **imluketheduke**, team **Khan** (`KHAN-*`, https://linear.app/imluketheduke). Do not use bartlettroofs-it / `PRO-*` (wrong account). Live product queue: `docs/plans/phase-6-next-work-orders.md` (next LFG = HUB-3 #177 / KHAN-255). `docs/plans/YEAR-1-MILESTONES.md` is historical. Canonical plans live in `docs/plans/` — root `plans/` is a stub.
 
 ## Cursor Cloud specific instructions
 
