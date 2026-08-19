@@ -53,7 +53,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`README.md`](README.md) | User-facing product README and quick start | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-08-19 | 2 | 2026-08-19 rewrite for v0.4.1 stack facts · 2026-08-16 indexed (v1 seed) |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`config.example.toml`](config.example.toml) | Example config.toml for sources and models | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`hey.md`](hey.md) | Informal notes / scratch | — | — | 2026-08-08 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -61,6 +61,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-08-19 — `README.md` recruiter-clean rewrite (Rust/axum/SQLite/MCP/Brain UI facts)
 - 2026-08-16 — seeded hierarchical agent `INDEX.md` tree (v1); protocol in `docs/agent-index.md`
 - 2026-08-16 — `AGENTS.md` / `CONTRIBUTING.md` point at the map; CI job **Agent index**
 
