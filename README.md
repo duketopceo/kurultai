@@ -1,251 +1,135 @@
-```
-                    ╭──────────────────────────╮
-                   ╱    ·    kurultai    ·    ╲
-                  │    ╭──────────────────╮    │
-                  │   ╱   assemble what   ╲   │
-                  │  │    you know  ·  yurt │  │
-                  │   ╲   from wherever   ╱   │
-                  │    ╰──────────────────╯    │
-                   ╲         ⌂ ⌂ ⌂         ╱
-                    ╰──────────────────────────╯
-```
+# Kurultai
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org)
 [![Release](https://img.shields.io/github/v/release/duketopceo/kurultai)](https://github.com/duketopceo/kurultai/releases/latest)
-
-# Kurultai
 
 **Assemble what you know, from wherever it lives.**
 
-A local knowledge brain for agents and humans. Index notes, chats, JSON dumps, Dayflow, Pond, and code checkouts into one SQLite store — then `search` / `ask` / MCP with excerpts and citations, not whole-vault dumps.
+Unified knowledge retrieval for agents and humans. Index notes, chats, JSON dumps, Dayflow, Pond, and local code checkouts into one SQLite store — then `search`, `ask`, and MCP with excerpts and citations, not whole-vault dumps.
 
-**Current release:** [v0.4.1](https://github.com/duketopceo/kurultai/releases/tag/v0.4.1)
+| | |
+|---|---|
+| **Author** | [Luke Kimball](https://github.com/duketopceo) (`duketopceo@gmail.com`) |
+| **Repo** | Public — [github.com/duketopceo/kurultai](https://github.com/duketopceo/kurultai) |
+| **Release** | [v0.4.1](https://github.com/duketopceo/kurultai/releases/tag/v0.4.1) (crate `0.4.1`) |
 
-## Install
+## Why
 
-One line (macOS / Linux — prefers the latest GitHub Release binary, otherwise cargo):
+Knowledge lives in markdown folders, agent transcripts, JSON exports, and git trees. Kurultai pulls those sources into a local brain with hybrid search, quality gates, and agent wiring so Cursor, Claude, Codex, and Hermes can recall what you already wrote — with source citations.
+
+FTS search works with **no API key**. Vector recall, reranking, and LLM `ask` turn on when you configure OpenRouter (or opt-in local ONNX embeddings).
+
+## Quick start
+
+**Install** (macOS / Linux — release binary or `cargo install`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.sh | bash
 ```
 
-Windows:
-
-```powershell
-irm https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/install.ps1 | iex
-```
-
-From source ([Rust](https://rustup.rs)):
+From source ([Rust stable](https://rustup.rs)):
 
 ```bash
 cargo install --git https://github.com/duketopceo/kurultai --tag v0.4.1 --locked
 ```
 
-Binaries ship for macOS (arm64 / amd64), Linux amd64, and Windows amd64 via [`.github/workflows/release.yml`](.github/workflows/release.yml).
-
-## Quick start
-
-Closest to one-click on this device (folder + tagged starter + config):
+**Run** (solo markdown folder + config):
 
 ```bash
-export KURULTAI_ENV=dev          # optional; stores under …/kurultai/dev/
-export RUST_LOG=kurultai=debug   # optional
+export KURULTAI_ENV=dev          # optional — store under ~/.local/share/kurultai/dev/
 
-# Docs folder: ~/Documents/kurultai (or ~/kurultai). Skip MCP with --agent none.
-kurultai init --docs
-# kurultai init --docs ~/Notes --agent none
-# kurultai init --docs --agent none --index   # also index now
-
-kurultai index --full            # FTS works with no API key
-kurultai status
+kurultai init --docs             # ~/Documents/kurultai (or ~/kurultai) + config
+kurultai index --full
 kurultai search "welcome" --limit 10
-kurultai ask "what is in my notes?"
+kurultai ask "what is in my notes?"   # extractive without an API key
+kurultai status
 
 kurultai mcp                     # stdio MCP for agents
-kurultai daemon --port 8421      # HTTP API + Brain UI
-# Optional remote MCP (read-only tools) on the daemon:
-#   export KURULTAI_MCP_HTTP_SECRET='…'
-#   → POST http://127.0.0.1:8421/mcp  (Authorization: Bearer …)
-#   → GET  http://127.0.0.1:8421/mcp/sse
-
-# Multi-device: pack this brain and restore elsewhere
-kurultai export -o brain.kurultai
-# …copy over a trusted channel (pack is unencrypted indexed data; delete after import)…
-kurultai import brain.kurultai            # new device (empty store)
-kurultai import brain.kurultai --combine  # merge into an existing store
+kurultai daemon --port 8421      # HTTP API + Brain UI → http://127.0.0.1:8421/ui/
 ```
 
-**Brain UI:** open [`http://127.0.0.1:8421/ui/`](http://127.0.0.1:8421/ui/) (trailing slash matters). Assets live in `ui/` and are embedded in the daemon binary — that is the only Brain dashboard. Do not add a parallel brain under `website/` or `web/`.
+Windows: `irm …/scripts/install.ps1 | iex`. Longer setup notes: [`docs/mac-dev.md`](docs/mac-dev.md), [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md).
 
-Markdown atoms need **≥1 tag** (YAML frontmatter `tags:` **or** a dedicated hashtag line such as `#vpn #snipe-it`); untagged writes land in quarantine and are skipped by default search. YAML tags win when present. Promote after fixing: `kurultai promote <atom_id>`.
-Atoms need **≥1 tag** (YAML frontmatter `tags:` or JSON `tags`); untagged writes land in quarantine and are skipped by default search. Soft labels never satisfy the tag gate. Cheap length/thin heuristics also quarantine low-quality dumps (`low_quality:too_short` / `low_quality:thin`) — no LLM judge. Promote after fixing: `kurultai promote <atom_id>`.
+**Tag gate:** markdown atoms need ≥1 tag (YAML `tags:` or a dedicated hashtag line like `#vpn #notes`). Untagged writes land in quarantine; promote after fixing: `kurultai promote <atom_id>`.
 
-**Dump adapters:** markdown and json folder sources accept the same formats (`.md`, `.json`/`.jsonl`/`.ndjson`, `.txt`) via a shared atomizer. Prefer **one source per mixed folder**. Inbox trays (`kind = "inbox"`) move successes to `processed/` and failures to `failed/` (+ `.reason.txt`); `kurultai index` drains the tray offline. Loopback push: `POST /ingest` with `KURULTAI_INGEST_SECRET` (not under `/api/`).
+**Pack / restore:** `kurultai export -o brain.kurultai` · `kurultai import brain.kurultai [--combine]`
 
-Longer Mac notes: [docs/mac-dev.md](docs/mac-dev.md). Concepts: [CONCEPTS.md](CONCEPTS.md). Plan: [docs/plans/2026-08-12-002-feat-config-not-code-adapters-plan.md](docs/plans/2026-08-12-002-feat-config-not-code-adapters-plan.md).
+## Architecture
+
+```
+Sources (markdown · json · inbox · dayflow · pond · github)
+        ↓ connectors + quality gate
+SQLite store (FTS5 + sqlite-vec) — hot / warm / cold tiers
+        ↓ hybrid search (FTS ∥ vector → RRF → optional rerank)
+CLI · axum daemon (/api/*) · MCP stdio · Brain UI (embedded)
+```
+
+| Layer | Implementation |
+|-------|----------------|
+| **Core** | Rust — CLI + library (`src/`) |
+| **HTTP daemon** | [axum](https://github.com/tokio-rs/axum) — `/api/*`, optional `POST /ingest`, MCP HTTP/SSE |
+| **Store (default)** | SQLite + FTS5 + [sqlite-vec](https://github.com/asg017/sqlite-vec) |
+| **Search** | FTS ∥ vector → reciprocal rank fusion → soft-label boost → optional rerank |
+| **Embeddings** | `NullEmbedder` (FTS-only) by default; OpenRouter via `OPENROUTER_API_KEY` / `KURULTAI_API_KEY`; optional local ONNX via `--features local-embed` + `embed.backend = "local"` |
+| **Agents** | MCP stdio — `search`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, `ontology_promote`, `recall` |
+| **Brain UI** | Vite + React + Three.js (`website/` → built `ui/`, rust-embedded at `GET /ui/`) |
+
+**Optional hub track (off by default):** `--features postgres` + `KURULTAI_FEATURE_HUB=1` adds a Postgres/pgvector store for shared `team` / `company` atoms. Default installs stay SQLite-only.
+
+**Other surfaces:** [`website/`](website/) — Brain UI source and Vite dev preview · [`web/`](web/) — Next.js team app (Clerk auth, separate from the embedded brain).
+
+Config templates: [`config.example.toml`](config.example.toml) · [`.env.example`](.env.example). Domain vocabulary: [`CONCEPTS.md`](CONCEPTS.md).
 
 ## What ships (v0.4.1)
 
-| Layer | Reality |
-|-------|---------|
-| **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon`, `prune` |
-| **Connectors** | Markdown · JSON · Inbox tray · Dayflow · Pond · GitHub (local checkout). AppFlowy deferred ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
-| **Store** | SQLite + FTS5 + sqlite-vec · hot / warm / cold memory · ingestion staging |
-| **Search** | FTS ∥ vector → RRF → soft-label / quality boost → optional rerank |
-| **Embeddings** | **FTS-first by default** (`NullEmbedder` when no key). OpenRouter when `OPENROUTER_API_KEY` / `KURULTAI_API_KEY` is set. Opt-in local ONNX: `embed.backend = "local"` + `--features local-embed` |
-| **Visibility** | Every atom has scope `personal` \| `team` \| `company` (default `personal`, HUB-1). Solo/no-hub search does not filter by scope yet — [multi-user doc](docs/multi-user-kurultai.md) |
-| **Agents** | MCP stdio (full tools) · optional daemon MCP HTTP/SSE read-only (`KURULTAI_MCP_HTTP_SECRET`) |
-| **Daemon** | HTTP `/api/*` + optional `POST /ingest` · poll/watch · Brain UI at `GET /ui/` |
+| Area | Details |
+|------|---------|
+| **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon`, `prune`, `doctor`, `admin key` |
+| **Connectors** | Markdown · JSON · inbox tray · Dayflow · Pond · GitHub (local checkout). AppFlowy is registered but not implemented ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
+| **Daemon API** | `/api/status`, `/api/atoms`, `/api/graph`, `/api/search`, `/api/ask`, `/api/recall`, `/api/ontology`, `/api/metrics`, … |
+| **MCP** | Stdio (full write tools). Daemon HTTP/SSE is read-only when `KURULTAI_MCP_HTTP_SECRET` is set |
+| **Trust** | Atoms in `trusted` or `quarantine` lanes; visibility scopes `personal` / `team` / `company` (HUB-1) |
+| **Ontology** | O1 class tree + `ontology_get` / `ontology_promote` MCP tools |
 
-Without an API key, FTS search / `who-knows` / extractive `ask` all work. Vector recall, reranking, and LLM `ask` stay off until a key (or local embed) is configured. That is expected, not an error.
-
-## Configuration
-
-Templates at repo root: [`config.example.toml`](config.example.toml) (file keys) and [`.env.example`](.env.example) (env vars / API keys). `kurultai init --docs` writes config and enables `[sources.notes]` — no hand-edit required for solo markdown.
-
-`~/.config/kurultai/config.toml` (from `kurultai init --docs`):
-
-```toml
-environment = "dev"   # dev | staging | prod
-
-[sources.notes]
-enabled = true
-kind = "markdown"                # .md / .json / .ndjson / .txt (one source per folder)
-root_path = "/Users/you/Documents/notes"
-poll_interval_secs = 60
-
-[sources.data]
-enabled = false
-kind = "json"
-root_path = "/Users/you/data"
-
-[sources.inbox]
-enabled = false
-kind = "inbox"
-root_path = "/Users/you/kurultai-inbox"
-
-[sources.dayflow]
-enabled = false
-kind = "dayflow"
-
-[sources.pond]
-enabled = false
-kind = "pond"
-
-[sources.code]
-enabled = false
-kind = "github"
-root_path = "/Users/you/src/your-repo"
-
-[embed]
-model = "openai/text-embedding-3-large"
-dimension = 3072
-# Offline vectors (requires `cargo install --path . --features local-embed`):
-# backend = "local"
-# model = "AllMiniLML6V2"
-# dimension = 384
-
-[runtime]
-poll_interval_secs = 300
-# nightly_full_sync_hour = 3
-# inactivity_threshold_hours = 6
-# reranker_model = "openai/gpt-4o-mini"
-
-[cli]
-# banner = "auto"   # true | false | "auto" (TTY only); suppressed by --plain / NO_COLOR / KURULTAI_PLAIN
-```
-
-Overrides: `KURULTAI_ENV=dev`, `kurultai --env staging status`. API keys via env only — never in config files.
+Acceptance coverage: [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) · [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md).
 
 ## Agents (MCP)
 
-**Stdio (default):** `kurultai mcp` — full tools including `remember` / `promote` / `ontology_promote`.  
-**HTTP/SSE (opt-in on daemon):** set `KURULTAI_MCP_HTTP_SECRET` (or `[runtime] mcp_http_secret`) then:
-
-- `POST /mcp` — JSON-RPC (`tools/list`, `tools/call`, …)
-- `GET /mcp/sse` — SSE bootstrap (`endpoint` → `/mcp`)
-- Auth: `Authorization: Bearer <secret>`
-- Surface: **read-only** (`search`, `cite`, `ask`, `who_knows`, `ontology_get`) — no writes over HTTP MCP
-- Bind stays `127.0.0.1` — do not expose without a tunnel + secret
-
-**Loopback dump ingest (opt-in):** set `KURULTAI_INGEST_SECRET`, then `POST /ingest` (not under `/api/`) with the secret header. Peer must be loopback. Response is `{ ok, atom_ids, lane, quarantine_reason? }` — no brain dump. Optional `?agent_id=&namespace=` (or `X-Kurultai-Agent-Id` / `X-Kurultai-Namespace`) stamp write provenance.
-
-**Shared store, several agent sessions, one unix user?** Set `KURULTAI_FEATURE_SHARED_WRITE=1`. Agent writes (`remember`, `/ingest`, daemon HTTP) are then forced to quarantine and stamped with `agent_id` / `project_id`; only `kurultai promote` can move them to the trusted lane; `POST /api/promote` and `POST /api/touch` require `KURULTAI_ADMIN_TOKEN` and fail closed without it. Start `kurultai mcp --agent-id <session> --namespace <project>`. `agent_id` is self-asserted — it buys provenance and namespacing, not isolation (same uid, same `/proc`, same DB file). Default off; the solo install is unchanged. See [trust lanes](docs/solutions/architecture-patterns/trust-lanes-quality-gate.md).
-
-`init` only writes the host config for stdio MCP:
-
-| `--agent` | Config written |
-|-----------|----------------|
-| `cursor` (default) | `~/.cursor/mcp.json` |
-| `claude` | `~/.claude.json` |
-| `codex` | `~/.codex/config.toml` |
-| `hermes` | `~/.hermes/config.yaml` |
-| `all` | all four |
-| `none` | skip MCP (CLI / Brain UI only) |
-
-**Copy-paste setup prompt for any agent:** [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) · full text in [`docs/AGENT_SETUP_PROMPT.md`](docs/AGENT_SETUP_PROMPT.md).
-
-Portable skill: [`skills/kurultai-brain/SKILL.md`](skills/kurultai-brain/SKILL.md). Restart the agent after `init` so tools reload.
-
-## Other surfaces
-
-| Path | Purpose |
-|------|---------|
-| [`ui/`](ui/) | Brain UI (embedded in daemon) |
-| [`website/`](website/) | Public Vite marketing / live `ui/` preview (`npm run dev` → often `:5174`) |
-| [`web/`](web/) | Team app — **Clerk + Sign in with GitHub** |
-
 ```bash
-cd web && cp .env.example .env.local   # Clerk keys
-npm install && npm run dev             # http://localhost:3000
+kurultai init --agent cursor    # also: claude | codex | hermes | all | none
+kurultai mcp                    # restart the agent after init
 ```
 
-Multi-user model: [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md). Coolify/Docker scaffolding for `web/` is on branch `feat/coolify-frontend-beginnings` (not on `main` yet).
+Copy-paste setup for any agent: [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md). Portable skill: [`skills/kurultai-brain/SKILL.md`](skills/kurultai-brain/SKILL.md).
 
-## Environments
+Loopback ingest (opt-in): set `KURULTAI_INGEST_SECRET`, then `POST /ingest` with the secret header.
 
-| | **Dev** | **Staging** | **Prod** |
-|---|---------|-------------|----------|
-| Storage | `…/kurultai/dev/store.db` | `…/staging/…` | `…/store.db` |
-| Logging | `kurultai=debug` | info | warn |
-| API keys | Optional (FTS) | Optional for FTS; required for **remote** embeddings (OpenRouter). Local ONNX (`embed.backend = "local"`) needs no cloud key | Same |
+## Status
 
-### GitHub Actions deploy (`.github/workflows/deploy.yml`)
+| Milestone | State |
+|-----------|-------|
+| Foundation · hybrid search · MCP · Brain UI | ✅ Shipped in v0.4.x |
+| Connectors (Dayflow, Pond, GitHub FS, inbox) | ✅ |
+| MCP HTTP/SSE · export/import · solo `init --docs` | ✅ v0.4.1 |
+| Tiered hub · Postgres store · team transport | 📋 In tree behind flags; see [`CHANGELOG.md`](CHANGELOG.md) unreleased |
+| Team web app (`web/`) | 🚧 Next.js + Clerk scaffold |
 
-`deploy.yml` builds release binaries and uploads artifacts for `staging` / `production` GitHub Environments. It does **not** currently reference environment secrets or push to a host — treat remote deploy as **aspirational / not fully wired**.
+Roadmap issues: [#25](https://github.com/duketopceo/kurultai/issues/25) (developer → solo), [#27](https://github.com/duketopceo/kurultai/issues/27) (team → company). Work queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md).
 
-| GitHub Environment | Status (as of this note) |
-|--------------------|--------------------------|
-| `production` | Exists (no protection rules; no deploy secrets required by the workflow today) |
-| `staging` | **Missing** — create under Settings → Environments before pushes to a `staging` branch will bind correctly |
+## Contributing
 
-To create staging (admin): `gh api -X PUT repos/duketopceo/kurultai/environments/staging --input - <<<'{}'`
+[`CONTRIBUTING.md`](CONTRIBUTING.md) · [`SECURITY.md`](SECURITY.md) · [`CHANGELOG.md`](CHANGELOG.md)
 
-## Docs & contributing
+```bash
+cargo build && cargo test --locked
+cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings
+```
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [CONCEPTS.md](CONCEPTS.md) · [CHANGELOG.md](CHANGELOG.md)
-- Mac / laptop: [docs/mac-dev.md](docs/mac-dev.md)
-- Upstream notes: [docs/upstream-inspiration.md](docs/upstream-inspiration.md)
-- Plans / Agent Zero drafts: [`docs/plans/`](docs/plans/) · [`docs/agent-zero/`](docs/agent-zero/)
-
-Roadmap: developer → solo → team → company ([#25](https://github.com/duketopceo/kurultai/issues/25), [#27](https://github.com/duketopceo/kurultai/issues/27)).  
-Phase 6 work orders: [docs/plans/phase-6-work-orders.md](docs/plans/phase-6-work-orders.md) (Wave B foundation ✅).  
-**Next `/lfg` queue:** [docs/plans/phase-6-next-work-orders.md](docs/plans/phase-6-next-work-orders.md) — Wave G Tiered Access + Hosted Hub (HUB-1 atom scope [#178](https://github.com/duketopceo/kurultai/issues/178)).
-
-| Phase | Status |
-|-------|--------|
-| 1–3 Foundation / search / synthesis | ✅ |
-| 4 Expansion (Dayflow · Pond · GitHub FS) | ✅ [complete](docs/plans/phase-4-complete.md) |
-| 5 Production (poll · watch · local ONNX · MCP agents) | ✅ [complete](docs/plans/phase-5-complete.md) · [closeout](docs/plans/phase-5-closeout.md) |
-| 6 Launch (yurt · Brain UI · MCP HTTP/SSE · **Tiered Hub next**) | 📋 [#10](https://github.com/duketopceo/kurultai/issues/10) · [next queue](docs/plans/phase-6-next-work-orders.md) |
-
-Deferred ops (not Phase 5 product exit): [#20](https://github.com/duketopceo/kurultai/issues/20) ARC · [#29](https://github.com/duketopceo/kurultai/issues/29) env hardening · [#35](https://github.com/duketopceo/kurultai/issues/35) GlitchTip — see [phase-5-complete.md](docs/plans/phase-5-complete.md).
+Brain UI changes: edit `website/`, run `bash scripts/build-ui.sh`, rebuild the daemon.
 
 ## License
 
-MIT
+MIT — see [`LICENSE`](LICENSE).
 
-## Name
-
-Kurultai (курултай) — a council or assembly. Fitting for a system that gathers knowledge from many sources.
+**Kurultai** (курултай) — a council or assembly; a system that gathers knowledge from many sources.
