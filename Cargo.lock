@@ -1821,7 +1821,7 @@ dependencies = [
 
 [[package]]
 name = "kurultai"
-version = "0.4.1"
+version = "0.4.2-polished+m1max"
 dependencies = [
  "anyhow",
  "assert_cmd",
