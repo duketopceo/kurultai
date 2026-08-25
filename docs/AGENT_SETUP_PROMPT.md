@@ -47,13 +47,21 @@ export KURULTAI_ENV=dev          # stores under …/kurultai/dev/
 export RUST_LOG=kurultai=debug
 ```
 
-API keys (embeddings / LLM ask) via **environment only** — never write secrets into config.toml:
+## OpenRouter (recommended — full brain)
+
+One **`OPENROUTER_API_KEY`** (or `KURULTAI_API_KEY`) powers embeddings, rerank, and LLM `ask` through OpenRouter. Keys via **environment only** — never write secrets into config.toml:
 
 ```bash
-export OPENROUTER_API_KEY=…      # or KURULTAI_API_KEY
+export OPENROUTER_API_KEY=sk-or-...   # or KURULTAI_API_KEY
 ```
 
-FTS search works **without** a key. Vectors / cloud ask stay off until a key (or local ONNX embed) is configured.
+| Role | OpenRouter model |
+|------|------------------|
+| Embeddings | `openai/text-embedding-3-large` |
+| Rerank | `openai/gpt-4o-mini` (`[runtime] reranker_model` in config) |
+| LLM `ask` | `openai/gpt-4o-mini` (default when key is set) |
+
+FTS search works **without** a key. Vectors, rerank, and LLM `ask` need it (or local ONNX for embeddings-only — see README).
 
 ## Store docs on this device (solo)
 

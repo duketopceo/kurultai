@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/in
 Or pin a tag with cargo ([rustup](https://rustup.rs)):
 
 ```bash
-cargo install --git https://github.com/duketopceo/kurultai --tag v0.2.0 --locked
+cargo install --git https://github.com/duketopceo/kurultai --tag v0.4.1 --locked
 ```
 
 Ensure `~/.local/bin` or `~/.cargo/bin` is on `PATH`.
@@ -22,9 +22,11 @@ Ensure `~/.local/bin` or `~/.cargo/bin` is on `PATH`.
 
 ```bash
 export KURULTAI_ENV=dev
+export OPENROUTER_API_KEY=sk-or-...   # or KURULTAI_API_KEY — embed + rerank + LLM ask
 export RUST_LOG=kurultai=debug
-# optional: OPENROUTER_API_KEY=… for embeddings / rerank / LLM ask
 ```
+
+One OpenRouter key powers embeddings (`openai/text-embedding-3-large`), rerank (`openai/gpt-4o-mini`), and LLM `ask` (`openai/gpt-4o-mini`). FTS search works without it.
 
 ## Wire + index
 

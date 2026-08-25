@@ -54,7 +54,25 @@ cp target/release/kurultai /usr/local/bin/   # or ~/.local/bin/
 
 ## Setup (one time)
 
-### 1. Initialize config + docs folder + MCP wiring
+### 1. OpenRouter (recommended — full brain)
+
+Kurultai's normal setup uses **one OpenRouter API key** for the full retrieval stack:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...    # or KURULTAI_API_KEY
+```
+
+| Role | OpenRouter model | Where |
+|------|------------------|-------|
+| **Embeddings** | `openai/text-embedding-3-large` (3072-d) | `[embed]` in config (default) |
+| **Rerank** | `openai/gpt-4o-mini` | `[runtime] reranker_model` (uncomment in config) |
+| **LLM `ask`** | `openai/gpt-4o-mini` | automatic when the key is set |
+
+Add the export to `~/.zshrc` (or your shell profile) so index, search, daemon, and MCP all see it. Keys live in the environment only — never in `config.toml`.
+
+> **FTS-only fallback:** without a key, Kurultai stays in FTS-only mode — FTS5 search, `who-knows`, and extractive `ask` all work. Vector recall, reranking, and LLM `ask` need the key above (or local ONNX below).
+
+### 2. Initialize config + docs folder + MCP wiring
 
 ```bash
 # Dev environment (storage under ~/.local/share/kurultai/dev/):
@@ -82,15 +100,9 @@ kurultai init --docs ~/Notes          # use a custom docs folder
 kurultai init --docs --index          # also run a full index immediately
 ```
 
-### 2. (Optional) Enable embeddings / LLM ask
+### 3. (Optional) Local ONNX embeddings — offline alternative
 
-Without an API key, Kurultai runs in **FTS-only mode** — FTS5 search, `who-knows`, and extractive `ask` all work. Vector recall, reranking, and LLM `ask` need an API key:
-
-```bash
-export OPENROUTER_API_KEY=sk-or-...    # or KURULTAI_API_KEY
-```
-
-For local ONNX embeddings (no cloud, offline):
+Skip OpenRouter for embeddings only (rerank / LLM `ask` still need the key unless you stay extractive):
 
 ```bash
 # Build with the local-embed feature:
@@ -267,6 +279,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # Setup
 export KURULTAI_ENV=dev
+export OPENROUTER_API_KEY=sk-or-...   # or KURULTAI_API_KEY — full brain
 kurultai init --docs --agent all
 kurultai index --full
 
