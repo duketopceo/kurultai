@@ -18,7 +18,7 @@ Unified knowledge retrieval for agents and humans. Index notes, chats, JSON dump
 
 Knowledge lives in markdown folders, agent transcripts, JSON exports, and git trees. Kurultai pulls those sources into a local brain with hybrid search, quality gates, and agent wiring so Cursor, Claude, Codex, and Hermes can recall what you already wrote — with source citations.
 
-FTS search works with **no API key**. Vector recall, reranking, and LLM `ask` turn on when you configure OpenRouter (or opt-in local ONNX embeddings).
+FTS search works with **no API key**. Vector recall, reranking, and LLM `ask` use **OpenRouter** with one `OPENROUTER_API_KEY` (local ONNX embeddings are an opt-in alternative).
 
 ## Quick start
 
@@ -33,6 +33,14 @@ From source ([Rust stable](https://rustup.rs)):
 ```bash
 cargo install --git https://github.com/duketopceo/kurultai --tag v0.4.1 --locked
 ```
+
+**OpenRouter** (full brain — one key for embeddings, rerank, and LLM `ask`):
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...   # or KURULTAI_API_KEY
+```
+
+That single key routes embeddings (`openai/text-embedding-3-large`), optional rerank, and LLM `ask` (`openai/gpt-4o-mini`) through OpenRouter. FTS search still works without it; vectors + rerank + LLM `ask` need the key.
 
 **Run** (solo markdown folder + config):
 
@@ -71,7 +79,7 @@ CLI · axum daemon (/api/*) · MCP stdio · Brain UI (embedded)
 | **HTTP daemon** | [axum](https://github.com/tokio-rs/axum) — `/api/*`, optional `POST /ingest`, MCP HTTP/SSE |
 | **Store (default)** | SQLite + FTS5 + [sqlite-vec](https://github.com/asg017/sqlite-vec) |
 | **Search** | FTS ∥ vector → reciprocal rank fusion → soft-label boost → optional rerank |
-| **Embeddings** | `NullEmbedder` (FTS-only) by default; OpenRouter via `OPENROUTER_API_KEY` / `KURULTAI_API_KEY`; optional local ONNX via `--features local-embed` + `embed.backend = "local"` |
+| **OpenRouter** | One `OPENROUTER_API_KEY` (or `KURULTAI_API_KEY`) — embed `openai/text-embedding-3-large`, rerank + LLM `ask` `openai/gpt-4o-mini`. FTS-only without a key; optional local ONNX via `--features local-embed` |
 | **Agents** | MCP stdio — `search`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, `ontology_promote`, `recall` |
 | **Brain UI** | Vite + React + Three.js (`website/` → built `ui/`, rust-embedded at `GET /ui/`) |
 

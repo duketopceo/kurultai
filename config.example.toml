@@ -55,10 +55,10 @@ enabled = false
 kind = "github"
 root_path = "/Users/you/src/your-repo"
 
-# --- Embeddings -------------------------------------------------------------
+# --- Embeddings (OpenRouter — default with OPENROUTER_API_KEY set) ----------
 
 [embed]
-# OpenRouter / cloud (default when OPENROUTER_API_KEY or KURULTAI_API_KEY is set):
+# One OPENROUTER_API_KEY (env) powers embeddings here and chat models below.
 model = "openai/text-embedding-3-large"
 dimension = 3072
 # Local ONNX alternative (requires: cargo build --features local-embed).
@@ -67,14 +67,16 @@ dimension = 3072
 # model = "AllMiniLML6V2"
 # dimension = 384
 
-# --- Runtime ----------------------------------------------------------------
+# --- Runtime (rerank + search tuning) --------------------------------------
 
 [runtime]
 poll_interval_secs = 300
+# Rerank top fused hits via OpenRouter (same API key as [embed]):
+reranker_model = "openai/gpt-4o-mini"
+# LLM `ask` also uses openai/gpt-4o-mini by default when the key is set.
+# mcp_http_secret = "…"               # optional; prefer env KURULTAI_MCP_HTTP_SECRET
 # nightly_full_sync_hour = 2          # local hour 0–23 for nightly full reindex
 # inactivity_threshold_hours = 24     # skip poll when idle this many hours
-# reranker_model = "openai/gpt-4o-mini"
-# mcp_http_secret = "…"               # optional; prefer env KURULTAI_MCP_HTTP_SECRET
 # Hub mode (optional): prefer env KURULTAI_HUB_AUTH=api_key, KURULTAI_HUB_API_KEYS, KURULTAI_HUB_BIND=all
 # Loopback dump ingest (POST /ingest) uses env KURULTAI_INGEST_SECRET only — no config key.
 #
