@@ -1,14 +1,15 @@
 /* Kurultai Brain bridge for Agent Zero embedding.
  *
- * - Rewrites daemon API calls (/api/status|graph|activity|ontology|search|ask|touch|open)
+ * - Rewrites daemon API calls (/api/status|graph|activity|ontology|search|ask|touch)
  *   to the same-origin whitelisting proxy /api/plugins/kurultai/kproxy?ep=...
+ *   /api/open is not proxied (host process spawn; unsafe through A0 HTTP surface).
  *   The daemon is loopback-only inside the container and not reachable from
  *   the browser directly.
  * - Rewrites /ui/assets/* references to the plugin-served copy.
  * - Adds the Agent Zero CSRF token (header + cookie) to proxied POSTs.
  */
 (() => {
-  const API_EP = new Set(["status", "graph", "activity", "ontology", "search", "ask", "touch", "open"]);
+  const API_EP = new Set(["status", "graph", "activity", "ontology", "search", "ask", "touch"]);
   const PROXY = "/api/plugins/kurultai/kproxy";
   const ASSET_PREFIX = "/ui/assets/";
   const ASSET_TARGET = "/plugins/kurultai/webui/brainapp/assets/";

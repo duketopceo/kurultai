@@ -122,6 +122,7 @@ The panel calls `/api/plugins/kurultai/brain` (GET for status, POST for search/a
 - **Daemon URL validation**: the plugin rejects server URLs pointing to public/internet addresses (localhost and private network only)
 - **API key isolation**: `OPENROUTER_API_KEY` is never read, stored, or echoed by the plugin — it flows through the inherited environment to the kurultai binary
 - **Content sanitization**: auto-memory strips secret-like patterns before storing
+- **kproxy whitelist**: only read/search/touch daemon endpoints are proxied; `/api/open` (host `open` spawn) is excluded to prevent CSRF-style abuse through the A0 WebUI origin
 
 ## Layout
 

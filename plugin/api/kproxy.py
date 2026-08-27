@@ -15,7 +15,9 @@ by webui/brainapp/assets/bridge.js).
   ep=search    GET  /api/search?q=&limit=&source=&include_quarantine=
   ep=ask       POST /api/ask            body: {question}
   ep=touch     POST /api/touch          body: {atom_id}
-  ep=open      GET  /api/open?file=
+
+  /api/open is intentionally excluded: it spawns a host process and must not
+  be re-exported through the A0 plugin HTTP surface (CSRF / path injection risk).
 """
 from __future__ import annotations
 
@@ -42,7 +44,6 @@ ROUTES: dict[str, tuple[str, str, tuple[str, ...], tuple[str, ...]]] = {
     "search": ("GET", "/api/search", ("q", "limit", "source", "include_quarantine"), ()),
     "ask": ("POST", "/api/ask", (), ("question",)),
     "touch": ("POST", "/api/touch", (), ("atom_id",)),
-    "open": ("GET", "/api/open", ("file",), ()),
 }
 
 
