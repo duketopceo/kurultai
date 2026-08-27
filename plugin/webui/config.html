@@ -1,0 +1,102 @@
+<html>
+<head>
+  <title>Kurultai Settings</title>
+  <script type="module">
+    import { store } from "/components/plugins/plugin-settings-store.js";
+  </script>
+  <style>
+    .kurultai-settings .field { margin-bottom: 0.9rem; display: flex; flex-direction: column; gap: 0.25rem; }
+    .kurultai-settings label { font-weight: 600; }
+    .kurultai-settings .hint { opacity: 0.7; font-size: 0.85em; }
+    .kurultai-settings .row { display: flex; gap: 1rem; }
+    .kurultai-settings .row .field { flex: 1; }
+    .kurultai-settings input[type="checkbox"] { width: auto; }
+  </style>
+</head>
+<body>
+  <div x-data class="kurultai-settings">
+
+    <div class="field">
+      <label for="kurultai-binary-path">Kurultai binary path</label>
+      <input id="kurultai-binary-path" type="text" x-model="config.binary_path"
+             placeholder="kurultai  (resolved from PATH when empty)" />
+      <span class="hint">Absolute path to the <code>kurultai</code> binary, e.g. <code>~/.cargo/bin/kurultai</code> or <code>~/.local/bin/kurultai</code>. Empty = resolve <code>kurultai</code> from PATH.</span>
+    </div>
+
+    <div class="field">
+      <label for="kurultai-server-url">Daemon server URL</label>
+      <input id="kurultai-server-url" type="text" x-model="config.server_url"
+             placeholder="http://127.0.0.1:8421" />
+      <span class="hint">Base URL of a running <code>kurultai daemon</code>. Enables structured JSON responses and the <code>kurultai_remember</code> write tool. Empty = CLI-only mode.</span>
+    </div>
+
+    <div class="field">
+      <label>
+        <input type="checkbox" x-model="config.prefer_http" />
+        Prefer daemon when reachable
+      </label>
+      <span class="hint">When checked and the daemon answers <code>/health</code>, tools use the HTTP API and fall back to the CLI automatically.</span>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="kurultai-config-path">Kurultai config file</label>
+        <input id="kurultai-config-path" type="text" x-model="config.config_path"
+               placeholder="~/.config/kurultai/config.toml" />
+        <span class="hint">Maps to <code>KURULTAI_CONFIG</code> for CLI calls. Empty = kurultai default.</span>
+      </div>
+      <div class="field">
+        <label for="kurultai-env">Kurultai environment</label>
+        <input id="kurultai-env" type="text" x-model="config.kurultai_env"
+               placeholder="dev" />
+        <span class="hint">Maps to <code>KURULTAI_ENV</code> (dev | staging | prod). Empty = kurultai default.</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="kurultai-db-path">Store database path (informational)</label>
+      <input id="kurultai-db-path" type="text" x-model="config.db_path"
+             placeholder="~/.local/share/kurultai/dev/store.db" />
+      <span class="hint">Expected SQLite store location (from config.toml <code>[storage] path</code>). Only used by <code>kurultai_status</code> to check the store exists; kurultai itself reads it from its config file.</span>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="kurultai-default-limit">Default result limit</label>
+        <input id="kurultai-default-limit" type="number" min="1" max="50" x-model.number="config.default_limit" />
+        <span class="hint">Default number of excerpts for search / who_knows (1–50).</span>
+      </div>
+      <div class="field">
+        <label for="kurultai-timeout">Timeout (seconds)</label>
+        <input id="kurultai-timeout" type="number" min="5" max="600" x-model.number="config.timeout_secs" />
+        <span class="hint">Per-call timeout for CLI subprocesses and HTTP requests.</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>
+        <input type="checkbox" x-model="config.auto_memory" />
+        Passive auto-memory
+      </label>
+      <span class="hint">When enabled and a daemon is running, the agent passively stores distilled summaries of its responses into the brain after each monologue. Fire-and-forget, non-blocking, sanitized — no secrets, no raw transcripts. Requires daemon server URL above.</span>
+    </div>
+
+    <div class="field">
+      <label for="kurultai-auto-memory-min-len">Auto-memory minimum length</label>
+      <input id="kurultai-auto-memory-min-len" type="number" min="10" max="500" x-model.number="config.auto_memory_min_length" />
+      <span class="hint">Responses shorter than this (in characters) are skipped for auto-memory.</span>
+    </div>
+
+    <div class="field">
+      <label>Security</label>
+      <span class="hint"><strong>Daemon URL is validated localhost-only.</strong> The plugin rejects server URLs pointing to public/internet addresses. The <code>OPENROUTER_API_KEY</code> is never read, stored, or echoed by the plugin.</span>
+    </div>
+
+    <div class="field">
+      <label>OpenRouter API key</label>
+      <span class="hint"><strong>Not stored here.</strong> Keep <code>OPENROUTER_API_KEY</code> in Agent Zero secrets / the process environment. The plugin never reads, stores, or echoes it — the kurultai binary picks it up from its own inherited environment. FTS search works without any key; vector recall, reranking, and LLM <code>ask</code> need it.</span>
+    </div>
+
+  </div>
+</body>
+</html>

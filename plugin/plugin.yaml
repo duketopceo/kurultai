@@ -1,0 +1,8 @@
+name: kurultai
+title: Kurultai Knowledge Brain
+description: Query and contribute to the local Kurultai knowledge-retrieval brain (SQLite + FTS5 + sqlite-vec) — grounded excerpts with citations, embedded Three.js Brain UI in the canvas, and structured MCP-stdio writes.
+version: 1.1.0
+settings_sections:
+  - external
+per_project_config: false
+per_agent_config: false

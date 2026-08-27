@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-08-16
-version: 1
+updated: 2026-08-27
+version: 2
 ---
 
 # `.`
@@ -24,6 +24,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 - [`.github/`](.github/INDEX.md) — CI, templates, CODEOWNERS
 - [`docs/`](docs/INDEX.md) — Product + agent docs
 - [`plans/`](plans/INDEX.md) — Legacy root-level plans (prefer docs/plans/)
+- [`plugin/`](plugin/INDEX.md) — Agent Zero plugin (tools, daemon proxy, embedded Brain UI)
 - [`scripts/`](scripts/INDEX.md) — Install, UI build, closeout, index audit
 - [`skills/`](skills/INDEX.md) — Repo-shipped agent skills
 - [`src/`](src/INDEX.md) — Rust CLI + daemon (main product)
@@ -61,6 +62,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-08-27 — added `plugin/` — Agent Zero plugin (KT-004)
 - 2026-08-19 — `README.md` recruiter-clean rewrite (Rust/axum/SQLite/MCP/Brain UI facts)
 - 2026-08-16 — seeded hierarchical agent `INDEX.md` tree (v1); protocol in `docs/agent-index.md`
 - 2026-08-16 — `AGENTS.md` / `CONTRIBUTING.md` point at the map; CI job **Agent index**

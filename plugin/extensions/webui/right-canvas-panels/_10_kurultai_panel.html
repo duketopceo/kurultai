@@ -1,0 +1,26 @@
+<html>
+<head></head>
+<body>
+  <div
+    class="right-canvas-surface-panel kurultai-canvas-surface"
+    x-data
+    data-surface-id="kurultai"
+    :class="{
+      'is-active': $store.rightCanvas?.isSurfaceVisible('kurultai'),
+      'is-mounted': $store.rightCanvas?.isSurfaceRendered('kurultai')
+    }"
+    :aria-hidden="(!$store.rightCanvas?.isSurfaceVisible('kurultai')).toString()"
+  >
+    <iframe
+      class="kurultai-brain-frame"
+      src="/plugins/kurultai/webui/brainapp/brain.html"
+      title="Kurultai Brain"
+    ></iframe>
+  </div>
+
+  <style>
+    .kurultai-canvas-surface { padding: 0; }
+    .kurultai-brain-frame { width: 100%; height: 100%; border: 0; background: #0b0e14; display: block; }
+  </style>
+</body>
+</html>

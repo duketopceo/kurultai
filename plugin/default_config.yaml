@@ -1,0 +1,46 @@
+# Kurultai plugin defaults.
+# All values can be overridden from Settings > External > Kurultai Knowledge Brain.
+#
+# SECURITY: OPENROUTER_API_KEY is NOT a plugin setting. Keep it in
+# Agent Zero secrets / the process environment. This plugin never reads,
+# stores, or echoes it — the kurultai binary picks it up from the
+# inherited environment on its own.
+
+# Path to the kurultai binary. Empty = resolve "kurultai" from PATH
+# (common installs: ~/.local/bin/kurultai, ~/.cargo/bin/kurultai).
+binary_path: ""
+
+# Base URL of a running `kurultai daemon` (e.g. http://127.0.0.1:8421).
+# Empty = daemon mode disabled, CLI mode only.
+server_url: ""
+
+# Prefer the HTTP daemon when server_url is reachable (structured JSON).
+# Falls back to the CLI automatically when the daemon is unreachable.
+prefer_http: true
+
+# Kurultai config file (maps to KURULTAI_CONFIG env for CLI calls).
+# Empty = kurultai default ~/.config/kurultai/config.toml
+config_path: ""
+
+# Kurultai environment name (maps to KURULTAI_ENV: dev | staging | prod).
+# Empty = kurultai default.
+kurultai_env: ""
+
+# Informational: expected SQLite store path (config.toml [storage] path).
+# Kurultai itself reads the store path from its config file, so this is
+# only used for presence checks in the kurultai_status tool output.
+db_path: ""
+
+# Default result limit for search / who_knows.
+default_limit: 8
+
+# Per-call timeout in seconds (CLI subprocess or HTTP request).
+timeout_secs: 60
+
+# Passive auto-memory: after each monologue, store a distilled summary of the
+# AI response into the Kurultai brain (daemon required). Fire-and-forget,
+# non-blocking, sanitized (secrets stripped). Never stores raw transcripts.
+auto_memory: false
+
+# Minimum content length (chars) for auto-memory — shorter responses are skipped.
+auto_memory_min_length: 20
