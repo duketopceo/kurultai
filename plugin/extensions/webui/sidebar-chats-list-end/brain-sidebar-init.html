@@ -1,0 +1,62 @@
+<html>
+<head>
+  <script type="module">
+    import "/plugins/kurultai/webui/brain-store.js";
+  </script>
+</head>
+<body>
+  <div x-data>
+    <template x-if="$store.kurultaiBrain">
+      <div class="kt-launcher" x-init="$store.kurultaiBrain.init()" :title="$store.kurultaiBrain.error || 'Kurultai Brain'">
+        <div class="kt-header">
+          <x-icon name="psychology"></x-icon>
+          <span class="kt-title">Kurultai Brain</span>
+          <span class="kt-dot" :class="$store.kurultaiBrain.status"></span>
+        </div>
+
+        <template x-if="$store.kurultaiBrain.stats && $store.kurultaiBrain.status === 'online'">
+          <div class="kt-stats">
+            <div class="kt-stat">
+              <span class="kt-val" x-text="$store.kurultaiBrain.fmtNum($store.kurultaiBrain.stats.atoms)"></span>
+              <span class="kt-label">atoms</span>
+            </div>
+            <div class="kt-stat">
+              <span class="kt-val" x-text="$store.kurultaiBrain.fmtNum($store.kurultaiBrain.stats.trusted)"></span>
+              <span class="kt-label">trusted</span>
+            </div>
+            <div class="kt-stat">
+              <span class="kt-val" x-text="$store.kurultaiBrain.fmtNum($store.kurultaiBrain.stats.quarantine)"></span>
+              <span class="kt-label">quarant.</span>
+            </div>
+            <div class="kt-stat">
+              <span class="kt-val" x-text="$store.kurultaiBrain.fmtNum($store.kurultaiBrain.stats.hot)"></span>
+              <span class="kt-label">hot</span>
+            </div>
+          </div>
+        </template>
+
+        <button class="kt-open" @click="$store.rightCanvas?.open('kurultai'); $store.kurultaiBrain.refresh()">
+          <x-icon name="graph_3"></x-icon>
+          <span>Open Brain</span>
+        </button>
+      </div>
+    </template>
+  </div>
+
+  <style>
+    .kt-launcher { margin: 0.25em 0 0.5em; padding: 0.6em 0.7em; border: 1px solid var(--color-border, #333); border-radius: 8px; background: var(--color-bg-secondary, rgba(255,255,255,0.03)); display: flex; flex-direction: column; gap: 0.5em; }
+    .kt-header { display: flex; align-items: center; gap: 0.45em; }
+    .kt-header x-icon { color: #60a5fa; }
+    .kt-title { font-weight: 600; font-size: 0.9em; flex: 1; }
+    .kt-dot { width: 8px; height: 8px; border-radius: 50%; background: #facc15; flex: none; }
+    .kt-dot.online { background: #4ade80; }
+    .kt-dot.offline { background: #f87171; }
+    .kt-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.25em; }
+    .kt-stat { display: flex; flex-direction: column; align-items: center; padding: 0.25em 0; border-radius: 4px; background: rgba(127,127,127,0.08); }
+    .kt-val { font-size: 0.85em; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .kt-label { font-size: 0.62em; opacity: 0.65; }
+    .kt-open { display: flex; align-items: center; justify-content: center; gap: 0.35em; padding: 0.45em 0.6em; border: none; border-radius: 6px; background: #3b82f6; color: #fff; font-size: 0.85em; cursor: pointer; }
+    .kt-open:hover { filter: brightness(1.1); }
+  </style>
+</body>
+</html>

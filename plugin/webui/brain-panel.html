@@ -1,0 +1,62 @@
+<html>
+<head>
+  <title>Kurultai Brain</title>
+  <script type="module" src="/plugins/kurultai/webui/brain-store.js"></script>
+  <style>
+    .kurultai-brain { padding: 0.5rem; display: flex; flex-direction: column; height: 100%; gap: 0.5rem; }
+    .kurultai-brain .search-bar { display: flex; gap: 0.5rem; }
+    .kurultai-brain .search-bar input { flex: 1; padding: 0.4rem 0.6rem; border-radius: 0.4rem; border: 1px solid var(--border-color, #444); background: var(--bg-color, #1a1a2e); color: var(--text-color, #eee); }
+    .kurultai-brain .search-bar button { padding: 0.4rem 0.8rem; border-radius: 0.4rem; border: none; cursor: pointer; background: var(--accent-color, #5b6eff); color: #fff; font-size: 0.85em; }
+    .kurultai-brain .search-bar button:hover { opacity: 0.85; }
+    .kurultai-brain .status-bar { font-size: 0.8em; opacity: 0.7; display: flex; align-items: center; gap: 0.3rem; }
+    .kurultai-brain .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .kurultai-brain .status-dot.online { background: #4ade80; }
+    .kurultai-brain .status-dot.offline { background: #f87171; }
+    .kurultai-brain .status-dot.checking { background: #facc15; }
+    .kurultai-brain .results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; }
+    .kurultai-brain .result-card { padding: 0.5rem; border-radius: 0.4rem; border: 1px solid var(--border-color, #333); background: var(--bg-color-secondary, #16213e); }
+    .kurultai-brain .result-card .result-title { font-weight: 600; font-size: 0.9em; margin-bottom: 0.2rem; }
+    .kurultai-brain .result-card .result-excerpt { font-size: 0.82em; opacity: 0.85; line-height: 1.4; }
+    .kurultai-brain .result-card .result-source { font-size: 0.72em; opacity: 0.6; margin-top: 0.2rem; }
+    .kurultai-brain .empty { opacity: 0.5; text-align: center; padding: 2rem; font-size: 0.85em; }
+    .kurultai-brain .error { color: #f87171; font-size: 0.82em; padding: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div x-data x-init="$store.kurultaiBrainStore?.onOpen()" class="kurultai-brain">
+    <template x-if="$store.kurultaiBrainStore">
+      <div>
+        <div class="search-bar">
+          <input type="text" x-model="$store.kurultaiBrainStore.query"
+                 @keydown.enter="$store.kurultaiBrainStore.search($store.kurultaiBrainStore.query)"
+                 placeholder="Search the brain…" />
+          <button @click="$store.kurultaiBrainStore.search($store.kurultaiBrainStore.query)">Search</button>
+          <button @click="$store.kurultaiBrainStore.ask($store.kurultaiBrainStore.query)">Ask</button>
+        </div>
+        <div class="status-bar">
+          <span class="status-dot" :class="$store.kurultaiBrainStore.status"></span>
+          <span x-text="$store.kurultaiBrainStore.status === 'online' ? 'Brain online' : $store.kurultaiBrainStore.status"></span>
+        </div>
+        <div class="results">
+          <template x-if="$store.kurultaiBrainStore.loading">
+            <div class="empty">Searching…</div>
+          </template>
+          <template x-if="!$store.kurultaiBrainStore.loading && !$store.kurultaiBrainStore.error && $store.kurultaiBrainStore.results.length === 0">
+            <div class="empty">No results yet. Search or ask to query the brain.</div>
+          </template>
+          <template x-if="$store.kurultaiBrainStore.error">
+            <div class="error" x-text="$store.kurultaiBrainStore.error"></div>
+          </template>
+          <template x-for="(item, idx) in $store.kurultaiBrainStore.results" :key="idx">
+            <div class="result-card">
+              <div class="result-title" x-text="item.title || item.heading || item.id || ('Result ' + (idx+1))"></div>
+              <div class="result-excerpt" x-text="item.excerpt || item.summary || item.content || item.answer || ''"></div>
+              <div class="result-source" x-text="item.source || item.source_id || ''"></div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+  </div>
+</body>
+</html>
