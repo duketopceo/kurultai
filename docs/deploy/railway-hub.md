@@ -22,7 +22,7 @@ Non-loopback + `auth=none` **exits non-zero** before listen (except `KURULTAI_HU
 
 ## Railway
 
-1. New service from this repo. Dockerfile at repo root (`cargo build --release --locked --features postgres`).
+1. New service from this repo. Dockerfile at repo root (`cargo build --release --locked --features postgres`). The image runs as `nobody` with `HOME=/tmp` so optional `config.toml` defaults resolve without a real home directory.
 2. Add Railway Postgres. The plugin sets `DATABASE_URL`.
 3. Set:
    - `KURULTAI_FEATURE_HUB=1`

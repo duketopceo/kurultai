@@ -14,6 +14,7 @@ COPY --from=builder /src/target/release/kurultai /usr/local/bin/kurultai
 ENV KURULTAI_FEATURE_HUB=1
 ENV KURULTAI_HUB_BIND=all
 ENV KURULTAI_HUB_AUTH=api_key
+ENV HOME=/tmp
 EXPOSE 8421
 USER nobody
 ENTRYPOINT ["kurultai"]

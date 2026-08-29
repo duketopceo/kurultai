@@ -50,7 +50,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`CONCEPTS.md`](CONCEPTS.md) | Shared domain vocabulary (atoms, hub, FTS-first, ontology) | — | — | 2026-08-29 | 2 | 2026-08-29 Hub paragraph points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup, tests, PR and architecture guidelines | `INDEX.md` · `docs/agent-index.md` | — | 2026-08-16 | 2 | 2026-08-16 agent-index subsection · 2026-08-16 indexed (v1 seed) |
 | [`Cargo.lock`](Cargo.lock) | Locked Rust dependency graph for reproducible CI | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.4.1) and optional features | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.4.1) and optional features | — | — | 2026-08-29 | 2 | 2026-08-29 clap `env` for daemon PORT · 2026-08-16 indexed (v1 seed) |
 | [`Dockerfile`](Dockerfile) | Multi-stage hub image (`--features postgres`) | `docs/deploy/railway-hub.md` | `docker-compose.hub.yml` | 2026-08-29 | 1 | 2026-08-29 HUB-3 Railway/compose image |
 | [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | Kurultai Feature Matrix (KHAN-251) | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |

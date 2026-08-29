@@ -243,7 +243,10 @@ mod tests {
         std::env::set_var(key, "1");
         std::env::remove_var("DATABASE_URL");
         std::env::remove_var("KURULTAI_DATABASE_URL");
-        let err = App::from_config(sample_config(None)).await.unwrap_err();
+        let err = match App::from_config(sample_config(None)).await {
+            Ok(_) => panic!("expected config error without DATABASE_URL"),
+            Err(e) => e,
+        };
         let msg = err.to_string();
         assert!(msg.contains("DATABASE_URL"), "{msg}");
         match prev {
