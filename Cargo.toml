@@ -65,7 +65,7 @@ glob = "0.3"
 
 # Unix open flags (O_NOFOLLOW) for connector path safety
 libc = "0.2"
-fastembed = { version = "5", optional = true }
+fastembed = { version = "6", optional = true }
 
 # Optional hub store (HUB-2). Default builds stay SQLite-only.
 sqlx = { version = "=0.8.6", optional = true, default-features = false, features = ["runtime-tokio-rustls", "postgres"] }
