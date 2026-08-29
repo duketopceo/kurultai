@@ -20,7 +20,7 @@ version: 2
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`acceptance_concurrency.rs`](acceptance_concurrency.rs) | Acceptance tests — multi-process SQLite safety (Track A: shared crew brain). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`acceptance_http.rs`](acceptance_http.rs) | Acceptance tests — HTTP API surface (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`acceptance_http.rs`](acceptance_http.rs) | Acceptance tests — HTTP API surface (KHAN-251). | — | — | 2026-08-29 | 2 | 2026-08-29 unprefixed alias auth tests · 2026-08-16 indexed (v1 seed) |
 | [`acceptance_ingest.rs`](acceptance_ingest.rs) | Acceptance tests — ingest surface (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`acceptance_mcp.rs`](acceptance_mcp.rs) | Acceptance tests — MCP tool surface (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`acceptance_ontology.rs`](acceptance_ontology.rs) | Acceptance tests — ontology O1 (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -38,6 +38,7 @@ version: 2
 
 ## Recent
 
+- 2026-08-29 — acceptance tests for unprefixed query alias auth under `HubAuth::ApiKey`
 - 2026-08-29 — CLI smoke unsets ambient `KURULTAI_FEATURE_HUB` (Postgres CI job)
 - 2026-08-16 — indexed this folder (v1 seed)
 

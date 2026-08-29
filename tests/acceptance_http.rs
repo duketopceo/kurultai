@@ -493,12 +493,62 @@ async fn hub_auth_allows_api_with_valid_bearer() {
 }
 
 #[tokio::test]
-async fn hub_auth_allows_non_api_routes_without_token() {
+async fn hub_auth_allows_health_without_token() {
     let app = app(empty_brain().await, gate_with_key("secret-123"));
     let resp = app
         .oneshot(
             Request::builder()
                 .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn hub_auth_blocks_unprefixed_query_routes_without_token() {
+    let brain = empty_brain().await;
+    let app = app(brain, gate_with_key("secret-123"));
+
+    let routes = [
+        ("GET", "/search?q=test"),
+        ("POST", "/search"),
+        ("GET", "/ask?question=test"),
+        ("POST", "/ask"),
+        ("POST", "/cite"),
+        ("POST", "/who_knows"),
+    ];
+
+    for (method, uri) in routes {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::UNAUTHORIZED,
+            "route {method} {uri} must require hub authentication"
+        );
+    }
+}
+
+#[tokio::test]
+async fn hub_auth_allows_unprefixed_query_routes_with_token() {
+    let app = app(empty_brain().await, gate_with_key("secret-123"));
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/search?q=test")
+                .header("authorization", "Bearer secret-123")
                 .body(Body::empty())
                 .unwrap(),
         )

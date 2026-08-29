@@ -12,8 +12,9 @@ mod mcp;
 mod ui;
 
 pub use auth::{
-    resolve_admin_token, resolve_bind_all_from_env, resolve_hub_gate_from_env,
-    write_route_decision, HubAuth, HubGate, WriteRouteDecision, ENV_ADMIN_TOKEN,
+    path_requires_hub_auth, resolve_admin_token, resolve_bind_all_from_env,
+    resolve_hub_gate_from_env, write_route_decision, HubAuth, HubGate, WriteRouteDecision,
+    ENV_ADMIN_TOKEN,
 };
 pub use hub_listen::resolve_listen_socket;
 mod ingest;
@@ -2176,6 +2177,43 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn hub_api_key_blocks_unprefixed_query_aliases_without_bearer() {
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+            hub: HubGate {
+                auth: HubAuth::ApiKey,
+                api_keys: vec!["hub-secret".into()],
+            },
+        });
+        for path in &["/search?q=test", "/ask?question=test"] {
+            let resp = app
+                .clone()
+                .oneshot(Request::builder().uri(*path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(
+                resp.status(),
+                StatusCode::UNAUTHORIZED,
+                "path {path} should require auth under HubAuth::ApiKey"
+            );
+        }
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/search?q=test")
+                    .header("authorization", "Bearer hub-secret")
                     .body(Body::empty())
                     .unwrap(),
             )

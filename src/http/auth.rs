@@ -82,6 +82,17 @@ pub fn token_accepted(token: &str, keys: &[String]) -> bool {
         .any(|k| secrets_equal(k, token) || secrets_equal(k, &hashed))
 }
 
+/// Paths exempt from hub API-key authentication (`/health` and embedded `/ui`).
+pub fn path_requires_hub_auth(path: &str) -> bool {
+    if path == "/health" || path.starts_with("/health/") {
+        return false;
+    }
+    if path == "/ui" || path.starts_with("/ui/") {
+        return false;
+    }
+    true
+}
+
 pub async fn hub_api_auth(
     State(gate): State<HubGate>,
     req: Request,
@@ -91,7 +102,7 @@ pub async fn hub_api_auth(
         return Ok(next.run(req).await);
     }
     let path = req.uri().path();
-    if !path.starts_with("/api/") {
+    if !path_requires_hub_auth(path) {
         return Ok(next.run(req).await);
     }
     match extract_bearer(req.headers()) {
@@ -197,5 +208,23 @@ mod tests {
         assert!(token_accepted(plain, &[plain.to_string()]));
         assert!(token_accepted(plain, &[hashed]));
         assert!(!token_accepted("wrong", &[plain.to_string()]));
+    }
+
+    #[test]
+    fn hub_auth_exempts_health_and_ui_only() {
+        assert!(!path_requires_hub_auth("/health"));
+        assert!(!path_requires_hub_auth("/health/ready"));
+        assert!(!path_requires_hub_auth("/ui"));
+        assert!(!path_requires_hub_auth("/ui/"));
+        assert!(!path_requires_hub_auth("/ui/index.html"));
+        assert!(!path_requires_hub_auth("/ui/assets/app.js"));
+
+        assert!(path_requires_hub_auth("/api/status"));
+        assert!(path_requires_hub_auth("/api/search"));
+        assert!(path_requires_hub_auth("/api/ask"));
+        assert!(path_requires_hub_auth("/search"));
+        assert!(path_requires_hub_auth("/ask"));
+        assert!(path_requires_hub_auth("/cite"));
+        assert!(path_requires_hub_auth("/who_knows"));
     }
 }
