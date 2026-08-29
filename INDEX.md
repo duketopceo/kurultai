@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: .
 updated: 2026-08-29
-version: 3
+version: 4
 ---
 
 # `.`
@@ -65,6 +65,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-08-29 — CLI smoke unsets ambient hub flag so Postgres CI job stays solo
 - 2026-08-29 — HUB-3 Railway transport: Dockerfile, compose, `docs/deploy/railway-hub.md`
 - 2026-08-27 — added `plugin/` — Agent Zero plugin (KT-004)
 - 2026-08-19 — `README.md` recruiter-clean rewrite (Rust/axum/SQLite/MCP/Brain UI facts)

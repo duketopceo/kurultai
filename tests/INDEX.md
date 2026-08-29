@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: tests
 parent: INDEX.md
-updated: 2026-08-16
-version: 1
+updated: 2026-08-29
+version: 2
 ---
 
 # `tests`
@@ -27,7 +27,7 @@ version: 1
 | [`acceptance_search.rs`](acceptance_search.rs) | Acceptance tests — search surface (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`acceptance_visibility.rs`](acceptance_visibility.rs) | Acceptance tests — visibility / tiered access (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`acceptance_write_policy.rs`](acceptance_write_policy.rs) | Acceptance tests — shared-store write containment (Track A / A2). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`cli_smoke.rs`](cli_smoke.rs) | Phase 1 CLI smoke (#5 / #23) — binary against fixture vault. | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`cli_smoke.rs`](cli_smoke.rs) | Phase 1 CLI smoke (#5 / #23) — binary against fixture vault. | — | — | 2026-08-29 | 2 | 2026-08-29 unset ambient hub flag in bin() · 2026-08-16 indexed (v1 seed) |
 | [`inbox_adapter_test.rs`](inbox_adapter_test.rs) | Inbox tray + dump format parity + gate heuristics (AE1–AE7). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`install_script_test.rs`](install_script_test.rs) | Personal installer script smoke (#72) — bash syntax + dry-run / help. | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`json_ingestion_test.rs`](json_ingestion_test.rs) | Integration tests for U1.1–U1.3: schema migration v006, ingestion_jobs store | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -38,5 +38,6 @@ version: 1
 
 ## Recent
 
+- 2026-08-29 — CLI smoke unsets ambient `KURULTAI_FEATURE_HUB` (Postgres CI job)
 - 2026-08-16 — indexed this folder (v1 seed)
 

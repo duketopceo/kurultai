@@ -23,5 +23,4 @@ _None._
 
 ## Recent
 
-- 2026-08-29 — HUB-3 `railway-hub.md` (nobody HOME=/tmp)
-- 2026-08-29 — HUB-3 `railway-hub.md`
+- 2026-08-29 — HUB-3 `railway-hub.md` (nobody `HOME=/tmp`)
