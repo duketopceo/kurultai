@@ -117,8 +117,8 @@ enum Commands {
     },
     /// HTTP API + Brain UI (`http://127.0.0.1:8421/ui/`) + poll/watch
     Daemon {
-        /// Port for the HTTP server
-        #[arg(long, default_value = "8421")]
+        /// Port for the HTTP server (`PORT` env for Railway/containers)
+        #[arg(long, env = "PORT", default_value = "8421")]
         port: u16,
         /// Disable background incremental indexing
         #[arg(long)]
@@ -460,6 +460,9 @@ async fn main() -> Result<()> {
             poll_interval,
             no_watch,
         } => {
+            let hub = kurultai::http::resolve_hub_gate_from_env();
+            let bind_all = kurultai::http::resolve_bind_all_from_env();
+            let addr = kurultai::http::resolve_listen_socket(port, bind_all, &hub)?;
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
             let interval = kurultai::daemon::normalize_poll_interval_secs(
@@ -468,14 +471,28 @@ async fn main() -> Result<()> {
             let watch_roots = kurultai::daemon::watch_roots_from_sources(&app.config.sources);
             let inbox_roots = kurultai::daemon::inbox_roots_from_sources(&app.config.sources);
             tracing::info!(
-                port,
+                %addr,
                 poll = !no_poll,
                 interval,
                 watch = !no_watch,
                 watch_roots = watch_roots.len(),
+                hub = kurultai::features::enabled("hub"),
                 "daemon starting"
             );
-            println!("Daemon listening on http://127.0.0.1:{port} (localhost only)");
+            println!("Daemon listening on http://{addr}");
+            if kurultai::features::enabled("hub") {
+                println!("Store: hub Postgres (KURULTAI_FEATURE_HUB=1)");
+            } else {
+                println!("Store: solo SQLite");
+            }
+            match hub.auth {
+                kurultai::http::HubAuth::ApiKey => {
+                    println!("Hub auth: api_key (Bearer required on /api/*; /health open)");
+                }
+                kurultai::http::HubAuth::None => {
+                    println!("Hub auth: none");
+                }
+            }
             let mcp_secret =
                 kurultai::http::resolve_mcp_http_secret(app.config.mcp_http_secret.as_deref());
             if mcp_secret.is_some() {

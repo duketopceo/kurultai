@@ -1,0 +1,35 @@
+# Local proof of the Railway hub recipe. Not used by default CI.
+#
+#   docker compose -f docker-compose.hub.yml up --build
+#   curl -sS http://127.0.0.1:8421/health
+#   curl -sS -H 'Authorization: Bearer local-hub-secret' http://127.0.0.1:8421/api/status
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: kurultai
+      POSTGRES_DB: kurultai
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kurultai -d kurultai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  hub:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      KURULTAI_FEATURE_HUB: "1"
+      DATABASE_URL: postgres://kurultai@postgres:5432/kurultai
+      KURULTAI_HUB_BIND: all
+      KURULTAI_HUB_AUTH: api_key
+      KURULTAI_HUB_API_KEYS: local-hub-secret
+      PORT: "8421"
+    ports:
+      - "8421:8421"

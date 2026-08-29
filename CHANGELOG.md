@@ -6,6 +6,7 @@ Shared hub track (product flag `hub`, default **off**). Crate version stays 0.4.
 
 - Crew (Track A): `SqliteVecStore::open` now configures the connection for multi-process access — `journal_mode = WAL` (read back and verified), `busy_timeout` (5s, override with `KURULTAI_SQLITE_BUSY_TIMEOUT_MS`), `synchronous = NORMAL`. N `kurultai mcp` processes sharing one `store.db` no longer block each other's reads during an index run. `import --replace` now deletes stale `-wal` / `-shm` sidecars so an old WAL is not replayed onto the imported database. New `docs/crew-instance-node3.md` runbook: no daemon, nothing binds a port.
 - HUB-2: optional `--features postgres` `PostgresStore` (pgvector) for `team`/`company` atoms. `open_store` remains SQLite. Personal upserts are rejected (AE4). One Postgres database per organization; copy shared-tier atoms only — never personal, never in-place convert of `store.db`.
+- HUB-3: hub daemon bind policy (`hub_listen_decision`) — non-loopback + `auth=none` is a start-fail except Tailscale; public `*.up.railway.app` needs `ALLOW_PUBLIC_HUB=1`. `KURULTAI_FEATURE_HUB=1` opens Postgres only (`DATABASE_URL`). Dockerfile + [`docs/deploy/railway-hub.md`](docs/deploy/railway-hub.md). Keys stay env `KURULTAI_HUB_API_KEYS`.
 
 ## [0.4.1] — 2026-08-13
 

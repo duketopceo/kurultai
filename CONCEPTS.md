@@ -56,7 +56,7 @@ Atom visibility: `personal`, `team`, or `company`. Personal never leaves the ori
 
 ### Hub
 
-Optional shared store for **one organization** (not a multi-company SaaS). Personal kernel stays local SQLite forever. HUB-2 adds `PostgresStore` behind `--features postgres` and `KURULTAI_FEATURE_HUB=1`; CLI/`open_store` still opens SQLite. Transport (Tailscale or public API keys) is HUB-3.
+Optional shared store for **one organization** (not a multi-company SaaS). Personal kernel stays local SQLite forever. HUB-2 adds `PostgresStore` behind `--features postgres` and `KURULTAI_FEATURE_HUB=1`; CLI/`open_store` still opens SQLite. HUB-3 is the transport: Tailscale bind (`auth=none` allowed) or public bind with bearer keys; Railway recipe in [`docs/deploy/railway-hub.md`](docs/deploy/railway-hub.md).
 
 ### Trust lane
 

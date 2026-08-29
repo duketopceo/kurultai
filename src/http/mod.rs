@@ -7,13 +7,16 @@
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
 mod auth;
+mod hub_listen;
 mod mcp;
 mod ui;
 
 pub use auth::{
-    resolve_admin_token, write_route_decision, HubAuth, HubGate, WriteRouteDecision,
+    path_requires_hub_auth, resolve_admin_token, resolve_bind_all_from_env,
+    resolve_hub_gate_from_env, write_route_decision, HubAuth, HubGate, WriteRouteDecision,
     ENV_ADMIN_TOKEN,
 };
+pub use hub_listen::resolve_listen_socket;
 mod ingest;
 
 pub use ingest::resolve_ingest_secret;
@@ -101,6 +104,7 @@ pub async fn serve_with(
         hub = auth::resolve_hub_gate_from_env();
     }
     let bind_all = opts.bind_all || auth::resolve_bind_all_from_env();
+    let addr = hub_listen::resolve_listen_socket(opts.port, bind_all, &hub)?;
     let state = AppState {
         brain: Arc::clone(&brain),
         status,
@@ -130,15 +134,15 @@ pub async fn serve_with(
     } else {
         tracing::info!("loopback ingest disabled (set KURULTAI_INGEST_SECRET to enable)");
     }
-    let addr = if bind_all {
-        SocketAddr::from(([0, 0, 0, 0], opts.port))
-    } else {
-        SocketAddr::from(([127, 0, 0, 1], opts.port))
-    };
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("bind {addr}: {e}")))?;
-    tracing::info!(%addr, bind_all, "http daemon listening");
+    tracing::info!(
+        %addr,
+        bind_all,
+        auth = ?hub.auth,
+        "http daemon listening"
+    );
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -2173,6 +2177,43 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn hub_api_key_blocks_unprefixed_query_aliases_without_bearer() {
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+            hub: HubGate {
+                auth: HubAuth::ApiKey,
+                api_keys: vec!["hub-secret".into()],
+            },
+        });
+        for path in &["/search?q=test", "/ask?question=test"] {
+            let resp = app
+                .clone()
+                .oneshot(Request::builder().uri(*path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(
+                resp.status(),
+                StatusCode::UNAUTHORIZED,
+                "path {path} should require auth under HubAuth::ApiKey"
+            );
+        }
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/search?q=test")
+                    .header("authorization", "Bearer hub-secret")
                     .body(Body::empty())
                     .unwrap(),
             )

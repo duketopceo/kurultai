@@ -10,6 +10,10 @@ fn bin() -> Command {
     // Force FTS-only — ambient API keys must not hit OpenRouter or trip dim mismatch.
     cmd.env_remove("OPENROUTER_API_KEY");
     cmd.env_remove("KURULTAI_API_KEY");
+    // Solo CLI smoke: CI's Postgres job sets KURULTAI_FEATURE_HUB=1 for Store tests.
+    // The binary inherits that and would then demand DATABASE_URL (which that job
+    // does not set — it uses KURULTAI_TEST_DATABASE_URL).
+    cmd.env_remove("KURULTAI_FEATURE_HUB");
     cmd
 }
 

@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-08-16
-version: 1
+updated: 2026-08-29
+version: 2
 ---
 
 # `docs`
@@ -15,6 +15,7 @@ version: 1
 
 - [`agent-zero/`](agent-zero/INDEX.md) — v1 Agent Zero issue pack (historical)
 - [`brainstorms/`](brainstorms/INDEX.md) — Requirements / research notes
+- [`deploy/`](deploy/INDEX.md) — Hub / Railway operator recipes
 - [`eval/`](eval/INDEX.md) — Eval notes
 - [`ideas/`](ideas/INDEX.md) — Parked ideas
 - [`plans/`](plans/INDEX.md) — LFG plans and work-order packs (live queue: phase-6-next)
@@ -30,11 +31,12 @@ version: 1
 | [`agent-index.md`](agent-index.md) | Agent INDEX.md schema, skip list, update ritual | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`crew-instance-node3.md`](crew-instance-node3.md) | Crew instance notes | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`mac-dev.md`](mac-dev.md) | macOS dev setup | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`multi-user-kurultai.md`](multi-user-kurultai.md) | Multi-user / hub product notes | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`multi-user-kurultai.md`](multi-user-kurultai.md) | Multi-user / hub product notes | — | — | 2026-08-29 | 2 | 2026-08-29 hosted-hub row points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`upstream-inspiration.md`](upstream-inspiration.md) | Upstream inspiration notes | — | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-08-29 — `deploy/` HUB-3 Railway recipe; multi-user hosted-hub row
 - 2026-08-16 — `agent-index.md` protocol for the repo-wide map
 - 2026-08-16 — indexed this folder (v1 seed)
 

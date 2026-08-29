@@ -50,7 +50,7 @@ pub const ALL: &[FeatureSpec] = &[
         id: "hub",
         since: "0.5.0",
         default_on: false,
-        summary: "Shared team/company hub (Wave G — not shipped)",
+        summary: "Shared team/company hub (HUB-3 transport; default off)",
     },
 ];
 
