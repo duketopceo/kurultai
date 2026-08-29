@@ -7,12 +7,18 @@
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
 mod auth;
+mod hub_listen;
 mod mcp;
 mod ui;
 
 pub use auth::{
-    resolve_admin_token, write_route_decision, HubAuth, HubGate, WriteRouteDecision,
-    ENV_ADMIN_TOKEN,
+    resolve_admin_token, resolve_bind_all_from_env, resolve_hub_gate_from_env,
+    write_route_decision, HubAuth, HubGate, WriteRouteDecision, ENV_ADMIN_TOKEN,
+};
+pub use hub_listen::{
+    allow_public_hub_from_env, bind_request_from_env, detect_public_hostname, hub_listen_decision,
+    parse_allow_public_hub, parse_bind_request, resolve_listen_socket, BindKind, BindRequest,
+    HubListenDecision,
 };
 mod ingest;
 
@@ -101,6 +107,7 @@ pub async fn serve_with(
         hub = auth::resolve_hub_gate_from_env();
     }
     let bind_all = opts.bind_all || auth::resolve_bind_all_from_env();
+    let addr = hub_listen::resolve_listen_socket(opts.port, bind_all, &hub)?;
     let state = AppState {
         brain: Arc::clone(&brain),
         status,
@@ -130,15 +137,15 @@ pub async fn serve_with(
     } else {
         tracing::info!("loopback ingest disabled (set KURULTAI_INGEST_SECRET to enable)");
     }
-    let addr = if bind_all {
-        SocketAddr::from(([0, 0, 0, 0], opts.port))
-    } else {
-        SocketAddr::from(([127, 0, 0, 1], opts.port))
-    };
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| crate::KurultaiError::Other(anyhow::anyhow!("bind {addr}: {e}")))?;
-    tracing::info!(%addr, bind_all, "http daemon listening");
+    tracing::info!(
+        %addr,
+        bind_all,
+        auth = ?hub.auth,
+        "http daemon listening"
+    );
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),

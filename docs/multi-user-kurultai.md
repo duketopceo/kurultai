@@ -13,7 +13,7 @@ Related: GitHub login [#81](https://github.com/duketopceo/kurultai/issues/81) ·
 | `web/` Clerk + GitHub sign-in shell | **Shipped** |
 | One team deploy + one Clerk Organization | **Design + partial UI** — auth only; shared store/API enforcement not in this PR |
 | Promote-to-shared-index, device sync (#80) | **Partial** — offline `.kurultai` export/import shipped; encrypted/live sync still roadmap |
-| Hosted hub (Tailscale or public + device API keys) | **Partial** — HUB-2 Postgres `Store` exists behind `--features postgres` + `KURULTAI_FEATURE_HUB=1`; transport is HUB-3 |
+| Hosted hub (Tailscale or public + device API keys) | **HUB-3** — bind policy + Postgres hub daemon; recipe [`docs/deploy/railway-hub.md`](deploy/railway-hub.md). Flag still default **off**. |
 | Multi-tenant / VPC, many Orgs / RBAC, audit, retention | **Roadmap / design only** — not shipped |
 
 ## Visibility scopes (HUB-1)

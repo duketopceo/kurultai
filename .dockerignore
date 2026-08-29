@@ -1,0 +1,13 @@
+# Build context: repo root. Multi-stage; postgres feature; no SQLite volume.
+.git
+.github
+target
+web/node_modules
+website/node_modules
+plugin
+*.db
+*.db-wal
+*.db-shm
+.env
+coverage-html
+lcov.info

@@ -300,8 +300,8 @@ pub async fn run(
         http::ServeOptions {
             port: opts.port,
             mcp_http_secret: opts.mcp_http_secret,
-            bind_all: false,
-            hub: crate::http::HubGate::default(),
+            bind_all: http::resolve_bind_all_from_env(),
+            hub: http::resolve_hub_gate_from_env(),
         },
     )
     .await;

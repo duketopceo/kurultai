@@ -285,6 +285,18 @@ pub async fn open_store(config: &crate::types::Config) -> Result<Arc<dyn Store>>
 /// Shared-tier hub store. Never selected by [`open_store`] (solo stays SQLite).
 ///
 /// Requires `--features postgres` **and** `KURULTAI_FEATURE_HUB=1`.
+pub fn database_url_from_env() -> Option<String> {
+    for key in ["KURULTAI_DATABASE_URL", "DATABASE_URL"] {
+        if let Ok(v) = std::env::var(key) {
+            let t = v.trim();
+            if !t.is_empty() {
+                return Some(t.to_string());
+            }
+        }
+    }
+    None
+}
+
 pub async fn open_hub_store(database_url: &str, embed_dim: usize) -> Result<Arc<dyn Store>> {
     if !crate::features::enabled("hub") {
         return Err(KurultaiError::Store(

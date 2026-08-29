@@ -13,6 +13,8 @@ origin: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md 
 
 # feat: HUB-3 Railway transport — public/Tailscale bind + Postgres hub daemon
 
+> **LFG execution pin (2026-08-29):** `/lfg next phase` ships **this plan only** (U1–U4). Base `origin/main`. `kurultai admin key` (`#223`) exists but **KTD8 stands** — this slice still uses env `KURULTAI_HUB_API_KEYS`, not `admin_keys.db`. Do not start 002/003, KHAN-475, or Agent Zero work.
+
 **Target repo:** `duketopceo/kurultai`
 **Audience:** solo (must not regress) → team (one hosted hub every machine can reach)
 **Base:** `main` after HUB-1 (#178) + HUB-2 (#176) + API-key scaffold (#190) + write-policy (#221)
