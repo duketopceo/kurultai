@@ -280,7 +280,19 @@ impl BrainService {
         include_quarantine: bool,
         source: Option<&str>,
     ) -> Result<Vec<SearchResult>> {
-        let filter = SearchFilter::trusted(!include_quarantine);
+        self.search_scoped_hub(query, limit, include_quarantine, source, None)
+            .await
+    }
+
+    pub async fn search_scoped_hub(
+        &self,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+        source: Option<&str>,
+        hub_team_id: Option<&str>,
+    ) -> Result<Vec<SearchResult>> {
+        let filter = SearchFilter::trusted(!include_quarantine).with_hub_team(hub_team_id);
         let src = source.map(str::trim).filter(|s| !s.is_empty());
         let fetch = if src.is_some() {
             (limit.max(1) * 8).min(80)
@@ -298,6 +310,44 @@ impl BrainService {
         self.touch_access_many(&ids).await;
         self.activity.record("search", query, ids, None);
         Ok(results)
+    }
+
+    pub async fn ask_with_team(&self, question: &str, hub_team_id: Option<&str>) -> Result<Answer> {
+        let filter = SearchFilter::default().with_hub_team(hub_team_id);
+        let primary = self
+            .hybrid_hits_filtered(question, 8, filter.clone())
+            .await?;
+        let hits = multi_hop_expand(self, primary, 8).await?;
+        let mut answer = self.synthesizer.synthesize(question, &hits).await?;
+        if answer.graph_chain.is_empty() {
+            answer.graph_chain = crate::synthesize::graph_chain_from_hits(&hits);
+        }
+        let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
+        let detail: Option<String> = {
+            let t: String = answer.answer.chars().take(160).collect();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t)
+            }
+        };
+        self.activity.record("ask", question, ids, detail);
+        Ok(answer)
+    }
+
+    pub async fn who_knows_with_team(
+        &self,
+        topic: &str,
+        limit: usize,
+        hub_team_id: Option<&str>,
+    ) -> Result<Vec<WhoKnowsEntry>> {
+        let filter = SearchFilter::default().with_hub_team(hub_team_id);
+        let hits = self
+            .hybrid_hits_filtered(topic, limit.max(1), filter)
+            .await?;
+        let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
+        self.activity.record("who_knows", topic, ids, None);
+        Ok(who_knows_from_hits(&hits))
     }
 
     /// Agent-optimized recall: project-scoped search returning token-capped views.

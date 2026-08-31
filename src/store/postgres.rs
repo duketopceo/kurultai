@@ -229,7 +229,71 @@ impl PostgresStore {
         )
         .await?;
 
+        exec_ddl(
+            conn,
+            r#"
+            CREATE TABLE IF NOT EXISTS hub_api_keys (
+                id BIGSERIAL PRIMARY KEY,
+                key_hash TEXT NOT NULL UNIQUE,
+                key_prefix TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                team_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                revoked_at TEXT
+            )
+            "#,
+            "hub_api_keys",
+        )
+        .await?;
+        exec_ddl(
+            conn,
+            "CREATE INDEX IF NOT EXISTS idx_hub_api_keys_hash ON hub_api_keys(key_hash)",
+            "idx hub_api_keys hash",
+        )
+        .await?;
+
+        exec_ddl(
+            conn,
+            r#"
+            CREATE TABLE IF NOT EXISTS hub_activity (
+                id BIGSERIAL PRIMARY KEY,
+                at TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                team_id TEXT NOT NULL,
+                namespace TEXT NOT NULL,
+                transport TEXT NOT NULL,
+                reason TEXT,
+                atom_id TEXT
+            )
+            "#,
+            "hub_activity",
+        )
+        .await?;
+        exec_ddl(
+            conn,
+            "CREATE INDEX IF NOT EXISTS idx_hub_activity_at ON hub_activity(at DESC)",
+            "idx hub_activity at",
+        )
+        .await?;
+
         Ok(())
+    }
+
+    fn hub_visibility_sql(
+        filter: &SearchFilter,
+        start_bind: usize,
+    ) -> (String, Vec<String>, usize) {
+        let mut sql = String::new();
+        let mut binds = Vec::new();
+        let mut idx = start_bind;
+        if let Some(team) = filter.hub_team_scope() {
+            sql.push_str(&format!(
+                " AND (visibility = 'company' OR (visibility = 'team' AND team_id = ${idx}))"
+            ));
+            binds.push(team.to_string());
+            idx += 1;
+        }
+        (sql, binds, idx)
     }
 
     fn reject_personal(atom: &KnowledgeAtom) -> Result<()> {
@@ -566,15 +630,21 @@ impl Store for PostgresStore {
         }
         // Predicates in SQL so project scoping precedes LIMIT (see sqlite impl).
         let mut predicates = String::new();
+        let mut extra_binds: Vec<String> = Vec::new();
+        let mut bind_idx = 3usize;
         if filter.trusted_only {
             predicates.push_str(" AND trust_lane = 'trusted'");
         }
-        let project = filter.project_scope();
-        if project.is_some() {
+        if let Some(p) = filter.project_scope() {
             predicates.push_str(&format!(
-                " AND COALESCE(CAST(metadata_json AS jsonb)->>'project_id', '{DEFAULT_PROJECT}') = $3"
+                " AND COALESCE(CAST(metadata_json AS jsonb)->>'project_id', '{DEFAULT_PROJECT}') = ${bind_idx}"
             ));
+            extra_binds.push(p.to_string());
+            bind_idx += 1;
         }
+        let (vis_sql, vis_binds, _) = Self::hub_visibility_sql(&filter, bind_idx);
+        predicates.push_str(&vis_sql);
+        extra_binds.extend(vis_binds);
         let sql = format!(
             "SELECT id, ts_rank(search_tsv, plainto_tsquery('english', $1))::float8 AS score
              FROM knowledge_atoms
@@ -583,8 +653,8 @@ impl Store for PostgresStore {
              LIMIT $2"
         );
         let mut q = sqlx::query(&sql).bind(query).bind(limit as i64);
-        if let Some(p) = project {
-            q = q.bind(p.to_string());
+        for b in &extra_binds {
+            q = q.bind(b);
         }
         let rows = q
             .fetch_all(&self.pool)
@@ -627,16 +697,28 @@ impl Store for PostgresStore {
         } else {
             limit
         };
-        let project = filter.project_scope();
+        let mut extra_binds: Vec<String> = Vec::new();
+        let mut bind_idx = 3usize;
+        let mut where_parts = Vec::new();
+        if let Some(p) = filter.project_scope() {
+            where_parts.push(format!(
+                "COALESCE(CAST(a.metadata_json AS jsonb)->>'project_id', '{DEFAULT_PROJECT}') = ${bind_idx}"
+            ));
+            extra_binds.push(p.to_string());
+            bind_idx += 1;
+        }
+        let (vis_sql, vis_binds, _) = Self::hub_visibility_sql(&filter, bind_idx);
+        if !vis_sql.is_empty() {
+            where_parts.push(vis_sql.trim_start_matches(" AND ").to_string());
+            extra_binds.extend(vis_binds);
+        }
+        let project_pred = if where_parts.is_empty() {
+            String::new()
+        } else {
+            format!(" WHERE {}", where_parts.join(" AND "))
+        };
         let vec = Vector::from(query_embed.to_vec());
         // L2 `<->`, score `1/(1+distance)` — same shape as sqlite-vec MATCH distance.
-        let project_pred = if project.is_some() {
-            format!(
-                " WHERE COALESCE(CAST(a.metadata_json AS jsonb)->>'project_id', '{DEFAULT_PROJECT}') = $3"
-            )
-        } else {
-            String::new()
-        };
         let sql = format!(
             "SELECT a.id, (v.embedding <-> $1)::float8 AS distance, a.trust_lane
              FROM atoms_vec v
@@ -645,8 +727,8 @@ impl Store for PostgresStore {
              LIMIT $2"
         );
         let mut q = sqlx::query(&sql).bind(vec).bind(k as i64);
-        if let Some(p) = project {
-            q = q.bind(p.to_string());
+        for b in &extra_binds {
+            q = q.bind(b);
         }
         let rows = q
             .fetch_all(&self.pool)
@@ -816,16 +898,31 @@ impl Store for PostgresStore {
     }
 
     async fn list_atoms(&self, limit: usize, filter: SearchFilter) -> Result<Vec<KnowledgeAtom>> {
-        let sql = if filter.trusted_only {
-            format!(
-                "SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE trust_lane = 'trusted'
-                 ORDER BY indexed_at DESC LIMIT $1"
-            )
-        } else {
-            format!("SELECT {ATOM_SELECT} FROM knowledge_atoms ORDER BY indexed_at DESC LIMIT $1")
-        };
-        let rows = sqlx::query(&sql)
-            .bind(limit as i64)
+        let mut predicates = String::new();
+        let mut extra_binds: Vec<String> = Vec::new();
+        let bind_idx = 2usize;
+        if filter.trusted_only {
+            predicates.push_str(" WHERE trust_lane = 'trusted'");
+        }
+        let (vis_sql, vis_binds, _) = Self::hub_visibility_sql(&filter, bind_idx);
+        if !vis_sql.is_empty() {
+            if predicates.is_empty() {
+                predicates.push_str(" WHERE ");
+                predicates.push_str(vis_sql.trim_start_matches(" AND "));
+            } else {
+                predicates.push_str(&vis_sql);
+            }
+            extra_binds.extend(vis_binds);
+        }
+        let sql = format!(
+            "SELECT {ATOM_SELECT} FROM knowledge_atoms{predicates}
+             ORDER BY indexed_at DESC LIMIT $1"
+        );
+        let mut q = sqlx::query(&sql).bind(limit as i64);
+        for b in &extra_binds {
+            q = q.bind(b);
+        }
+        let rows = q
             .fetch_all(&self.pool)
             .await
             .map_err(|e| KurultaiError::Store(format!("list_atoms: {e}")))?;
@@ -1138,6 +1235,20 @@ mod tests {
         }
     }
 
+    fn sample_scoped(
+        id: &str,
+        content: &str,
+        visibility: VisibilityScope,
+        team_id: Option<&str>,
+    ) -> KnowledgeAtom {
+        let mut atom = sample_team(id, id, content, None);
+        atom.visibility = visibility;
+        if let Some(team) = team_id {
+            atom.metadata.insert("team_id".into(), team.into());
+        }
+        atom
+    }
+
     async fn test_store() -> Option<PostgresStore> {
         match std::env::var("KURULTAI_TEST_DATABASE_URL") {
             Ok(url) if !url.is_empty() => Some(
@@ -1355,5 +1466,58 @@ mod tests {
             .unwrap();
         let pending = store.list_pending_ingestion_jobs().await.unwrap();
         assert!(!pending.iter().any(|j| j.id == id));
+    }
+
+    #[tokio::test]
+    async fn hub_team_filter_ae5_isolates_team_atoms() {
+        let Some(store) = test_store().await else {
+            return;
+        };
+        let token = format!("ae5-token-{}", uuid::Uuid::new_v4());
+        let eng_id = format!("eng-{}", uuid::Uuid::new_v4());
+        let sales_id = format!("sales-{}", uuid::Uuid::new_v4());
+        let company_id = format!("company-{}", uuid::Uuid::new_v4());
+
+        store
+            .upsert(&sample_scoped(
+                &eng_id,
+                &format!("{token} engineering notes"),
+                VisibilityScope::Team,
+                Some("eng"),
+            ))
+            .await
+            .unwrap();
+        store
+            .upsert(&sample_scoped(
+                &sales_id,
+                &format!("{token} sales notes"),
+                VisibilityScope::Team,
+                Some("sales"),
+            ))
+            .await
+            .unwrap();
+        store
+            .upsert(&sample_scoped(
+                &company_id,
+                &format!("{token} company wide"),
+                VisibilityScope::Company,
+                None,
+            ))
+            .await
+            .unwrap();
+
+        let filter = SearchFilter::default().with_hub_team(Some("eng"));
+        let hits = store.fts_search(&token, 10, filter).await.unwrap();
+        let ids: Vec<_> = hits.iter().map(|(a, _)| a.id.as_str()).collect();
+        assert!(ids.contains(&eng_id.as_str()), "eng team atom visible");
+        assert!(ids.contains(&company_id.as_str()), "company atom visible");
+        assert!(
+            !ids.contains(&sales_id.as_str()),
+            "sales team atom must not leak to eng caller (AE5)"
+        );
+
+        store.delete_atom(&eng_id).await.unwrap();
+        store.delete_atom(&sales_id).await.unwrap();
+        store.delete_atom(&company_id).await.unwrap();
     }
 }

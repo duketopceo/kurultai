@@ -36,6 +36,8 @@ pub struct SearchFilter {
     /// When set, only atoms whose `metadata.project_id` equals this value match.
     /// Atoms with no `project_id` are treated as `"default"`.
     pub project: Option<String>,
+    /// Hub AE5: when set, only `company` atoms or `team` atoms matching this team_id.
+    pub hub_team_id: Option<String>,
 }
 
 impl Default for SearchFilter {
@@ -43,6 +45,7 @@ impl Default for SearchFilter {
         Self {
             trusted_only: true,
             project: None,
+            hub_team_id: None,
         }
     }
 }
@@ -60,6 +63,7 @@ impl SearchFilter {
         Self {
             trusted_only,
             project: None,
+            hub_team_id: None,
         }
     }
 
@@ -73,9 +77,23 @@ impl SearchFilter {
         self
     }
 
+    /// Hub AE5 team isolation: company atoms plus team atoms for this team_id.
+    pub fn with_hub_team(mut self, team_id: Option<&str>) -> Self {
+        self.hub_team_id = team_id
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string);
+        self
+    }
+
     /// Project scope as a SQL bind value, if any.
     pub fn project_scope(&self) -> Option<&str> {
         self.project.as_deref()
+    }
+
+    /// Hub team scope as a SQL bind value, if any.
+    pub fn hub_team_scope(&self) -> Option<&str> {
+        self.hub_team_id.as_deref()
     }
 }
 

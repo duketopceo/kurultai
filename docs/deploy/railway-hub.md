@@ -33,7 +33,17 @@ Non-loopback + `auth=none` **exits non-zero** before listen (except `KURULTAI_HU
 4. Use the **private** hostname for team clients. `*.up.railway.app` is treated as public: set `ALLOW_PUBLIC_HUB=1` only when you intend that URL, and keep API keys.
 5. Do **not** attach a volume for SQLite.
 
-Generate a key locally (`openssl rand -hex 32`) and put the raw value (or its sha256 hex) in `KURULTAI_HUB_API_KEYS`. `kurultai admin key` (`#223`) is a later identity store — this slice still uses the env CSV.
+Generate a bootstrap key locally (`openssl rand -hex 32`) and put the raw value (or its sha256 hex) in `KURULTAI_HUB_API_KEYS` for first deploy. After Postgres is up, **issue real device keys**:
+
+```bash
+DATABASE_URL=postgres://… kurultai hub key issue --agent alice --team eng
+DATABASE_URL=postgres://… kurultai hub key list
+DATABASE_URL=postgres://… kurultai hub log --limit 20
+```
+
+Plaintext is shown once at issue; only sha256 is stored. When the `hub_api_keys` table has active rows, env CSV is ignored for auth. Revoked keys return 401 immediately.
+
+Write activity: `GET /api/hub/activity?limit=50` (Bearer required). Brain UI live feed stays at `GET /api/activity` (in-memory ring).
 
 ## Tailscale
 

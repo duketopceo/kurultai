@@ -11,10 +11,12 @@ mod hub_listen;
 mod mcp;
 mod ui;
 
+#[cfg(feature = "postgres")]
+pub use auth::HubPrincipal;
 pub use auth::{
     path_requires_hub_auth, resolve_admin_token, resolve_bind_all_from_env,
-    resolve_hub_gate_from_env, write_route_decision, HubAuth, HubGate, WriteRouteDecision,
-    ENV_ADMIN_TOKEN,
+    resolve_hub_gate_from_env, write_route_decision, HubAuth, HubGate, MaybeHubPrincipal,
+    WriteRouteDecision, ENV_ADMIN_TOKEN,
 };
 pub use hub_listen::resolve_listen_socket;
 mod ingest;
@@ -49,6 +51,8 @@ struct AppState {
     status: Arc<DaemonStatus>,
     metrics: Arc<MetricsRegistry>,
     hub: HubGate,
+    #[cfg(feature = "postgres")]
+    hub_activity: Option<Arc<crate::hub::HubActivityStore>>,
 }
 
 /// Options for the localhost HTTP daemon.
@@ -103,13 +107,39 @@ pub async fn serve_with(
     if hub.auth == HubAuth::None && hub.api_keys.is_empty() {
         hub = auth::resolve_hub_gate_from_env();
     }
+    #[cfg(feature = "postgres")]
+    let hub_activity = if crate::features::enabled("hub") {
+        if let Some(url) = crate::store::database_url_from_env() {
+            match crate::hub::HubKeyStore::connect(&url).await {
+                Ok(key_store) => {
+                    let pool = key_store.pool().clone();
+                    hub.key_store = Some(Arc::new(key_store));
+                    Some(Arc::new(crate::hub::HubActivityStore::new(pool)))
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "hub key store unavailable");
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     let bind_all = opts.bind_all || auth::resolve_bind_all_from_env();
     let addr = hub_listen::resolve_listen_socket(opts.port, bind_all, &hub)?;
-    let state = AppState {
-        brain: Arc::clone(&brain),
+    let state = app_state(
+        Arc::clone(&brain),
         status,
-        metrics: MetricsRegistry::shared(),
-        hub: hub.clone(),
+        MetricsRegistry::shared(),
+        hub.clone(),
+    );
+    #[cfg(feature = "postgres")]
+    let state = {
+        let mut state = state;
+        state.hub_activity = hub_activity;
+        state
     };
     let mut app = router(state);
     if let Some(secret) = mcp::resolve_mcp_http_secret(opts.mcp_http_secret.as_deref()) {
@@ -162,6 +192,7 @@ fn router(state: AppState) -> Router {
         .route("/api/ontology", get(api_ontology))
         .route("/api/touch", post(api_touch))
         .route("/api/activity", get(api_activity))
+        .route("/api/hub/activity", get(api_hub_activity))
         .route("/api/promote", post(api_promote))
         .route("/api/search", get(search_get).post(search_post))
         .route("/api/recall", post(recall_post))
@@ -206,13 +237,28 @@ pub fn build_ingest_app(
 ///
 /// Mirrors the routes mounted by [`serve_with`] without binding a socket.
 pub fn build_app(brain: BrainService, status: Arc<DaemonStatus>, hub: HubGate) -> Router {
-    let state = AppState {
-        brain: Arc::new(brain),
+    router(app_state(
+        Arc::new(brain),
         status,
-        metrics: MetricsRegistry::shared(),
+        MetricsRegistry::shared(),
         hub,
-    };
-    router(state)
+    ))
+}
+
+fn app_state(
+    brain: Arc<BrainService>,
+    status: Arc<DaemonStatus>,
+    metrics: Arc<MetricsRegistry>,
+    hub: HubGate,
+) -> AppState {
+    AppState {
+        brain,
+        status,
+        metrics,
+        hub,
+        #[cfg(feature = "postgres")]
+        hub_activity: None,
+    }
 }
 
 /// Browsers must not reuse `/api/*` JSON (graph/status used to boot from a stale cache).
@@ -508,27 +554,36 @@ struct PromoteBody {
 
 async fn api_promote(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Json(body): Json<PromoteBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("api_promote", request_id=%request_id);
     state.status.touch_client_activity();
+    let actor = http_actor(&principal);
     match state
         .brain
-        .promote(
-            &body.atom_id,
-            &crate::write_policy::WriteContext::from_env(crate::write_policy::WriteTransport::Http)
-                .actor(),
-            body.reason.as_deref(),
-        )
+        .promote(&body.atom_id, &actor, body.reason.as_deref())
         .await
     {
-        Ok(res) => Ok(Json(serde_json::json!({
-            "ok": true,
-            "request_id": &request_id,
-            "atom_id": res.atom_id,
-            "actor": res.actor,
-        }))),
+        Ok(res) => {
+            #[cfg(feature = "postgres")]
+            log_hub_write(
+                &state,
+                &principal,
+                "promote",
+                "http",
+                body.reason.as_deref(),
+                Some(&body.atom_id),
+            )
+            .await;
+            Ok(Json(serde_json::json!({
+                "ok": true,
+                "request_id": &request_id,
+                "atom_id": res.atom_id,
+                "actor": res.actor,
+            })))
+        }
         Err(e) => Err(json_error(
             StatusCode::BAD_REQUEST,
             e.to_string(),
@@ -550,6 +605,83 @@ async fn api_activity(
         "next_seq": next_seq,
         "events": events,
     }))
+}
+
+#[cfg(feature = "postgres")]
+async fn api_hub_activity(
+    State(state): State<AppState>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let limit = params
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50)
+        .clamp(1, 500);
+    let Some(store) = state.hub_activity.as_ref() else {
+        return Err(json_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "hub activity log requires KURULTAI_FEATURE_HUB=1 with Postgres",
+            &request_id,
+        ));
+    };
+    match store.list(limit).await {
+        Ok(entries) => Ok(Json(serde_json::json!({ "ok": true, "entries": entries }))),
+        Err(e) => Err(json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            e.to_string(),
+            &request_id,
+        )),
+    }
+}
+
+#[cfg(not(feature = "postgres"))]
+async fn api_hub_activity(
+    State(_state): State<AppState>,
+    Query(_params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    Err(json_error(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "hub activity log requires postgres feature",
+        &request_id,
+    ))
+}
+
+fn http_actor(principal: &MaybeHubPrincipal) -> String {
+    if let Some(agent) = principal.agent_id() {
+        format!("hub:{agent}")
+    } else {
+        crate::write_policy::WriteContext::from_env(crate::write_policy::WriteTransport::Http)
+            .actor()
+    }
+}
+
+#[cfg(feature = "postgres")]
+async fn log_hub_write(
+    state: &AppState,
+    principal: &MaybeHubPrincipal,
+    namespace: &str,
+    transport: &str,
+    reason: Option<&str>,
+    atom_id: Option<&str>,
+) {
+    let (Some(store), Some(p)) = (state.hub_activity.as_ref(), principal.0.as_ref()) else {
+        return;
+    };
+    if let Err(e) = store
+        .append(
+            &p.agent_id,
+            &p.team_id,
+            namespace,
+            transport,
+            reason,
+            atom_id,
+        )
+        .await
+    {
+        tracing::warn!(error = %e, "hub activity append failed");
+    }
 }
 
 fn default_limit() -> usize {
@@ -597,6 +729,7 @@ struct RecallBody {
 
 async fn search_post(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Json(body): Json<SearchBody>,
 ) -> Result<Json<Vec<SearchResult>>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
@@ -605,11 +738,12 @@ async fn search_post(
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Search);
     match state
         .brain
-        .search_scoped(
+        .search_scoped_hub(
             &body.query,
             body.limit,
             body.include_quarantine,
             body.source.as_deref(),
+            principal.team_id(),
         )
         .await
     {
@@ -656,6 +790,7 @@ async fn recall_post(
 
 async fn search_get(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
@@ -664,11 +799,12 @@ async fn search_get(
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Search);
     match state
         .brain
-        .search_scoped(
+        .search_scoped_hub(
             &query.q,
             query.limit,
             query.include_quarantine,
             query.source.as_deref(),
+            principal.team_id(),
         )
         .await
     {
@@ -694,13 +830,18 @@ struct AskBody {
 
 async fn ask_post(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Json(body): Json<AskBody>,
 ) -> Result<Json<Answer>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("ask_post", request_id=%request_id);
     state.status.touch_client_activity();
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Ask);
-    match state.brain.ask(&body.question).await {
+    match state
+        .brain
+        .ask_with_team(&body.question, principal.team_id())
+        .await
+    {
         Ok(answer) => {
             timer.success(answer.citations.len() as u64);
             Ok(Json(answer))
@@ -718,13 +859,18 @@ async fn ask_post(
 
 async fn ask_get(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Query(query): Query<AskQuery>,
 ) -> Result<Json<Answer>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("ask_get", request_id=%request_id);
     state.status.touch_client_activity();
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Ask);
-    match state.brain.ask(&query.question).await {
+    match state
+        .brain
+        .ask_with_team(&query.question, principal.team_id())
+        .await
+    {
         Ok(answer) => {
             timer.success(answer.citations.len() as u64);
             Ok(Json(answer))
@@ -778,12 +924,17 @@ struct WhoKnowsBody {
 
 async fn who_knows_post(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Json(body): Json<WhoKnowsBody>,
 ) -> Result<Json<Vec<WhoKnowsEntry>>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("who_knows_post", request_id=%request_id);
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::WhoKnows);
-    match state.brain.who_knows(&body.topic, body.limit).await {
+    match state
+        .brain
+        .who_knows_with_team(&body.topic, body.limit, principal.team_id())
+        .await
+    {
         Ok(entries) => {
             timer.success(entries.len() as u64);
             Ok(Json(entries))
@@ -849,6 +1000,8 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
         let resp = app
@@ -869,6 +1022,8 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
         let resp = app
@@ -902,6 +1057,8 @@ mod tests {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
         let resp = app
@@ -948,6 +1105,8 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
         let resp = app
@@ -1010,6 +1169,8 @@ mod tests {
             brain: Arc::new(brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
         (app, db_dir)
@@ -1230,6 +1391,8 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
         let resp = app
@@ -1468,6 +1631,8 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
         let resp = app
@@ -1518,6 +1683,8 @@ mod tests {
             brain: Arc::new(brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
         let resp = app
@@ -1557,6 +1724,8 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::clone(&status),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
 
@@ -1678,6 +1847,8 @@ mod tests {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
 
@@ -1815,6 +1986,8 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
         let resp = app
@@ -1842,6 +2015,8 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: Arc::clone(&metrics),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
         let _ = app
@@ -1888,6 +2063,8 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         });
         let resp = app
@@ -1981,6 +2158,8 @@ mod tests {
             brain: Arc::clone(&brain),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate::default(),
         };
         router(state).merge(mcp::routes(mcp::McpHttpState::new(
@@ -2121,9 +2300,13 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                #[cfg(feature = "postgres")]
+                key_store: None,
             },
         });
         let missing = app
@@ -2168,9 +2351,13 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                #[cfg(feature = "postgres")]
+                key_store: None,
             },
         });
         let resp = app
@@ -2191,9 +2378,13 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                #[cfg(feature = "postgres")]
+                key_store: None,
             },
         });
         for path in &["/search?q=test", "/ask?question=test"] {

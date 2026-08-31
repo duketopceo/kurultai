@@ -1,10 +1,62 @@
 //! Hub REST auth (public-mode API keys). Solo/loopback default is no auth.
 
 use crate::hashutil::sha256_hex;
-use axum::extract::{Request, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::extract::{FromRequestParts, Request, State};
+use axum::http::{header, request::Parts, HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
+#[cfg(feature = "postgres")]
+use std::sync::Arc;
+
+#[cfg(feature = "postgres")]
+pub use crate::hub::HubPrincipal;
+
+/// Optional hub principal attached by [`hub_api_auth`] when issued keys are active.
+#[derive(Debug, Clone, Default)]
+pub struct MaybeHubPrincipal(#[cfg(feature = "postgres")] pub Option<HubPrincipal>);
+
+impl MaybeHubPrincipal {
+    #[cfg(feature = "postgres")]
+    pub fn team_id(&self) -> Option<&str> {
+        self.0.as_ref().map(|p| p.team_id.as_str())
+    }
+
+    #[cfg(feature = "postgres")]
+    pub fn agent_id(&self) -> Option<&str> {
+        self.0.as_ref().map(|p| p.agent_id.as_str())
+    }
+
+    #[cfg(not(feature = "postgres"))]
+    pub fn team_id(&self) -> Option<&str> {
+        None
+    }
+
+    #[cfg(not(feature = "postgres"))]
+    pub fn agent_id(&self) -> Option<&str> {
+        None
+    }
+}
+
+impl<S> FromRequestParts<S> for MaybeHubPrincipal
+where
+    S: Send + Sync,
+{
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        #[cfg(feature = "postgres")]
+        {
+            Ok(MaybeHubPrincipal(
+                parts.extensions.get::<HubPrincipal>().cloned(),
+            ))
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            let _ = parts;
+            Ok(MaybeHubPrincipal())
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HubAuth {
@@ -13,10 +65,26 @@ pub enum HubAuth {
     ApiKey,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct HubGate {
     pub auth: HubAuth,
     pub api_keys: Vec<String>,
+    #[cfg(feature = "postgres")]
+    pub key_store: Option<Arc<crate::hub::HubKeyStore>>,
+}
+
+impl std::fmt::Debug for HubGate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut dbg = f.debug_struct("HubGate");
+        dbg.field("auth", &self.auth)
+            .field("api_keys_len", &self.api_keys.len());
+        #[cfg(feature = "postgres")]
+        dbg.field(
+            "key_store",
+            &self.key_store.as_ref().map(|_| "Some(HubKeyStore)"),
+        );
+        dbg.finish()
+    }
 }
 
 pub fn parse_hub_auth(raw: Option<&str>) -> HubAuth {
@@ -46,6 +114,8 @@ pub fn resolve_hub_gate_from_env() -> HubGate {
     HubGate {
         auth: parse_hub_auth(std::env::var("KURULTAI_HUB_AUTH").ok().as_deref()),
         api_keys: keys_from_csv(std::env::var("KURULTAI_HUB_API_KEYS").ok().as_deref()),
+        #[cfg(feature = "postgres")]
+        key_store: None,
     }
 }
 
@@ -105,9 +175,37 @@ pub async fn hub_api_auth(
     if !path_requires_hub_auth(path) {
         return Ok(next.run(req).await);
     }
-    match extract_bearer(req.headers()) {
-        Some(token) if token_accepted(&token, &gate.api_keys) => Ok(next.run(req).await),
-        _ => Err(StatusCode::UNAUTHORIZED),
+    let Some(token) = extract_bearer(req.headers()) else {
+        return Err(StatusCode::UNAUTHORIZED);
+    };
+
+    #[cfg(feature = "postgres")]
+    if let Some(store) = &gate.key_store {
+        match store.has_active_keys().await {
+            Ok(true) => match store.resolve_token(&token).await {
+                Ok(Some(principal)) => {
+                    let mut req = req;
+                    req.extensions_mut().insert(principal);
+                    return Ok(next.run(req).await);
+                }
+                Ok(None) => return Err(StatusCode::UNAUTHORIZED),
+                Err(e) => {
+                    tracing::warn!(error = %e, "hub key lookup failed");
+                    return Err(StatusCode::UNAUTHORIZED);
+                }
+            },
+            Ok(false) => {}
+            Err(e) => {
+                tracing::warn!(error = %e, "hub key store check failed");
+                return Err(StatusCode::UNAUTHORIZED);
+            }
+        }
+    }
+
+    if token_accepted(&token, &gate.api_keys) {
+        Ok(next.run(req).await)
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
     }
 }
 
