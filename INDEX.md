@@ -38,9 +38,10 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`.coderabbit.yaml`](.coderabbit.yaml) | CodeRabbit: auto-review off | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`.compound-engineering/config.local.yaml`](.compound-engineering/config.local.yaml) | Compound Engineering per-checkout local config (now tracked) | — | — | 2026-09-01 | 1 | 2026-09-01 local config no longer ignored |
 | [`.dockerignore`](.dockerignore) | Docker build context excludes for the hub image | — | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 hub image context |
 | [`.env.example`](.env.example) | Example env vars (API keys, hub bind) | — | — | 2026-08-29 | 2 | 2026-08-29 hub env block (HUB-3) · 2026-08-16 indexed (v1 seed) |
-| [`.gitignore`](.gitignore) | Ignored build, env, and agent workspace paths | — | — | 2026-08-16 | 2 | 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
+| [`.gitignore`](.gitignore) | Ignored build, env, and agent workspace paths | — | — | 2026-09-01 | 3 | 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-08-16 | 2 | 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
@@ -65,6 +66,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-01 — track `.compound-engineering/config.local.yaml`, add `.devcontainer/` to `.gitignore`
 - 2026-09-01 — v0.5.0 Team released: GitHub tag + release created; queue + Year-1 milestones marked shipped
 - 2026-09-01 — v0.5.0 release prep: crate/Cargo.toml → 0.5.0, CHANGELOG, README, index
 - 2026-09-01 — HUB-5 ✅ (#250) · HUB-6 ✅; final stretch to v0.5.0 plan + queue cleanup
