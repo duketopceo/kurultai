@@ -20,12 +20,13 @@ version: 1
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`CODEOWNERS`](CODEOWNERS) | Default owner for all paths (solo → team groundwork; #122). | — | — | 2026-08-07 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`CODEOWNERS`](CODEOWNERS) | Default owner for all paths — require @duketopceo approval. | — | — | 2026-08-31 | 2 | 2026-08-31 require @duketopceo approval on all changes · 2026-08-16 indexed (v1 seed) |
 | [`PULL_REQUEST_TEMPLATE.md`](PULL_REQUEST_TEMPLATE.md) | PULL_REQUEST_TEMPLATE.md | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`dependabot.yml`](dependabot.yml) | Dependabot version updates (weekly). | — | — | 2026-08-07 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-08-31 — `CODEOWNERS`: require @duketopceo approval for all changes
 - 2026-08-16 — `workflows/ci.yml`: Agent index audit job
 - 2026-08-16 — indexed this folder (v1 seed)
 
