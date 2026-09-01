@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: tests
 parent: INDEX.md
-updated: 2026-08-29
+updated: 2026-08-31
 version: 2
 ---
 
@@ -35,10 +35,11 @@ version: 2
 | [`phase4_connectors_test.rs`](phase4_connectors_test.rs) | Phase 4: Dayflow fixture index → FTS hit. | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase5_daemon_test.rs`](phase5_daemon_test.rs) | Phase 5: daemon poll_once indexes without full sync. | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`retrieval_hybrid.rs`](retrieval_hybrid.rs) | Phase 2 (#23) hybrid retrieval integration — FTS ∥ vector → RRF → stub rerank. | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`stress_http.rs`](stress_http.rs) | HTTP stress test — 1000 mixed read/write requests against the Axum stack. | `kurultai` crate public HTTP API | — | 2026-08-31 | 1 | 2026-08-31 added stress test |
 
 ## Recent
 
+- 2026-08-31 — added `stress_http.rs` — 1000 request mixed-load HTTP stress test
 - 2026-08-29 — acceptance tests for unprefixed query alias auth under `HubAuth::ApiKey`
 - 2026-08-29 — CLI smoke unsets ambient `KURULTAI_FEATURE_HUB` (Postgres CI job)
 - 2026-08-16 — indexed this folder (v1 seed)
-

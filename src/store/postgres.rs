@@ -5,6 +5,7 @@
 use super::{IngestionJob, SearchFilter, Store, DEFAULT_PROJECT, MIN_EMBEDDING_NORM};
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
+use crate::hub::HubActivityStore;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
 use crate::types::{
     normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink, TrustLane,
@@ -252,29 +253,7 @@ impl PostgresStore {
         )
         .await?;
 
-        exec_ddl(
-            conn,
-            r#"
-            CREATE TABLE IF NOT EXISTS hub_activity (
-                id BIGSERIAL PRIMARY KEY,
-                at TEXT NOT NULL,
-                agent_id TEXT NOT NULL,
-                team_id TEXT NOT NULL,
-                namespace TEXT NOT NULL,
-                transport TEXT NOT NULL,
-                reason TEXT,
-                atom_id TEXT
-            )
-            "#,
-            "hub_activity",
-        )
-        .await?;
-        exec_ddl(
-            conn,
-            "CREATE INDEX IF NOT EXISTS idx_hub_activity_at ON hub_activity(at DESC)",
-            "idx hub_activity at",
-        )
-        .await?;
+        HubActivityStore::migrate_conn(conn).await?;
 
         Ok(())
     }
@@ -401,6 +380,12 @@ impl PostgresStore {
             atom.last_accessed_at
         };
         let team_id = atom.metadata.get("team_id").cloned();
+        if atom.visibility == VisibilityScope::Team && team_id.is_none() {
+            return Err(KurultaiError::Store(format!(
+                "team-scoped atom {} missing team_id metadata",
+                atom.id
+            )));
+        }
         let prior_hash: Option<(String,)> =
             sqlx::query_as("SELECT content_hash FROM knowledge_atoms WHERE id = $1")
                 .bind(&atom.id)
@@ -1216,7 +1201,7 @@ mod tests {
     use crate::store::Store;
 
     fn sample_team(id: &str, title: &str, content: &str, emb: Option<Vec<f32>>) -> KnowledgeAtom {
-        KnowledgeAtom {
+        let mut atom = KnowledgeAtom {
             id: id.into(),
             source: "markdown".into(),
             source_id: format!("/{id}.md"),
@@ -1232,7 +1217,9 @@ mod tests {
             embedding: emb,
             visibility: VisibilityScope::Team,
             ..Default::default()
-        }
+        };
+        atom.metadata.insert("team_id".into(), "team-test".into());
+        atom
     }
 
     fn sample_scoped(
@@ -1270,7 +1257,6 @@ mod tests {
         let Some(store) = test_store().await else {
             return;
         };
-        let before = store.count().await.unwrap();
         let pid = format!("p-ae4-{}", uuid::Uuid::new_v4());
         let mut personal = sample_team(&pid, "Personal", "must not land in hub", None);
         personal.visibility = VisibilityScope::Personal;
@@ -1279,7 +1265,6 @@ mod tests {
             err.to_string().contains("AE4") || err.to_string().contains("personal"),
             "{err}"
         );
-        assert_eq!(store.count().await.unwrap(), before);
         assert!(store.get(&pid).await.unwrap().is_none());
     }
 

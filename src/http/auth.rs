@@ -181,23 +181,23 @@ pub async fn hub_api_auth(
 
     #[cfg(feature = "postgres")]
     if let Some(store) = &gate.key_store {
-        match store.has_active_keys().await {
-            Ok(true) => match store.resolve_token(&token).await {
-                Ok(Some(principal)) => {
-                    let mut req = req;
-                    req.extensions_mut().insert(principal);
-                    return Ok(next.run(req).await);
-                }
-                Ok(None) => return Err(StatusCode::UNAUTHORIZED),
+        match store.resolve_token(&token).await {
+            Ok(Some(principal)) => {
+                let mut req = req;
+                req.extensions_mut().insert(principal);
+                return Ok(next.run(req).await);
+            }
+            Ok(None) => match store.has_active_keys().await {
+                Ok(true) => return Err(StatusCode::UNAUTHORIZED),
+                Ok(false) => {}
                 Err(e) => {
-                    tracing::warn!(error = %e, "hub key lookup failed");
-                    return Err(StatusCode::UNAUTHORIZED);
+                    tracing::warn!(error = %e, "hub key store check failed");
+                    return Err(StatusCode::INTERNAL_SERVER_ERROR);
                 }
             },
-            Ok(false) => {}
             Err(e) => {
-                tracing::warn!(error = %e, "hub key store check failed");
-                return Err(StatusCode::UNAUTHORIZED);
+                tracing::warn!(error = %e, "hub key lookup failed");
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
             }
         }
     }

@@ -81,3 +81,8 @@ tempfile = "3"
 local-embed = ["dep:fastembed"]
 # Shared-tier Postgres + pgvector (v0.5.0 hub). Also needs KURULTAI_FEATURE_HUB=1 at runtime.
 postgres = ["dep:sqlx", "dep:pgvector"]
+
+[profile.release]
+# Lean runtime: thin LTO + strip symbols. Debug builds are untouched; use `strip = false` for crash debugging.
+lto = "thin"
+strip = true

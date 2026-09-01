@@ -50,7 +50,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`CONCEPTS.md`](CONCEPTS.md) | Shared domain vocabulary (atoms, hub, FTS-first, ontology) | — | — | 2026-08-29 | 2 | 2026-08-29 Hub paragraph points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup, tests, PR and architecture guidelines | `INDEX.md` · `docs/agent-index.md` | — | 2026-08-16 | 2 | 2026-08-16 agent-index subsection · 2026-08-16 indexed (v1 seed) |
 | [`Cargo.lock`](Cargo.lock) | Locked Rust dependency graph for reproducible CI | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.4.1) and optional features | — | — | 2026-08-29 | 2 | 2026-08-29 clap `env` for daemon PORT · 2026-08-16 indexed (v1 seed) |
+| [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.4.1) and optional features | — | — | 2026-08-31 | 3 | 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-29 clap env for daemon PORT · 2026-08-16 indexed (v1 seed) |
 | [`Dockerfile`](Dockerfile) | Multi-stage hub image (`--features postgres`) | `docs/deploy/railway-hub.md` | `docker-compose.hub.yml` | 2026-08-29 | 1 | 2026-08-29 HUB-3 Railway/compose image |
 | [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | Kurultai Feature Matrix (KHAN-251) | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -58,14 +58,18 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-08-19 | 2 | 2026-08-19 rewrite for v0.4.1 stack facts · 2026-08-16 indexed (v1 seed) |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`config.example.toml`](config.example.toml) | Example config.toml for sources and models | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`docker-compose.hub.yml`](docker-compose.hub.yml) | Local pgvector + hub daemon proof of Railway recipe | `Dockerfile` · `docs/deploy/railway-hub.md` | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 compose proof |
 | [`hey.md`](hey.md) | Informal notes / scratch | — | — | 2026-08-08 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`rust-toolchain.toml`](rust-toolchain.toml) | Rust toolchain pin | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-08-31 — `Cargo.toml`: release profile with thin LTO + strip symbols (18M → 15M)
+- 2026-08-31 — `main.rs`: `init --doctor` reuses `doctor` diagnostic spine
 - 2026-09-01 — live queue: HUB-4 ✅ (#247); **next LFG = HUB-5** (#180)
+- 2026-08-31 — added `tests/stress_http.rs` — 1000 request mixed-load HTTP stress test
+- 2026-08-31 — review fixes: auth DB 500s, reason length, team atom validation, shared hub DDL
 - 2026-08-31 — `.github/CODEOWNERS`: require @duketopceo approval for all repo changes
 - 2026-08-31 — HUB-4: ensure hub_activity table migrates alongside hub_api_keys
 - 2026-08-29 — CLI smoke unsets ambient hub flag so Postgres CI job stays solo
@@ -74,4 +78,3 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 - 2026-08-19 — `README.md` recruiter-clean rewrite (Rust/axum/SQLite/MCP/Brain UI facts)
 - 2026-08-16 — seeded hierarchical agent `INDEX.md` tree (v1); protocol in `docs/agent-index.md`
 - 2026-08-16 — `AGENTS.md` / `CONTRIBUTING.md` point at the map; CI job **Agent index**
-
