@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  debian:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        BASE_IMAGE: debian:12
+
+  ubuntu:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        BASE_IMAGE: ubuntu:24.04
