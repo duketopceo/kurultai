@@ -51,11 +51,12 @@ version: 2
 | [`main.rs`](main.rs) | CLI entry: init, index, search, ask, daemon, mcp, export | — | — | 2026-08-31 | 4 | 2026-08-31 `init --doctor` diagnostic toggle · 2026-08-31 `kurultai hub key` / `hub log` · 2026-08-29 daemon PORT · 2026-08-16 indexed |
 | [`metrics.rs`](metrics.rs) | Prometheus text for GET /api/metrics | — | `src/http/mod.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`project.rs`](project.rs) | project_id namespacing for shared-store sessions (#184) | — | `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` | 2026-09-01 | 2 | 2026-09-01 HUB-5 SourceConfig default_visibility_scope helper · 2026-08-16 indexed (v1 seed) |
 | [`write_policy.rs`](write_policy.rs) | Write provenance + SharedClosed quarantine containment | — | `src/mcp/server.rs` · `src/quality/promote.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-01 — `types.rs`: HUB-5 `SourceConfig::default_visibility_scope` helper (personal/team/company)
 - 2026-08-31 — `main.rs`: `init --doctor` diagnostic toggle reuses `doctor` spine
 - 2026-08-31 — review fixes: auth DB 500s, reason length, team atom validation, shared hub DDL
 - 2026-08-31 — HUB-4: ensure hub_activity table migrates alongside hub_api_keys

@@ -190,6 +190,42 @@ fn source_config_default_visibility_labels_empty_when_absent() {
     assert!(cfg.default_visibility_labels().is_empty());
 }
 
+#[test]
+fn source_config_default_visibility_scope_personal_when_absent() {
+    let cfg = SourceConfig {
+        name: "s".into(),
+        kind: SourceKind::Markdown,
+        enabled: true,
+        poll_interval_secs: 60,
+        extra: HashMap::new(),
+    };
+    assert_eq!(cfg.default_visibility_scope(), VisibilityScope::Personal);
+}
+
+#[test]
+fn source_config_default_visibility_scope_team_when_set() {
+    let cfg = SourceConfig {
+        name: "s".into(),
+        kind: SourceKind::Markdown,
+        enabled: true,
+        poll_interval_secs: 60,
+        extra: HashMap::from([("default_visibility_scope".into(), "team".into())]),
+    };
+    assert_eq!(cfg.default_visibility_scope(), VisibilityScope::Team);
+}
+
+#[test]
+fn source_config_default_visibility_scope_unknown_fail_closed_to_personal() {
+    let cfg = SourceConfig {
+        name: "s".into(),
+        kind: SourceKind::Markdown,
+        enabled: true,
+        poll_interval_secs: 60,
+        extra: HashMap::from([("default_visibility_scope".into(), "public".into())]),
+    };
+    assert_eq!(cfg.default_visibility_scope(), VisibilityScope::Personal);
+}
+
 // ── TA-11: Hub store gate (feature-flagged) ──────────────────────────────────
 // The Postgres+pgvector hub store is behind `--features postgres` AND the
 // `KURULTAI_FEATURE_HUB=1` runtime flag. Without the flag it must refuse.

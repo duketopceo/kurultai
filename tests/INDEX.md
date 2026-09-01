@@ -25,7 +25,7 @@ version: 2
 | [`acceptance_mcp.rs`](acceptance_mcp.rs) | Acceptance tests — MCP tool surface (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`acceptance_ontology.rs`](acceptance_ontology.rs) | Acceptance tests — ontology O1 (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`acceptance_search.rs`](acceptance_search.rs) | Acceptance tests — search surface (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`acceptance_visibility.rs`](acceptance_visibility.rs) | Acceptance tests — visibility / tiered access (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`acceptance_visibility.rs`](acceptance_visibility.rs) | Acceptance tests — visibility / tiered access (KHAN-251). | — | — | 2026-09-01 | 2 | 2026-09-01 HUB-5 default_visibility_scope source + pipeline tests · 2026-08-16 indexed (v1 seed) |
 | [`acceptance_write_policy.rs`](acceptance_write_policy.rs) | Acceptance tests — shared-store write containment (Track A / A2). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`cli_smoke.rs`](cli_smoke.rs) | Phase 1 CLI smoke (#5 / #23) — binary against fixture vault. | — | — | 2026-08-29 | 2 | 2026-08-29 unset ambient hub flag in bin() · 2026-08-16 indexed (v1 seed) |
 | [`inbox_adapter_test.rs`](inbox_adapter_test.rs) | Inbox tray + dump format parity + gate heuristics (AE1–AE7). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -39,6 +39,7 @@ version: 2
 
 ## Recent
 
+- 2026-09-01 — `acceptance_visibility.rs`: HUB-5 `default_visibility_scope` source + pipeline tests
 - 2026-08-31 — added `stress_http.rs` — 1000 request mixed-load HTTP stress test
 - 2026-08-29 — acceptance tests for unprefixed query alias auth under `HubAuth::ApiKey`
 - 2026-08-29 — CLI smoke unsets ambient `KURULTAI_FEATURE_HUB` (Postgres CI job)

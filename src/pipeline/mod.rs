@@ -4,7 +4,7 @@ use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::quality::{apply_gate, evaluate};
 use crate::store::Store;
-use crate::types::{CorpusTier, SourceConfig};
+use crate::types::{CorpusTier, SourceConfig, VisibilityScope};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -24,7 +24,7 @@ pub struct IndexPipeline {
     store: Arc<dyn Store>,
     embedder: Arc<dyn Embedder>,
     /// Resolved source configs keyed by connector name, used to apply
-    /// `default_corpus_tier` / `default_visibility_labels` at ingest time.
+    /// `default_corpus_tier` / `default_visibility_labels` / `default_visibility_scope` at ingest time.
     sources: HashMap<String, SourceConfig>,
 }
 
@@ -38,7 +38,7 @@ impl IndexPipeline {
     }
 
     /// Register source configs so [`IndexPipeline::index_connector`] can apply
-    /// per-source `default_corpus_tier` / `default_visibility_labels` defaults.
+    /// per-source `default_corpus_tier` / `default_visibility_labels` / `default_visibility_scope` defaults.
     pub fn register_sources(&mut self, configs: &[SourceConfig]) {
         for cfg in configs {
             self.sources.insert(cfg.name.clone(), cfg.clone());
@@ -108,20 +108,28 @@ impl IndexPipeline {
 
         let mut enriched = atoms;
 
-        // Apply per-source corpus_tier / visibility_labels defaults from the
-        // SourceConfig (only when the atom hasn't already set them — i.e. the
-        // atom is still at the default Public tier with no labels). Frontmatter
-        // or connector-supplied values win; this only fills in blanks.
+        // Apply per-source corpus_tier / visibility_labels / visibility scope
+        // defaults from the SourceConfig (only when the atom hasn't already set
+        // them — i.e. the atom is still at the default Public tier with no
+        // labels and default Personal scope). Frontmatter or connector-supplied
+        // values win; this only fills in blanks.
         if let Some(cfg) = self.sources.get(source_name) {
             let default_tier = cfg.default_corpus_tier();
             let default_labels = cfg.default_visibility_labels();
-            if default_tier != CorpusTier::Public || !default_labels.is_empty() {
+            let default_scope = cfg.default_visibility_scope();
+            if default_tier != CorpusTier::Public
+                || !default_labels.is_empty()
+                || default_scope != VisibilityScope::Personal
+            {
                 for atom in &mut enriched {
                     if atom.corpus_tier == CorpusTier::Public {
                         atom.corpus_tier = default_tier;
                     }
                     if atom.visibility_labels.is_empty() {
                         atom.visibility_labels = default_labels.clone();
+                    }
+                    if atom.visibility == VisibilityScope::Personal {
+                        atom.visibility = default_scope;
                     }
                 }
             }
@@ -229,7 +237,7 @@ mod tests {
     use crate::connectors::Connector;
     use crate::embed::NullEmbedder;
     use crate::store::{SearchFilter, SqliteVecStore};
-    use crate::types::{SourceConfig, SourceKind};
+    use crate::types::{SourceConfig, SourceKind, VisibilityScope};
     use chrono::Utc;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -277,6 +285,55 @@ mod tests {
             .unwrap();
         assert!(!hits.is_empty(), "expected FTS hit on golden phrase");
         assert_eq!(hits[0].0.source, "notes");
+    }
+
+    #[tokio::test]
+    async fn index_pipeline_applies_visibility_scope_from_source() {
+        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vault");
+        assert!(
+            fixture.is_dir(),
+            "missing fixture vault at {}",
+            fixture.display()
+        );
+
+        let db_dir = std::env::temp_dir().join(format!(
+            "kurultai-pipe-scope-{}",
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let store = Arc::new(SqliteVecStore::open(db_dir.join("store.db"), 4).unwrap());
+        let embedder: Arc<dyn Embedder> = Arc::new(NullEmbedder::new(4));
+        let mut pipeline = IndexPipeline::new(Arc::clone(&store) as Arc<dyn Store>, embedder);
+
+        let mut extra = HashMap::new();
+        extra.insert("root_path".into(), fixture.to_string_lossy().into_owned());
+        extra.insert("default_visibility_scope".into(), "team".into());
+        let config = SourceConfig {
+            name: "notes".into(),
+            kind: SourceKind::Markdown,
+            enabled: true,
+            poll_interval_secs: 60,
+            extra,
+        };
+        pipeline.register_sources(std::slice::from_ref(&config));
+
+        let mut connector = MarkdownConnector::new();
+        connector.init(&config).await.unwrap();
+
+        let stats = pipeline
+            .index_connector("notes", &connector, true)
+            .await
+            .unwrap();
+        assert!(stats.atoms_indexed > 0);
+
+        let hits = store
+            .fts_search("KNOWN_PHRASE_KURULTAI_42", 5, SearchFilter::default())
+            .await
+            .unwrap();
+        assert!(!hits.is_empty(), "expected FTS hit on golden phrase");
+        for (atom, _score) in hits {
+            assert_eq!(atom.visibility, VisibilityScope::Team);
+        }
     }
 
     /// Counts embed_batch invocations for hash-skip verification.
