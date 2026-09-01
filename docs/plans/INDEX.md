@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-08-29
-version: 2
+updated: 2026-09-01
+version: 3
 ---
 
 # `docs/plans`
@@ -82,11 +82,12 @@ _None._
 | [`phase-5-closeout.md`](phase-5-closeout.md) | Phase 5 closeout — tracker hygiene | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-5-complete.md`](phase-5-complete.md) | Phase 5 complete — wrap-up | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md) | Phase 6 — Ontology / Atlas / connector gaps | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-08-29 | 2 | 2026-08-29 HUB-3 row points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
+| [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-09-01 | 3 | 2026-09-01 HUB-4 ✅ · next LFG HUB-5 · 2026-08-29 HUB-3 row · 2026-08-16 indexed (v1 seed) |
 | [`phase-6-work-orders.md`](phase-6-work-orders.md) | Phase 6 — work orders (post–v0.4.0) | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-01 — HUB-4 ✅ on queue; next LFG HUB-5 (#180)
 - 2026-08-29 — HUB-3 LFG pin + railway-hub.md pointer on the live queue
 - 2026-08-16 — `2026-08-16-001-chore-agent-repo-index-plan.md` (this map)
 - 2026-08-16 — indexed this folder (v1 seed)

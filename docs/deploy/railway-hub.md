@@ -62,4 +62,4 @@ Second machine: same `curl` against the hub host with the bearer key. Personal n
 
 ## Isolation
 
-One Postgres database = one org. Not multi-tenant SaaS. `team_id` filtering is HUB-4.
+One Postgres database = one org. Not multi-tenant SaaS. `team_id` filtering shipped in HUB-4 ([#247](https://github.com/duketopceo/kurultai/pull/247)).

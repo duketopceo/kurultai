@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-08-29
-version: 2
+updated: 2026-09-01
+version: 3
 ---
 
 # `docs`
@@ -36,6 +36,7 @@ version: 2
 
 ## Recent
 
+- 2026-09-01 — live queue HUB-5 next; Wave G 001–002 shipped
 - 2026-08-29 — `deploy/` HUB-3 Railway recipe; multi-user hosted-hub row
 - 2026-08-16 — `agent-index.md` protocol for the repo-wide map
 - 2026-08-16 — indexed this folder (v1 seed)

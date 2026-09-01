@@ -1,13 +1,16 @@
 # Phase 6 — next work orders (post–Wave B)
 
 **Status:** v0.4.1 production prep · Wave G hub = **v0.5.0**  
-**Date:** 2026-08-12 · **Updated:** 2026-08-15  
+**Date:** 2026-08-12 · **Updated:** 2026-09-01  
 **Base:** `main` after Wave B foundation (MCP HTTP/SSE · thin metrics · soft labels · export/import · Brain UI)  
 **Umbrella:** [#10](https://github.com/duketopceo/kurultai/issues/10) Open Source Launch · Milestone 6  
 **Parent pack:** [`phase-6-work-orders.md`](phase-6-work-orders.md)  
 **Product contract:** [`docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md`](../brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md)  
 **Milestone:** [Tiered Access + Hosted Hub](https://github.com/duketopceo/kurultai/milestone/8) (#176–#181)  
+**Linear:** [imluketheduke / Khan](https://linear.app/imluketheduke) — `KHAN-*` only (not bartlettroofs-it `PRO-*`).  
 **Audience spine:** developer ✅ → solo ✅ (kernel) → **team 🔜** → company ([#25](https://github.com/duketopceo/kurultai/issues/25))
+
+**Next LFG:** HUB-5 [#180](https://github.com/duketopceo/kurultai/issues/180) · [KHAN-252](https://linear.app/imluketheduke/issue/KHAN-252/hub-5-ingest-visibility-tagging-gh-180)
 
 ## Version flags
 
@@ -39,17 +42,17 @@ Override with `KURULTAI_FEATURE_<ID>=0|1`. Catalog: `src/features.rs` · `kurult
 
 Ship **visibility scopes + shared hub** before Atlas UI or enterprise connector sprawl.
 
-| Order | ID | Work order | Issue | Size | Version / flag | First LFG? |
-|------:|----|------------|-------|------|----------------|------------|
-| 0 | **REL-1** | **v0.4.1 production tag** — crate/docs/UI embed in sync; GitHub Release `v0.4.1` | this tree | S | v0.4.1 | ✅ this release |
-| 1 | **HUB-1** | **Atom visibility scope** `personal \| team \| company` + merged local query shape (solo unchanged) | [#178](https://github.com/duketopceo/kurultai/issues/178) | M | v0.4.x (`hub` still off) | ✅ `#192` |
-| 2 | **HUB-2** | Postgres + pgvector `Store` for **shared** tier | [#176](https://github.com/duketopceo/kurultai/issues/176) · legacy [#111](https://github.com/duketopceo/kurultai/issues/111) | L | v0.5.0 `hub` | ✅ `#197` |
-| 3 | HUB-3 | Hub mode daemon — Tailscale-only **or** public + per-device API key | [#177](https://github.com/duketopceo/kurultai/issues/177) | L | v0.5.0 `hub` | ✅ [#246](https://github.com/duketopceo/kurultai/pull/246) merged |
-| 4 | HUB-4 | Admin CLI — issue/revoke device keys; `team_id` / `org_id` boundaries | [#179](https://github.com/duketopceo/kurultai/issues/179) | M | v0.5.0 `hub` | **next LFG** · plan [`2026-08-15-002`](2026-08-15-002-feat-hub4-agent-ids-write-log-plan.md) |
-| 5 | HUB-5 | Connector ingest tags visibility scope at source (never infer later) | [#180](https://github.com/duketopceo/kurultai/issues/180) · narrows [#114](https://github.com/duketopceo/kurultai/issues/114) | M | v0.5.0 `hub` | After HUB-1 · restart on `main` ([#193](https://github.com/duketopceo/kurultai/pull/193) closed unmerged) |
-| 6 | HUB-6 | Acceptance suite AE1–AE5 | [#181](https://github.com/duketopceo/kurultai/issues/181) | M | v0.5.0 `hub` | Gate before calling v0.5.0 “team” |
+| Order | ID | Work order | Issue | Linear | Size | Version / flag | First LFG? |
+|------:|----|------------|-------|-------|------|----------------|------------|
+| 0 | **REL-1** | **v0.4.1 production tag** — crate/docs/UI embed in sync; GitHub Release `v0.4.1` | this tree | — | S | v0.4.1 | ✅ this release |
+| 1 | **HUB-1** | **Atom visibility scope** `personal \| team \| company` + merged local query shape (solo unchanged) | [#178](https://github.com/duketopceo/kurultai/issues/178) | [KHAN-254](https://linear.app/imluketheduke/issue/KHAN-254/hub-1-personalteamcompany-scopes-gh-178) | M | v0.4.x (`hub` still off) | ✅ `#192` |
+| 2 | **HUB-2** | Postgres + pgvector `Store` for **shared** tier | [#176](https://github.com/duketopceo/kurultai/issues/176) · legacy [#111](https://github.com/duketopceo/kurultai/issues/111) | [KHAN-256](https://linear.app/imluketheduke/issue/KHAN-256/hub-2-postgrespgvector-store-gh-176) | L | v0.5.0 `hub` | ✅ `#197` |
+| 3 | HUB-3 | Hub mode daemon — Tailscale-only **or** public + per-device API key | [#177](https://github.com/duketopceo/kurultai/issues/177) | [KHAN-255](https://linear.app/imluketheduke/issue/KHAN-255/hub-3-hub-mode-dual-transport-gh-177) | L | v0.5.0 `hub` | ✅ [#246](https://github.com/duketopceo/kurultai/pull/246) merged |
+| 4 | HUB-4 | Admin CLI — issue/revoke device keys; `team_id` / `org_id` boundaries | [#179](https://github.com/duketopceo/kurultai/issues/179) | [KHAN-253](https://linear.app/imluketheduke/issue/KHAN-253/hub-4-admin-api-keys-team-id-gh-179) | M | v0.5.0 `hub` | ✅ [#247](https://github.com/duketopceo/kurultai/pull/247) merged |
+| 5 | HUB-5 | Connector ingest tags visibility scope at source (never infer later) | [#180](https://github.com/duketopceo/kurultai/issues/180) · narrows [#114](https://github.com/duketopceo/kurultai/issues/114) | [KHAN-252](https://linear.app/imluketheduke/issue/KHAN-252/hub-5-ingest-visibility-tagging-gh-180) | M | v0.5.0 `hub` | **next LFG** · restart on `main` ([#193](https://github.com/duketopceo/kurultai/pull/193) closed unmerged) |
+| 6 | HUB-6 | Acceptance suite AE1–AE5 | [#181](https://github.com/duketopceo/kurultai/issues/181) | [KHAN-251](https://linear.app/imluketheduke/issue/KHAN-251/ae-suite-ae1-ae5-gh-181-pr-216) | M | v0.5.0 `hub` | Gate before calling v0.5.0 “team” |
 
-**2026-08-15 sequence:** current queue is [`2026-08-15-000-chore-wave-g-railway-sequence-plan.md`](2026-08-15-000-chore-wave-g-railway-sequence-plan.md) (001 Railway → 002 agent IDs → 003 desktop wrap). Next LFG is 001 only.
+**2026-08-15 sequence:** [`2026-08-15-000-chore-wave-g-railway-sequence-plan.md`](2026-08-15-000-chore-wave-g-railway-sequence-plan.md) — 001 Railway ✅ · 002 agent IDs ✅ · 003 desktop wrap (last). **Next LFG:** HUB-5 [#180](https://github.com/duketopceo/kurultai/issues/180) (ingest visibility tagging); then HUB-6 [#181](https://github.com/duketopceo/kurultai/issues/181).
 
 **HUB-1 DoD (LFG capsule):** every `KnowledgeAtom` carries a visibility scope (default `personal`); solo `ask`/`search` unchanged when no hub configured; schema/migration + tests; **no** Postgres and **no** public bind in this slice.
 
@@ -95,10 +98,13 @@ Brain dual-mode research (brain-shape FDG + algorithmic ontology; galaxy out): [
 
 ## `/lfg` playbook (this queue)
 
-1. ~~HUB-1 atom scope~~ ✅ `#192`.  
+1. ~~HUB-1 atom scope~~ ✅ `#192` · [KHAN-254](https://linear.app/imluketheduke/issue/KHAN-254/hub-1-personalteamcompany-scopes-gh-178).  
 2. ~~v0.4.1 prep~~ ✅ `#196` (CLI map · UI build · versioned flags). Solo docs: `#195` (`init --docs`). Human tags **`v0.4.1`** on `main` after both land.  
-3. **HUB-2** Postgres Store ([#176](https://github.com/duketopceo/kurultai/issues/176), Linear PRO-760) — this PR. SQLite stays the solo kernel.  
-4. Then remaining HUB-3 (Tailscale bind + tenant identity; API-key scaffold is `#190`) → HUB-4 admin → HUB-5 connector tagging (restart; `#193` did not land) → HUB-6 green.
+3. ~~HUB-2~~ Postgres Store ([#176](https://github.com/duketopceo/kurultai/issues/176)) ✅ `#197` · [KHAN-256](https://linear.app/imluketheduke/issue/KHAN-256/hub-2-postgrespgvector-store-gh-176). SQLite stays the solo kernel.  
+4. ~~HUB-3~~ Railway transport ([#177](https://github.com/duketopceo/kurultai/issues/177)) ✅ `#246` · [KHAN-255](https://linear.app/imluketheduke/issue/KHAN-255/hub-3-hub-mode-dual-transport-gh-177).  
+5. ~~HUB-4~~ agent IDs + write log ([#179](https://github.com/duketopceo/kurultai/issues/179)) ✅ `#247` · [KHAN-253](https://linear.app/imluketheduke/issue/KHAN-253/hub-4-admin-api-keys-team-id-gh-179).  
+6. **HUB-5** connector ingest visibility tagging ([#180](https://github.com/duketopceo/kurultai/issues/180)) · [KHAN-252](https://linear.app/imluketheduke/issue/KHAN-252/hub-5-ingest-visibility-tagging-gh-180) — **next LFG** (restart; `#193` did not land).  
+7. **HUB-6** acceptance suite AE1–AE5 ([#181](https://github.com/duketopceo/kurultai/issues/181)) · [KHAN-251](https://linear.app/imluketheduke/issue/KHAN-251/ae-suite-ae1-ae5-gh-181-pr-216) — gate before calling v0.5.0 “team”.
 
 ### Hygiene
 
