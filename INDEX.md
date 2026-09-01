@@ -65,6 +65,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-01 — v0.5.0 Team released: GitHub tag + release created; queue + Year-1 milestones marked shipped
 - 2026-09-01 — v0.5.0 release prep: crate/Cargo.toml → 0.5.0, CHANGELOG, README, index
 - 2026-09-01 — HUB-5 ✅ (#250) · HUB-6 ✅; final stretch to v0.5.0 plan + queue cleanup
 - 2026-09-01 — HUB-5: source-level `default_visibility_scope` tagged at ingest (`src/types.rs` · `src/pipeline/mod.rs` · `config.example.toml`)

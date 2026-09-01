@@ -69,7 +69,7 @@ _None._
 | [`2026-09-01-001-chore-final-stretch-to-v050-team-plan.md`](2026-09-01-001-chore-final-stretch-to-v050-team-plan.md) | chore: Final stretch to v0.5.0 Team — release hardening, queue cleanup, tag `v0.5.0` | — | — | 2026-09-01 | 1 | 2026-09-01 LFG plan: HUB-5 merged, final stretch |
 | [`2026-08-15-003-feat-desktop-brain-ui-wrap-plan.md`](2026-08-15-003-feat-desktop-brain-ui-wrap-plan.md) | feat: desktop Brain UI wrap — thin Tauri window over /ui/ | — | — | 2026-08-15 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-08-16-001-chore-agent-repo-index-plan.md`](2026-08-16-001-chore-agent-repo-index-plan.md) | chore: hierarchical agent INDEX.md tree | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`YEAR-1-MILESTONES.md`](YEAR-1-MILESTONES.md) | Kurultai Year 1 Milestones & Work Orders | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`YEAR-1-MILESTONES.md`](YEAR-1-MILESTONES.md) | Kurultai Year 1 Milestones & Work Orders | — | — | 2026-09-01 | 2 | 2026-09-01 v0.5.0 shipped · 2026-08-16 indexed (v1 seed) |
 | [`phase-1-closeout.md`](phase-1-closeout.md) | Phase 1 closeout — tracker hygiene | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-1-complete.md`](phase-1-complete.md) | Phase 1 complete — wrap-up | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-1-work-orders.md`](phase-1-work-orders.md) | CE Plan: Phase 1 Work Orders | — | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -83,7 +83,7 @@ _None._
 | [`phase-5-closeout.md`](phase-5-closeout.md) | Phase 5 closeout — tracker hygiene | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-5-complete.md`](phase-5-complete.md) | Phase 5 complete — wrap-up | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md) | Phase 6 — Ontology / Atlas / connector gaps | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-09-01 | 4 | 2026-09-01 HUB-5 ✅ (#250) · HUB-6 ✅ · next LFG final stretch · 2026-08-29 HUB-3 row · 2026-08-16 indexed (v1 seed) |
+| [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-09-01 | 5 | 2026-09-01 v0.5.0 released; next LFG v0.6.0+ · 2026-09-01 HUB-5 ✅ (#250) · HUB-6 ✅ · 2026-08-29 HUB-3 row · 2026-08-16 indexed (v1 seed) |
 | [`phase-6-work-orders.md`](phase-6-work-orders.md) | Phase 6 — work orders (post–v0.4.0) | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
