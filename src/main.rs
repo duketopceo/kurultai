@@ -163,6 +163,12 @@ enum Commands {
         #[command(subcommand)]
         command: AdminCommands,
     },
+    /// Hub admin: issued device keys and write log (requires DATABASE_URL + postgres feature)
+    #[cfg(feature = "postgres")]
+    Hub {
+        #[command(subcommand)]
+        command: HubCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -203,6 +209,42 @@ enum AdminKeyCommands {
         name: String,
     },
     /// List all keys (active and revoked). Never prints tokens or hashes.
+    List,
+}
+
+#[cfg(feature = "postgres")]
+#[derive(Subcommand)]
+enum HubCommands {
+    /// Issue/revoke/list hub device API keys (Postgres)
+    Key {
+        #[command(subcommand)]
+        command: HubKeyCommands,
+    },
+    /// Read append-only hub write activity log
+    Log {
+        #[arg(long, default_value = "50")]
+        limit: usize,
+    },
+}
+
+#[cfg(feature = "postgres")]
+#[derive(Subcommand)]
+enum HubKeyCommands {
+    /// Issue a device key. Plaintext shown once; sha256 stored at rest.
+    Issue {
+        #[arg(long)]
+        agent: String,
+        #[arg(long)]
+        team: String,
+    },
+    /// Revoke by key prefix (first 12 chars shown at issue)
+    Revoke {
+        #[arg(long, conflicts_with = "id")]
+        prefix: Option<String>,
+        #[arg(long, conflicts_with = "prefix")]
+        id: Option<i64>,
+    },
+    /// List issued keys (prefix + team; never full secret)
     List,
 }
 
@@ -681,6 +723,92 @@ async fn main() -> Result<()> {
                                 r.max_tier,
                                 r.mesh.join(","),
                                 r.tools.join(",")
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        #[cfg(feature = "postgres")]
+        Commands::Hub { command } => {
+            let url = kurultai::store::database_url_from_env().ok_or_else(|| {
+                kurultai::KurultaiError::config(
+                    "kurultai hub commands require DATABASE_URL or KURULTAI_DATABASE_URL",
+                )
+            })?;
+            match command {
+                HubCommands::Key { command } => {
+                    let key_store = kurultai::hub::HubKeyStore::connect(&url).await?;
+                    match command {
+                        HubKeyCommands::Issue { agent, team } => {
+                            let (token, id) = key_store.issue(&agent, &team).await?;
+                            println!("Hub key issued (id={id}, agent={agent}, team={team}).");
+                            println!();
+                            println!("  {token}");
+                            println!();
+                            println!(
+                                "STORE THIS NOW — sha256 at rest only. Revoke with: kurultai hub key revoke --prefix {}",
+                                token.chars().take(12).collect::<String>()
+                            );
+                        }
+                        HubKeyCommands::Revoke { prefix, id } => match (prefix, id) {
+                            (Some(p), None) => {
+                                if key_store.revoke_by_prefix(&p).await? {
+                                    println!("Revoked key with prefix '{p}'.");
+                                } else {
+                                    println!("No active key with prefix '{p}'.");
+                                }
+                            }
+                            (None, Some(id)) => {
+                                if key_store.revoke_by_id(id).await? {
+                                    println!("Revoked key id {id}.");
+                                } else {
+                                    println!("No active key with id {id}.");
+                                }
+                            }
+                            _ => {
+                                return Err(kurultai::KurultaiError::config(
+                                    "specify exactly one of --prefix or --id",
+                                ));
+                            }
+                        },
+                        HubKeyCommands::List => {
+                            let records = key_store.list().await?;
+                            if records.is_empty() {
+                                println!("No hub keys issued.");
+                            } else {
+                                for r in records {
+                                    let status = if r.revoked_at.is_none() {
+                                        "active"
+                                    } else {
+                                        "revoked"
+                                    };
+                                    println!(
+                                        "  id={} prefix={} agent={} team={} [{status}]",
+                                        r.id, r.key_prefix, r.agent_id, r.team_id
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                HubCommands::Log { limit } => {
+                    let key_store = kurultai::hub::HubKeyStore::connect(&url).await?;
+                    let activity = kurultai::hub::HubActivityStore::new(key_store.pool().clone());
+                    let entries = activity.list(limit.clamp(1, 500)).await?;
+                    if entries.is_empty() {
+                        println!("No hub write activity recorded.");
+                    } else {
+                        for e in entries {
+                            println!(
+                                "  {} {} team={} ns={} transport={} atom={:?} reason={:?}",
+                                e.at,
+                                e.agent_id,
+                                e.team_id,
+                                e.namespace,
+                                e.transport,
+                                e.atom_id,
+                                e.reason
                             );
                         }
                     }
