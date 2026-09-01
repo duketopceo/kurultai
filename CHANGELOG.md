@@ -1,8 +1,8 @@
 # Changelog
 
-## [0.5.0] — unreleased
+## [0.5.0] — 2026-09-01
 
-Shared hub track (product flag `hub`, default **off**). Crate version stays 0.4.1 until this line ships.
+Shared hub track (product flag `hub`, default **off**). v0.5.0 Team release.
 
 - Crew (Track A): `SqliteVecStore::open` now configures the connection for multi-process access — `journal_mode = WAL` (read back and verified), `busy_timeout` (5s, override with `KURULTAI_SQLITE_BUSY_TIMEOUT_MS`), `synchronous = NORMAL`. N `kurultai mcp` processes sharing one `store.db` no longer block each other's reads during an index run. `import --replace` now deletes stale `-wal` / `-shm` sidecars so an old WAL is not replayed onto the imported database. New `docs/crew-instance-node3.md` runbook: no daemon, nothing binds a port.
 - HUB-2: optional `--features postgres` `PostgresStore` (pgvector) for `team`/`company` atoms. `open_store` remains SQLite. Personal upserts are rejected (AE4). One Postgres database per organization; copy shared-tier atoms only — never personal, never in-place convert of `store.db`.

@@ -45,18 +45,18 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-08-16 | 2 | 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Prompt snippet for wiring agents to Kurultai | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-08-29 | 2 | 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
+| [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-09-01 | 3 | 2026-09-01 v0.5.0 release notes · 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor covenant | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CONCEPTS.md`](CONCEPTS.md) | Shared domain vocabulary (atoms, hub, FTS-first, ontology) | — | — | 2026-08-29 | 2 | 2026-08-29 Hub paragraph points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup, tests, PR and architecture guidelines | `INDEX.md` · `docs/agent-index.md` | — | 2026-08-16 | 2 | 2026-08-16 agent-index subsection · 2026-08-16 indexed (v1 seed) |
 | [`Cargo.lock`](Cargo.lock) | Locked Rust dependency graph for reproducible CI | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.4.1) and optional features | — | — | 2026-08-31 | 3 | 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-29 clap env for daemon PORT · 2026-08-16 indexed (v1 seed) |
+| [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.5.0) and optional features | — | — | 2026-09-01 | 4 | 2026-09-01 bump to v0.5.0 · 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-16 indexed (v1 seed) |
 | [`Dockerfile`](Dockerfile) | Multi-stage hub image (`--features postgres`) | `docs/deploy/railway-hub.md` | `docker-compose.hub.yml` | 2026-08-29 | 1 | 2026-08-29 HUB-3 Railway/compose image |
 | [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | Kurultai Feature Matrix (KHAN-251) | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-08-19 | 2 | 2026-08-19 rewrite for v0.4.1 stack facts · 2026-08-16 indexed (v1 seed) |
+| [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-01 | 3 | 2026-09-01 v0.5.0 release stack facts · 2026-08-19 rewrite for v0.4.1 stack facts · 2026-08-16 indexed (v1 seed) |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-01 | 2 | 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
 | [`docker-compose.hub.yml`](docker-compose.hub.yml) | Local pgvector + hub daemon proof of Railway recipe | `Dockerfile` · `docs/deploy/railway-hub.md` | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 compose proof |
@@ -65,6 +65,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-01 — v0.5.0 release prep: crate/Cargo.toml → 0.5.0, CHANGELOG, README, index
 - 2026-09-01 — HUB-5 ✅ (#250) · HUB-6 ✅; final stretch to v0.5.0 plan + queue cleanup
 - 2026-09-01 — HUB-5: source-level `default_visibility_scope` tagged at ingest (`src/types.rs` · `src/pipeline/mod.rs` · `config.example.toml`)
 - 2026-08-31 — `Cargo.toml`: release profile with thin LTO + strip symbols (18M → 15M)
