@@ -17,7 +17,7 @@ version: 5
 3. Open the file. Use [`CONCEPTS.md`](CONCEPTS.md) for domain words only.
 4. After you edit a file: bump its row (ver / stamp / 3-line changelog) and prepend **Recent** here and on every parent. Then `python3 scripts/audit-agent-index.py`.
 
-Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md) (HUB-5 next). [`docs/plans/YEAR-1-MILESTONES.md`](docs/plans/YEAR-1-MILESTONES.md) is stale (~July 2026).
+Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md) — HUB-5 ✅ (#250) · HUB-6 ✅; next LFG: final stretch to v0.5.0. [`docs/plans/YEAR-1-MILESTONES.md`](docs/plans/YEAR-1-MILESTONES.md) updated 2026-09-01.
 
 ## Children
 
@@ -65,6 +65,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-01 — HUB-5 ✅ (#250) · HUB-6 ✅; final stretch to v0.5.0 plan + queue cleanup
 - 2026-09-01 — HUB-5: source-level `default_visibility_scope` tagged at ingest (`src/types.rs` · `src/pipeline/mod.rs` · `config.example.toml`)
 - 2026-08-31 — `Cargo.toml`: release profile with thin LTO + strip symbols (18M → 15M)
 - 2026-08-31 — `main.rs`: `init --doctor` reuses `doctor` diagnostic spine
