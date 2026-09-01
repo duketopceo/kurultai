@@ -36,7 +36,7 @@ version: 3
 
 ## Recent
 
-- 2026-09-01 — live queue HUB-5 next; Wave G 001–002 shipped
+- 2026-09-01 — HUB-5 ✅ (#250) · HUB-6 ✅; final stretch to v0.5.0 plan added
 - 2026-08-29 — `deploy/` HUB-3 Railway recipe; multi-user hosted-hub row
 - 2026-08-16 — `agent-index.md` protocol for the repo-wide map
 - 2026-08-16 — indexed this folder (v1 seed)

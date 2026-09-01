@@ -11,11 +11,12 @@
 
 ## Q3 2026 (Aug–Sep) — Foundation Hardening
 
-### Milestone: v0.3.1 Foundation
+### Milestone: v0.3.1 Foundation (superseded by v0.4.1)
 
-**Target:** September 30, 2026  
-**Cashflow:** None (stability release — N/A exception to cashflow-live DoD gate)  
-**GitHub Issue:** Create tracking issue
+**Status:** skipped — the foundation hardening work was folded into the v0.4.1 production release (see `docs/plans/2026-08-13-002-feat-v041-production-release-plan.md`)  
+**Target:** —  
+**Cashflow:** None  
+**GitHub Issue:** see v0.4.1 release plan
 
 #### Work Orders
 
@@ -62,11 +63,12 @@
 
 ## Q4 2026 (Oct–Dec) — Team Foundations
 
-### Milestone: v0.5.0 Team
+### Milestone: v0.5.0 Team (current — in progress)
 
 **Target:** December 15, 2026  
 **Cashflow:** Early team access ($5-10/user/mo)  
-**GitHub Issue:** Create tracking issue
+**GitHub Issue:** [#180](https://github.com/duketopceo/kurultai/issues/180) · [KHAN-252](https://linear.app/imluketheduke/issue/KHAN-252/hub-5-ingest-visibility-tagging-gh-180)  
+**LFG plan:** `docs/plans/2026-09-01-001-chore-final-stretch-to-v050-team-plan.md`
 
 #### Work Orders
 
