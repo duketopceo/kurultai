@@ -26,6 +26,14 @@ impl HubActivityStore {
     }
 
     pub async fn migrate(pool: &PgPool) -> Result<()> {
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| KurultaiError::Store(format!("hub activity acquire: {e}")))?;
+        Self::migrate_conn(&mut conn).await
+    }
+
+    pub async fn migrate_conn(conn: &mut sqlx::postgres::PgConnection) -> Result<()> {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS hub_activity (
@@ -40,14 +48,20 @@ impl HubActivityStore {
             )
             "#,
         )
-        .execute(pool)
+        .execute(&mut *conn)
         .await
         .map_err(|e| KurultaiError::Store(format!("hub_activity ddl: {e}")))?;
 
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_hub_activity_at ON hub_activity(at DESC)")
-            .execute(pool)
+        sqlx::query("DROP INDEX IF EXISTS idx_hub_activity_at")
+            .execute(&mut *conn)
             .await
-            .map_err(|e| KurultaiError::Store(format!("hub_activity idx: {e}")))?;
+            .map_err(|e| KurultaiError::Store(format!("hub_activity drop old idx: {e}")))?;
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_hub_activity_at ON hub_activity(at DESC, id DESC)",
+        )
+        .execute(&mut *conn)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("hub_activity idx: {e}")))?;
 
         Ok(())
     }
@@ -91,7 +105,7 @@ impl HubActivityStore {
     pub async fn list(&self, limit: usize) -> Result<Vec<HubActivityEntry>> {
         let rows = sqlx::query(
             "SELECT id, at, agent_id, team_id, namespace, transport, reason, atom_id
-             FROM hub_activity ORDER BY id DESC LIMIT $1",
+             FROM hub_activity ORDER BY at DESC, id DESC LIMIT $1",
         )
         .bind(limit as i64)
         .fetch_all(&self.pool)

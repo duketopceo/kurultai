@@ -21,7 +21,7 @@ use std::sync::Arc;
     name = "kurultai",
     version,
     about = "Assemble what you know, from wherever it lives.",
-    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
+    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>  ·  init --doctor\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
 )]
 struct Cli {
     /// Log filter (overrides KURULTAI_LOG). Example: kurultai=trace,info
@@ -57,6 +57,9 @@ enum Commands {
         /// Run a full index after writing config
         #[arg(long)]
         index: bool,
+        /// Run `doctor` diagnostics after setup
+        #[arg(long)]
+        doctor: bool,
     },
     /// Ingest configured sources into the brain
     Index {
@@ -272,6 +275,7 @@ async fn main() -> Result<()> {
             agent,
             ref docs,
             index,
+            doctor,
         } => {
             let config_path = ensure_default_config()?;
             let banner_mode = load_config_from(&config_path)
@@ -298,6 +302,9 @@ async fn main() -> Result<()> {
                         s.source, s.atoms_fetched, s.atoms_indexed, s.duration_ms
                     );
                 }
+            }
+            if doctor {
+                kurultai::doctor::run(cli.env.as_deref(), Some(config_path.as_ref())).await?;
             }
         }
         Commands::Mcp {

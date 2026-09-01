@@ -560,6 +560,15 @@ async fn api_promote(
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("api_promote", request_id=%request_id);
     state.status.touch_client_activity();
+    if let Some(reason) = &body.reason {
+        if reason.chars().count() > 200 {
+            return Err(json_error(
+                StatusCode::BAD_REQUEST,
+                "reason must be at most 200 characters",
+                &request_id,
+            ));
+        }
+    }
     let actor = http_actor(&principal);
     match state
         .brain

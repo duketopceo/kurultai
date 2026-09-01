@@ -174,12 +174,6 @@ fn parse_source_kind(kind: &str) -> SourceKind {
     match kind.to_ascii_lowercase().as_str() {
         "appflowy" => SourceKind::AppFlowy,
         "markdown" | "filesystem" | "fs" => SourceKind::Markdown,
-        "obsidian" => {
-            tracing::warn!(
-                "source kind 'obsidian' is deprecated — use kind = \"markdown\" with root_path"
-            );
-            SourceKind::Markdown
-        }
         "pond" => SourceKind::Pond,
         "dayflow" => SourceKind::Dayflow,
         "tech_tracker" | "techtracker" => SourceKind::TechTracker,

@@ -111,7 +111,14 @@ impl HubKeyStore {
     pub async fn revoke_by_prefix(&self, prefix: &str) -> Result<bool> {
         let now = Utc::now().to_rfc3339();
         let updated = sqlx::query(
-            "UPDATE hub_api_keys SET revoked_at = $1 WHERE key_prefix = $2 AND revoked_at IS NULL",
+            "UPDATE hub_api_keys
+             SET revoked_at = $1
+             WHERE id = (
+                 SELECT id FROM hub_api_keys
+                 WHERE key_prefix = $2 AND revoked_at IS NULL
+                 ORDER BY id ASC
+                 LIMIT 1
+             )",
         )
         .bind(&now)
         .bind(prefix)
