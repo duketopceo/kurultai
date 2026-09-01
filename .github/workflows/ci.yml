@@ -167,3 +167,16 @@ jobs:
 
       - name: Postgres store tests
         run: cargo nextest run --locked --features postgres
+
+  container-build:
+    name: Container build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build hub image
+        run: docker build -t kurultai:smoke .
+
+      - name: Smoke test binary
+        run: docker run --rm kurultai:smoke --version
