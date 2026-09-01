@@ -10,7 +10,7 @@
 **Linear:** [imluketheduke / Khan](https://linear.app/imluketheduke) — `KHAN-*` only (not bartlettroofs-it `PRO-*`).  
 **Audience spine:** developer ✅ → solo ✅ (kernel) → **team 🔜** → company ([#25](https://github.com/duketopceo/kurultai/issues/25))
 
-**Next LFG:** HUB-5 [#180](https://github.com/duketopceo/kurultai/issues/180) · [KHAN-252](https://linear.app/imluketheduke/issue/KHAN-252/hub-5-ingest-visibility-tagging-gh-180)
+**Next LFG:** Wave D/E/Ops / v0.6.0+ planning (v0.5.0 Team released 2026-09-01)
 
 ## Version flags
 
@@ -52,7 +52,7 @@ Ship **visibility scopes + shared hub** before Atlas UI or enterprise connector 
 | 5 | HUB-5 | Connector ingest tags visibility scope at source (never infer later) | [#180](https://github.com/duketopceo/kurultai/issues/180) · narrows [#114](https://github.com/duketopceo/kurultai/issues/114) | [KHAN-252](https://linear.app/imluketheduke/issue/KHAN-252/hub-5-ingest-visibility-tagging-gh-180) | M | v0.5.0 `hub` | ✅ [#250](https://github.com/duketopceo/kurultai/pull/250) merged |
 | 6 | HUB-6 | Acceptance suite AE1–AE5 | [#181](https://github.com/duketopceo/kurultai/issues/181) | [KHAN-251](https://linear.app/imluketheduke/issue/KHAN-251/ae-suite-ae1-ae5-gh-181-pr-216) | M | v0.5.0 `hub` | ✅ green — v0.5.0 team gate met |
 
-**2026-08-15 sequence:** [`2026-08-15-000-chore-wave-g-railway-sequence-plan.md`](2026-08-15-000-chore-wave-g-railway-sequence-plan.md) — 001 Railway ✅ · 002 agent IDs ✅ · 003 desktop wrap (last). HUB-5 ✅ [#250](https://github.com/duketopceo/kurultai/pull/250) · HUB-6 ✅. **Next LFG:** `2026-09-01-001-chore-final-stretch-to-v050-team-plan.md` — release hardening, queue cleanup, tag `v0.5.0`.
+**2026-08-15 sequence:** [`2026-08-15-000-chore-wave-g-railway-sequence-plan.md`](2026-08-15-000-chore-wave-g-railway-sequence-plan.md) — 001 Railway ✅ · 002 agent IDs ✅ · 003 desktop wrap (last). HUB-5 ✅ [#250](https://github.com/duketopceo/kurultai/pull/250) · HUB-6 ✅. **Final stretch** ✅ — `v0.5.0` released 2026-09-01.
 
 **HUB-1 DoD (LFG capsule):** every `KnowledgeAtom` carries a visibility scope (default `personal`); solo `ask`/`search` unchanged when no hub configured; schema/migration + tests; **no** Postgres and **no** public bind in this slice.
 
@@ -105,7 +105,7 @@ Brain dual-mode research (brain-shape FDG + algorithmic ontology; galaxy out): [
 5. ~~HUB-4~~ agent IDs + write log ([#179](https://github.com/duketopceo/kurultai/issues/179)) ✅ `#247` · [KHAN-253](https://linear.app/imluketheduke/issue/KHAN-253/hub-4-admin-api-keys-team-id-gh-179).  
 6. ~~HUB-5~~ connector ingest visibility tagging ([#180](https://github.com/duketopceo/kurultai/issues/180)) ✅ [#250](https://github.com/duketopceo/kurultai/pull/250) · [KHAN-252](https://linear.app/imluketheduke/issue/KHAN-252/hub-5-ingest-visibility-tagging-gh-180).  
 7. ~~HUB-6~~ acceptance suite AE1–AE5 ([#181](https://github.com/duketopceo/kurultai/issues/181)) ✅ [KHAN-251](https://linear.app/imluketheduke/issue/KHAN-251/ae-suite-ae1-ae5-gh-181-pr-216).  
-8. **Final stretch to v0.5.0** — `2026-09-01-001-chore-final-stretch-to-v050-team-plan.md` — release hardening, tag `v0.5.0`, clean queue.
+8. ~~Final stretch to v0.5.0~~ ✅ — `2026-09-01-001-chore-final-stretch-to-v050-team-plan.md` — release hardening, tag `v0.5.0`, clean queue. **Released** 2026-09-01.
 
 ### Hygiene
 

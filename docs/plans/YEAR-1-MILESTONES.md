@@ -63,7 +63,7 @@
 
 ## Q4 2026 (Oct–Dec) — Team Foundations
 
-### Milestone: v0.5.0 Team (current — in progress)
+### Milestone: v0.5.0 Team (shipped 2026-09-01)
 
 **Target:** December 15, 2026  
 **Cashflow:** Early team access ($5-10/user/mo)  

@@ -36,6 +36,7 @@ version: 3
 
 ## Recent
 
+- 2026-09-01 — v0.5.0 Team released; queue and Year-1 milestones marked shipped
 - 2026-09-01 — HUB-5 ✅ (#250) · HUB-6 ✅; final stretch to v0.5.0 plan added
 - 2026-08-29 — `deploy/` HUB-3 Railway recipe; multi-user hosted-hub row
 - 2026-08-16 — `agent-index.md` protocol for the repo-wide map
