@@ -73,3 +73,14 @@ fn install_script_rejects_unknown_flag() {
         .failure()
         .stderr(predicate::str::contains("unknown argument"));
 }
+
+#[test]
+fn install_script_prints_os_family() {
+    let path = install_sh();
+    Command::new("bash")
+        .arg(&path)
+        .arg("--print-os")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match("^(macos|linux)\n$").expect("valid regex"));
+}
