@@ -64,6 +64,8 @@ Kurultai’s equivalent, already in-tree:
 - HUB-2 `PostgresStore` — #176 closed
 - Bearer API-key middleware on `/api/*` when `KURULTAI_HUB_AUTH=api_key` — #190
 - Write containment + self-asserted `agent_id` stamp — #221, `src/write_policy.rs`
+- HUB-3 Railway transport — #177 closed ([#246](https://github.com/duketopceo/kurultai/pull/246))
+- HUB-4 issued keys + write log + `team_id` filter — #179 closed ([#247](https://github.com/duketopceo/kurultai/pull/247))
 - Offline `.kurultai` export/import for device handoff
 - Embedded Brain UI at `/ui/`
 
@@ -71,11 +73,11 @@ Kurultai’s equivalent, already in-tree:
 
 | Order | Plan | Issue | Ship |
 |------:|------|-------|------|
-| 1 | [001 HUB-3 Railway transport](2026-08-15-001-feat-hub3-railway-transport-plan.md) | [#177](https://github.com/duketopceo/kurultai/issues/177) | Public or Tailscale bind, refuse unauth public, Dockerfile + Railway recipe, machines talk to one hub |
-| 2 | [002 HUB-4 agent IDs + write log](2026-08-15-002-feat-hub4-agent-ids-write-log-plan.md) | [#179](https://github.com/duketopceo/kurultai/issues/179) | Issue/revoke device+agent keys, `team_id` filter, queryable write log |
+| 1 | [001 HUB-3 Railway transport](2026-08-15-001-feat-hub3-railway-transport-plan.md) | [#177](https://github.com/duketopceo/kurultai/issues/177) | ✅ merged [#246](https://github.com/duketopceo/kurultai/pull/246) |
+| 2 | [002 HUB-4 agent IDs + write log](2026-08-15-002-feat-hub4-agent-ids-write-log-plan.md) | [#179](https://github.com/duketopceo/kurultai/issues/179) | ✅ merged [#247](https://github.com/duketopceo/kurultai/pull/247) |
 | 3 | [003 desktop Brain UI wrap](2026-08-15-003-feat-desktop-brain-ui-wrap-plan.md) | none (UI was out of the hub brainstorm) | Thin Tauri/Wails window over `/ui/`. Last. Does not block Railway. |
 
-HUB-5 ingest tagging (#180) stays after 002. Do not steal it into 001.
+HUB-5 ingest tagging ([#180](https://github.com/duketopceo/kurultai/issues/180)) is **next LFG** after 002. HUB-6 ([#181](https://github.com/duketopceo/kurultai/issues/181)) gates v0.5.0 “team”.
 
 ## Explicitly out
 
@@ -87,4 +89,4 @@ HUB-5 ingest tagging (#180) stays after 002. Do not steal it into 001.
 
 ## Next LFG
 
-Start **001 only**. 002 and 003 stay docs until 001 is on `main`.
+**HUB-5** ([#180](https://github.com/duketopceo/kurultai/issues/180)) — connector ingest visibility tagging. 001 and 002 are on `main`. 003 desktop wrap stays last and does not block hub work.

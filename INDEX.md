@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-08-29
-version: 4
+updated: 2026-09-01
+version: 5
 ---
 
 # `.`
@@ -17,7 +17,7 @@ version: 4
 3. Open the file. Use [`CONCEPTS.md`](CONCEPTS.md) for domain words only.
 4. After you edit a file: bump its row (ver / stamp / 3-line changelog) and prepend **Recent** here and on every parent. Then `python3 scripts/audit-agent-index.py`.
 
-Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md) (HUB-3 next). [`docs/plans/YEAR-1-MILESTONES.md`](docs/plans/YEAR-1-MILESTONES.md) is stale (~July 2026).
+Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md) (HUB-5 next). [`docs/plans/YEAR-1-MILESTONES.md`](docs/plans/YEAR-1-MILESTONES.md) is stale (~July 2026).
 
 ## Children
 
@@ -65,6 +65,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-01 — live queue: HUB-4 ✅ (#247); **next LFG = HUB-5** (#180)
 - 2026-08-31 — `.github/CODEOWNERS`: require @duketopceo approval for all repo changes
 - 2026-08-31 — HUB-4: ensure hub_activity table migrates alongside hub_api_keys
 - 2026-08-29 — CLI smoke unsets ambient hub flag so Postgres CI job stays solo
