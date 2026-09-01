@@ -56,6 +56,7 @@ version: 2
 
 ## Recent
 
+- 2026-08-31 — HUB-4: ensure hub_activity table migrates alongside hub_api_keys
 - 2026-08-31 — HUB-4: `src/hub/` issued keys, AE5 filter, write activity log
 - 2026-08-29 — HUB-3: listen start-fail, hub Postgres when flag on, `PORT` env
 - 2026-08-16 — indexed this folder (v1 seed)

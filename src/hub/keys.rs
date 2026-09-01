@@ -2,6 +2,7 @@
 
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
+use crate::hub::activity::HubActivityStore;
 use chrono::Utc;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
@@ -40,6 +41,7 @@ impl HubKeyStore {
             .map_err(|e| KurultaiError::Store(format!("hub keys connect: {e}")))?;
         let store = Self { pool };
         store.migrate().await?;
+        HubActivityStore::migrate(store.pool()).await?;
         Ok(store)
     }
 
@@ -210,12 +212,10 @@ mod tests {
         let principal = store.resolve_token(&token).await.unwrap().unwrap();
         assert_eq!(principal.agent_id, "alice");
         assert_eq!(principal.team_id, "eng");
-        assert!(
-            store
-                .revoke_by_prefix(&token.chars().take(12).collect::<String>())
-                .await
-                .unwrap()
-        );
+        assert!(store
+            .revoke_by_prefix(&token.chars().take(12).collect::<String>())
+            .await
+            .unwrap());
         assert!(store.resolve_token(&token).await.unwrap().is_none());
     }
 }

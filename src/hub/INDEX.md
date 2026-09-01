@@ -20,9 +20,10 @@ _None._
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`activity.rs`](activity.rs) | Append-only `hub_activity` log | `sqlx` postgres feature | `src/http/mod.rs` · `src/main.rs` | 2026-08-31 | 1 | 2026-08-31 HUB-4 write log |
-| [`keys.rs`](keys.rs) | Issued API keys + principal resolution | `src/hashutil` | `src/http/auth.rs` | 2026-08-31 | 1 | 2026-08-31 HUB-4 issued keys |
+| [`keys.rs`](keys.rs) | Issued API keys + principal resolution | `src/hashutil` · `src/hub/activity.rs` | `src/http/auth.rs` | 2026-08-31 | 2 | 2026-08-31 ensure hub_activity table migrates on connect · 2026-08-31 HUB-4 issued keys |
 | [`mod.rs`](mod.rs) | Hub admin module gate | — | `src/lib.rs` | 2026-08-31 | 1 | 2026-08-31 HUB-4 module |
 
 ## Recent
 
+- 2026-08-31 — HUB-4: ensure hub_activity table migrates alongside hub_api_keys
 - 2026-08-31 — HUB-4 issued keys, AE5 team filter, durable write log
