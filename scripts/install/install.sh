@@ -45,6 +45,16 @@ After install:
 EOF
 }
 
+detect_os() {
+  local u
+  u="$(uname -s 2>/dev/null || echo unknown)"
+  case "$u" in
+    Darwin) echo "macos" ;;
+    Linux) echo "linux" ;;
+    *) echo "$u" ;;
+  esac
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
@@ -68,6 +78,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --clone) FORCE_CLONE=1; shift ;;
+    --print-os) detect_os; exit 0 ;;
     *) die "unknown argument: $1 (try --help)" ;;
   esac
 done
@@ -79,16 +90,6 @@ run() {
     log "+ $*"
     "$@"
   fi
-}
-
-detect_os() {
-  local u
-  u="$(uname -s 2>/dev/null || echo unknown)"
-  case "$u" in
-    Darwin) echo "macos" ;;
-    Linux) echo "linux" ;;
-    *) echo "$u" ;;
-  esac
 }
 
 ensure_cargo() {
