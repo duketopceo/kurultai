@@ -22,6 +22,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 ## Children
 
 - [`.github/`](.github/INDEX.md) — CI, templates, CODEOWNERS
+- [`.compound-engineering/`](.compound-engineering/INDEX.md) — Compound Engineering per-checkout local configuration
 - [`docs/`](docs/INDEX.md) — Product + agent docs
 - [`plans/`](plans/INDEX.md) — Legacy root-level plans (prefer docs/plans/)
 - [`plugin/`](plugin/INDEX.md) — Agent Zero plugin (tools, daemon proxy, embedded Brain UI)
@@ -38,7 +39,6 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`.coderabbit.yaml`](.coderabbit.yaml) | CodeRabbit: auto-review off | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`.compound-engineering/config.local.yaml`](.compound-engineering/config.local.yaml) | Compound Engineering per-checkout local config (now tracked) | — | — | 2026-09-01 | 1 | 2026-09-01 local config no longer ignored |
 | [`.dockerignore`](.dockerignore) | Docker build context excludes for the hub image | — | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 hub image context |
 | [`.env.example`](.env.example) | Example env vars (API keys, hub bind) | — | — | 2026-08-29 | 2 | 2026-08-29 hub env block (HUB-3) · 2026-08-16 indexed (v1 seed) |
 | [`.gitignore`](.gitignore) | Ignored build, env, and agent workspace paths | — | — | 2026-09-01 | 3 | 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
