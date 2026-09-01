@@ -428,6 +428,15 @@ impl SourceConfig {
             })
             .unwrap_or_default()
     }
+
+    /// `extra.default_visibility_scope` = `personal` | `team` | `company`.
+    /// Missing → `personal` (solo default). Unknown values fail closed to `personal`.
+    pub fn default_visibility_scope(&self) -> VisibilityScope {
+        self.extra
+            .get("default_visibility_scope")
+            .map(|s| VisibilityScope::parse(s.trim()))
+            .unwrap_or(VisibilityScope::Personal)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

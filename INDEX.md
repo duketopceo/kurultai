@@ -58,13 +58,14 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-08-19 | 2 | 2026-08-19 rewrite for v0.4.1 stack facts · 2026-08-16 indexed (v1 seed) |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-01 | 2 | 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
 | [`docker-compose.hub.yml`](docker-compose.hub.yml) | Local pgvector + hub daemon proof of Railway recipe | `Dockerfile` · `docs/deploy/railway-hub.md` | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 compose proof |
 | [`hey.md`](hey.md) | Informal notes / scratch | — | — | 2026-08-08 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`rust-toolchain.toml`](rust-toolchain.toml) | Rust toolchain pin | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-01 — HUB-5: source-level `default_visibility_scope` tagged at ingest (`src/types.rs` · `src/pipeline/mod.rs` · `config.example.toml`)
 - 2026-08-31 — `Cargo.toml`: release profile with thin LTO + strip symbols (18M → 15M)
 - 2026-08-31 — `main.rs`: `init --doctor` reuses `doctor` diagnostic spine
 - 2026-09-01 — live queue: HUB-4 ✅ (#247); **next LFG = HUB-5** (#180)
