@@ -58,12 +58,27 @@ export function normalizeGraphNode(node: GraphNode): Atom {
 
 const dbg = (...args: unknown[]) => console.debug('[kurultai:api]', ...args);
 
+const TOKEN_KEY = 'kurultai:token';
+
+function getAuthHeaders(init?: HeadersInit): HeadersInit {
+  const token = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (token && token.length > 0) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (init) {
+    const h = new Headers(init);
+    h.forEach((v, k) => { headers[k] = v; });
+  }
+  return headers;
+}
+
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   dbg('GET', path);
   const t0 = performance.now();
   const r = await fetch(path, {
     cache: 'no-store',
-    headers: { Accept: 'application/json' },
+    headers: getAuthHeaders(),
     signal,
   });
   if (!r.ok) {
@@ -118,7 +133,7 @@ export async function searchAtoms(query: string, signal?: AbortSignal): Promise<
 export async function askBrain(question: string, signal?: AbortSignal): Promise<string> {
   const r = await fetch('/api/ask', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ question }),
     signal,
   });
@@ -130,7 +145,7 @@ export async function askBrain(question: string, signal?: AbortSignal): Promise<
 export async function touchAtom(atomId: string): Promise<Atom | null> {
   const r = await fetch('/api/touch', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ atom_id: atomId }),
   });
   if (!r.ok) return null;
@@ -139,5 +154,7 @@ export async function touchAtom(atomId: string): Promise<Atom | null> {
 }
 
 export async function openFile(file: string): Promise<void> {
-  await fetch(`/api/open?file=${encodeURIComponent(file)}`);
+  await fetch(`/api/open?file=${encodeURIComponent(file)}`, {
+    headers: getAuthHeaders(),
+  });
 }
