@@ -19,6 +19,14 @@ use zerocopy::AsBytes;
 /// Norm below this is treated as a zero / stub vector — never written to `atoms_vec`.
 pub(crate) const MIN_EMBEDDING_NORM: f32 = 1e-6;
 
+/// Persistent agent / codename identity for the multi-agent message board.
+#[derive(Debug, Clone)]
+pub struct Agent {
+    pub id: String,
+    pub codename: String,
+    pub created_at: String,
+}
+
 /// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
 const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, question, resolution, \
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
@@ -291,6 +299,32 @@ pub trait Store: Send + Sync {
 
     /// All links, or those incident on an entity id / atom id.
     async fn list_ontology_links(&self, endpoint: Option<&str>) -> Result<Vec<OntologyLink>>;
+
+    // ── Agent identity (multi-agent message board) ────────────────────────────
+
+    /// Register a new codename, generate and store a key hash, and return `(id, plaintext_key)`.
+    /// The caller must persist `plaintext_key` exactly once; it cannot be recovered.
+    async fn register_agent(&self, codename: &str) -> Result<(String, String)> {
+        let _ = codename;
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    /// Resolve an agent by the SHA-256 hash of its plaintext API key.
+    async fn resolve_agent_by_key_hash(&self, key_hash: &str) -> Result<Option<Agent>> {
+        let _ = key_hash;
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    /// List all registered agents (for admin/CLI review).
+    async fn list_agents(&self) -> Result<Vec<Agent>> {
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -1627,6 +1661,62 @@ impl Store for SqliteVecStore {
             }
         }
         Ok(out)
+    }
+
+    // ── Agent identity (multi-agent message board) ────────────────────────────
+
+    async fn register_agent(&self, codename: &str) -> Result<(String, String)> {
+        let conn = self.lock()?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let plaintext = uuid::Uuid::new_v4().to_string();
+        let key_hash = sha256_hex(&plaintext);
+
+        conn.execute(
+            "INSERT INTO agents (id, codename, key_hash) VALUES (?1, ?2, ?3)",
+            params![&id, &codename, &key_hash],
+        )
+        .map_err(|e| KurultaiError::Store(format!("register_agent insert: {e}")))?;
+
+        Ok((id, plaintext))
+    }
+
+    async fn resolve_agent_by_key_hash(&self, key_hash: &str) -> Result<Option<Agent>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT id, codename, created_at FROM agents WHERE key_hash = ?1")
+            .map_err(|e| KurultaiError::Store(format!("resolve_agent_by_key_hash prepare: {e}")))?;
+        let row = stmt
+            .query_row(params![key_hash], |row| {
+                Ok(Agent {
+                    id: row.get(0)?,
+                    codename: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("resolve_agent_by_key_hash query: {e}")))?;
+        Ok(row)
+    }
+
+    async fn list_agents(&self) -> Result<Vec<Agent>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT id, codename, created_at FROM agents ORDER BY created_at DESC")
+            .map_err(|e| KurultaiError::Store(format!("list_agents prepare: {e}")))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(Agent {
+                    id: row.get(0)?,
+                    codename: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })
+            .map_err(|e| KurultaiError::Store(format!("list_agents query: {e}")))?;
+        let mut agents = Vec::new();
+        for row in rows {
+            agents.push(row.map_err(|e| KurultaiError::Store(format!("list_agents row: {e}")))?);
+        }
+        Ok(agents)
     }
 }
 
