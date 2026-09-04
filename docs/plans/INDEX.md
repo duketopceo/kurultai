@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-09-01
-version: 3
+updated: 2026-09-03
+version: 4
 ---
 
 # `docs/plans`
@@ -19,6 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`2026-09-03-001-feat-agent-message-board-plan.md`](2026-09-03-001-feat-agent-message-board-plan.md) | feat: agent message board (`hey.md`) — requirements-only plan | — | — | 2026-09-03 | 1 | 2026-09-03 brainstorm |
 | [`2026-07-21-001-feat-search-retrieval-rrf-plan.md`](2026-07-21-001-feat-search-retrieval-rrf-plan.md) | Search Retrieval RRF Diamond - Plan | — | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-07-21-002-feat-phase2-testing-gates-plan.md`](2026-07-21-002-feat-phase2-testing-gates-plan.md) | Phase 2 Testing Work Orders - Plan | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-07-23-001-chore-phase2-closeout-plan.md`](2026-07-23-001-chore-phase2-closeout-plan.md) | Phase 2 Closeout - Plan | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -88,6 +89,7 @@ _None._
 
 ## Recent
 
+- 2026-09-03 — `2026-09-03-001-feat-agent-message-board-plan.md` added (requirements-only brainstorm)
 - 2026-09-01 — final stretch to v0.5.0 plan + HUB-5 ✅ (#250) + HUB-6 ✅ on queue
 - 2026-08-29 — HUB-3 LFG pin + railway-hub.md pointer on the live queue
 - 2026-08-16 — `2026-08-16-001-chore-agent-repo-index-plan.md` (this map)

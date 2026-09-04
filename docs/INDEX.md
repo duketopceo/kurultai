@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-09-01
-version: 3
+updated: 2026-09-03
+version: 4
 ---
 
 # `docs`
@@ -36,6 +36,7 @@ version: 3
 
 ## Recent
 
+- 2026-09-03 — `docs/plans/2026-09-03-001-feat-agent-message-board-plan.md` added
 - 2026-09-01 — v0.5.0 Team released; queue and Year-1 milestones marked shipped
 - 2026-09-01 — HUB-5 ✅ (#250) · HUB-6 ✅; final stretch to v0.5.0 plan added
 - 2026-08-29 — `deploy/` HUB-3 Railway recipe; multi-user hosted-hub row
