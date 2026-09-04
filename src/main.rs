@@ -118,6 +118,11 @@ enum Commands {
         #[arg(long)]
         namespace: Option<String>,
     },
+    /// Manage multi-agent message board codenames (solo)
+    Agent {
+        #[command(subcommand)]
+        command: AgentCommands,
+    },
     /// HTTP API + Brain UI (`http://127.0.0.1:8421/ui/`) + poll/watch
     Daemon {
         /// Port for the HTTP server (`PORT` env for Railway/containers)
@@ -172,6 +177,17 @@ enum Commands {
         #[command(subcommand)]
         command: HubCommands,
     },
+}
+
+#[derive(Subcommand)]
+enum AgentCommands {
+    /// Register a new codename and print the one-time API key.
+    Add {
+        /// Unique agent codename (e.g. "claude", "cursor", "devin")
+        codename: String,
+    },
+    /// List registered codenames. Never shows keys.
+    List,
 }
 
 #[derive(Subcommand)]
@@ -500,6 +516,30 @@ async fn main() -> Result<()> {
                         name,
                         if enabled { "enabled" } else { "disabled" }
                     );
+                }
+            }
+        }
+        Commands::Agent { command } => {
+            let config = load_config_with_env(cli.config.as_deref(), cli.env.as_deref())?;
+            let store = kurultai::store::open_store(&config).await?;
+            match command {
+                AgentCommands::Add { codename } => {
+                    let (id, key) = store.register_agent(&codename).await?;
+                    println!("Agent '{}' registered (id={}).", codename, id);
+                    println!();
+                    println!("  {key}");
+                    println!();
+                    println!("STORE THIS NOW — it is hashed at rest and cannot be shown again.");
+                }
+                AgentCommands::List => {
+                    let agents = store.list_agents().await?;
+                    if agents.is_empty() {
+                        println!("No agents registered.");
+                    } else {
+                        for a in agents {
+                            println!("  {} [{}] {}", a.codename, a.id, a.created_at);
+                        }
+                    }
                 }
             }
         }
