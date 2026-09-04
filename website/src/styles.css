@@ -1089,3 +1089,62 @@ header.topbar {
 }
 .repo-brain-inspector strong { color: var(--fg, #e0e0f0); }
 .repo-brain-inspector span { color: var(--fg-muted, #888); }
+
+/* ── Token gate for authenticated instances ───────── */
+.token-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+  background: var(--bg, #050508);
+}
+.token-card {
+  max-width: 420px;
+  width: 100%;
+  padding: 2rem;
+  background: var(--surface-solid, #0d0b18);
+  border: 1px solid var(--line, rgba(168, 85, 247, .14));
+  border-radius: 12px;
+  box-shadow: var(--shadow, 0 24px 72px rgba(0,0,0,.5));
+  text-align: center;
+}
+.token-card h1 {
+  margin: 0 0 .5rem;
+  font-family: var(--font-display, Orbitron, sans-serif);
+  color: var(--text, #f4f0ff);
+}
+.token-card p {
+  margin: 0 0 1.25rem;
+  color: var(--text-muted, #8a82a8);
+}
+.token-card input {
+  width: 100%;
+  padding: .75rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--line, rgba(168, 85, 247, .14));
+  border-radius: 8px;
+  background: var(--bg, #050508);
+  color: var(--text, #f4f0ff);
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: .9rem;
+}
+.token-card input:focus {
+  outline: none;
+  border-color: var(--electric, #a855f7);
+  box-shadow: 0 0 0 2px var(--glow, rgba(168, 85, 247, .28));
+}
+.token-card button {
+  width: 100%;
+  padding: .75rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--electric, #a855f7);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+.token-card button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}

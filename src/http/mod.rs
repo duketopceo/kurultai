@@ -249,8 +249,9 @@ fn app_state(
     brain: Arc<BrainService>,
     status: Arc<DaemonStatus>,
     metrics: Arc<MetricsRegistry>,
-    hub: HubGate,
+    mut hub: HubGate,
 ) -> AppState {
+    hub.agent_store = Some(brain.store());
     AppState {
         brain,
         status,

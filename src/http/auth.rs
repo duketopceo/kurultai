@@ -1,11 +1,11 @@
 //! Hub REST auth (public-mode API keys). Solo/loopback default is no auth.
 
 use crate::hashutil::sha256_hex;
+use crate::store::Store;
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::{header, request::Parts, HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
-#[cfg(feature = "postgres")]
 use std::sync::Arc;
 
 #[cfg(feature = "postgres")]
@@ -69,6 +69,7 @@ pub enum HubAuth {
 pub struct HubGate {
     pub auth: HubAuth,
     pub api_keys: Vec<String>,
+    pub agent_store: Option<Arc<dyn Store>>,
     #[cfg(feature = "postgres")]
     pub key_store: Option<Arc<crate::hub::HubKeyStore>>,
 }
@@ -77,7 +78,11 @@ impl std::fmt::Debug for HubGate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut dbg = f.debug_struct("HubGate");
         dbg.field("auth", &self.auth)
-            .field("api_keys_len", &self.api_keys.len());
+            .field("api_keys_len", &self.api_keys.len())
+            .field(
+                "agent_store",
+                &self.agent_store.as_ref().map(|_| "Some(Store)"),
+            );
         #[cfg(feature = "postgres")]
         dbg.field(
             "key_store",
@@ -114,6 +119,7 @@ pub fn resolve_hub_gate_from_env() -> HubGate {
     HubGate {
         auth: parse_hub_auth(std::env::var("KURULTAI_HUB_AUTH").ok().as_deref()),
         api_keys: keys_from_csv(std::env::var("KURULTAI_HUB_API_KEYS").ok().as_deref()),
+        agent_store: None,
         #[cfg(feature = "postgres")]
         key_store: None,
     }
@@ -203,10 +209,27 @@ pub async fn hub_api_auth(
     }
 
     if token_accepted(&token, &gate.api_keys) {
-        Ok(next.run(req).await)
-    } else {
-        Err(StatusCode::UNAUTHORIZED)
+        return Ok(next.run(req).await);
     }
+
+    // Allow registered agent keys as an alternative to hub/system API keys.
+    if let Some(store) = &gate.agent_store {
+        let hash = sha256_hex(&token);
+        match store.resolve_agent_by_key_hash(&hash).await {
+            Ok(Some(agent)) => {
+                let mut req = req;
+                req.extensions_mut().insert(agent);
+                return Ok(next.run(req).await);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!(error = %e, "agent key lookup failed");
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+    }
+
+    Err(StatusCode::UNAUTHORIZED)
 }
 
 /// Env var holding the operator token required for daemon write routes under the

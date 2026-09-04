@@ -19,6 +19,83 @@ use zerocopy::AsBytes;
 /// Norm below this is treated as a zero / stub vector — never written to `atoms_vec`.
 pub(crate) const MIN_EMBEDDING_NORM: f32 = 1e-6;
 
+/// Persistent agent / codename identity for the multi-agent message board.
+#[derive(Debug, Clone)]
+pub struct Agent {
+    pub id: String,
+    pub codename: String,
+    pub created_at: String,
+}
+
+/// Message board thread.
+#[derive(Debug, Clone)]
+pub struct Thread {
+    pub id: String,
+    pub name: String,
+    pub parent_thread_id: Option<String>,
+    pub turn_cap: u32,
+    pub turns_used: u32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Message or reaction on a board thread.
+#[derive(Debug, Clone)]
+pub struct Message {
+    pub id: String,
+    pub thread_id: String,
+    pub agent_id: String,
+    pub parent_id: Option<String>,
+    pub kind: MessageKind,
+    pub content: String,
+    pub request_reply: bool,
+    pub turns_consumed: u32,
+    pub created_at: String,
+}
+
+/// Kind of a message-board post.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MessageKind {
+    #[default]
+    Message,
+    Reaction,
+}
+
+impl MessageKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Message => "message",
+            Self::Reaction => "reaction",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "reaction" => Self::Reaction,
+            _ => Self::Message,
+        }
+    }
+}
+
+/// Input for posting a message to a thread.
+#[derive(Debug, Clone)]
+pub struct PostMessageInput {
+    pub thread_id: String,
+    pub agent_id: String,
+    pub parent_id: Option<String>,
+    pub content: String,
+    pub request_reply: bool,
+}
+
+/// Input for adding a reaction to a message.
+#[derive(Debug, Clone)]
+pub struct AddReactionInput {
+    pub thread_id: String,
+    pub agent_id: String,
+    pub message_id: String,
+    pub emoji: String,
+}
+
 /// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
 const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, question, resolution, \
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
@@ -291,6 +368,87 @@ pub trait Store: Send + Sync {
 
     /// All links, or those incident on an entity id / atom id.
     async fn list_ontology_links(&self, endpoint: Option<&str>) -> Result<Vec<OntologyLink>>;
+
+    // ── Agent identity (multi-agent message board) ────────────────────────────
+
+    /// Register a new codename, generate and store a key hash, and return `(id, plaintext_key)`.
+    /// The caller must persist `plaintext_key` exactly once; it cannot be recovered.
+    async fn register_agent(&self, codename: &str) -> Result<(String, String)> {
+        let _ = codename;
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    /// Resolve an agent by the SHA-256 hash of its plaintext API key.
+    async fn resolve_agent_by_key_hash(&self, key_hash: &str) -> Result<Option<Agent>> {
+        let _ = key_hash;
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    /// List all registered agents (for admin/CLI review).
+    async fn list_agents(&self) -> Result<Vec<Agent>> {
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    // ── Message board (multi-agent `hey.md`) ──────────────────────────────────
+
+    /// Create a named thread. `parent_thread_id` may be `None` for a top-level board.
+    async fn create_thread(
+        &self,
+        name: &str,
+        parent_thread_id: Option<&str>,
+        turn_cap: Option<u32>,
+    ) -> Result<Thread> {
+        let _ = (name, parent_thread_id, turn_cap);
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Look up a thread by its human-readable name (e.g. `hey.md`).
+    async fn get_thread_by_name(&self, name: &str) -> Result<Option<Thread>> {
+        let _ = name;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// List threads, newest first.
+    async fn list_threads(&self, limit: usize) -> Result<Vec<Thread>> {
+        let _ = limit;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Post a message (or reply) to a thread, enforcing the turn cap.
+    async fn post_message(&self, input: &PostMessageInput) -> Result<Message> {
+        let _ = input;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Add a lightweight reaction to an existing message. Reactions do not consume turns.
+    async fn add_reaction(&self, input: &AddReactionInput) -> Result<Message> {
+        let _ = input;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// List messages in a thread, newest first.
+    async fn list_messages(&self, thread_id: &str, limit: usize) -> Result<Vec<Message>> {
+        let _ = (thread_id, limit);
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -1628,6 +1786,253 @@ impl Store for SqliteVecStore {
         }
         Ok(out)
     }
+
+    // ── Agent identity (multi-agent message board) ────────────────────────────
+
+    async fn register_agent(&self, codename: &str) -> Result<(String, String)> {
+        let conn = self.lock()?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let plaintext = uuid::Uuid::new_v4().to_string();
+        let key_hash = sha256_hex(&plaintext);
+
+        conn.execute(
+            "INSERT INTO agents (id, codename, key_hash) VALUES (?1, ?2, ?3)",
+            params![&id, &codename, &key_hash],
+        )
+        .map_err(|e| KurultaiError::Store(format!("register_agent insert: {e}")))?;
+
+        Ok((id, plaintext))
+    }
+
+    async fn resolve_agent_by_key_hash(&self, key_hash: &str) -> Result<Option<Agent>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT id, codename, created_at FROM agents WHERE key_hash = ?1")
+            .map_err(|e| KurultaiError::Store(format!("resolve_agent_by_key_hash prepare: {e}")))?;
+        let row = stmt
+            .query_row(params![key_hash], |row| {
+                Ok(Agent {
+                    id: row.get(0)?,
+                    codename: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("resolve_agent_by_key_hash query: {e}")))?;
+        Ok(row)
+    }
+
+    async fn list_agents(&self) -> Result<Vec<Agent>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT id, codename, created_at FROM agents ORDER BY created_at DESC")
+            .map_err(|e| KurultaiError::Store(format!("list_agents prepare: {e}")))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(Agent {
+                    id: row.get(0)?,
+                    codename: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })
+            .map_err(|e| KurultaiError::Store(format!("list_agents query: {e}")))?;
+        let mut agents = Vec::new();
+        for row in rows {
+            agents.push(row.map_err(|e| KurultaiError::Store(format!("list_agents row: {e}")))?);
+        }
+        Ok(agents)
+    }
+
+    // ── Message board implementations ─────────────────────────────────────────
+
+    async fn create_thread(
+        &self,
+        name: &str,
+        parent_thread_id: Option<&str>,
+        turn_cap: Option<u32>,
+    ) -> Result<Thread> {
+        let conn = self.lock()?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        let turn_cap = turn_cap.unwrap_or(5);
+        conn.execute(
+            "INSERT INTO threads (id, name, parent_thread_id, turn_cap, turns_used, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6)",
+            params![&id, &name, &parent_thread_id, &(turn_cap as i64), &now, &now],
+        )
+        .map_err(|e| KurultaiError::Store(format!("create_thread insert: {e}")))?;
+
+        Ok(Thread {
+            id,
+            name: name.to_string(),
+            parent_thread_id: parent_thread_id.map(str::to_string),
+            turn_cap,
+            turns_used: 0,
+            created_at: now.clone(),
+            updated_at: now,
+        })
+    }
+
+    async fn get_thread_by_name(&self, name: &str) -> Result<Option<Thread>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, parent_thread_id, turn_cap, turns_used, created_at, updated_at \
+                 FROM threads WHERE name = ?1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("get_thread_by_name prepare: {e}")))?;
+        let row = stmt
+            .query_row(params![name], row_to_thread)
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("get_thread_by_name query: {e}")))?;
+        Ok(row)
+    }
+
+    async fn list_threads(&self, limit: usize) -> Result<Vec<Thread>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, parent_thread_id, turn_cap, turns_used, created_at, updated_at \
+                 FROM threads ORDER BY updated_at DESC LIMIT ?1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("list_threads prepare: {e}")))?;
+        let rows = stmt
+            .query_map([limit as i64], row_to_thread)
+            .map_err(|e| KurultaiError::Store(format!("list_threads query: {e}")))?;
+        let mut threads = Vec::new();
+        for row in rows {
+            threads.push(row.map_err(|e| KurultaiError::Store(format!("list_threads row: {e}")))?);
+        }
+        Ok(threads)
+    }
+
+    async fn post_message(&self, input: &PostMessageInput) -> Result<Message> {
+        let mut conn = self.lock()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| KurultaiError::Store(format!("post_message begin transaction: {e}")))?;
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        let mut turns_consumed: u32 = 0;
+
+        if let Some(parent_id) = &input.parent_id {
+            let parent_reply: i32 = tx
+                .query_row(
+                    "SELECT request_reply FROM messages WHERE id = ?1",
+                    [parent_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| KurultaiError::Store(format!("post_message parent lookup: {e}")))?;
+            if parent_reply == 1 {
+                let (used, cap): (i64, i64) = tx
+                    .query_row(
+                        "SELECT turns_used, turn_cap FROM threads WHERE id = ?1",
+                        [&input.thread_id],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .map_err(|e| {
+                        KurultaiError::Store(format!("post_message thread lookup: {e}"))
+                    })?;
+                if used >= cap {
+                    return Err(KurultaiError::Store("thread turn cap reached".into()));
+                }
+                turns_consumed = 1;
+                tx.execute(
+                    "UPDATE threads SET turns_used = turns_used + 1, updated_at = ?1 WHERE id = ?2",
+                    params![&now, &input.thread_id],
+                )
+                .map_err(|e| KurultaiError::Store(format!("post_message update turns: {e}")))?;
+            }
+        }
+
+        tx.execute(
+            "INSERT INTO messages (id, thread_id, agent_id, parent_id, kind, content, request_reply, turns_consumed, created_at) \
+             VALUES (?1, ?2, ?3, ?4, 'message', ?5, ?6, ?7, ?8)",
+            params![
+                &id,
+                &input.thread_id,
+                &input.agent_id,
+                &input.parent_id,
+                &input.content,
+                &(input.request_reply as i32),
+                &(turns_consumed as i64),
+                &now,
+            ],
+        )
+        .map_err(|e| KurultaiError::Store(format!("post_message insert: {e}")))?;
+
+        tx.commit()
+            .map_err(|e| KurultaiError::Store(format!("post_message commit: {e}")))?;
+
+        Ok(Message {
+            id,
+            thread_id: input.thread_id.clone(),
+            agent_id: input.agent_id.clone(),
+            parent_id: input.parent_id.clone(),
+            kind: MessageKind::Message,
+            content: input.content.clone(),
+            request_reply: input.request_reply,
+            turns_consumed,
+            created_at: now,
+        })
+    }
+
+    async fn add_reaction(&self, input: &AddReactionInput) -> Result<Message> {
+        let conn = self.lock()?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO messages (id, thread_id, agent_id, parent_id, kind, content, request_reply, turns_consumed, created_at) \
+             VALUES (?1, ?2, ?3, ?4, 'reaction', ?5, 0, 0, ?6)",
+            params![
+                &id,
+                &input.thread_id,
+                &input.agent_id,
+                &input.message_id,
+                &input.emoji,
+                &now,
+            ],
+        )
+        .map_err(|e| KurultaiError::Store(format!("add_reaction insert: {e}")))?;
+        conn.execute(
+            "UPDATE threads SET updated_at = ?1 WHERE id = ?2",
+            params![&now, &input.thread_id],
+        )
+        .map_err(|e| KurultaiError::Store(format!("add_reaction update thread: {e}")))?;
+
+        Ok(Message {
+            id,
+            thread_id: input.thread_id.clone(),
+            agent_id: input.agent_id.clone(),
+            parent_id: Some(input.message_id.clone()),
+            kind: MessageKind::Reaction,
+            content: input.emoji.clone(),
+            request_reply: false,
+            turns_consumed: 0,
+            created_at: now,
+        })
+    }
+
+    async fn list_messages(&self, thread_id: &str, limit: usize) -> Result<Vec<Message>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, thread_id, agent_id, parent_id, kind, content, request_reply, \
+                 turns_consumed, created_at FROM messages WHERE thread_id = ?1 \
+                 ORDER BY created_at DESC LIMIT ?2",
+            )
+            .map_err(|e| KurultaiError::Store(format!("list_messages prepare: {e}")))?;
+        let rows = stmt
+            .query_map(params![thread_id, limit as i64], row_to_message)
+            .map_err(|e| KurultaiError::Store(format!("list_messages query: {e}")))?;
+        let mut messages = Vec::new();
+        for row in rows {
+            messages
+                .push(row.map_err(|e| KurultaiError::Store(format!("list_messages row: {e}")))?);
+        }
+        Ok(messages)
+    }
 }
 
 /// Hydrate ranked `(id, score)` pairs into atoms, skipping missing ids.
@@ -1921,6 +2326,36 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
         corpus_tier: CorpusTier::parse(&corpus_tier_raw),
         visibility_labels: serde_json::from_str(&visibility_labels_json).unwrap_or_default(),
         visibility: VisibilityScope::parse(&visibility_raw),
+    })
+}
+
+fn row_to_thread(row: &rusqlite::Row<'_>) -> rusqlite::Result<Thread> {
+    let parent: Option<String> = row.get(2)?;
+    Ok(Thread {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        parent_thread_id: parent.filter(|s| !s.is_empty()),
+        turn_cap: row.get::<_, i64>(3)? as u32,
+        turns_used: row.get::<_, i64>(4)? as u32,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
+    })
+}
+
+fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
+    let parent: Option<String> = row.get(3)?;
+    let kind_raw: String = row.get(4)?;
+    let request_reply: i32 = row.get(6)?;
+    Ok(Message {
+        id: row.get(0)?,
+        thread_id: row.get(1)?,
+        agent_id: row.get(2)?,
+        parent_id: parent.filter(|s| !s.is_empty()),
+        kind: MessageKind::parse(&kind_raw),
+        content: row.get(5)?,
+        request_reply: request_reply != 0,
+        turns_consumed: row.get::<_, i64>(7)? as u32,
+        created_at: row.get(8)?,
     })
 }
 
