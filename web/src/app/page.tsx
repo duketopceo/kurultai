@@ -4,12 +4,11 @@ import Link from "next/link";
 export default function HomePage() {
   return (
     <div className="hero">
-      <p className="eyebrow">Team · company ready</p>
-      <h1>Sign in with GitHub</h1>
+      <p className="eyebrow">Kurultai · shared tier</p>
+      <h1>Kurultai</h1>
       <p className="lede">
-        One Kurultai deployment can host many users (Clerk Organization). Your
-        personal kernel stays on your Mac via <code>cargo install</code> — this
-        app is for the shared tier.
+        Sign in to the team brain. Personal knowledge stays on your machine via
+        the CLI — this app is the shared org surface only.
       </p>
       <div className="actions">
         <Show when="signed-out">

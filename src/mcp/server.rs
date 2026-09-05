@@ -30,6 +30,11 @@ const TOOL_PROMOTE: &str = "promote";
 const TOOL_ONTOLOGY_GET: &str = "ontology_get";
 const TOOL_ONTOLOGY_PROMOTE: &str = "ontology_promote";
 const TOOL_RECALL: &str = "recall";
+const TOOL_HEY_THREADS: &str = "hey_threads";
+const TOOL_HEY_READ: &str = "hey_read";
+const TOOL_HEY_POST: &str = "hey_post";
+const TOOL_HEY_REACT: &str = "hey_react";
+const TOOL_HEY_POLL: &str = "hey_poll";
 
 enum StdinFrame {
     Eof,
@@ -275,7 +280,7 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
         vec![
             json!({
                 "name": TOOL_SEARCH,
-                "description": "Search the Kurultai knowledge brain. Returns token-capped excerpts, not full documents. Default skips quarantine. Unscoped results mix sources (pond cannot fill every slot). Pass source to pin a connector (notes, pond, code, …).",
+                "description": "Search the Kurultai knowledge brain. Returns token-capped excerpts, not full documents. Default skips quarantine and sequesters noisy sources (pond) from unscoped results — pass source=pond to opt in.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -388,6 +393,67 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
                     "required": ["atom_id", "class_id"]
                 }
             }),
+            json!({
+                "name": TOOL_HEY_THREADS,
+                "description": "List agent message-board threads (newest first).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": { "type": "integer", "default": 20 }
+                    }
+                }
+            }),
+            json!({
+                "name": TOOL_HEY_READ,
+                "description": "Read messages from a board thread by id or name (default hey.md).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "thread": { "type": "string", "description": "Thread id or name", "default": "hey.md" },
+                        "limit": { "type": "integer", "default": 50 }
+                    }
+                }
+            }),
+            json!({
+                "name": TOOL_HEY_POST,
+                "description": "Post to the agent message board. Requires agent_key from `kurultai agent add`.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "agent_key": { "type": "string" },
+                        "content": { "type": "string" },
+                        "thread": { "type": "string", "default": "hey.md" },
+                        "parent_id": { "type": "string" },
+                        "request_reply": { "type": "boolean", "default": false }
+                    },
+                    "required": ["agent_key", "content"]
+                }
+            }),
+            json!({
+                "name": TOOL_HEY_REACT,
+                "description": "Add a lightweight reaction (does not consume reply turns). Requires agent_key.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "agent_key": { "type": "string" },
+                        "message_id": { "type": "string" },
+                        "thread_id": { "type": "string" },
+                        "emoji": { "type": "string" }
+                    },
+                    "required": ["agent_key", "message_id", "thread_id", "emoji"]
+                }
+            }),
+            json!({
+                "name": TOOL_HEY_POLL,
+                "description": "Poll unread/recent posts on the default hey.md thread. Optional since=ISO timestamp.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": { "type": "integer", "default": 50 },
+                        "since": { "type": "string" }
+                    }
+                }
+            }),
         ]
     });
     match surface {
@@ -404,6 +470,9 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
                                 | Some(TOOL_ASK)
                                 | Some(TOOL_WHO_KNOWS)
                                 | Some(TOOL_ONTOLOGY_GET)
+                                | Some(TOOL_HEY_THREADS)
+                                | Some(TOOL_HEY_READ)
+                                | Some(TOOL_HEY_POLL)
                         )
                     })
                     .cloned()
@@ -494,6 +563,86 @@ struct WhoKnowsArgs {
     limit: usize,
 }
 
+#[derive(Debug, Deserialize)]
+struct HeyLimitArgs {
+    #[serde(default = "default_hey_limit")]
+    limit: usize,
+}
+
+fn default_hey_limit() -> usize {
+    20
+}
+
+#[derive(Debug, Deserialize)]
+struct HeyReadArgs {
+    #[serde(default = "default_hey_thread")]
+    thread: String,
+    #[serde(default = "default_limit")]
+    limit: usize,
+}
+
+fn default_hey_thread() -> String {
+    "hey.md".into()
+}
+
+#[derive(Debug, Deserialize)]
+struct HeyPostArgs {
+    agent_key: String,
+    content: String,
+    thread: Option<String>,
+    parent_id: Option<String>,
+    #[serde(default)]
+    request_reply: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct HeyReactArgs {
+    agent_key: String,
+    message_id: String,
+    thread_id: String,
+    emoji: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct HeyPollArgs {
+    #[serde(default = "default_limit")]
+    limit: usize,
+    since: Option<String>,
+}
+
+async fn resolve_agent_key(brain: &BrainService, key: &str) -> Result<crate::store::Agent> {
+    let key = key.trim();
+    if key.is_empty() {
+        return Err(KurultaiError::Other(anyhow::anyhow!(
+            "agent_key required — run `kurultai agent add <codename>`"
+        )));
+    }
+    let hash = crate::hashutil::sha256_hex(key);
+    brain
+        .store()
+        .resolve_agent_by_key_hash(&hash)
+        .await?
+        .ok_or_else(|| {
+            KurultaiError::Other(anyhow::anyhow!(
+                "unknown agent_key — register with kurultai agent add"
+            ))
+        })
+}
+
+async fn resolve_or_create_thread(
+    brain: &BrainService,
+    name_or_id: &str,
+) -> Result<crate::store::Thread> {
+    if let Some(t) = brain.store().get_thread_by_name(name_or_id).await? {
+        return Ok(t);
+    }
+    // If it looks like a bare id that already exists via messages, still create by name path.
+    brain
+        .store()
+        .create_thread(name_or_id, None, Some(10))
+        .await
+}
+
 async fn call_tool(
     brain: &BrainService,
     params: Value,
@@ -507,7 +656,7 @@ async fn call_tool(
     if surface == ToolSurface::ReadOnly
         && matches!(
             call.name.as_str(),
-            TOOL_REMEMBER | TOOL_PROMOTE | TOOL_ONTOLOGY_PROMOTE
+            TOOL_REMEMBER | TOOL_PROMOTE | TOOL_ONTOLOGY_PROMOTE | TOOL_HEY_POST | TOOL_HEY_REACT
         )
     {
         return Err(KurultaiError::Other(anyhow::anyhow!(
@@ -626,6 +775,88 @@ async fn call_tool(
             serde_json::to_string(&entity)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
         }
+        TOOL_HEY_THREADS => {
+            let args: HeyLimitArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad hey_threads args: {e}")))?;
+            let threads = brain.store().list_threads(args.limit.clamp(1, 200)).await?;
+            serde_json::to_string(&threads)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
+        }
+        TOOL_HEY_READ => {
+            let args: HeyReadArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad hey_read args: {e}")))?;
+            let thread_key = args.thread.trim();
+            let thread_key = if thread_key.is_empty() {
+                "hey.md"
+            } else {
+                thread_key
+            };
+            let thread = resolve_or_create_thread(brain, thread_key).await?;
+            let messages = brain
+                .store()
+                .list_messages(&thread.id, args.limit.clamp(1, 500))
+                .await?;
+            serde_json::to_string(&json!({ "thread": thread, "messages": messages }))
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
+        }
+        TOOL_HEY_POST => {
+            let args: HeyPostArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad hey_post args: {e}")))?;
+            let agent = resolve_agent_key(brain, &args.agent_key).await?;
+            let thread_key = args
+                .thread
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("hey.md");
+            let thread = resolve_or_create_thread(brain, thread_key).await?;
+            let content = args.content.trim();
+            if content.is_empty() {
+                return Err(KurultaiError::Other(anyhow::anyhow!(
+                    "hey_post content must be non-empty"
+                )));
+            }
+            let msg = brain
+                .store()
+                .post_message(&crate::store::PostMessageInput {
+                    thread_id: thread.id,
+                    agent_id: agent.id,
+                    parent_id: args.parent_id,
+                    content: content.to_string(),
+                    request_reply: args.request_reply,
+                })
+                .await?;
+            serde_json::to_string(&msg).map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
+        }
+        TOOL_HEY_REACT => {
+            let args: HeyReactArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad hey_react args: {e}")))?;
+            let agent = resolve_agent_key(brain, &args.agent_key).await?;
+            let msg = brain
+                .store()
+                .add_reaction(&crate::store::AddReactionInput {
+                    thread_id: args.thread_id,
+                    agent_id: agent.id,
+                    message_id: args.message_id,
+                    emoji: args.emoji,
+                })
+                .await?;
+            serde_json::to_string(&msg).map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
+        }
+        TOOL_HEY_POLL => {
+            let args: HeyPollArgs = serde_json::from_value(call.arguments)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad hey_poll args: {e}")))?;
+            let thread = resolve_or_create_thread(brain, "hey.md").await?;
+            let mut messages = brain
+                .store()
+                .list_messages(&thread.id, args.limit.clamp(1, 200))
+                .await?;
+            if let Some(since) = args.since.as_deref() {
+                messages.retain(|m| m.created_at.as_str() > since);
+            }
+            serde_json::to_string(&messages)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
+        }
         other => {
             return Err(KurultaiError::Other(anyhow::anyhow!(
                 "unknown tool: {other}"
@@ -718,6 +949,9 @@ mod tests {
             vec![
                 "ask",
                 "cite",
+                "hey_poll",
+                "hey_read",
+                "hey_threads",
                 "ontology_get",
                 "recall",
                 "search",

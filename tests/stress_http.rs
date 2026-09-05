@@ -75,6 +75,7 @@ async fn fixture_brain_app() -> (axum::Router, tempfile::TempDir) {
         HubGate {
             auth: HubAuth::None,
             api_keys: vec![],
+            agent_store: None,
             #[cfg(feature = "postgres")]
             key_store: None,
         },

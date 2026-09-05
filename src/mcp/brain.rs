@@ -22,6 +22,9 @@ use std::sync::Arc;
 
 static REMEMBER_SEQ: AtomicU64 = AtomicU64::new(1);
 
+/// Default connector names sequestered from unscoped hot retrieval (pond session noise).
+pub const DEFAULT_NOISY_SOURCES: &[&str] = &["pond"];
+
 /// MCP-facing brain bound to the app store + embedder.
 #[derive(Clone)]
 pub struct BrainService {
@@ -30,6 +33,8 @@ pub struct BrainService {
     reranker: Arc<dyn Reranker>,
     synthesizer: Arc<dyn Synthesizer>,
     activity: Arc<ActivityLog>,
+    /// Sources excluded from unscoped search/ask/who_knows/recall (pin `source=` bypasses).
+    noisy_sources: Arc<Vec<String>>,
 }
 
 /// Second-hop expansion: search shared tags from primary hits, merge unique atoms (#74).
@@ -143,11 +148,54 @@ impl BrainService {
             reranker,
             synthesizer,
             activity,
+            noisy_sources: Arc::new(
+                DEFAULT_NOISY_SOURCES
+                    .iter()
+                    .map(|s| (*s).to_string())
+                    .collect(),
+            ),
         }
+    }
+
+    /// Override noisy-source denylist (empty = sequester nothing).
+    pub fn with_noisy_sources(mut self, sources: Vec<String>) -> Self {
+        self.noisy_sources = Arc::new(sources);
+        self
     }
 
     pub fn activity(&self) -> Arc<ActivityLog> {
         Arc::clone(&self.activity)
+    }
+
+    fn is_noisy_source(&self, source: &str) -> bool {
+        self.noisy_sources.iter().any(|s| s == source)
+    }
+
+    /// Unscoped: drop noisy sources then diversify. Pinned `source=` keeps that source only.
+    fn apply_retrieval_policy(
+        &self,
+        mut results: Vec<SearchResult>,
+        limit: usize,
+        source: Option<&str>,
+    ) -> Vec<SearchResult> {
+        if let Some(src) = source {
+            results.retain(|r| r.atom.source == src);
+            results.truncate(limit);
+            return results;
+        }
+        results.retain(|r| !self.is_noisy_source(&r.atom.source));
+        results = diversify_by_source(results, limit);
+        results.truncate(limit);
+        results
+    }
+
+    async fn touch_non_noisy(&self, results: &[SearchResult]) {
+        let ids: Vec<String> = results
+            .iter()
+            .filter(|r| !self.is_noisy_source(&r.atom.source))
+            .map(|r| r.atom.id.clone())
+            .collect();
+        self.touch_access_many(&ids).await;
     }
 
     /// Hybrid search + markdown context expand (no activity record).
@@ -300,14 +348,9 @@ impl BrainService {
             (limit.max(1) * 4).min(40)
         };
         let mut results = self.hybrid_hits_filtered(query, fetch, filter).await?;
-        if let Some(src) = src {
-            results.retain(|r| r.atom.source == src);
-        } else {
-            results = diversify_by_source(results, limit);
-        }
-        results.truncate(limit);
+        results = self.apply_retrieval_policy(results, limit, src);
         let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
-        self.touch_access_many(&ids).await;
+        self.touch_non_noisy(&results).await;
         self.activity.record("search", query, ids, None);
         Ok(results)
     }
@@ -315,9 +358,11 @@ impl BrainService {
     pub async fn ask_with_team(&self, question: &str, hub_team_id: Option<&str>) -> Result<Answer> {
         let filter = SearchFilter::default().with_hub_team(hub_team_id);
         let primary = self
-            .hybrid_hits_filtered(question, 8, filter.clone())
+            .hybrid_hits_filtered(question, 16, filter.clone())
             .await?;
+        let primary = self.apply_retrieval_policy(primary, 8, None);
         let hits = multi_hop_expand(self, primary, 8).await?;
+        let hits = self.apply_retrieval_policy(hits, 8, None);
         let mut answer = self.synthesizer.synthesize(question, &hits).await?;
         if answer.graph_chain.is_empty() {
             answer.graph_chain = crate::synthesize::graph_chain_from_hits(&hits);
@@ -331,6 +376,7 @@ impl BrainService {
                 Some(t)
             }
         };
+        self.touch_non_noisy(&hits).await;
         self.activity.record("ask", question, ids, detail);
         Ok(answer)
     }
@@ -342,10 +388,13 @@ impl BrainService {
         hub_team_id: Option<&str>,
     ) -> Result<Vec<WhoKnowsEntry>> {
         let filter = SearchFilter::default().with_hub_team(hub_team_id);
-        let hits = self
-            .hybrid_hits_filtered(topic, limit.max(1), filter)
+        let limit = limit.max(1);
+        let mut hits = self
+            .hybrid_hits_filtered(topic, (limit * 4).min(40), filter)
             .await?;
+        hits = self.apply_retrieval_policy(hits, limit, None);
         let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
+        self.touch_non_noisy(&hits).await;
         self.activity.record("who_knows", topic, ids, None);
         Ok(who_knows_from_hits(&hits))
     }
@@ -374,9 +423,9 @@ impl BrainService {
             .await?;
         // Belt and braces: SQL already scoped, this catches any store impl that ignores it.
         results.retain(|r| r.atom.project_id() == project);
-        results.truncate(limit);
+        results = self.apply_retrieval_policy(results, limit, None);
         let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
-        self.touch_access_many(&ids).await;
+        self.touch_non_noisy(&results).await;
         self.activity
             .record("recall", query, ids, Some(format!("project={project}")));
         Ok(results
@@ -481,30 +530,11 @@ impl AgentRead for BrainService {
     }
 
     async fn ask(&self, question: &str) -> Result<Answer> {
-        let primary = self.hybrid_hits(question, 8).await?;
-        let hits = multi_hop_expand(self, primary, 8).await?;
-        let mut answer = self.synthesizer.synthesize(question, &hits).await?;
-        if answer.graph_chain.is_empty() {
-            answer.graph_chain = crate::synthesize::graph_chain_from_hits(&hits);
-        }
-        let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
-        let detail: Option<String> = {
-            let t: String = answer.answer.chars().take(160).collect();
-            if t.is_empty() {
-                None
-            } else {
-                Some(t)
-            }
-        };
-        self.activity.record("ask", question, ids, detail);
-        Ok(answer)
+        self.ask_with_team(question, None).await
     }
 
     async fn who_knows(&self, topic: &str, limit: usize) -> Result<Vec<WhoKnowsEntry>> {
-        let hits = self.hybrid_hits(topic, limit.max(1)).await?;
-        let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
-        self.activity.record("who_knows", topic, ids, None);
-        Ok(who_knows_from_hits(&hits))
+        self.who_knows_with_team(topic, limit, None).await
     }
 }
 
@@ -794,5 +824,41 @@ mod tests {
         assert_eq!(notes_n, 1);
         assert_eq!(out.len(), 5);
         assert!(pond_n <= 4);
+    }
+
+    #[tokio::test]
+    async fn unscoped_search_excludes_default_noisy_pond() {
+        let brain = brain_with_fixture().await;
+        let mut pond = crate::types::KnowledgeAtom {
+            id: "pond-noise".into(),
+            source: "pond".into(),
+            source_id: "p1".into(),
+            title: "tool call noise LANENOISETOKEN".into(),
+            content: "LANENOISETOKEN external_agent_tool_call bash".into(),
+            summary: "noise".into(),
+            tags: vec!["pond".into()],
+            ..Default::default()
+        };
+        pond.trust_lane = crate::types::TrustLane::Trusted;
+        brain.store().upsert(&pond).await.unwrap();
+
+        let hits = brain
+            .search_scoped("LANENOISETOKEN", 10, false, None)
+            .await
+            .unwrap();
+        assert!(
+            hits.iter().all(|h| h.atom.source != "pond"),
+            "unscoped must sequester pond: {:?}",
+            hits.iter().map(|h| &h.atom.source).collect::<Vec<_>>()
+        );
+
+        let pinned = brain
+            .search_scoped("LANENOISETOKEN", 10, false, Some("pond"))
+            .await
+            .unwrap();
+        assert!(
+            pinned.iter().any(|h| h.atom.source == "pond"),
+            "source=pond pin must still return pond"
+        );
     }
 }

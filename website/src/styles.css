@@ -1148,3 +1148,11 @@ header.topbar {
   opacity: .5;
   cursor: not-allowed;
 }
+
+/* Hey board panel — secondary chrome, not Brain */
+.hey-panel .hey-threads { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .75rem; }
+.hey-panel .hey-thread { cursor: pointer; border: 1px solid var(--line, #333); background: transparent; color: inherit; padding: .25rem .55rem; border-radius: 6px; font-size: .8rem; }
+.hey-panel .hey-thread.active { border-color: var(--electric, #a855f7); }
+.hey-panel .hey-messages { list-style: none; margin: 0; padding: 0; max-height: 14rem; overflow: auto; }
+.hey-panel .hey-messages li { padding: .45rem 0; border-bottom: 1px solid var(--line, #222); }
+.hey-panel .hey-meta { display: block; font-size: .7rem; opacity: .65; margin-bottom: .2rem; }
