@@ -19,7 +19,7 @@ export function countCodeRepos(atoms: Atom[]): { name: string; count: number }[]
 
 export function RepoStrip({ repos }: { repos: { name: string; count: number }[] }) {
   return (
-    <section className="repo-strip" aria-label="Code repositories">
+    <section className="repo-strip chrome-strip" aria-label="Code repositories">
       <hr className="repo-strip-rule" />
       <div className="repo-strip-head">
         <h2>Repos <span className="beta-badge">beta</span></h2>

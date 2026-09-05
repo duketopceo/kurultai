@@ -605,6 +605,86 @@ async fn hub_auth_accepts_sha256_hashed_key() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
+// ── /api/ontology/promote ────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn http_ontology_promote_maps_atom_to_instance() {
+    let app = app(fixture_brain().await, HubGate::default());
+    // Pick any indexed atom id from /api/atoms
+    let list = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/atoms?limit=1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list.status(), StatusCode::OK);
+    let atoms: serde_json::Value = serde_json::from_str(&body_str(list).await).unwrap();
+    let atom_id = atoms[0]["atom"]["id"]
+        .as_str()
+        .or_else(|| atoms[0]["id"].as_str())
+        .expect("fixture atom id");
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/ontology/promote")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(
+                    r#"{{"atom_id":"{atom_id}","class_id":"class:note"}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let v: serde_json::Value = serde_json::from_str(&body_str(resp).await).unwrap();
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["entity_id"], format!("ent:{atom_id}"));
+    assert_eq!(v["class_id"], "class:note");
+
+    let onto = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/ontology")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let o: serde_json::Value = serde_json::from_str(&body_str(onto).await).unwrap();
+    let links = o["links"].as_array().unwrap();
+    assert!(links.iter().any(|l| {
+        l["from_id"].as_str() == Some(&format!("ent:{atom_id}"))
+            && l["to_id"].as_str() == Some("class:note")
+            && l["rel"].as_str() == Some("instance_of")
+    }));
+}
+
+#[tokio::test]
+async fn http_ontology_promote_missing_atom_is_404() {
+    let app = app(empty_brain().await, HubGate::default());
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/ontology/promote")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"atom_id":"does-not-exist","class_id":"class:note"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
 // ── /api/promote gate ────────────────────────────────────────────────────────
 
 #[tokio::test]

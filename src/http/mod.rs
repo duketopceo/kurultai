@@ -191,6 +191,7 @@ fn router(state: AppState) -> Router {
         .route("/api/atoms", get(api_atoms))
         .route("/api/graph", get(api_graph))
         .route("/api/ontology", get(api_ontology))
+        .route("/api/ontology/promote", post(api_ontology_promote))
         .route("/api/touch", post(api_touch))
         .route("/api/activity", get(api_activity))
         .route("/api/hub/activity", get(api_hub_activity))
@@ -445,6 +446,79 @@ async fn api_ontology(
         "entities": entities,
         "links": links,
     })))
+}
+
+#[derive(Debug, Deserialize)]
+struct OntologyPromoteBody {
+    atom_id: String,
+    class_id: String,
+}
+
+/// Atom → ontology instance + `instance_of` (does not change trust_lane).
+/// Distinct from [`api_promote`] (quarantine → trusted).
+async fn api_ontology_promote(
+    State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
+    Json(body): Json<OntologyPromoteBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_ontology_promote", request_id=%request_id);
+    state.status.touch_client_activity();
+    let atom_id = body.atom_id.trim();
+    let class_id = body.class_id.trim();
+    if atom_id.is_empty() || class_id.is_empty() {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "atom_id and class_id are required",
+            &request_id,
+        ));
+    }
+    let actor = http_actor(&principal);
+    match crate::ontology::promote_atom_to_entity(
+        state.brain.store().as_ref(),
+        atom_id,
+        class_id,
+        &actor,
+    )
+    .await
+    {
+        Ok(entity) => {
+            #[cfg(feature = "postgres")]
+            log_hub_write(
+                &state,
+                &principal,
+                "ontology_promote",
+                "http",
+                Some(class_id),
+                Some(atom_id),
+            )
+            .await;
+            Ok(Json(serde_json::json!({
+                "ok": true,
+                "request_id": &request_id,
+                "entity_id": entity.id,
+                "atom_id": entity.atom_id,
+                "class_id": class_id,
+                "actor": actor,
+            })))
+        }
+        Err(e) => {
+            let status = match &e {
+                KurultaiError::Store(msg)
+                    if msg.contains("ontology_promote") && msg.contains("atom") && msg.contains("not found") =>
+                {
+                    StatusCode::NOT_FOUND
+                }
+                KurultaiError::Store(msg)
+                    if msg.contains("ontology_promote") && msg.contains("class") && msg.contains("not found") =>
+                {
+                    StatusCode::BAD_REQUEST
+                }
+                _ => StatusCode::BAD_REQUEST,
+            };
+            Err(json_error(status, e.to_string(), &request_id))
+        }
+    }
 }
 
 async fn api_graph(

@@ -237,7 +237,7 @@ pub async fn hub_api_auth(
 pub const ENV_ADMIN_TOKEN: &str = "KURULTAI_ADMIN_TOKEN";
 
 /// POST routes that mutate durable state and must not be reachable unauthenticated.
-const WRITE_ROUTES: &[&str] = &["/api/promote", "/api/touch"];
+const WRITE_ROUTES: &[&str] = &["/api/promote", "/api/ontology/promote", "/api/touch"];
 
 pub fn resolve_admin_token() -> Option<String> {
     std::env::var(ENV_ADMIN_TOKEN)

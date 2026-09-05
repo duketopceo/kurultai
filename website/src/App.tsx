@@ -124,12 +124,26 @@ export function App() {
   const renderCap = LOAD_TIER_CAPS[loadTier];
 
   const caption = (() => {
+    if (state.layout === 'ontology') {
+      const classes = ontology.entities.filter((e) => e.kind === 'class').length;
+      const instances = ontology.entities.filter((e) => e.kind === 'instance').length;
+      if (instances === 0) {
+        return classes > 0
+          ? 'Ontology scaffold ready — select a memory, then Promote in the inspector'
+          : 'Ontology empty — select a memory and Promote in the inspector';
+      }
+      return `${classes} classes · ${instances} instances · expand a class in ontology mode`;
+    }
     const shown = Math.min(visible.length, renderCap);
     const total = Math.max(state.atomTotal, state.atoms.length);
     if (total === 0) return '0 memories — kurultai init --docs · then index --full';
     if (total > shown) return `${shown} of ${total} memories · ${loadTier} · hover to trace`;
     return `${shown} memories · ${loadTier} · hover to trace connections`;
   })();
+
+  const handleOntologyChanged = useCallback((onto: OntologyResponse) => {
+    setOntology(onto);
+  }, []);
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>
@@ -160,9 +174,9 @@ export function App() {
           onSelectAtom={handleSelectAndFocus}
           onRandom={handleRandom}
         />
-        <section className="dashboard-grid" aria-label="Brain dashboard">
+        <section className="dashboard-grid chrome-dashboard" aria-label="Brain dashboard">
           <ActivityPanel live={live} onLiveToggle={setLive} />
-          <InspectorPanel atom={selected} allAtoms={visible} />
+          <InspectorPanel atom={selected} allAtoms={visible} onOntologyChanged={handleOntologyChanged} />
           <AskPanel />
           <StatsPanel atoms={visible} atomTotal={state.atomTotal} />
           <HeyPanel />

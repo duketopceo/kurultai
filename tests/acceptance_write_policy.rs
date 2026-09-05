@@ -511,7 +511,7 @@ async fn list_atoms_is_not_project_scoped() {
 
 #[test]
 fn write_routes_fail_closed_when_no_operator_token_is_configured() {
-    for path in ["/api/promote", "/api/touch"] {
+    for path in ["/api/promote", "/api/ontology/promote", "/api/touch"] {
         assert_eq!(
             write_route_decision(
                 &axum::http::Method::POST,
@@ -528,36 +528,38 @@ fn write_routes_fail_closed_when_no_operator_token_is_configured() {
 
 #[test]
 fn write_routes_reject_missing_or_wrong_operator_token() {
-    assert_eq!(
-        write_route_decision(
-            &axum::http::Method::POST,
-            "/api/promote",
-            WriteMode::SharedClosed,
-            Some("operator-token"),
-            None,
-        ),
-        WriteRouteDecision::Unauthorized
-    );
-    assert_eq!(
-        write_route_decision(
-            &axum::http::Method::POST,
-            "/api/promote",
-            WriteMode::SharedClosed,
-            Some("operator-token"),
-            Some("guess"),
-        ),
-        WriteRouteDecision::Unauthorized
-    );
-    assert_eq!(
-        write_route_decision(
-            &axum::http::Method::POST,
-            "/api/promote",
-            WriteMode::SharedClosed,
-            Some("operator-token"),
-            Some("operator-token"),
-        ),
-        WriteRouteDecision::Allow
-    );
+    for path in ["/api/promote", "/api/ontology/promote"] {
+        assert_eq!(
+            write_route_decision(
+                &axum::http::Method::POST,
+                path,
+                WriteMode::SharedClosed,
+                Some("operator-token"),
+                None,
+            ),
+            WriteRouteDecision::Unauthorized
+        );
+        assert_eq!(
+            write_route_decision(
+                &axum::http::Method::POST,
+                path,
+                WriteMode::SharedClosed,
+                Some("operator-token"),
+                Some("guess"),
+            ),
+            WriteRouteDecision::Unauthorized
+        );
+        assert_eq!(
+            write_route_decision(
+                &axum::http::Method::POST,
+                path,
+                WriteMode::SharedClosed,
+                Some("operator-token"),
+                Some("operator-token"),
+            ),
+            WriteRouteDecision::Allow
+        );
+    }
 }
 
 #[test]

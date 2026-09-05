@@ -122,6 +122,33 @@ export async function fetchOntology(signal?: AbortSignal): Promise<OntologyRespo
   };
 }
 
+export type OntologyPromoteResult = {
+  ok: boolean;
+  entity_id: string;
+  atom_id?: string | null;
+  class_id: string;
+};
+
+/** Atom → ontology instance (not trust-lane promote). */
+export async function promoteAtomToOntology(
+  atomId: string,
+  classId: string,
+  signal?: AbortSignal,
+): Promise<OntologyPromoteResult> {
+  const r = await fetch('/api/ontology/promote', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ atom_id: atomId, class_id: classId }),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `ontology promote failed (${r.status})`);
+  }
+  return r.json() as Promise<OntologyPromoteResult>;
+}
+
 export async function searchAtoms(query: string, signal?: AbortSignal): Promise<Atom[]> {
   const data = await getJson<ApiAtomResult[]>(`/api/search?q=${encodeURIComponent(query)}&limit=20`, signal);
   if (!Array.isArray(data)) return [];
