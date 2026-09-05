@@ -138,8 +138,7 @@ const LIGHT_PALETTE: Palette = {
 export type Region = 'left' | 'right' | 'stem';
 
 const MAX_NODES = 2500;
-/** Top-N links by strength. Lowered from 3000 to cut edge geometry cost. */
-const MAX_EDGES = 1200;
+const MAX_EDGES = 3000;
 
 // Hybrid node rendering (KTD3 / R4): above this count nodes render as a single
 // THREE.Points draw call; at or below it the sphere+halo+label meshes render.
@@ -469,11 +468,9 @@ export class BrainView {
     const i = vertexNumber * 3;
     const pos = new THREE.Vector3(this.verts[i], this.verts[i + 1], this.verts[i + 2]);
     const normal = new THREE.Vector3(this.norms[i], this.norms[i + 1], this.norms[i + 2]);
-    const jitter = (((h >> 8) % 100) / 100 - 0.5) * 0.02;
-    const jitter2 = (((h >> 16) % 100) / 100 - 0.5) * 0.02;
-    // Slight inward bias so spawn starts inside/on the cortex (hard FDG
-    // project keeps them there). Prior +0.018 outward offset seeded exterior.
-    return pos.add(normal.multiplyScalar(-0.012 + jitter)).addScalar(jitter2 * 0.01);
+    const jitter = (((h >> 8) % 100) / 100 - 0.5) * 0.03;
+    const jitter2 = (((h >> 16) % 100) / 100 - 0.5) * 0.03;
+    return pos.add(normal.multiplyScalar(0.018 + jitter)).addScalar(jitter2 * 0.01);
   }
 
   /**
@@ -753,11 +750,51 @@ export class BrainView {
           return;
         }
 
-        // Cheap chord (no CatmullRom, no proxy raycasts, no outward lift).
-        // Prior surface-project + sprite length*0.18 lift pushed arcs outside
-        // the cortex and dominated setData cost at mid/max tiers.
-        const mid = a.clone().lerp(b, 0.5);
-        const geo = new THREE.BufferGeometry().setFromPoints([a.clone(), mid, b.clone()]);
+        // Build a surface-conformant Catmull-Rom curve through 4-6
+        // intermediate points projected onto the brain mesh surface.
+        const points: THREE.Vector3[] = [a.clone()];
+        const numIntermediate = 4;
+        for (let i = 1; i <= numIntermediate; i++) {
+          const t = i / (numIntermediate + 1);
+          const p = a.clone().lerp(b, t);
+
+          // U4: sprite mode skips the per-edge surface raycast — 4 raycasts
+          // per edge × up to MAX_EDGES edges against the ~5.6k-tri proxy costs
+          // ~1-2ms per raycast (multi-second setData at 2500 nodes), blowing
+          // the 500ms render budget. At sprite densities surface conformity is
+          // invisible (the force layout leaves the brain hull anyway),
+          // so fall through to the cheap outward lift.
+          if (this.proxy && !this.spriteMode) {
+            // Raycast from brain center through p onto the mesh surface.
+            const worldOrigin = new THREE.Vector3();
+            this.brainGroup.localToWorld(worldOrigin);
+            const worldP = p.clone();
+            this.brainGroup.localToWorld(worldP);
+            const dir = worldP.clone().sub(worldOrigin).normalize();
+            this.raycaster.set(worldOrigin, dir);
+            const hit = this.raycaster.intersectObject(this.proxy, false)[0];
+            if (hit) {
+              const localHit = hit.point.clone();
+              this.brainGroup.worldToLocal(localHit);
+              // Push slightly outward along the radial normal.
+              const normal = localHit.clone().normalize();
+              localHit.add(normal.multiplyScalar(0.005));
+              points.push(localHit);
+            } else {
+              // Fallback: push outward from origin.
+              const outward = p.clone().normalize().multiplyScalar(p.length() + 0.01);
+              points.push(outward);
+            }
+          } else {
+            // No proxy (or sprite mode) — simple outward lift.
+            const lift = p.length() * 0.18;
+            points.push(p.add(p.clone().normalize().multiplyScalar(lift)));
+          }
+        }
+        points.push(b.clone());
+
+        const curve = new THREE.CatmullRomCurve3(points);
+        const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(28));
         const line = new THREE.Line(
           geo,
           new THREE.LineBasicMaterial({
@@ -770,14 +807,6 @@ export class BrainView {
         line.userData = link;
         this.edgeGroup.add(line);
       });
-  }
-
-  /** Dispose and rebuild brain-mode edges from current atomPositions (FDG settle). */
-  private rebuildBrainEdges() {
-    if (this.ontologyEdges || this.disposed) return;
-    this.disposeEdgeGroupGpu();
-    this.edgeGroup.clear();
-    this.buildEdges();
   }
 
   /** Release the node sprite cloud's GPU resources and clear lookups. */
@@ -793,7 +822,11 @@ export class BrainView {
     this.spriteAlphaAttr = undefined;
   }
 
-  private disposeEdgeGroupGpu() {
+  /** Dispose mesh-mode node + edge GPU resources before group.clear() detaches
+   *  them. sphereGeo is SHARED across all node meshes — never disposed here.
+   *  haloTexture is shared across halo sprites; label sprites own their
+   *  CanvasTexture maps, which MUST be disposed to avoid per-refresh leaks. */
+  private disposeNodeAndEdgeGroups() {
     this.edgeGroup.children.forEach((child) => {
       const line = child as THREE.Line;
       line.geometry?.dispose();
@@ -801,14 +834,6 @@ export class BrainView {
       if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
       else mat?.dispose();
     });
-  }
-
-  /** Dispose mesh-mode node + edge GPU resources before group.clear() detaches
-   *  them. sphereGeo is SHARED across all node meshes — never disposed here.
-   *  haloTexture is shared across halo sprites; label sprites own their
-   *  CanvasTexture maps, which MUST be disposed to avoid per-refresh leaks. */
-  private disposeNodeAndEdgeGroups() {
-    this.disposeEdgeGroupGpu();
     this.nodeGroup.children.forEach((child) => {
       const mesh = child as THREE.Mesh;
       if (mesh.isMesh) {
@@ -1405,15 +1430,7 @@ export class BrainView {
     if (this.layoutMode === 'brain' && this.layoutAnimRaf === 0) {
       this.snapLayoutTo('brain');
     }
-    if (this.layoutMode !== 'brain') return;
-    const maxIters = this.workerNodeCount > FDG_BIG_GRAPH_N ? FDG_MAX_ITERATIONS_BIG_GRAPH : FDG_MAX_ITERATIONS;
-    if (this.workerIters >= maxIters) {
-      // Edges were built once at setData from spawn positions; rebuild once
-      // after FDG settle so synapses match in-hull nodes.
-      this.rebuildBrainEdges();
-      return;
-    }
-    this.requestWorkerTick();
+    if (this.layoutMode === 'brain') this.requestWorkerTick();
   }
 
 
