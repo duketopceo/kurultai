@@ -350,11 +350,7 @@ async fn presence(
         let Some(repo) = m.repo.as_deref().filter(|r| !r.is_empty()) else {
             continue;
         };
-        let key = format!(
-            "{}|{}",
-            m.agent_id,
-            m.instance_id.as_deref().unwrap_or("")
-        );
+        let key = format!("{}|{}", m.agent_id, m.instance_id.as_deref().unwrap_or(""));
         if !seen.insert(key) {
             continue;
         }
