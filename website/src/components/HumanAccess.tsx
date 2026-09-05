@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { FormEvent, useEffect, useId, useState } from 'react';
 import { clearToken, emitAuthChanged, readToken, saveToken, type AuthMode } from '../auth';
 
 type Props = {
@@ -8,20 +8,29 @@ type Props = {
   onContinueOpen?: () => void;
 };
 
+const LOGIN_USERNAME = 'knowledge.shippedit.dev';
+
 /** Full-screen human access gate — only when the instance is locked. */
 export function HumanLoginGate({ mode, error, onSaved, onContinueOpen }: Props) {
   const [value, setValue] = useState('');
   const [localError, setLocalError] = useState<string | null>(error ?? null);
-  const inputId = useId();
+  const userId = useId();
+  const passId = useId();
 
   useEffect(() => {
     setLocalError(error ?? null);
   }, [error]);
 
-  const submit = () => {
+  const submit = (e?: FormEvent) => {
+    e?.preventDefault();
     const trimmed = value.trim();
     if (!trimmed) {
-      setLocalError('Paste a human access token to continue.');
+      setLocalError('Paste your hub API key (password field) to continue.');
+      return;
+    }
+    // Reject accidental paste of the whole CSV list.
+    if (trimmed.includes(',')) {
+      setLocalError('Paste one key only — not the comma-separated PERSONAL_API_KEYS list.');
       return;
     }
     saveToken(trimmed);
@@ -34,9 +43,9 @@ export function HumanLoginGate({ mode, error, onSaved, onContinueOpen }: Props) 
         <p className="eyebrow">Human access</p>
         <h1 id="human-login-title">Sign in to this Brain</h1>
         <p className="lede">
-          This public Kurultai instance requires your <strong>owner / hub API key</strong>.
-          Agent keys from <code>kurultai agent add</code> are for MCP tools — use those in
-          agents, not here.
+          Use the <strong>hub API key</strong> for this instance (1Password login:{' '}
+          <code>{LOGIN_USERNAME}</code>). Agent keys from <code>kurultai agent add</code> are
+          MCP-only — not for this form.
         </p>
         {mode === 'open' && onContinueOpen ? (
           <p className="hint">
@@ -46,37 +55,49 @@ export function HumanLoginGate({ mode, error, onSaved, onContinueOpen }: Props) 
             </button>
           </p>
         ) : null}
-        <label htmlFor={inputId}>Human access token</label>
-        <input
-          id={inputId}
-          type="password"
-          autoComplete="current-password"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="Paste token from kurultai admin key issue"
-          aria-invalid={localError ? true : undefined}
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submit();
-          }}
-        />
-        {localError ? <p className="form-error" role="alert">{localError}</p> : null}
-        <button type="button" className="btn-primary" onClick={submit} disabled={value.trim().length === 0}>
-          Continue
-        </button>
+        <form
+          className="human-login-form"
+          method="post"
+          action="#"
+          autoComplete="on"
+          onSubmit={submit}
+        >
+          {/* Username anchors 1Password / browser save to this site */}
+          <label htmlFor={userId}>Account</label>
+          <input
+            id={userId}
+            name="username"
+            type="text"
+            autoComplete="username"
+            value={LOGIN_USERNAME}
+            readOnly
+          />
+          <label htmlFor={passId}>API key</label>
+          <input
+            id={passId}
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="64-char hub key"
+            aria-invalid={localError ? true : undefined}
+            autoFocus
+          />
+          {localError ? <p className="form-error" role="alert">{localError}</p> : null}
+          <button type="submit" className="btn-primary" disabled={value.trim().length === 0}>
+            Sign in
+          </button>
+        </form>
         <div className="help-block">
           <p>
-            Mint a human key on the host:{' '}
-            <code>kurultai admin key issue --name human --max-tier private</code>
+            <strong>Where the key lives:</strong> server-001{' '}
+            <code>/home/khan/kurultai/.env</code> → <code>PERSONAL_API_KEYS</code> (first key
+            before the comma). Also in 1Password as “Kurultai — knowledge.shippedit.dev”.
           </p>
           <p>
-            Or paste <strong>one</strong> hub key from <code>KURULTAI_HUB_API_KEYS</code>{' '}
-            / <code>PERSONAL_API_KEYS</code> (a single 64-char key — not the whole
-            comma-separated list).
-          </p>
-          <p className="muted">
-            Agents: keep using API-key auth via MCP (<code>kurultai agent add</code>) — that
-            path stays separate and is working.
+            Or mint a named key:{' '}
+            <code>docker exec -u kurultai kurultai-personal kurultai admin key issue --name human --max-tier private</code>
           </p>
         </div>
       </div>
@@ -105,9 +126,10 @@ export function AccessSettingsButton({ mode, onChanged }: SettingsProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const save = () => {
+  const save = (e?: FormEvent) => {
+    e?.preventDefault();
     const trimmed = draft.trim();
-    if (!trimmed) return;
+    if (!trimmed || trimmed.includes(',')) return;
     saveToken(trimmed);
     setDraft('');
     setOpen(false);
@@ -149,26 +171,37 @@ export function AccessSettingsButton({ mode, onChanged }: SettingsProps) {
           <p className="access-mode">
             Session: <strong>{hasToken ? 'human token stored' : 'no human token'}</strong>
           </p>
-          <label htmlFor={`${panelId}-token`}>Update human token</label>
-          <input
-            id={`${panelId}-token`}
-            type="password"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Paste new owner / hub key"
-            autoComplete="off"
-          />
-          <div className="access-actions">
-            <button type="button" className="btn-primary" disabled={!draft.trim()} onClick={save}>
-              Save token
-            </button>
-            <button type="button" className="ghost" disabled={!hasToken} onClick={signOut}>
-              Sign out
-            </button>
-          </div>
+          <form method="post" action="#" autoComplete="on" onSubmit={save}>
+            <label htmlFor={`${panelId}-user`}>Account</label>
+            <input
+              id={`${panelId}-user`}
+              name="username"
+              type="text"
+              autoComplete="username"
+              defaultValue={LOGIN_USERNAME}
+              readOnly
+            />
+            <label htmlFor={`${panelId}-token`}>API key</label>
+            <input
+              id={`${panelId}-token`}
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Paste hub key"
+            />
+            <div className="access-actions">
+              <button type="submit" className="btn-primary" disabled={!draft.trim() || draft.includes(',')}>
+                Save token
+              </button>
+              <button type="button" className="ghost" disabled={!hasToken} onClick={signOut}>
+                Sign out
+              </button>
+            </div>
+          </form>
           <p className="muted small">
-            Agents keep MCP API keys (<code>kurultai agent add</code>). This panel is for
-            human Brain UI access only.
+            1Password: login “Kurultai — knowledge.shippedit.dev”. Agents keep MCP keys separate.
           </p>
         </div>
       ) : null}
