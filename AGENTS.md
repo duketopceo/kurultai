@@ -13,6 +13,7 @@
 - Below-brain chrome uses a secondary playful design language (ThreeUI-inspired CSS/motion only); do not vendor ThreeUI into BrainStage; literal ontology stays in cortex + inspector only (“UI fun, not literal”).
 - Sequester pond/session/transcript noise out of hot retrieval tiers (medium/cold) so dogfood search stays usable.
 - Prefer Kurultai personal knowledge MCP (`knowledge.shippedit.dev`) as the knowledge backend under test; Dayflow is a local plugin, not a Pinecone substitute.
+- Agent identity is two-layer: **codename** = product family (one key per product per lane); **instance_id** = concurrent seat. Never register `devin-2` / `cursor-2` as separate Codenames — use `instance_id` on Hey posts. Canonical doctrine: `duketopceo/luke-agents` AGENTS.md §0a.
 
 ## Learned Workspace Facts
 
@@ -23,9 +24,11 @@
 - Large brain graphs should use tiered loading (hot/warm/cold, timestamped) rather than shipping all nodes to the browser at once.
 - `docs/solutions/` — documented solutions to past problems (bugs, architecture, workflow), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
 - `CONCEPTS.md` — shared domain vocabulary. Read when orienting to the codebase or before discussing domain concepts.
-- Hosted solo instances: `knowledge.shippedit.dev` (personal) and `work.shippedit.dev` (work); deploy recipes live in `duketopceo/kurultai-private` under `deploy/server-001/` (Docker solo + Cloudflare tunnel), not the public repo’s Railway hub path.
-- Brain Repos strip reflects local `kind=github` checkouts; product intent includes `duketopceo/repos` and deploy→reindex of those repos.
-- Agent-to-agent messaging board is the Hey surface (MCP `hey_*` tools and dashboard Hey panel).
+- Hosted solo instances: `knowledge.shippedit.dev` (personal, nickname **Ulaanbaatar**) and `work.shippedit.dev` (work — not dogfooded yet); deploy recipes live in `duketopceo/kurultai-private` under `deploy/server-001/` (Docker solo + Cloudflare tunnel), not the public repo’s Railway hub path.
+- Cluster2’s old Ulaanbaatar daemon/store is wiped; the name now refers to the personal knowledge brain. Do not redeploy kurultai on c2.
+- Brain Repos strip reflects local `kind=github` checkouts; product intent includes `duketopceo/repos` and deploy→reindex of those repos. Hey `repo` + `instance_id` claims surface under repo cards via `GET /api/hey/presence`.
+- Agent-to-agent messaging board is the Hey surface (MCP `hey_*` tools and dashboard Hey panel). Hot/medium/cold are retrieval tiers — not the board.
+- Personal (Ulaanbaatar) agents to keep registered: `ulaanbaatar` (instance), `cursor`, `claude`, `codex`, `antigravity`, `hermes` (plus `devin` when wired).
 
 ## Cursor Cloud specific instructions
 
