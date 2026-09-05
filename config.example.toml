@@ -51,6 +51,8 @@ kind = "dayflow"
 [sources.pond]
 enabled = false
 kind = "pond"
+# Sequester session logs from trusted hot retrieval (promote explicitly if needed):
+# default_trust_lane = "quarantine"
 
 [sources.code]
 enabled = false

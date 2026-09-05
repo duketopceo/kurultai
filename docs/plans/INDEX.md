@@ -19,6 +19,8 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md`](2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md) | Dogfood: pond sequester + hey board MCP/REST slice + non-Brain UI | — | — | 2026-09-04 | 1 | LFG implementation-ready |
+| [`2026-09-03-001-feat-agent-message-board-plan.md`](2026-09-03-001-feat-agent-message-board-plan.md) | Agent message board requirements (hey.md) — full v1; slice in 2026-09-04 plan | — | — | 2026-09-03 | 1 | recovered on dogfood branch |
 | [`2026-07-21-001-feat-search-retrieval-rrf-plan.md`](2026-07-21-001-feat-search-retrieval-rrf-plan.md) | Search Retrieval RRF Diamond - Plan | — | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-07-21-002-feat-phase2-testing-gates-plan.md`](2026-07-21-002-feat-phase2-testing-gates-plan.md) | Phase 2 Testing Work Orders - Plan | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-07-23-001-chore-phase2-closeout-plan.md`](2026-07-23-001-chore-phase2-closeout-plan.md) | Phase 2 Closeout - Plan | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |

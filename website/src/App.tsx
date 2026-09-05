@@ -8,6 +8,7 @@ import { ActivityPanel } from './components/ActivityPanel';
 import { InspectorPanel } from './components/InspectorPanel';
 import { AskPanel } from './components/AskPanel';
 import { StatsPanel } from './components/StatsPanel';
+import { HeyPanel } from './components/HeyPanel';
 import { RepoStrip, countCodeRepos } from './components/RepoBrain';
 import { isCodeSource } from './repoLattice';
 import type { Atom, LayoutMode, LoadTier, OntologyResponse } from './types';
@@ -164,6 +165,7 @@ export function App() {
           <InspectorPanel atom={selected} allAtoms={visible} />
           <AskPanel />
           <StatsPanel atoms={visible} atomTotal={state.atomTotal} />
+          <HeyPanel />
         </section>
         <RepoStrip repos={codeRepos} />
       </main>

@@ -7,6 +7,7 @@
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
 mod auth;
+mod hey;
 mod hub_listen;
 mod mcp;
 mod ui;
@@ -202,6 +203,7 @@ fn router(state: AppState) -> Router {
         .route("/ask", get(ask_get).post(ask_post))
         .route("/cite", post(cite_post))
         .route("/who_knows", post(who_knows_post))
+        .merge(hey::routes())
         .merge(ui::routes())
         .layer(middleware::from_fn_with_state(
             state.hub.clone(),
@@ -2315,6 +2317,7 @@ mod tests {
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                agent_store: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },
@@ -2366,6 +2369,7 @@ mod tests {
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                agent_store: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },
@@ -2393,6 +2397,7 @@ mod tests {
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                agent_store: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },

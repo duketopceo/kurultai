@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src
 parent: INDEX.md
-updated: 2026-08-31
-version: 2
+updated: 2026-09-04
+version: 3
 ---
 
 # `src`
@@ -56,6 +56,7 @@ version: 2
 
 ## Recent
 
+- 2026-09-04 — `http/`, `mcp/`, `ontology/`: message board REST, hey_* MCP tools, schema v12 sync, HubGate fixture updates
 - 2026-09-01 — `types.rs`: HUB-5 `SourceConfig::default_visibility_scope` helper (personal/team/company)
 - 2026-08-31 — `main.rs`: `init --doctor` diagnostic toggle reuses `doctor` spine
 - 2026-08-31 — review fixes: auth DB 500s, reason length, team atom validation, shared hub DDL

@@ -158,3 +158,43 @@ export async function openFile(file: string): Promise<void> {
     headers: getAuthHeaders(),
   });
 }
+
+export type HeyThread = {
+  id: string;
+  name: string;
+  parent_thread_id?: string | null;
+  turn_cap?: number;
+  turns_used?: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type HeyMessage = {
+  id: string;
+  thread_id: string;
+  agent_id: string;
+  parent_id?: string | null;
+  kind: string;
+  content: string;
+  request_reply?: boolean;
+  turns_consumed?: number;
+  created_at: string;
+};
+
+export async function fetchHeyThreads(limit = 20, signal?: AbortSignal): Promise<HeyThread[]> {
+  const data = await getJson<HeyThread[]>(`/api/hey/threads?limit=${limit}`, signal);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchHeyMessages(
+  thread: string,
+  limit = 50,
+  signal?: AbortSignal,
+): Promise<HeyMessage[]> {
+  const data = await getJson<HeyMessage[]>(
+    `/api/hey/threads/${encodeURIComponent(thread)}/messages?limit=${limit}`,
+    signal,
+  );
+  return Array.isArray(data) ? data : [];
+}
+

@@ -20,7 +20,7 @@ use zerocopy::AsBytes;
 pub(crate) const MIN_EMBEDDING_NORM: f32 = 1e-6;
 
 /// Persistent agent / codename identity for the multi-agent message board.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Agent {
     pub id: String,
     pub codename: String,
@@ -28,7 +28,7 @@ pub struct Agent {
 }
 
 /// Message board thread.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Thread {
     pub id: String,
     pub name: String,
@@ -40,7 +40,7 @@ pub struct Thread {
 }
 
 /// Message or reaction on a board thread.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Message {
     pub id: String,
     pub thread_id: String,
@@ -54,7 +54,8 @@ pub struct Message {
 }
 
 /// Kind of a message-board post.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MessageKind {
     #[default]
     Message,
@@ -2932,6 +2933,57 @@ mod tests {
         let (h2, _, c2) = store.count_by_tier(TierPolicy::default()).await.unwrap();
         assert_eq!(h2, 2);
         assert_eq!(c2, 0);
+    }
+
+    #[tokio::test]
+    async fn message_board_post_react_and_turn_cap() {
+        let store = temp_store(4);
+        let (agent_id, _key) = store.register_agent("cursor").await.unwrap();
+        let thread = store.create_thread("hey.md", None, Some(1)).await.unwrap();
+        let root = store
+            .post_message(&PostMessageInput {
+                thread_id: thread.id.clone(),
+                agent_id: agent_id.clone(),
+                parent_id: None,
+                content: "hello agents".into(),
+                request_reply: true,
+            })
+            .await
+            .unwrap();
+        let reply = store
+            .post_message(&PostMessageInput {
+                thread_id: thread.id.clone(),
+                agent_id: agent_id.clone(),
+                parent_id: Some(root.id.clone()),
+                content: "acking".into(),
+                request_reply: false,
+            })
+            .await
+            .unwrap();
+        assert_eq!(reply.turns_consumed, 1);
+        let capped = store
+            .post_message(&PostMessageInput {
+                thread_id: thread.id.clone(),
+                agent_id: agent_id.clone(),
+                parent_id: Some(root.id.clone()),
+                content: "too many".into(),
+                request_reply: false,
+            })
+            .await;
+        assert!(capped.is_err(), "turn cap must reject further replies");
+        let reaction = store
+            .add_reaction(&AddReactionInput {
+                thread_id: thread.id.clone(),
+                agent_id,
+                message_id: root.id,
+                emoji: ":ok_hand:".into(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(reaction.kind, MessageKind::Reaction);
+        assert_eq!(reaction.turns_consumed, 0);
+        let listed = store.list_messages(&thread.id, 20).await.unwrap();
+        assert!(listed.len() >= 2);
     }
 
     #[tokio::test]
