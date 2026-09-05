@@ -127,6 +127,10 @@ pub struct SearchFilter {
     pub project: Option<String>,
     /// Hub AE5: when set, only `company` atoms or `team` atoms matching this team_id.
     pub hub_team_id: Option<String>,
+    /// Exact `knowledge_atoms.source` match (graph / connector slices).
+    pub source: Option<String>,
+    /// Exact `knowledge_atoms.source` exclusion (e.g. keep `repos` off the cortex).
+    pub exclude_source: Option<String>,
 }
 
 impl Default for SearchFilter {
@@ -135,6 +139,8 @@ impl Default for SearchFilter {
             trusted_only: true,
             project: None,
             hub_team_id: None,
+            source: None,
+            exclude_source: None,
         }
     }
 }
@@ -153,7 +159,27 @@ impl SearchFilter {
             trusted_only,
             project: None,
             hub_team_id: None,
+            source: None,
+            exclude_source: None,
         }
+    }
+
+    /// Exact source match for graph/connector slices.
+    pub fn with_source(mut self, source: Option<&str>) -> Self {
+        self.source = source
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        self
+    }
+
+    /// Exclude one source from graph results (Brain cortex vs Repos strip).
+    pub fn with_exclude_source(mut self, source: Option<&str>) -> Self {
+        self.exclude_source = source
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        self
     }
 
     /// Scope to a project namespace. Empty / whitespace input clears the scope.
@@ -1599,18 +1625,25 @@ impl Store for SqliteVecStore {
         policy: TierPolicy,
     ) -> Result<Vec<GraphNode>> {
         let conn = self.lock()?;
-        let sql = if filter.trusted_only {
-            format!(
-                "SELECT {} FROM knowledge_atoms WHERE trust_lane = 'trusted'
-                 ORDER BY last_accessed_at DESC LIMIT ?1",
-                ATOM_COLUMNS
-            )
+        let mut conditions: Vec<&str> = Vec::new();
+        if filter.trusted_only {
+            conditions.push("trust_lane = 'trusted'");
+        }
+        if filter.source.is_some() {
+            conditions.push("source = ?");
+        }
+        if filter.exclude_source.is_some() {
+            conditions.push("source != ?");
+        }
+        let where_sql = if conditions.is_empty() {
+            String::new()
         } else {
-            format!(
-                "SELECT {} FROM knowledge_atoms ORDER BY last_accessed_at DESC LIMIT ?1",
-                ATOM_COLUMNS
-            )
+            format!("WHERE {}", conditions.join(" AND "))
         };
+        let sql = format!(
+            "SELECT {ATOM_COLUMNS} FROM knowledge_atoms {where_sql}
+             ORDER BY last_accessed_at DESC LIMIT ?"
+        );
         // Over-fetch then filter by tier so hot/warm/cold slices stay accurate.
         let fetch_cap = if tier.is_some() {
             (limit.saturating_mul(8)).max(limit).min(50_000)
@@ -1620,8 +1653,18 @@ impl Store for SqliteVecStore {
         let mut stmt = conn
             .prepare(&sql)
             .map_err(|e| KurultaiError::Store(format!("list_graph_nodes prepare: {e}")))?;
+
+        let mut binds: Vec<rusqlite::types::Value> = Vec::new();
+        if let Some(ref s) = filter.source {
+            binds.push(rusqlite::types::Value::Text(s.clone()));
+        }
+        if let Some(ref s) = filter.exclude_source {
+            binds.push(rusqlite::types::Value::Text(s.clone()));
+        }
+        binds.push(rusqlite::types::Value::Integer(fetch_cap as i64));
+
         let rows = stmt
-            .query_map(params![fetch_cap as i64], row_to_atom)
+            .query_map(rusqlite::params_from_iter(binds), row_to_atom)
             .map_err(|e| KurultaiError::Store(format!("list_graph_nodes query: {e}")))?;
         let now = Utc::now();
         let mut out = Vec::with_capacity(limit.min(1024));
@@ -2975,6 +3018,45 @@ mod tests {
         let (h2, _, c2) = store.count_by_tier(TierPolicy::default()).await.unwrap();
         assert_eq!(h2, 2);
         assert_eq!(c2, 0);
+    }
+
+    #[tokio::test]
+    async fn graph_exclude_source_keeps_cortex_off_repos() {
+        let store = temp_store(4);
+        let now = Utc::now();
+        let mut note = sample_atom("n1", "Note", "body", None);
+        note.source = "notes".into();
+        note.last_accessed_at = now;
+        let mut repo = sample_atom("r1", "Repo file", "fn main", None);
+        repo.source = "repos".into();
+        repo.source_id = "duketopceo/kurultai/src/main.rs".into();
+        repo.last_accessed_at = now;
+        store.upsert(&note).await.unwrap();
+        store.upsert(&repo).await.unwrap();
+
+        let cortex = store
+            .list_graph_nodes(
+                None,
+                10,
+                SearchFilter::default().with_exclude_source(Some("repos")),
+                TierPolicy::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cortex.len(), 1);
+        assert_eq!(cortex[0].id, "n1");
+
+        let code = store
+            .list_graph_nodes(
+                None,
+                10,
+                SearchFilter::default().with_source(Some("repos")),
+                TierPolicy::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(code.len(), 1);
+        assert_eq!(code[0].id, "r1");
     }
 
     #[tokio::test]

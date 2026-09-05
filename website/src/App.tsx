@@ -10,7 +10,6 @@ import { AskPanel } from './components/AskPanel';
 import { StatsPanel } from './components/StatsPanel';
 import { HeyPanel } from './components/HeyPanel';
 import { RepoStrip, countCodeRepos } from './components/RepoBrain';
-import { isCodeSource } from './repoLattice';
 import type { Atom, LayoutMode, LoadTier, OntologyResponse } from './types';
 import { LOAD_TIER_CAPS } from './types';
 
@@ -51,16 +50,17 @@ export function App() {
       setLoadMsg(`Loading ${tier}…`);
       const t0 = performance.now();
       const cap = LOAD_TIER_CAPS[tier];
-      const [all, onto] = await Promise.all([
-        fetchGraph({ limit: Math.min(cap * 2, 20000) }, ac.signal),
+      // Repos dominate last_accessed order; fetch cortex without them, strip separately.
+      const [brainAtoms, repoAtoms, onto] = await Promise.all([
+        fetchGraph({ limit: cap, excludeSource: 'repos' }, ac.signal),
+        fetchGraph({ limit: 8000, source: 'repos' }, ac.signal).catch(() => [] as Atom[]),
         fetchOntology(ac.signal).catch(() => ({ ok: true, entities: [], links: [] })),
       ]);
       if (!ac.signal.aborted) setOntology(onto);
-      const brainAtoms = all.filter((a) => !isCodeSource(a.source));
-      setCodeRepos(countCodeRepos(all));
+      setCodeRepos(countCodeRepos(repoAtoms));
       const atoms = brainAtoms.slice(0, cap);
       const elapsed = (performance.now() - t0).toFixed(0);
-      dbg(`fetchGraph done: ${atoms.length}/${brainAtoms.length} brain atoms (${all.length} total) in ${elapsed}ms (tier: ${tier})`);
+      dbg(`fetchGraph done: ${atoms.length} cortex + ${repoAtoms.length} repos in ${elapsed}ms (tier: ${tier})`);
       setLoadMsg(`${atoms.length} memories · ${tier}`);
       dispatch({ type: 'SET_ATOMS', atoms, total: brainAtoms.length });
     } catch (e) {

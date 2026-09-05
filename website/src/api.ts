@@ -101,6 +101,10 @@ export async function fetchAtoms(limit: number, signal?: AbortSignal): Promise<A
 export type GraphQuery = {
   tier?: 'hot' | 'warm' | 'cold';
   limit?: number;
+  /** Exact source match (e.g. `repos` for the Repos strip). */
+  source?: string;
+  /** Drop one source from results (e.g. `repos` for the cortex). */
+  excludeSource?: string;
 };
 
 export async function fetchGraph(
@@ -110,6 +114,8 @@ export async function fetchGraph(
   const params = new URLSearchParams();
   if (query?.tier) params.set('tier', query.tier);
   if (query?.limit !== undefined) params.set('limit', String(query.limit));
+  if (query?.source) params.set('source', query.source);
+  if (query?.excludeSource) params.set('exclude_source', query.excludeSource);
   const qs = params.toString();
   const data = await getJson<{
     nodes?: GraphNode[];

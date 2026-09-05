@@ -445,12 +445,16 @@ impl BrainService {
         tier: Option<MemoryTier>,
         limit: usize,
         include_quarantine: bool,
+        source: Option<&str>,
+        exclude_source: Option<&str>,
     ) -> Result<Vec<GraphNode>> {
         self.store
             .list_graph_nodes(
                 tier,
                 limit,
-                SearchFilter::trusted(!include_quarantine),
+                SearchFilter::trusted(!include_quarantine)
+                    .with_source(source)
+                    .with_exclude_source(exclude_source),
                 TierPolicy::default(),
             )
             .await
