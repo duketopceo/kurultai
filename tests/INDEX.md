@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: tests
 parent: INDEX.md
-updated: 2026-08-31
-version: 2
+updated: 2026-09-04
+version: 3
 ---
 
 # `tests`
@@ -22,8 +22,8 @@ version: 2
 | [`acceptance_concurrency.rs`](acceptance_concurrency.rs) | Acceptance tests — multi-process SQLite safety (Track A: shared crew brain). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`acceptance_http.rs`](acceptance_http.rs) | Acceptance tests — HTTP API surface (KHAN-251). | — | — | 2026-08-29 | 2 | 2026-08-29 unprefixed alias auth tests · 2026-08-16 indexed (v1 seed) |
 | [`acceptance_ingest.rs`](acceptance_ingest.rs) | Acceptance tests — ingest surface (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`acceptance_mcp.rs`](acceptance_mcp.rs) | Acceptance tests — MCP tool surface (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`acceptance_ontology.rs`](acceptance_ontology.rs) | Acceptance tests — ontology O1 (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`acceptance_mcp.rs`](acceptance_mcp.rs) | Acceptance tests — MCP tool surface (KHAN-251). | — | — | 2026-09-04 | 2 | 2026-09-04 include hey_* tools in read-only surface list · 2026-08-14 indexed (v1 seed) |
+| [`acceptance_ontology.rs`](acceptance_ontology.rs) | Acceptance tests — ontology O1 (KHAN-251). | — | — | 2026-09-04 | 2 | 2026-09-04 sync schema version assertion to v12 · 2026-08-14 indexed (v1 seed) |
 | [`acceptance_search.rs`](acceptance_search.rs) | Acceptance tests — search surface (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`acceptance_visibility.rs`](acceptance_visibility.rs) | Acceptance tests — visibility / tiered access (KHAN-251). | — | — | 2026-09-01 | 2 | 2026-09-01 HUB-5 default_visibility_scope source + pipeline tests · 2026-08-16 indexed (v1 seed) |
 | [`acceptance_write_policy.rs`](acceptance_write_policy.rs) | Acceptance tests — shared-store write containment (Track A / A2). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -39,6 +39,7 @@ version: 2
 
 ## Recent
 
+- 2026-09-04 — `acceptance_mcp.rs` / `acceptance_ontology.rs`: update tool list + schema version assertions
 - 2026-09-01 — `acceptance_visibility.rs`: HUB-5 `default_visibility_scope` source + pipeline tests
 - 2026-08-31 — added `stress_http.rs` — 1000 request mixed-load HTTP stress test
 - 2026-08-29 — acceptance tests for unprefixed query alias auth under `HubAuth::ApiKey`
