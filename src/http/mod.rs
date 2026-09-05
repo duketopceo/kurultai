@@ -505,12 +505,16 @@ async fn api_ontology_promote(
         Err(e) => {
             let status = match &e {
                 KurultaiError::Store(msg)
-                    if msg.contains("ontology_promote") && msg.contains("atom") && msg.contains("not found") =>
+                    if msg.contains("ontology_promote")
+                        && msg.contains("atom")
+                        && msg.contains("not found") =>
                 {
                     StatusCode::NOT_FOUND
                 }
                 KurultaiError::Store(msg)
-                    if msg.contains("ontology_promote") && msg.contains("class") && msg.contains("not found") =>
+                    if msg.contains("ontology_promote")
+                        && msg.contains("class")
+                        && msg.contains("not found") =>
                 {
                     StatusCode::BAD_REQUEST
                 }
