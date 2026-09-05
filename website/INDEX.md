@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website
 parent: INDEX.md
-updated: 2026-09-04
-version: 2
+updated: 2026-09-05
+version: 3
 ---
 
 # `website`
@@ -28,6 +28,7 @@ version: 2
 
 ## Recent
 
+- 2026-09-05 — tiered graph fetch: api.ts GraphQuery + App.tsx/RepoBrain limit wiring
 - 2026-09-04 — token gate auth flow; README updated for build-ui.sh
 - 2026-08-16 — indexed this folder (v1 seed)
 

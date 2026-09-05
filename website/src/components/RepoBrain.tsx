@@ -96,7 +96,7 @@ function RepoListPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchGraph().then((atoms) => {
+    fetchGraph({ limit: 5000 }).then((atoms) => {
       setRepos(countCodeRepos(atoms));
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -143,7 +143,7 @@ function RepoBrainView({ repo }: { repo: string }) {
       onZoomOut: () => {},
       onReady: () => {
         dbg('ready');
-        fetchGraph().then((all) => {
+        fetchGraph({ limit: 20000 }).then((all) => {
           const atoms = all.filter((a) => codeLatticeOf(a) === repo);
           dbg(`${atoms.length} atoms for repo ${repo}`);
           setStatus(`${atoms.length} memories`);

@@ -50,14 +50,14 @@ export function App() {
       dbg('fetchGraph start, tier:', tier);
       setLoadMsg(`Loading ${tier}…`);
       const t0 = performance.now();
+      const cap = LOAD_TIER_CAPS[tier];
       const [all, onto] = await Promise.all([
-        fetchGraph(ac.signal),
+        fetchGraph({ limit: Math.min(cap * 2, 20000) }, ac.signal),
         fetchOntology(ac.signal).catch(() => ({ ok: true, entities: [], links: [] })),
       ]);
       if (!ac.signal.aborted) setOntology(onto);
       const brainAtoms = all.filter((a) => !isCodeSource(a.source));
       setCodeRepos(countCodeRepos(all));
-      const cap = LOAD_TIER_CAPS[tier];
       const atoms = brainAtoms.slice(0, cap);
       const elapsed = (performance.now() - t0).toFixed(0);
       dbg(`fetchGraph done: ${atoms.length}/${brainAtoms.length} brain atoms (${all.length} total) in ${elapsed}ms (tier: ${tier})`);

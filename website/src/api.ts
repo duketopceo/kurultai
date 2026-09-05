@@ -98,8 +98,25 @@ export async function fetchAtoms(limit: number, signal?: AbortSignal): Promise<A
   return data.map(normalizeAtom);
 }
 
-export async function fetchGraph(signal?: AbortSignal): Promise<Atom[]> {
-  const data = await getJson<{ nodes?: GraphNode[]; hot?: GraphNode[]; warm?: GraphNode[]; cold?: GraphNode[] }>('/api/graph', signal);
+export type GraphQuery = {
+  tier?: 'hot' | 'warm' | 'cold';
+  limit?: number;
+};
+
+export async function fetchGraph(
+  query?: GraphQuery,
+  signal?: AbortSignal,
+): Promise<Atom[]> {
+  const params = new URLSearchParams();
+  if (query?.tier) params.set('tier', query.tier);
+  if (query?.limit !== undefined) params.set('limit', String(query.limit));
+  const qs = params.toString();
+  const data = await getJson<{
+    nodes?: GraphNode[];
+    hot?: GraphNode[];
+    warm?: GraphNode[];
+    cold?: GraphNode[];
+  }>(`/api/graph${qs ? `?${qs}` : ''}`, signal);
   const nodes: GraphNode[] = data.nodes ?? [
     ...(data.hot ?? []),
     ...(data.warm ?? []),
