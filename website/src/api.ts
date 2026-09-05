@@ -56,21 +56,18 @@ export function normalizeGraphNode(node: GraphNode): Atom {
   };
 }
 
+import { authHeaders, emitTokenInvalid } from './auth';
+
 const dbg = (...args: unknown[]) => console.debug('[kurultai:api]', ...args);
 
-const TOKEN_KEY = 'kurultai:token';
-
 function getAuthHeaders(init?: HeadersInit): HeadersInit {
-  const token = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
-  const headers: Record<string, string> = { Accept: 'application/json' };
-  if (token && token.length > 0) {
-    headers['Authorization'] = `Bearer ${token}`;
+  return authHeaders(init);
+}
+
+function maybeUnauthorized(status: number): void {
+  if (status === 401 || status === 403) {
+    emitTokenInvalid('unauthorized');
   }
-  if (init) {
-    const h = new Headers(init);
-    h.forEach((v, k) => { headers[k] = v; });
-  }
-  return headers;
 }
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -83,6 +80,7 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   });
   if (!r.ok) {
     dbg('GET failed', path, r.status);
+    maybeUnauthorized(r.status);
     throw new Error(`${path} failed (${r.status})`);
   }
   const data = await r.json() as T;
@@ -137,7 +135,10 @@ export async function askBrain(question: string, signal?: AbortSignal): Promise<
     body: JSON.stringify({ question }),
     signal,
   });
-  if (!r.ok) throw new Error(`ask failed (${r.status})`);
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    throw new Error(`ask failed (${r.status})`);
+  }
   const data = await r.json();
   return data.answer ?? data.text ?? JSON.stringify(data);
 }
@@ -148,7 +149,10 @@ export async function touchAtom(atomId: string): Promise<Atom | null> {
     headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ atom_id: atomId }),
   });
-  if (!r.ok) return null;
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    return null;
+  }
   const data = await r.json();
   return normalizeAtom(data);
 }

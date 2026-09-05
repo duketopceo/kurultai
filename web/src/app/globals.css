@@ -125,7 +125,73 @@ a {
 
 .auth-frame {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.auth-copy {
+  max-width: 28rem;
+  text-align: center;
+}
+
+.auth-copy h1 {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.auth-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 2rem 0 1rem;
+}
+
+@media (max-width: 640px) {
+  .auth-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.auth-split h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.auth-split p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.panel-head h1 {
+  margin: 0.15rem 0 0;
+}
+
+.settings-block {
+  margin: 1.25rem 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.settings-block h2 {
+  margin: 0.85rem 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.settings-block ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 code {

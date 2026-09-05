@@ -1,52 +1,21 @@
-import { StrictMode, useState, useEffect } from 'react';
+import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { App } from './App';
 import { RepoBrainPage } from './components/RepoBrain';
+import { HumanLoginGate } from './components/HumanAccess';
+import {
+  AUTH_CHANGED_EVENT,
+  AuthModeContext,
+  TOKEN_INVALID_EVENT,
+  probeAuthMode,
+  type AuthMode,
+} from './auth';
 
-const TOKEN_KEY = 'kurultai:token';
-
-function readToken(): string {
-  try {
-    return localStorage.getItem(TOKEN_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-function saveToken(value: string) {
-  try {
-    if (value.length > 0) {
-      localStorage.setItem(TOKEN_KEY, value);
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
-    }
-  } catch { /* best-effort */ }
-}
-
-function TokenPrompt({ onSave }: { onSave: (token: string) => void }) {
-  const [value, setValue] = useState('');
-  return (
-    <div className="token-gate" role="dialog" aria-label="API token required">
-      <div className="token-card">
-        <h1>Kurultai</h1>
-        <p>This instance requires an API token.</p>
-        <input
-          type="password"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="Paste your API key"
-          aria-label="API token"
-          autoFocus
-          onKeyDown={(e) => { if (e.key === 'Enter' && value.length > 0) onSave(value); }}
-        />
-        <button onClick={() => onSave(value)} disabled={value.length === 0}>
-          Continue
-        </button>
-      </div>
-    </div>
-  );
-}
+type GateState =
+  | { phase: 'booting' }
+  | { phase: 'gate'; mode: AuthMode; error: string | null }
+  | { phase: 'ready'; mode: AuthMode };
 
 function Router() {
   const [hash, setHash] = useState(window.location.hash);
@@ -61,24 +30,73 @@ function Router() {
 }
 
 function Root() {
-  const [token, setToken] = useState<string | null>(null);
+  const [gate, setGate] = useState<GateState>({ phase: 'booting' });
 
-  useEffect(() => {
-    setToken(readToken());
+  const refresh = useCallback(async (error: string | null = null) => {
+    try {
+      const { mode, okWithStoredToken } = await probeAuthMode();
+      if (mode === 'locked' && !okWithStoredToken) {
+        setGate({ phase: 'gate', mode, error });
+        return;
+      }
+      setGate({ phase: 'ready', mode });
+    } catch {
+      setGate({ phase: 'ready', mode: 'open' });
+    }
   }, []);
 
-  if (token === null) return null;
-  if (token.length === 0) {
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const onInvalid = (e: Event) => {
+      const detail = (e as CustomEvent<{ reason?: string }>).detail;
+      void refresh(
+        detail?.reason === 'unauthorized'
+          ? 'That token was rejected. Paste a valid human key.'
+          : 'Session expired. Sign in again.',
+      );
+    };
+    const onChanged = () => {
+      void refresh();
+    };
+    window.addEventListener(TOKEN_INVALID_EVENT, onInvalid);
+    window.addEventListener(AUTH_CHANGED_EVENT, onChanged);
+    return () => {
+      window.removeEventListener(TOKEN_INVALID_EVENT, onInvalid);
+      window.removeEventListener(AUTH_CHANGED_EVENT, onChanged);
+    };
+  }, [refresh]);
+
+  if (gate.phase === 'booting') {
+    return (
+      <div className="token-gate" aria-busy="true">
+        <p className="muted">Checking access…</p>
+      </div>
+    );
+  }
+
+  if (gate.phase === 'gate') {
     return (
       <StrictMode>
-        <TokenPrompt onSave={(value) => { saveToken(value); setToken(value); }} />
+        <HumanLoginGate
+          mode={gate.mode}
+          error={gate.error}
+          onSaved={() => {
+            void refresh();
+          }}
+          onContinueOpen={() => setGate({ phase: 'ready', mode: 'open' })}
+        />
       </StrictMode>
     );
   }
 
   return (
     <StrictMode>
-      <Router />
+      <AuthModeContext.Provider value={gate.mode}>
+        <Router />
+      </AuthModeContext.Provider>
     </StrictMode>
   );
 }

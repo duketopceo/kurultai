@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { UI_VERSION } from '../version';
+import { useAuthMode } from '../auth';
+import { AccessSettingsButton } from './HumanAccess';
 
 interface Props {
   daemonOk: boolean;
@@ -14,6 +16,7 @@ function initialTheme(): string {
 
 export function TopBar({ daemonOk, daemonVersion }: Props) {
   const [theme, setTheme] = useState(initialTheme);
+  const authMode = useAuthMode();
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -53,6 +56,7 @@ export function TopBar({ daemonOk, daemonVersion }: Props) {
             : 'connecting'}
         </span>
       </div>
+      <AccessSettingsButton mode={authMode} onChanged={() => { /* Root listens for auth-changed */ }} />
       <button
         id="theme-toggle"
         className="icon-button"
