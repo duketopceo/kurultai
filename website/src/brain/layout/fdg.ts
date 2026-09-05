@@ -85,42 +85,6 @@ export function tickFdg(
     node.x += node.vx;
     node.y += node.vy;
     node.z += node.vz;
-
-    // Hard project after integrate: soft hullK is only a bias and loses to
-    // repulsion/springs. Exterior nodes (d > 0) snap to/into the surface
-    // along −∇. A few iterations cover coarse SDF residual.
-    if (sdf) {
-      for (let proj = 0; proj < 3; proj++) {
-        const d = sampleSdf(sdf, node.x, node.y, node.z);
-        if (d <= 0) break;
-        const g = sdfGradient(sdf, node.x, node.y, node.z);
-        const glen = Math.hypot(g.x, g.y, g.z);
-        if (glen > 1e-6) {
-          const nx = g.x / glen;
-          const ny = g.y / glen;
-          const nz = g.z / glen;
-          const step = d + sdf.cell * 0.05;
-          node.x -= nx * step;
-          node.y -= ny * step;
-          node.z -= nz * step;
-          if (proj === 0) {
-            const vn = node.vx * nx + node.vy * ny + node.vz * nz;
-            if (vn > 0) {
-              node.vx -= nx * vn;
-              node.vy -= ny * vn;
-              node.vz -= nz * vn;
-            }
-          }
-        } else {
-          const r = Math.hypot(node.x, node.y, node.z) || EPS;
-          const scale = Math.max(0, (r - d) / r);
-          node.x *= scale;
-          node.y *= scale;
-          node.z *= scale;
-          break;
-        }
-      }
-    }
   }
 }
 
