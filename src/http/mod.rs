@@ -550,9 +550,17 @@ async fn api_graph(
         .get("include_quarantine")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
+    let source = params
+        .get("source")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let exclude_source = params
+        .get("exclude_source")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
     match state
         .brain
-        .list_graph_nodes(tier, limit, include_quarantine)
+        .list_graph_nodes(tier, limit, include_quarantine, source, exclude_source)
         .await
     {
         Ok(nodes) => {
@@ -562,6 +570,8 @@ async fn api_graph(
                 "ok": true,
                 "request_id": &request_id,
                 "tier": tier.map(|t| t.as_str()),
+                "source": source,
+                "exclude_source": exclude_source,
                 "count": count,
                 "nodes": nodes,
             })))
