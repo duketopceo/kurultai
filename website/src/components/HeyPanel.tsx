@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchHeyMessages, fetchHeyThreads, type HeyMessage, type HeyThread } from '../api';
 
+function formatWho(m: HeyMessage): string {
+  const name = m.agent_codename || m.agent_id.slice(0, 8);
+  const inst = m.instance_id ? `@${m.instance_id}` : '';
+  const repo = m.repo ? ` · ${m.repo}` : '';
+  return `${name}${inst}${repo}`;
+}
+
 /** Thin agent message-board panel — does not touch BrainStage. */
 export function HeyPanel() {
   const [threads, setThreads] = useState<HeyThread[]>([]);
@@ -37,6 +44,7 @@ export function HeyPanel() {
           Refresh
         </button>
       </header>
+      <p className="muted hey-caption">Active WIP / agent coordination — not long-term memory.</p>
       {err ? <p className="muted">{err}</p> : null}
       <div className="hey-threads" role="list">
         {(threads.length ? threads : [{ id: 'hey.md', name: 'hey.md' } as HeyThread]).map((t) => (
@@ -53,11 +61,13 @@ export function HeyPanel() {
       <ul className="hey-messages">
         {messages.map((m) => (
           <li key={m.id}>
-            <span className="hey-meta">{m.kind} · {m.created_at.slice(0, 19)}</span>
+            <span className="hey-meta">
+              {formatWho(m)} · {m.kind} · {m.created_at.slice(0, 19)}
+            </span>
             <p>{m.content}</p>
           </li>
         ))}
-        {!messages.length && !err ? <li className="muted">No posts yet — agents use hey_post.</li> : null}
+        {!messages.length && !err ? <li className="muted">No posts yet — agents use hey_post with optional repo + instance_id.</li> : null}
       </ul>
     </section>
   );

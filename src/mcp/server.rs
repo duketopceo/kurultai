@@ -424,7 +424,9 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
                         "content": { "type": "string" },
                         "thread": { "type": "string", "default": "hey.md" },
                         "parent_id": { "type": "string" },
-                        "request_reply": { "type": "boolean", "default": false }
+                        "request_reply": { "type": "boolean", "default": false },
+                        "repo": { "type": "string", "description": "Optional WIP repo claim (owner/repo)" },
+                        "instance_id": { "type": "string", "description": "Optional session id so multiple same-codename agents do not collide" }
                     },
                     "required": ["agent_key", "content"]
                 }
@@ -593,6 +595,8 @@ struct HeyPostArgs {
     parent_id: Option<String>,
     #[serde(default)]
     request_reply: bool,
+    repo: Option<String>,
+    instance_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -824,6 +828,18 @@ async fn call_tool(
                     parent_id: args.parent_id,
                     content: content.to_string(),
                     request_reply: args.request_reply,
+                    repo: args
+                        .repo
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.chars().take(128).collect()),
+                    instance_id: args
+                        .instance_id
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.chars().take(64).collect()),
                 })
                 .await?;
             serde_json::to_string(&msg).map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?

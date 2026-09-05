@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrainView } from '../brain/BrainView';
-import { fetchGraph } from '../api';
+import { fetchGraph, fetchHeyPresence, type HeyPresence } from '../api';
 import { codeLatticeOf } from '../repoLattice';
 import type { Atom } from '../types';
 
@@ -17,24 +17,66 @@ export function countCodeRepos(atoms: Atom[]): { name: string; count: number }[]
     .sort((a, b) => b.count - a.count);
 }
 
+function claimsForRepo(repo: string, presence: HeyPresence[]): HeyPresence[] {
+  const needle = repo.toLowerCase();
+  return presence.filter((p) => {
+    const r = p.repo.toLowerCase();
+    return r === needle || r.endsWith(`/${needle}`) || needle.endsWith(`/${r}`);
+  });
+}
+
+function formatClaim(p: HeyPresence): string {
+  const name = p.agent_codename || p.agent_id.slice(0, 8);
+  return p.instance_id ? `${name}@${p.instance_id}` : name;
+}
+
 export function RepoStrip({ repos }: { repos: { name: string; count: number }[] }) {
+  const [presence, setPresence] = useState<HeyPresence[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      fetchHeyPresence(80)
+        .then((rows) => {
+          if (alive) setPresence(rows);
+        })
+        .catch(() => {
+          if (alive) setPresence([]);
+        });
+    };
+    load();
+    const id = window.setInterval(load, 20000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
+
   return (
     <section className="repo-strip chrome-strip" aria-label="Code repositories">
       <hr className="repo-strip-rule" />
       <div className="repo-strip-head">
         <h2>Repos <span className="beta-badge">beta</span></h2>
-        <p>Code lattices — kept off the main brain so file chunks do not crowd notes and sessions.</p>
+        <p>Code lattices — kept off the main brain. Agent WIP claims from the Hey board show under each repo.</p>
       </div>
       {repos.length === 0 ? (
         <p className="repo-strip-empty">No code repositories indexed. Enable a github/code source, then they appear here instead of on the cortex.</p>
       ) : (
         <div className="repo-grid">
-          {repos.map(({ name, count }) => (
-            <a key={name} href={`#/repo/${encodeURIComponent(name)}`} className="repo-card">
-              <strong>{name}</strong>
-              <span>{count} memories</span>
-            </a>
-          ))}
+          {repos.map(({ name, count }) => {
+            const claims = claimsForRepo(name, presence);
+            return (
+              <a key={name} href={`#/repo/${encodeURIComponent(name)}`} className="repo-card">
+                <strong>{name}</strong>
+                <span>{count} memories</span>
+                {claims.length ? (
+                  <span className="repo-claims" title={claims.map((c) => c.content_preview).join('\n')}>
+                    {claims.map(formatClaim).join(' · ')}
+                  </span>
+                ) : null}
+              </a>
+            );
+          })}
         </div>
       )}
     </section>

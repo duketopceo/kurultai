@@ -45,12 +45,21 @@ pub struct Message {
     pub id: String,
     pub thread_id: String,
     pub agent_id: String,
+    /// Codename of the posting agent (joined on read; empty when unknown).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub agent_codename: String,
     pub parent_id: Option<String>,
     pub kind: MessageKind,
     pub content: String,
     pub request_reply: bool,
     pub turns_consumed: u32,
     pub created_at: String,
+    /// Optional repo claim (`owner/repo` or short name) for WIP presence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    /// Optional session/instance id so multiple `cursor` agents do not collide.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
 }
 
 /// Kind of a message-board post.
@@ -86,6 +95,8 @@ pub struct PostMessageInput {
     pub parent_id: Option<String>,
     pub content: String,
     pub request_reply: bool,
+    pub repo: Option<String>,
+    pub instance_id: Option<String>,
 }
 
 /// Input for adding a reaction to a message.
@@ -1948,8 +1959,8 @@ impl Store for SqliteVecStore {
         }
 
         tx.execute(
-            "INSERT INTO messages (id, thread_id, agent_id, parent_id, kind, content, request_reply, turns_consumed, created_at) \
-             VALUES (?1, ?2, ?3, ?4, 'message', ?5, ?6, ?7, ?8)",
+            "INSERT INTO messages (id, thread_id, agent_id, parent_id, kind, content, request_reply, turns_consumed, created_at, repo, instance_id) \
+             VALUES (?1, ?2, ?3, ?4, 'message', ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 &id,
                 &input.thread_id,
@@ -1959,9 +1970,19 @@ impl Store for SqliteVecStore {
                 &(input.request_reply as i32),
                 &(turns_consumed as i64),
                 &now,
+                &input.repo,
+                &input.instance_id,
             ],
         )
         .map_err(|e| KurultaiError::Store(format!("post_message insert: {e}")))?;
+
+        let agent_codename = tx
+            .query_row(
+                "SELECT codename FROM agents WHERE id = ?1",
+                [&input.agent_id],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap_or_default();
 
         tx.commit()
             .map_err(|e| KurultaiError::Store(format!("post_message commit: {e}")))?;
@@ -1970,12 +1991,15 @@ impl Store for SqliteVecStore {
             id,
             thread_id: input.thread_id.clone(),
             agent_id: input.agent_id.clone(),
+            agent_codename,
             parent_id: input.parent_id.clone(),
             kind: MessageKind::Message,
             content: input.content.clone(),
             request_reply: input.request_reply,
             turns_consumed,
             created_at: now,
+            repo: input.repo.clone(),
+            instance_id: input.instance_id.clone(),
         })
     }
 
@@ -1984,8 +2008,8 @@ impl Store for SqliteVecStore {
         let id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
         conn.execute(
-            "INSERT INTO messages (id, thread_id, agent_id, parent_id, kind, content, request_reply, turns_consumed, created_at) \
-             VALUES (?1, ?2, ?3, ?4, 'reaction', ?5, 0, 0, ?6)",
+            "INSERT INTO messages (id, thread_id, agent_id, parent_id, kind, content, request_reply, turns_consumed, created_at, repo, instance_id) \
+             VALUES (?1, ?2, ?3, ?4, 'reaction', ?5, 0, 0, ?6, NULL, NULL)",
             params![
                 &id,
                 &input.thread_id,
@@ -2002,16 +2026,27 @@ impl Store for SqliteVecStore {
         )
         .map_err(|e| KurultaiError::Store(format!("add_reaction update thread: {e}")))?;
 
+        let agent_codename = conn
+            .query_row(
+                "SELECT codename FROM agents WHERE id = ?1",
+                [&input.agent_id],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap_or_default();
+
         Ok(Message {
             id,
             thread_id: input.thread_id.clone(),
             agent_id: input.agent_id.clone(),
+            agent_codename,
             parent_id: Some(input.message_id.clone()),
             kind: MessageKind::Reaction,
             content: input.emoji.clone(),
             request_reply: false,
             turns_consumed: 0,
             created_at: now,
+            repo: None,
+            instance_id: None,
         })
     }
 
@@ -2019,9 +2054,11 @@ impl Store for SqliteVecStore {
         let conn = self.lock()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, thread_id, agent_id, parent_id, kind, content, request_reply, \
-                 turns_consumed, created_at FROM messages WHERE thread_id = ?1 \
-                 ORDER BY created_at DESC LIMIT ?2",
+                "SELECT m.id, m.thread_id, m.agent_id, m.parent_id, m.kind, m.content, m.request_reply, \
+                 m.turns_consumed, m.created_at, m.repo, m.instance_id, COALESCE(a.codename, '') \
+                 FROM messages m LEFT JOIN agents a ON a.id = m.agent_id \
+                 WHERE m.thread_id = ?1 \
+                 ORDER BY m.created_at DESC LIMIT ?2",
             )
             .map_err(|e| KurultaiError::Store(format!("list_messages prepare: {e}")))?;
         let rows = stmt
@@ -2347,6 +2384,8 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let parent: Option<String> = row.get(3)?;
     let kind_raw: String = row.get(4)?;
     let request_reply: i32 = row.get(6)?;
+    let repo: Option<String> = row.get(9)?;
+    let instance_id: Option<String> = row.get(10)?;
     Ok(Message {
         id: row.get(0)?,
         thread_id: row.get(1)?,
@@ -2357,6 +2396,9 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         request_reply: request_reply != 0,
         turns_consumed: row.get::<_, i64>(7)? as u32,
         created_at: row.get(8)?,
+        repo: repo.filter(|s| !s.is_empty()),
+        instance_id: instance_id.filter(|s| !s.is_empty()),
+        agent_codename: row.get::<_, String>(11).unwrap_or_default(),
     })
 }
 
@@ -2947,9 +2989,14 @@ mod tests {
                 parent_id: None,
                 content: "hello agents".into(),
                 request_reply: true,
+                repo: Some("duketopceo/kurultai".into()),
+                instance_id: Some("laptop-a".into()),
             })
             .await
             .unwrap();
+        assert_eq!(root.repo.as_deref(), Some("duketopceo/kurultai"));
+        assert_eq!(root.instance_id.as_deref(), Some("laptop-a"));
+        assert_eq!(root.agent_codename, "cursor");
         let reply = store
             .post_message(&PostMessageInput {
                 thread_id: thread.id.clone(),
@@ -2957,6 +3004,8 @@ mod tests {
                 parent_id: Some(root.id.clone()),
                 content: "acking".into(),
                 request_reply: false,
+                repo: None,
+                instance_id: Some("laptop-a".into()),
             })
             .await
             .unwrap();
@@ -2968,6 +3017,8 @@ mod tests {
                 parent_id: Some(root.id.clone()),
                 content: "too many".into(),
                 request_reply: false,
+                repo: None,
+                instance_id: None,
             })
             .await;
         assert!(capped.is_err(), "turn cap must reject further replies");
