@@ -16,6 +16,13 @@ assert.equal(
 assert.equal(codeLatticeOf({ source: 'code', source_id: 'src/http/mod.rs' }), 'code');
 assert.equal(isCodeSource('code'), true);
 assert.equal(isCodeSource('notes'), false);
+assert.equal(isCodeSource('repos'), true);
+assert.equal(isCodeSource('repo'), true);
+assert.equal(isCodeSource('github'), true);
+assert.equal(
+  codeLatticeOf({ source: 'repos', source_id: 'duketopceo/kurultai/src/http/mod.rs' }),
+  'duketopceo/kurultai',
+);
 assert.equal(isJunkLatticeName('7689'), true);
 assert.equal(isJunkLatticeName('README.md#c0'), true);
 
