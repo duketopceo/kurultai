@@ -34,6 +34,7 @@ export const DEFAULT_FDG_PARAMS: FdgParams = {
   springRest: 0.35,
   centerK: 0.01,
   tagK: 0.02,
+  // Soft hull bias during the tick; hard SDF project after integrate is authoritative.
   hullK: 0.12,
   damping: 0.85,
   minTagMembers: 3,
