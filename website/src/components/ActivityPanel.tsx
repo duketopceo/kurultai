@@ -31,7 +31,7 @@ export function ActivityPanel({ live, onLiveToggle }: Props) {
   }, [live]);
 
   return (
-    <aside className="panel stream-panel" aria-labelledby="stream-heading">
+    <aside className="panel chrome-panel stream-panel" aria-labelledby="stream-heading">
       <div className="panel-heading">
         <p className="eyebrow">Pulse</p>
         <h2 id="stream-heading">Memory stream</h2>

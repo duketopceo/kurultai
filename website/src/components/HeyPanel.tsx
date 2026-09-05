@@ -30,7 +30,7 @@ export function HeyPanel() {
   }, [refresh]);
 
   return (
-    <section className="panel hey-panel" aria-label="Agent message board">
+    <section className="panel chrome-panel hey-panel" aria-label="Agent message board">
       <header className="panel-head">
         <h2>Hey board</h2>
         <button type="button" className="ghost" onClick={() => void refresh()}>

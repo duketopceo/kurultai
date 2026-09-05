@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-09-01
-version: 3
+updated: 2026-09-05
+version: 4
 ---
 
 # `docs/plans`
@@ -69,6 +69,7 @@ _None._
 | [`2026-08-15-001-feat-hub3-railway-transport-plan.md`](2026-08-15-001-feat-hub3-railway-transport-plan.md) | feat: HUB-3 Railway transport — public/Tailscale bind + Postgres hub daemon | — | — | 2026-08-29 | 2 | 2026-08-29 LFG pin: ship U1–U4 only · 2026-08-16 indexed (v1 seed) |
 | [`2026-08-15-002-feat-hub4-agent-ids-write-log-plan.md`](2026-08-15-002-feat-hub4-agent-ids-write-log-plan.md) | feat: HUB-4 agent IDs + write log — issued keys, team_id filter, activity | — | — | 2026-08-15 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-09-01-001-chore-final-stretch-to-v050-team-plan.md`](2026-09-01-001-chore-final-stretch-to-v050-team-plan.md) | chore: Final stretch to v0.5.0 Team — release hardening, queue cleanup, tag `v0.5.0` | — | — | 2026-09-01 | 1 | 2026-09-01 LFG plan: HUB-5 merged, final stretch |
+| [`2026-09-05-001-feat-brain-ux-ontology-dashboard-plan.md`](2026-09-05-001-feat-brain-ux-ontology-dashboard-plan.md) | feat: Brain UX — ontology cortex + dashboard rework | — | — | 2026-09-05 | 1 | 2026-09-05 ce-plan: 1A/2A/3B product layer on Aug 13 foundation |
 | [`2026-08-15-003-feat-desktop-brain-ui-wrap-plan.md`](2026-08-15-003-feat-desktop-brain-ui-wrap-plan.md) | feat: desktop Brain UI wrap — thin Tauri window over /ui/ | — | — | 2026-08-15 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-08-16-001-chore-agent-repo-index-plan.md`](2026-08-16-001-chore-agent-repo-index-plan.md) | chore: hierarchical agent INDEX.md tree | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`YEAR-1-MILESTONES.md`](YEAR-1-MILESTONES.md) | Kurultai Year 1 Milestones & Work Orders | — | — | 2026-09-01 | 2 | 2026-09-01 v0.5.0 shipped · 2026-08-16 indexed (v1 seed) |
@@ -90,6 +91,7 @@ _None._
 
 ## Recent
 
+- 2026-09-05 — brain cortex + secondary chrome product plan (1A/2A/3B)
 - 2026-09-01 — final stretch to v0.5.0 plan + HUB-5 ✅ (#250) + HUB-6 ✅ on queue
 - 2026-08-29 — HUB-3 LFG pin + railway-hub.md pointer on the live queue
 - 2026-08-16 — `2026-08-16-001-chore-agent-repo-index-plan.md` (this map)
