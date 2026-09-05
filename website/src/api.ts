@@ -204,12 +204,25 @@ export type HeyMessage = {
   id: string;
   thread_id: string;
   agent_id: string;
+  agent_codename?: string;
   parent_id?: string | null;
   kind: string;
   content: string;
   request_reply?: boolean;
   turns_consumed?: number;
   created_at: string;
+  repo?: string | null;
+  instance_id?: string | null;
+};
+
+export type HeyPresence = {
+  agent_id: string;
+  agent_codename: string;
+  instance_id?: string | null;
+  repo: string;
+  message_id: string;
+  created_at: string;
+  content_preview: string;
 };
 
 export async function fetchHeyThreads(limit = 20, signal?: AbortSignal): Promise<HeyThread[]> {
@@ -226,6 +239,11 @@ export async function fetchHeyMessages(
     `/api/hey/threads/${encodeURIComponent(thread)}/messages?limit=${limit}`,
     signal,
   );
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchHeyPresence(limit = 50, signal?: AbortSignal): Promise<HeyPresence[]> {
+  const data = await getJson<HeyPresence[]>(`/api/hey/presence?limit=${limit}`, signal);
   return Array.isArray(data) ? data : [];
 }
 
