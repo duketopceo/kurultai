@@ -2939,10 +2939,7 @@ mod tests {
     async fn message_board_post_react_and_turn_cap() {
         let store = temp_store(4);
         let (agent_id, _key) = store.register_agent("cursor").await.unwrap();
-        let thread = store
-            .create_thread("hey.md", None, Some(1))
-            .await
-            .unwrap();
+        let thread = store.create_thread("hey.md", None, Some(1)).await.unwrap();
         let root = store
             .post_message(&PostMessageInput {
                 thread_id: thread.id.clone(),
