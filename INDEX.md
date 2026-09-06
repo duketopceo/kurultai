@@ -67,6 +67,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-06 — `src/http/cf_access.rs` new: verified Cloudflare Access JWT satisfies hub auth for human browser login (Google/OTP via Access, no API-key paste); `KURULTAI_CF_ACCESS_TEAM` + `KURULTAI_CF_ACCESS_AUDS`; `HubGate.cf_access` + `authorize_bearer` split in `auth.rs`
 - 2026-09-05 — AGENTS.md: hosted brain + ontology promote notes; index row bump
 - 2026-09-05 — website/ui: tiered graph fetch (api.ts GraphQuery + load-tier limits) and rebuild
 - 2026-09-01 — add `.devcontainer/` dogfood setup: Dockerfile + docker-compose + INDEX, unignore for sharing

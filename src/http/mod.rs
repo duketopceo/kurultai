@@ -7,6 +7,7 @@
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
 mod auth;
+pub mod cf_access;
 mod device_auth;
 mod hey;
 mod hub_listen;
@@ -2408,6 +2409,7 @@ mod tests {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
                 agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },
@@ -2460,6 +2462,7 @@ mod tests {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
                 agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },
@@ -2488,6 +2491,7 @@ mod tests {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
                 agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },

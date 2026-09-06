@@ -63,7 +63,12 @@ export function tickFdg(
 
     if (sdf && params.hullK !== 0) {
       const d = sampleSdf(sdf, node.x, node.y, node.z);
-      if (d > 0) {
+      const span = (sdf.nx - 1) * sdf.cell;
+      const inGrid =
+        node.x >= sdf.originX && node.x <= sdf.originX + span &&
+        node.y >= sdf.originY && node.y <= sdf.originY + span &&
+        node.z >= sdf.originZ && node.z <= sdf.originZ + span;
+      if (d > 0 && inGrid) {
         const g = sdfGradient(sdf, node.x, node.y, node.z);
         const glen = Math.hypot(g.x, g.y, g.z);
         if (glen > 1e-6) {
@@ -85,6 +90,60 @@ export function tickFdg(
     node.x += node.vx;
     node.y += node.vy;
     node.z += node.vz;
+
+    // Hard containment: the soft hull force above can lose equilibrium to
+    // repulsion on dense graphs, letting nodes settle in a shell outside the
+    // cortex. Project escapers back onto the surface and damp the outward
+    // velocity so the layout stays volumetric, not a ring around the brain.
+    if (sdf) {
+      const dOut = sampleSdf(sdf, node.x, node.y, node.z);
+      const span = (sdf.nx - 1) * sdf.cell;
+      // The sampler clamps to boundary cells: outside the grid its "gradient"
+      // is tangential garbage, so only trust it inside the baked box.
+      const inGrid =
+        node.x >= sdf.originX && node.x <= sdf.originX + span &&
+        node.y >= sdf.originY && node.y <= sdf.originY + span &&
+        node.z >= sdf.originZ && node.z <= sdf.originZ + span;
+      if (dOut > 0) {
+        const g = sdfGradient(sdf, node.x, node.y, node.z);
+        const glen = Math.hypot(g.x, g.y, g.z);
+        if (inGrid && glen > 1e-6) {
+          node.x -= (g.x / glen) * dOut;
+          node.y -= (g.y / glen) * dOut;
+          node.z -= (g.z / glen) * dOut;
+          const vDot = node.vx * (g.x / glen) + node.vy * (g.y / glen) + node.vz * (g.z / glen);
+          if (vDot > 0) {
+            node.vx -= (g.x / glen) * vDot;
+            node.vy -= (g.y / glen) * vDot;
+            node.vz -= (g.z / glen) * vDot;
+          }
+        } else {
+          // No usable gradient (sampler clamps outside the grid). Bisect the
+          // ray from the field center to the node for the first inside point —
+          // guaranteed containment regardless of how far it escaped.
+          const cx = sdf.originX + span / 2;
+          const cy = sdf.originY + span / 2;
+          const cz = sdf.originZ + span / 2;
+          // t=0 is the field center (inside); t=1 is the node (outside).
+          let tin = 0;
+          let tout = 1;
+          for (let it = 0; it < 16; it++) {
+            const mid = (tin + tout) / 2;
+            const mx = cx + (node.x - cx) * mid;
+            const my = cy + (node.y - cy) * mid;
+            const mz = cz + (node.z - cz) * mid;
+            if (sampleSdf(sdf, mx, my, mz) <= 0) tin = mid;
+            else tout = mid;
+          }
+          node.x = cx + (node.x - cx) * tin;
+          node.y = cy + (node.y - cy) * tin;
+          node.z = cz + (node.z - cz) * tin;
+          node.vx *= 0.5;
+          node.vy *= 0.5;
+          node.vz *= 0.5;
+        }
+      }
+    }
   }
 }
 
