@@ -12,6 +12,13 @@ import {
   hierPositions,
   orderLayers,
 } from './layout/sugiyama';
+import { computeLabelPlan } from './labels';
+import {
+  deriveGroups,
+  GROUP_TINTS,
+  type GroupInputEntity,
+  type GroupInputLink,
+} from './layout/grouping';
 
 /*
  * Particle-cortex renderer. The anatomical brain mesh is dissolved into GPU
@@ -138,7 +145,8 @@ const LIGHT_PALETTE: Palette = {
 export type Region = 'left' | 'right' | 'stem';
 
 const MAX_NODES = 2500;
-const MAX_EDGES = 3000;
+/** Top-N links by strength. Lowered from 3000 to cut edge geometry cost. */
+const MAX_EDGES = 1200;
 
 // Hybrid node rendering (KTD3 / R4): above this count nodes render as a single
 // THREE.Points draw call; at or below it the sphere+halo+label meshes render.
@@ -266,6 +274,10 @@ export class BrainView {
   private expandedClassIds = new Set<string>();
   private backingAtomByEntity = new Map<string, Atom>();
   private ontologyEdges = false;
+  // U2: entity id -> GROUP_TINTS color for the current ontology graph.
+  private ontologyTintOf: Map<string, number> | null = null;
+  // U1: camera distance at which the label plan was last rebuilt.
+  private lastLabelDistance = -1;
   private applyingOntology = false;
 
   /* ── Interactive control state ─────────────────────────────── */
@@ -468,9 +480,11 @@ export class BrainView {
     const i = vertexNumber * 3;
     const pos = new THREE.Vector3(this.verts[i], this.verts[i + 1], this.verts[i + 2]);
     const normal = new THREE.Vector3(this.norms[i], this.norms[i + 1], this.norms[i + 2]);
-    const jitter = (((h >> 8) % 100) / 100 - 0.5) * 0.03;
-    const jitter2 = (((h >> 16) % 100) / 100 - 0.5) * 0.03;
-    return pos.add(normal.multiplyScalar(0.018 + jitter)).addScalar(jitter2 * 0.01);
+    const jitter = (((h >> 8) % 100) / 100 - 0.5) * 0.02;
+    const jitter2 = (((h >> 16) % 100) / 100 - 0.5) * 0.02;
+    // Slight inward bias so spawn starts inside/on the cortex (hard FDG
+    // project keeps them there). Prior +0.018 outward offset seeded exterior.
+    return pos.add(normal.multiplyScalar(-0.012 + jitter)).addScalar(jitter2 * 0.01);
   }
 
   /**
@@ -750,51 +764,14 @@ export class BrainView {
           return;
         }
 
-        // Build a surface-conformant Catmull-Rom curve through 4-6
-        // intermediate points projected onto the brain mesh surface.
-        const points: THREE.Vector3[] = [a.clone()];
-        const numIntermediate = 4;
-        for (let i = 1; i <= numIntermediate; i++) {
-          const t = i / (numIntermediate + 1);
-          const p = a.clone().lerp(b, t);
-
-          // U4: sprite mode skips the per-edge surface raycast — 4 raycasts
-          // per edge × up to MAX_EDGES edges against the ~5.6k-tri proxy costs
-          // ~1-2ms per raycast (multi-second setData at 2500 nodes), blowing
-          // the 500ms render budget. At sprite densities surface conformity is
-          // invisible (the force layout leaves the brain hull anyway),
-          // so fall through to the cheap outward lift.
-          if (this.proxy && !this.spriteMode) {
-            // Raycast from brain center through p onto the mesh surface.
-            const worldOrigin = new THREE.Vector3();
-            this.brainGroup.localToWorld(worldOrigin);
-            const worldP = p.clone();
-            this.brainGroup.localToWorld(worldP);
-            const dir = worldP.clone().sub(worldOrigin).normalize();
-            this.raycaster.set(worldOrigin, dir);
-            const hit = this.raycaster.intersectObject(this.proxy, false)[0];
-            if (hit) {
-              const localHit = hit.point.clone();
-              this.brainGroup.worldToLocal(localHit);
-              // Push slightly outward along the radial normal.
-              const normal = localHit.clone().normalize();
-              localHit.add(normal.multiplyScalar(0.005));
-              points.push(localHit);
-            } else {
-              // Fallback: push outward from origin.
-              const outward = p.clone().normalize().multiplyScalar(p.length() + 0.01);
-              points.push(outward);
-            }
-          } else {
-            // No proxy (or sprite mode) — simple outward lift.
-            const lift = p.length() * 0.18;
-            points.push(p.add(p.clone().normalize().multiplyScalar(lift)));
-          }
-        }
-        points.push(b.clone());
-
-        const curve = new THREE.CatmullRomCurve3(points);
-        const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(28));
+        // Cheap curved synapse: quadratic arc via a slightly lifted midpoint.
+        // No surface raycasts and no outward lift (U4 cost lesson); curvature
+        // restores the electric flow silhouette that flat chords turned into a
+        // hairball (#275 revert reason).
+        const mid = a.clone().lerp(b, 0.5);
+        mid.add(mid.clone().normalize().multiplyScalar(mid.length() * 0.06));
+        const curve = new THREE.QuadraticBezierCurve3(a.clone(), mid, b.clone());
+        const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(16));
         const line = new THREE.Line(
           geo,
           new THREE.LineBasicMaterial({
@@ -807,6 +784,14 @@ export class BrainView {
         line.userData = link;
         this.edgeGroup.add(line);
       });
+  }
+
+  /** Dispose and rebuild brain-mode edges from current atomPositions (FDG settle). */
+  private rebuildBrainEdges() {
+    if (this.ontologyEdges || this.disposed) return;
+    this.disposeEdgeGroupGpu();
+    this.edgeGroup.clear();
+    this.buildEdges();
   }
 
   /** Release the node sprite cloud's GPU resources and clear lookups. */
@@ -822,11 +807,7 @@ export class BrainView {
     this.spriteAlphaAttr = undefined;
   }
 
-  /** Dispose mesh-mode node + edge GPU resources before group.clear() detaches
-   *  them. sphereGeo is SHARED across all node meshes — never disposed here.
-   *  haloTexture is shared across halo sprites; label sprites own their
-   *  CanvasTexture maps, which MUST be disposed to avoid per-refresh leaks. */
-  private disposeNodeAndEdgeGroups() {
+  private disposeEdgeGroupGpu() {
     this.edgeGroup.children.forEach((child) => {
       const line = child as THREE.Line;
       line.geometry?.dispose();
@@ -834,6 +815,14 @@ export class BrainView {
       if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
       else mat?.dispose();
     });
+  }
+
+  /** Dispose mesh-mode node + edge GPU resources before group.clear() detaches
+   *  them. sphereGeo is SHARED across all node meshes — never disposed here.
+   *  haloTexture is shared across halo sprites; label sprites own their
+   *  CanvasTexture maps, which MUST be disposed to avoid per-refresh leaks. */
+  private disposeNodeAndEdgeGroups() {
+    this.disposeEdgeGroupGpu();
     this.nodeGroup.children.forEach((child) => {
       const mesh = child as THREE.Mesh;
       if (mesh.isMesh) {
@@ -1061,9 +1050,8 @@ export class BrainView {
         if (visible) this.visibleAtomIds.add(id);
         const halo = this.haloMap.get(id);
         if (halo) halo.visible = visible;
-        const label = this.labelMap.get(id);
-        if (label) label.visible = visible && (this.showLabels || this.layoutMode === 'ontology');
       });
+      this.refreshLabelPlan();
     }
     this.edgeGroup.children.forEach((line) => {
       const link = line.userData as Link;
@@ -1077,23 +1065,21 @@ export class BrainView {
       this.refreshSpriteAttributes();
       return;
     }
-    if (this.showRegions) {
-      this.nodeObjects.forEach((node) => {
-        const region = node.userData.region as Region;
-        const color = this.regionColor(region);
-        (node.material as THREE.MeshBasicMaterial).color.setHex(color);
-        (this.haloMap.get(node.userData.atomId as string)!.material as THREE.SpriteMaterial).color.setHex(
-          color,
-        );
-      });
-    } else {
-      this.nodeObjects.forEach((node) => {
-        (node.material as THREE.MeshBasicMaterial).color.setHex(this.palette.nodeBase);
-        (this.haloMap.get(node.userData.atomId as string)!.material as THREE.SpriteMaterial).color.setHex(
-          this.palette.nodeBase,
-        );
-      });
+    this.nodeObjects.forEach((node) => {
+      const id = node.userData.atomId as string;
+      const color = this.nodeColor(id, node.userData.region as Region);
+      (node.material as THREE.MeshBasicMaterial).color.setHex(color);
+      (this.haloMap.get(id)!.material as THREE.SpriteMaterial).color.setHex(color);
+    });
+  }
+
+  /** Node/halo color: ontology group tint > region color > base (U2). */
+  private nodeColor(id: string, region: Region): number {
+    if (this.layoutMode === 'ontology') {
+      const tint = this.ontologyTintOf?.get(id);
+      if (tint !== undefined) return tint;
     }
+    return this.showRegions ? this.regionColor(region) : this.palette.nodeBase;
   }
 
   private nodeMaterial(active: boolean) {
@@ -1159,9 +1145,7 @@ export class BrainView {
           haloMat.color.setHex(this.palette.nodeHot);
           haloMat.opacity = 0.7;
         } else if (connected.has(id)) {
-          const color = this.showRegions
-            ? this.regionColor(node.userData.region as Region)
-            : this.palette.nodeBase;
+          const color = this.nodeColor(id, node.userData.region as Region);
           nodeMat.color.setHex(color);
           nodeMat.opacity = 0.9;
           haloMat.color.setHex(color);
@@ -1188,6 +1172,7 @@ export class BrainView {
       this.pointerTarget.copy(pos);
       this.hoverTarget = 1;
     }
+    this.refreshLabelPlan();
   }
 
   private showHover(atomId: string, event: PointerEvent) {
@@ -1207,9 +1192,10 @@ export class BrainView {
       this.nodeObjects.forEach((node) => {
         const nodeMat = node.material as THREE.MeshBasicMaterial;
         const haloMat = this.haloMap.get(node.userData.atomId as string)!.material as THREE.SpriteMaterial;
-        const color = this.showRegions
-          ? this.regionColor(node.userData.region as Region)
-          : this.palette.nodeBase;
+        const color = this.nodeColor(
+          node.userData.atomId as string,
+          node.userData.region as Region,
+        );
         nodeMat.color.setHex(color);
         nodeMat.opacity = 0.85;
         haloMat.color.setHex(color);
@@ -1221,6 +1207,7 @@ export class BrainView {
       mat.opacity = 0.2;
       mat.color.setHex(this.palette.edgeRest);
     });
+    this.refreshLabelPlan();
     this.opts.onClearHover();
   }
 
@@ -1238,6 +1225,7 @@ export class BrainView {
     if (leavingOntology) {
       this.expandedClassIds.clear();
       this.ontologyEdges = false;
+      this.ontologyTintOf = null;
       this.setData(this.graphAtoms, this.graphLinks);
     }
     if (mode === 'ontology') {
@@ -1430,7 +1418,15 @@ export class BrainView {
     if (this.layoutMode === 'brain' && this.layoutAnimRaf === 0) {
       this.snapLayoutTo('brain');
     }
-    if (this.layoutMode === 'brain') this.requestWorkerTick();
+    if (this.layoutMode !== 'brain') return;
+    const maxIters = this.workerNodeCount > FDG_BIG_GRAPH_N ? FDG_MAX_ITERATIONS_BIG_GRAPH : FDG_MAX_ITERATIONS;
+    if (this.workerIters >= maxIters) {
+      // Edges were built once at setData from spawn positions; rebuild once
+      // after FDG settle so synapses match in-hull nodes.
+      this.rebuildBrainEdges();
+      return;
+    }
+    this.requestWorkerTick();
   }
 
 
@@ -1444,12 +1440,65 @@ export class BrainView {
       const { atoms, links } = this.ontologyVisibleGraph();
       this.setData(atoms, links);
       this.computeOntoPositions();
+      this.applyOntologyGrouping();
       this.setOntologyLabelsVisible(true);
+      this.refreshLabelPlan();
       if (animate && !this.opts.reducedMotion) this.animateLayoutTo('ontology');
       else this.snapOntoPositions();
     } finally {
       this.applyingOntology = false;
     }
+  }
+
+  /** U2: purple-family group tints derived from the class tree (presentation only). */
+  private applyOntologyGrouping(): void {
+    const entities: GroupInputEntity[] = this.ontologyDoc.entities.map((e) => ({
+      id: e.id,
+      kind: e.kind === 'class' ? 'class' : 'instance',
+      name: e.name,
+    }));
+    const links: GroupInputLink[] = this.ontologyDoc.links
+      .filter((l) => !l.status || l.status === 'approved')
+      .map((l) => ({ a: l.from_id, b: l.to_id, rel: l.rel }));
+    const tintOf = new Map<string, number>();
+    for (const group of deriveGroups(entities, links)) {
+      const tint = GROUP_TINTS[group.tintIndex % GROUP_TINTS.length];
+      tintOf.set(group.classId, tint);
+      for (const child of group.childIds) tintOf.set(child, tint);
+      for (const nested of group.nestedIds) tintOf.set(nested, tint);
+    }
+    this.ontologyTintOf = tintOf;
+    this.applyRegionColors();
+  }
+
+  /** U1: LOD label plan - top-24 always on, camera tiers fade, hover on top. */
+  private refreshLabelPlan(): void {
+    if (this.spriteMode) return;
+    const ids: Array<{ id: string; title: string }> = [];
+    for (const id of this.visibleAtomIds) {
+      const atom = this.atomsById.get(id);
+      if (atom) ids.push({ id, title: atom.title });
+    }
+    const plan = computeLabelPlan({
+      ids,
+      links: this.links,
+      mode: this.layoutMode === 'ontology' ? 'ontology' : 'brain',
+      showLabels: this.showLabels,
+      hoverId: this.hoverAtomId,
+      hoverConnected: [...this.hoverConnected],
+      cameraDistance: this.distance,
+    });
+    const opacityById = new Map(
+      plan.labels.map((entry): [string, number] => [entry.id, entry.opacity]),
+    );
+    this.labelMap.forEach((label, id) => {
+      const opacity = opacityById.get(id);
+      label.visible = opacity !== undefined && this.visibleAtomIds.has(id);
+      if (label.visible && opacity !== undefined) {
+        (label.material as THREE.SpriteMaterial).opacity = opacity;
+      }
+    });
+    this.lastLabelDistance = this.distance;
   }
 
   private ontologyVisibleGraph(): { atoms: Atom[]; links: Link[] } {
@@ -1835,6 +1884,11 @@ export class BrainView {
         Math.cos(this.yaw) * this.distance,
       );
       this.camera.lookAt(0, 0, 0);
+    }
+
+    // U1: label LOD refresh on quantized camera zoom (hover/mode refresh directly).
+    if (Math.abs(this.distance - this.lastLabelDistance) > 0.2) {
+      this.refreshLabelPlan();
     }
 
     this.renderer.render(this.scene, this.camera);

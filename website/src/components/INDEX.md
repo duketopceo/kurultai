@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src/components
 parent: website/src/INDEX.md
-updated: 2026-09-05
-version: 3
+updated: 2026-09-06
+version: 4
 ---
 
 # `website/src/components`
@@ -13,14 +13,14 @@ version: 3
 
 ## Children
 
-_None._
+- [`chatboard/`](chatboard/INDEX.md) — A2A agent chatboard
 
 ## Files
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`ActivityPanel.tsx`](ActivityPanel.tsx) | Activity feed | `website/src/components/../api` · `website/src/components/../types` | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`HeyPanel.tsx`](HeyPanel.tsx) | Agent hey board panel (non-Brain) | `../api` | — | 2026-09-04 | 1 | dogfood slice |
+| [`HeyPanel.tsx`](HeyPanel.tsx) | Hey API boundary: polls `/api/hey/*`, maps VMs, mounts Chatboard | `../api` · `./chatboard/Chatboard` · `./chatboard/chatboard-mapping` | — | 2026-09-06 | 2 | 2026-09-06 thin wrapper → chatboard (U3) · dogfood slice |
 | [`HumanAccess.tsx`](HumanAccess.tsx) | Human login gate + Access settings panel | `../auth` | — | 2026-09-04 | 1 | 2026-09-04 owner/hub key UX; agent keys separate |
 | [`AskPanel.tsx`](AskPanel.tsx) | Ask UI | `website/src/components/../api` | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`BrainStage.tsx`](BrainStage.tsx) | 3D stage host | `website/src/components/../brain/BrainView` · `website/src/components/../types` | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -32,6 +32,7 @@ _None._
 
 ## Recent
 
+- 2026-09-06 — chatboard child + HeyPanel wrapper (U3 of plan 2026-09-05-002)
 - 2026-09-05 — RepoBrain fetchGraph limit wiring for repo list/repo view
 - 2026-09-05 — BrainStage forbidden zone: secondary chrome tokens/CSS only below cortex; do not restyle BrainView palette/camera
 - 2026-09-04 — HumanAccess gate + Access settings in TopBar
