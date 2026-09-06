@@ -4,8 +4,8 @@ import brainUrl from '../assets/brain.glb?url';
 import type { Atom, Link, Theme, LayoutMode, OntologyResponse, OntologyEntity } from '../types';
 import { hashId } from '../state';
 import { createFdgWorker } from './layout/createWorker';
-import { bakeSdfFromPositions, packSdf } from './layout/sdf';
-import type { FdgLink, FdgNode, FdgWorkerOut } from './layout/types';
+import { bakeSdfFromPositions, packSdf, sampleSdf } from './layout/sdf';
+import type { FdgLink, FdgNode, FdgWorkerOut, SignedDistanceField } from './layout/types';
 import {
   assignLayers,
   bucketsFromAssign,
@@ -165,6 +165,18 @@ const ONTOLOGY_XZ_STEP = 0.72;
 // false the guards are dead-code-eliminated and no timing calls ever run.
 const PERF_DEBUG = false;
 
+/** Scene measurement snapshot returned by `BrainView.metrics()`. */
+export interface BrainMetrics {
+  nodes: number;
+  renderedEdges: number;
+  spriteMode: boolean;
+  layoutMode: LayoutMode;
+  layoutIters: number;
+  fps: number;
+  edgeLength: { min: number; median: number; mean: number; p95: number; max: number };
+  hull: { insidePct: number; meanDist: number; maxDist: number } | null;
+}
+
 export interface BrainViewOptions {
   theme: Theme;
   reducedMotion: boolean;
@@ -255,7 +267,9 @@ export class BrainView {
   private ontoPos = new Map<string, THREE.Vector3>();
   private layoutWorker: Worker | null = null;
   private sdfPacked: ArrayBuffer | null = null;
+  private sdfField: SignedDistanceField | null = null;
   private workerHasSdf = false;
+  private fpsEma = 0;
   private workerBusy = false;
   private workerIters = 0;
   private workerNodeCount = 0;
@@ -435,6 +449,7 @@ export class BrainView {
       SDF_RESOLUTION,
     );
     this.sdfPacked = sdf ? packSdf(sdf) : null;
+    this.sdfField = sdf;
     // The GLB finishes loading after setData starts the FDG worker, which
     // would otherwise run its full layout with no hull SDF at all (nodes
     // escape into a shell around the brain). Push it in once baked.
@@ -1801,6 +1816,10 @@ export class BrainView {
     if (this.disposed) return;
     const dt = Math.min(this.clock.getDelta(), 0.1);
     const now = performance.now();
+    if (dt > 0) {
+      const fps = 1 / dt;
+      this.fpsEma = this.fpsEma === 0 ? fps : this.fpsEma * 0.95 + fps * 0.05;
+    }
 
     if (this.focusPulse) {
       if (now < this.focusPulse.until) {
@@ -1855,6 +1874,62 @@ export class BrainView {
     this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.loop);
   };
+
+  /**
+   * Scene measurement snapshot — node/edge counts, edge-length stats, hull
+   * containment (per-node signed distance to the cortex surface), layout
+   * progress, and a rolling FPS. Call from the console via
+   * `window.__kurultaiBrain.metrics()`.
+   */
+  metrics(): BrainMetrics {
+    const lengths: number[] = [];
+    for (const link of this.sortedLinks) {
+      const a = this.atomPositions.get(link.a);
+      const b = this.atomPositions.get(link.b);
+      if (a && b) lengths.push(a.distanceTo(b));
+    }
+    lengths.sort((x, y) => x - y);
+    const sum = lengths.reduce((s, v) => s + v, 0);
+    const pick = (q: number) =>
+      lengths.length ? lengths[Math.min(lengths.length - 1, Math.floor(q * lengths.length))] : 0;
+
+    let inside = 0;
+    let maxD = -Infinity;
+    let sumD = 0;
+    let sampled = 0;
+    if (this.sdfField) {
+      for (const p of this.atomPositions.values()) {
+        const d = sampleSdf(this.sdfField, p.x, p.y, p.z);
+        sumD += d;
+        sampled++;
+        if (d <= 0) inside++;
+        if (d > maxD) maxD = d;
+      }
+    }
+
+    return {
+      nodes: this.atomPositions.size,
+      renderedEdges: lengths.length,
+      spriteMode: this.spriteMode,
+      layoutMode: this.layoutMode,
+      layoutIters: this.workerIters,
+      fps: Math.round(this.fpsEma * 10) / 10,
+      edgeLength: {
+        min: pick(0),
+        median: pick(0.5),
+        mean: lengths.length ? sum / lengths.length : 0,
+        p95: pick(0.95),
+        max: lengths.length ? lengths[lengths.length - 1] : 0,
+      },
+      hull: this.sdfField
+        ? {
+            insidePct: sampled ? Math.round((inside / sampled) * 1000) / 10 : 0,
+            meanDist: sampled ? sumD / sampled : 0,
+            maxDist: maxD,
+          }
+        : null,
+    };
+  }
 
   dispose() {
     this.disposed = true;
