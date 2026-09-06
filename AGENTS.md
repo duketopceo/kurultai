@@ -7,9 +7,9 @@
 - Keep the dashboard layout with the brain as the main focal point; do not replace it with a full-viewport-only redesign unless asked.
 - Brain synaptic visualization: deep black background; black/white plus slight purple only (three colors); neurons/synapses with electric zap/shimmer (not plain white orbs); hovering a node highlights its connections; avoid extra chrome (control buttons and live/suggested/showcase MCP callouts).
 - Brain camera should start with the whole graph in view (no opening live zoom-in); search needs a clear/reset control.
-- Intended Brain layouts: volumetric **brain-shape** (constrained FDG inside the cortex hull) and **algorithmic ontology** (typed hierarchy). Galaxy/solar is deprecated. Do not ship an ontology layout until O1 primitives exist. Research: `docs/brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md`. Plan: `docs/plans/2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md`.
+- Intended Brain layouts: volumetric **brain-shape** (constrained FDG inside the cortex hull) and **algorithmic ontology** (typed hierarchy). Galaxy/solar is deprecated. Nodes/edges outside the cortex hull (spaghetti) are a regression; redesigns should cut render cost. Do not ship an ontology layout until O1 primitives exist. Research: `docs/brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md`. Plan: `docs/plans/2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md`.
 - Version/tag before risky Brain UI experiments so rollback is easy.
-- Hosted Brain human Access should be password-manager-friendly (e.g. 1Password save/autofill login), not a bare API-token paste gate as the primary UX.
+- Hosted Brain human Access should be password-manager-friendly (e.g. 1Password save/autofill login), not a bare API-token paste gate as the primary UX. Hosted chrome must not brand as “LOCAL BRAIN” / local-daemon-only copy when serving `knowledge.shippedit.dev` or `work.shippedit.dev`.
 - Below-brain chrome uses a secondary playful design language (ThreeUI-inspired CSS/motion only); do not vendor ThreeUI into BrainStage; literal ontology stays in cortex + inspector only (“UI fun, not literal”).
 - Sequester pond/session/transcript noise out of hot retrieval tiers (medium/cold) so dogfood search stays usable.
 - Prefer Kurultai personal knowledge MCP (`knowledge.shippedit.dev`) as the knowledge backend under test; Dayflow is a local plugin, not a Pinecone substitute.
@@ -22,13 +22,13 @@
 - Local Vite preview commonly runs from `website/` on `http://127.0.0.1:5174` (`npm run dev -- --host 127.0.0.1 --port 5174`) and can serve live `ui/` files; embedded daemon UI changes need a rebuild.
 - Default local daemon: `./target/debug/kurultai daemon --port 8421` from the repo root.
 - Large brain graphs should use tiered loading (hot/warm/cold, timestamped) rather than shipping all nodes to the browser at once.
-- `docs/solutions/` — documented solutions to past problems (bugs, architecture, workflow), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
-- `CONCEPTS.md` — shared domain vocabulary. Read when orienting to the codebase or before discussing domain concepts.
+- `CONCEPTS.md` — shared domain vocabulary. `docs/solutions/` — past bugs/architecture with YAML frontmatter (`module`, `tags`, `problem_type`). Read both when orienting or debugging.
 - Hosted solo instances: `knowledge.shippedit.dev` (personal, instance name **Ulaanbaatar**) and `work.shippedit.dev` (work — not dogfooded yet); deploy recipes live in `duketopceo/kurultai-private` under `deploy/server-001/` (Docker solo + Cloudflare tunnel), not the public repo’s Railway hub path.
 - Cluster2’s old Ulaanbaatar daemon/store is wiped; **Ulaanbaatar** now names the personal knowledge *instance*, not an agent codename. Do not redeploy kurultai on c2.
 - Brain Repos strip reflects local `kind=github` checkouts; product intent includes `duketopceo/repos` and deploy→reindex of those repos. Hey `repo` + `instance_id` claims surface under repo cards via `GET /api/hey/presence`.
 - Agent-to-agent messaging board is the Hey surface (MCP `hey_*` tools and dashboard Hey panel). Hot/medium/cold are retrieval tiers — not the board.
 - Personal lane agents to keep registered: `cursor`, `claude`, `codex`, `antigravity`, `hermes` (plus `devin` when wired). **Ulaanbaatar** is the instance nickname for knowledge.shippedit.dev — not an agent codename.
+- `POST /api/ontology/promote` (atom → ontology instance) is not trust-lane `POST /api/promote` (quarantine → trusted); empty ontology cues stay outside GL/BrainStage.
 
 ## Cursor Cloud specific instructions
 
