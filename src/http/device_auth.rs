@@ -136,6 +136,15 @@ fn request_scheme(headers: &axum::http::HeaderMap) -> &'static str {
     }
 }
 
+fn is_human_ui_host(headers: &axum::http::HeaderMap) -> bool {
+    let host = headers
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost");
+    let host_lower = host.to_ascii_lowercase();
+    !host_lower.starts_with("api-") && !host_lower.starts_with("api.")
+}
+
 fn human_auth_url(headers: &axum::http::HeaderMap) -> String {
     let scheme = request_scheme(headers);
     let host = if let Ok(host) = std::env::var("KURULTAI_AUTH_HOST") {
@@ -272,8 +281,15 @@ async fn device_token_post(
 
 async fn device_page_get(
     State(_state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Query(query): Query<DevicePageQuery>,
 ) -> Response {
+    if !is_human_ui_host(&headers) {
+        return json_error(
+            StatusCode::UNAUTHORIZED,
+            "approve via the human UI hostname",
+        );
+    }
     let page = render_approve_page(query.user_code.as_deref().unwrap_or_default(), None, "");
     Html(page).into_response()
 }
@@ -283,6 +299,12 @@ async fn device_page_post(
     headers: axum::http::HeaderMap,
     Form(form): Form<DevicePageForm>,
 ) -> Response {
+    if !is_human_ui_host(&headers) {
+        return json_error(
+            StatusCode::UNAUTHORIZED,
+            "approve via the human UI hostname",
+        );
+    }
     let Some(approver) = access_user_email(&headers) else {
         let page = render_approve_page(
             &form.user_code,
