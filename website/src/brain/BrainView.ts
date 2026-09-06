@@ -255,6 +255,7 @@ export class BrainView {
   private ontoPos = new Map<string, THREE.Vector3>();
   private layoutWorker: Worker | null = null;
   private sdfPacked: ArrayBuffer | null = null;
+  private workerHasSdf = false;
   private workerBusy = false;
   private workerIters = 0;
   private workerNodeCount = 0;
@@ -434,6 +435,19 @@ export class BrainView {
       SDF_RESOLUTION,
     );
     this.sdfPacked = sdf ? packSdf(sdf) : null;
+    // The GLB finishes loading after setData starts the FDG worker, which
+    // would otherwise run its full layout with no hull SDF at all (nodes
+    // escape into a shell around the brain). Push it in once baked.
+    if (
+      this.sdfPacked &&
+      this.layoutWorker &&
+      this.workerNodeCount > 0 &&
+      !this.workerHasSdf
+    ) {
+      const buf = this.sdfPacked.slice(0);
+      this.layoutWorker.postMessage({ type: 'setSdf', sdf: buf }, [buf]);
+      this.workerHasSdf = true;
+    }
   }
 
   /**
@@ -1397,6 +1411,7 @@ export class BrainView {
       links.push({ a, b, strength: link.strength || 1 });
     }
     const sdf = this.sdfPacked ? this.sdfPacked.slice(0) : new ArrayBuffer(0);
+    this.workerHasSdf = sdf.byteLength > 0;
     this.layoutWorker.postMessage({ type: 'init', nodes, links, sdf, aabb: [] }, sdf.byteLength ? [sdf] : []);
     if (this.layoutMode === 'ontology') return;
     this.requestWorkerTick();

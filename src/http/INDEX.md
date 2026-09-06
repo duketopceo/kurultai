@@ -19,7 +19,8 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`auth.rs`](auth.rs) | Hub API-key / admin token gate | `src/hashutil` · `src/hub/keys.rs` | `src/daemon/mod.rs` | 2026-09-06 | 4 | 2026-09-06 exempt `/auth/*` from hub API-key middleware · 2026-08-31 resolve token first; 500 on DB errors · 2026-08-29 enforce auth on query routes · 2026-08-16 indexed (v1 seed) |
+| [`auth.rs`](auth.rs) | Hub API-key / admin token gate + CF Access fallback | `src/hashutil` · `src/hub/keys.rs` · `src/http/cf_access.rs` | `src/daemon/mod.rs` | 2026-09-06 | 5 | 2026-09-06 CF Access JWT fallback in `hub_api_auth` · 2026-09-06 exempt `/auth/*` from hub API-key middleware · 2026-08-31 resolve token first; 500 on DB errors · 2026-08-29 enforce auth on query routes · 2026-08-16 indexed (v1 seed) |
+| [`cf_access.rs`](cf_access.rs) | Verify Cloudflare Access JWTs (`CF_Authorization` cookie / `Cf-Access-Jwt-Assertion`) for human browser auth | `jsonwebtoken` · `reqwest` | `src/http/auth.rs` | 2026-09-06 | 1 | 2026-09-06 added — Google/OTP Access login satisfies `/api/*` auth |
 | [`device_auth.rs`](device_auth.rs) | Device-code login endpoints (`/auth/device/*`) for hosted agent tokens | `src/http` · `src/store` · `src/hashutil` | `src/http/mod.rs` | 2026-09-06 | 1 | 2026-09-06 added |
 | [`hey.rs`](hey.rs) | Multi-agent message board REST (`/api/hey/...`) | `src/store` · `src/brain` · `src/error` | `src/daemon/mod.rs` · `src/http/mod.rs` | 2026-09-04 | 1 | 2026-09-04 message board endpoints + clamp cleanup |
 | [`hub_listen.rs`](hub_listen.rs) | Pure bind × auth start-fail (HUB-3) | `src/http/auth.rs` · `src/error` | `src/http/mod.rs` · `src/main.rs` | 2026-08-29 | 1 | 2026-08-29 HUB-3 hub_listen_decision |
@@ -30,6 +31,7 @@ _None._
 
 ## Recent
 
+- 2026-09-06 — add `cf_access.rs`: verified Cloudflare Access JWT satisfies hub auth (`KURULTAI_CF_ACCESS_TEAM` + `KURULTAI_CF_ACCESS_AUDS`); `HubGate.cf_access`; bearer flow extracted to `authorize_bearer`
 - 2026-09-06 — add `device_auth.rs` device-code login endpoints; `auth.rs` exempt `/auth/*`; `mod.rs` merge auth routes
 - 2026-09-04 — add `hey.rs` message board REST; `mod.rs` HubGate agent_store fixture
 - 2026-08-31 — review fixes: validate promote reason, auth returns 500 on DB errors
