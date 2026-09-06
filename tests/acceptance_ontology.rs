@@ -43,9 +43,9 @@ fn sample_atom(id: &str) -> KnowledgeAtom {
 // ── Seeded class tree ────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn schema_version_is_13() {
+async fn schema_version_is_14() {
     let _store = temp_store();
-    assert_eq!(migrations::CURRENT_SCHEMA_VERSION, 13);
+    assert_eq!(migrations::CURRENT_SCHEMA_VERSION, 14);
 }
 
 #[tokio::test]

@@ -27,6 +27,23 @@ pub struct Agent {
     pub created_at: String,
 }
 
+/// A pending/exchanged device-authorization flow used by `kurultai login`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DeviceFlow {
+    pub id: String,
+    pub device_code: String,
+    pub user_code: String,
+    pub codename: String,
+    pub client_id: String,
+    pub status: String,
+    pub created_at: String,
+    pub expires_at: String,
+    pub approved_at: Option<String>,
+    pub approved_by: Option<String>,
+    pub agent_id: Option<String>,
+    pub token_hash: Option<String>,
+}
+
 /// Message board thread.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Thread {
@@ -430,6 +447,69 @@ pub trait Store: Send + Sync {
     async fn list_agents(&self) -> Result<Vec<Agent>> {
         Err(KurultaiError::Store(
             "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    /// Issue (or rotate) an agent token for `codename`, returning the agent row and plaintext token.
+    async fn issue_agent_token(&self, codename: &str) -> Result<(Agent, String)> {
+        let _ = codename;
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    // ── Device authorization (local sign-in for agents) ─────────────────────────
+
+    /// Create a new device flow request and return it.
+    async fn create_device_flow(
+        &self,
+        codename: &str,
+        client_id: &str,
+        expires_in_seconds: u64,
+    ) -> Result<DeviceFlow> {
+        let _ = (codename, client_id, expires_in_seconds);
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    /// Look up a device flow by its secret `device_code`.
+    async fn get_device_flow_by_device_code(
+        &self,
+        device_code: &str,
+    ) -> Result<Option<DeviceFlow>> {
+        let _ = device_code;
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    /// Look up a device flow by its short `user_code`.
+    async fn get_device_flow_by_user_code(&self, user_code: &str) -> Result<Option<DeviceFlow>> {
+        let _ = user_code;
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    /// Approve a pending device flow by `user_code`, recording who approved it.
+    async fn approve_device_flow(&self, user_code: &str, approved_by: &str) -> Result<()> {
+        let _ = (user_code, approved_by);
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    /// Mark a device flow as exchanged and record the token hash.
+    async fn exchange_device_flow(
+        &self,
+        device_code: &str,
+        token_hash: &str,
+        agent_id: &str,
+    ) -> Result<()> {
+        let _ = (device_code, token_hash, agent_id);
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
         ))
     }
 
@@ -1896,6 +1976,213 @@ impl Store for SqliteVecStore {
             agents.push(row.map_err(|e| KurultaiError::Store(format!("list_agents row: {e}")))?);
         }
         Ok(agents)
+    }
+
+    async fn issue_agent_token(&self, codename: &str) -> Result<(Agent, String)> {
+        let conn = self.lock()?;
+        let token = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().to_string().replace('-', ""),
+            uuid::Uuid::new_v4().to_string().replace('-', "")
+        );
+        let key_hash = sha256_hex(&token);
+        let mut id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        // Update existing codename if present, otherwise insert — preserving agent id / messages.
+        let updated = conn.execute(
+            "UPDATE agents SET key_hash = ?1, created_at = ?2 WHERE codename = ?3 COLLATE NOCASE",
+            params![&key_hash, &now, &codename],
+        )
+        .map_err(|e| KurultaiError::Store(format!("issue_agent_token update: {e}")))?;
+
+        if updated == 0 {
+            conn.execute(
+                "INSERT INTO agents (id, codename, key_hash, created_at) VALUES (?1, ?2, ?3, ?4)",
+                params![&id, &codename, &key_hash, &now],
+            )
+            .map_err(|e| KurultaiError::Store(format!("issue_agent_token insert: {e}")))?;
+        } else {
+            let mut stmt = conn
+                .prepare("SELECT id FROM agents WHERE codename = ?1 COLLATE NOCASE")
+                .map_err(|e| {
+                    KurultaiError::Store(format!("issue_agent_token select prepare: {e}"))
+                })?;
+            id = stmt
+                .query_row(params![&codename], |row| row.get(0))
+                .map_err(|e| KurultaiError::Store(format!("issue_agent_token select: {e}")))?;
+        }
+
+        Ok((
+            Agent {
+                id,
+                codename: codename.to_string(),
+                created_at: now,
+            },
+            token,
+        ))
+    }
+
+    // ── Device authorization implementations ──────────────────────────────────
+
+    async fn create_device_flow(
+        &self,
+        codename: &str,
+        client_id: &str,
+        expires_in_seconds: u64,
+    ) -> Result<DeviceFlow> {
+        let conn = self.lock()?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let device_code = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().to_string().replace('-', ""),
+            uuid::Uuid::new_v4().to_string().replace('-', "")
+        );
+        let user_code = uuid::Uuid::new_v4()
+            .to_string()
+            .replace('-', "")
+            .to_uppercase();
+        let user_code = user_code[..8].to_string();
+        let now = Utc::now();
+        let created_at = now.to_rfc3339();
+        let expires_at = (now + chrono::Duration::seconds(expires_in_seconds as i64)).to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO device_flows (id, device_code, user_code, codename, client_id, status, created_at, expires_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7)",
+            params![&id, &device_code, &user_code, &codename, &client_id, &created_at, &expires_at],
+        )
+        .map_err(|e| KurultaiError::Store(format!("create_device_flow insert: {e}")))?;
+
+        Ok(DeviceFlow {
+            id,
+            device_code,
+            user_code,
+            codename: codename.to_string(),
+            client_id: client_id.to_string(),
+            status: "pending".to_string(),
+            created_at,
+            expires_at,
+            approved_at: None,
+            approved_by: None,
+            agent_id: None,
+            token_hash: None,
+        })
+    }
+
+    async fn get_device_flow_by_device_code(
+        &self,
+        device_code: &str,
+    ) -> Result<Option<DeviceFlow>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, device_code, user_code, codename, client_id, status, created_at, \
+                 expires_at, approved_at, approved_by, agent_id, token_hash \
+                 FROM device_flows WHERE device_code = ?1",
+            )
+            .map_err(|e| {
+                KurultaiError::Store(format!("get_device_flow_by_device_code prepare: {e}"))
+            })?;
+        let row = stmt
+            .query_row(params![device_code], |row| {
+                Ok(DeviceFlow {
+                    id: row.get(0)?,
+                    device_code: row.get(1)?,
+                    user_code: row.get(2)?,
+                    codename: row.get(3)?,
+                    client_id: row.get(4)?,
+                    status: row.get(5)?,
+                    created_at: row.get(6)?,
+                    expires_at: row.get(7)?,
+                    approved_at: row.get(8)?,
+                    approved_by: row.get(9)?,
+                    agent_id: row.get(10)?,
+                    token_hash: row.get(11)?,
+                })
+            })
+            .optional()
+            .map_err(|e| {
+                KurultaiError::Store(format!("get_device_flow_by_device_code query: {e}"))
+            })?;
+        Ok(row)
+    }
+
+    async fn get_device_flow_by_user_code(&self, user_code: &str) -> Result<Option<DeviceFlow>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, device_code, user_code, codename, client_id, status, created_at, \
+                 expires_at, approved_at, approved_by, agent_id, token_hash \
+                 FROM device_flows WHERE user_code = ?1",
+            )
+            .map_err(|e| {
+                KurultaiError::Store(format!("get_device_flow_by_user_code prepare: {e}"))
+            })?;
+        let row = stmt
+            .query_row(params![user_code], |row| {
+                Ok(DeviceFlow {
+                    id: row.get(0)?,
+                    device_code: row.get(1)?,
+                    user_code: row.get(2)?,
+                    codename: row.get(3)?,
+                    client_id: row.get(4)?,
+                    status: row.get(5)?,
+                    created_at: row.get(6)?,
+                    expires_at: row.get(7)?,
+                    approved_at: row.get(8)?,
+                    approved_by: row.get(9)?,
+                    agent_id: row.get(10)?,
+                    token_hash: row.get(11)?,
+                })
+            })
+            .optional()
+            .map_err(|e| {
+                KurultaiError::Store(format!("get_device_flow_by_user_code query: {e}"))
+            })?;
+        Ok(row)
+    }
+
+    async fn approve_device_flow(&self, user_code: &str, approved_by: &str) -> Result<()> {
+        let conn = self.lock()?;
+        let now = Utc::now().to_rfc3339();
+        let updated = conn
+            .execute(
+                "UPDATE device_flows \
+             SET status = 'approved', approved_at = ?1, approved_by = ?2 \
+             WHERE user_code = ?3 AND status = 'pending' AND expires_at > datetime('now')",
+                params![&now, &approved_by, &user_code],
+            )
+            .map_err(|e| KurultaiError::Store(format!("approve_device_flow update: {e}")))?;
+        if updated == 0 {
+            return Err(KurultaiError::Store(
+                "device flow not found, already approved, or expired".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn exchange_device_flow(
+        &self,
+        device_code: &str,
+        token_hash: &str,
+        agent_id: &str,
+    ) -> Result<()> {
+        let conn = self.lock()?;
+        let updated = conn
+            .execute(
+                "UPDATE device_flows \
+             SET status = 'exchanged', token_hash = ?1, agent_id = ?2 \
+             WHERE device_code = ?3 AND status = 'approved' AND expires_at > datetime('now')",
+                params![&token_hash, &agent_id, &device_code],
+            )
+            .map_err(|e| KurultaiError::Store(format!("exchange_device_flow update: {e}")))?;
+        if updated == 0 {
+            return Err(KurultaiError::Store(
+                "device flow not approved, not found, or expired".into(),
+            ));
+        }
+        Ok(())
     }
 
     // ── Message board implementations ─────────────────────────────────────────

@@ -158,12 +158,15 @@ pub fn token_accepted(token: &str, keys: &[String]) -> bool {
         .any(|k| secrets_equal(k, token) || secrets_equal(k, &hashed))
 }
 
-/// Paths exempt from hub API-key authentication (`/health` and embedded `/ui`).
+/// Paths exempt from hub API-key authentication (`/health`, `/ui`, and `/auth`).
 pub fn path_requires_hub_auth(path: &str) -> bool {
     if path == "/health" || path.starts_with("/health/") {
         return false;
     }
     if path == "/ui" || path.starts_with("/ui/") {
+        return false;
+    }
+    if path == "/auth" || path.starts_with("/auth/") {
         return false;
     }
     true
