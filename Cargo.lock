@@ -1838,6 +1838,7 @@ dependencies = [
  "notify",
  "pgvector",
  "predicates",
+ "rand 0.8.7",
  "reqwest",
  "rusqlite",
  "rust-embed",
