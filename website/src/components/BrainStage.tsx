@@ -65,7 +65,14 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
       onError: (msg) => { dbg('BrainView error:', msg); console.error('[BrainView]', msg); },
     });
     brainRef.current = brain;
-    return () => { dbg('BrainView dispose'); brain.dispose(); brainRef.current = null; };
+    // Console handle for scene measurement — `__kurultaiBrain.metrics()`.
+    (window as unknown as { __kurultaiBrain?: BrainView }).__kurultaiBrain = brain;
+    return () => {
+      dbg('BrainView dispose');
+      delete (window as unknown as { __kurultaiBrain?: BrainView }).__kurultaiBrain;
+      brain.dispose();
+      brainRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
