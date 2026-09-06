@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src/http
 parent: src/INDEX.md
-updated: 2026-09-04
-version: 3
+updated: 2026-09-06
+version: 4
 ---
 
 # `src/http`
@@ -19,16 +19,18 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`auth.rs`](auth.rs) | Hub API-key / admin token gate | `src/hashutil` · `src/hub/keys.rs` | `src/daemon/mod.rs` | 2026-08-31 | 3 | 2026-08-31 resolve token first; 500 on DB errors · 2026-08-29 enforce auth on query routes · 2026-08-16 indexed (v1 seed) |
+| [`auth.rs`](auth.rs) | Hub API-key / admin token gate | `src/hashutil` · `src/hub/keys.rs` | `src/daemon/mod.rs` | 2026-09-06 | 4 | 2026-09-06 exempt `/auth/*` from hub API-key middleware · 2026-08-31 resolve token first; 500 on DB errors · 2026-08-29 enforce auth on query routes · 2026-08-16 indexed (v1 seed) |
+| [`device_auth.rs`](device_auth.rs) | Device-code login endpoints (`/auth/device/*`) for hosted agent tokens | `src/http` · `src/store` · `src/hashutil` | `src/http/mod.rs` | 2026-09-06 | 1 | 2026-09-06 added |
 | [`hey.rs`](hey.rs) | Multi-agent message board REST (`/api/hey/...`) | `src/store` · `src/brain` · `src/error` | `src/daemon/mod.rs` · `src/http/mod.rs` | 2026-09-04 | 1 | 2026-09-04 message board endpoints + clamp cleanup |
 | [`hub_listen.rs`](hub_listen.rs) | Pure bind × auth start-fail (HUB-3) | `src/http/auth.rs` · `src/error` | `src/http/mod.rs` · `src/main.rs` | 2026-08-29 | 1 | 2026-08-29 HUB-3 hub_listen_decision |
 | [`ingest.rs`](ingest.rs) | Opt-in POST /ingest dump | `src/embed` · `src/hashutil` · `src/ingest` · `src/quality` · `src/store` | `src/daemon/mod.rs` · `src/connectors/inbox.rs` · `src/connectors/json.rs` · `src/connectors/markdown.rs` · `src/query/hybrid.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`mcp.rs`](mcp.rs) | MCP HTTP/SSE transport | `src/mcp` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`mod.rs`](mod.rs) | Axum daemon: /api/*, /ui/, optional /mcp SSE | `src/brain` · `src/daemon` · `src/error` · `src/mcp` · `src/metrics` · `src/http/hub_listen.rs` | `src/daemon/mod.rs` | 2026-09-04 | 5 | 2026-09-04 add agent_store to HubGate test fixtures · 2026-08-31 validate promote reason length · 2026-08-29 secure unprefixed aliases · 2026-08-29 resolve_listen_socket · 2026-08-16 indexed |
+| [`mod.rs`](mod.rs) | Axum daemon: /api/*, /ui/, /auth/*, optional /mcp SSE | `src/brain` · `src/daemon` · `src/error` · `src/mcp` · `src/metrics` · `src/http/hub_listen.rs` · `src/http/device_auth.rs` | `src/daemon/mod.rs` | 2026-09-06 | 6 | 2026-09-06 merge device-auth routes for `kurultai login` · 2026-09-04 add agent_store to HubGate test fixtures · 2026-08-31 validate promote reason length · 2026-08-29 secure unprefixed aliases · 2026-08-29 resolve_listen_socket · 2026-08-16 indexed |
 | [`ui.rs`](ui.rs) | Embedded ui/ static + /ui/ slash redirect | — | `src/daemon/mod.rs` | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-06 — add `device_auth.rs` device-code login endpoints; `auth.rs` exempt `/auth/*`; `mod.rs` merge auth routes
 - 2026-09-04 — add `hey.rs` message board REST; `mod.rs` HubGate agent_store fixture
 - 2026-08-31 — review fixes: validate promote reason, auth returns 500 on DB errors
 - 2026-08-29 — secure unprefixed query aliases (/search, /ask, etc.) under `HubAuth::ApiKey`
