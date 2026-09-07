@@ -343,6 +343,14 @@ export class BrainView {
     this.brainGroup.position.y = 0.08;
     this.scene.add(this.brainGroup);
 
+    // Light rig for node spheres (MeshStandardMaterial) — cortex particles and
+    // edges are shader/basic materials and ignore lights, so this only adds
+    // volumetric shading to the neurons. Cool key light + faint purple fill.
+    this.scene.add(new THREE.HemisphereLight(0xbbaadd, 0x080510, 0.9));
+    const key = new THREE.DirectionalLight(0xffffff, 1.6);
+    key.position.set(2.5, 3, 4);
+    this.scene.add(key);
+
     this.uniforms.uIntro.value = opts.reducedMotion ? 1 : 0;
 
     try {
@@ -674,8 +682,8 @@ export class BrainView {
   /** Shared node radius (degree- and score-scaled) used by both node builders. */
   private nodeRadius(atom: Atom): number {
     const degree = this.degrees.get(atom.id) || 0;
-    const base = 0.011 + Math.min(degree, 20) * 0.002 + Math.min(atom.score, 1) * 0.005;
-    return atom.source === 'code' ? base * 0.5 : base;
+    const base = 0.0075 + Math.min(degree, 20) * 0.0014 + Math.min(atom.score, 1) * 0.004;
+    return atom.source === 'code' ? base * 0.55 : base;
   }
 
   /** Sphere+halo+label mesh path (≤ NODE_SPRITE_CUTOFF nodes). Byte-identical to
@@ -1095,14 +1103,14 @@ export class BrainView {
       this.nodeObjects.forEach((node) => {
         const region = node.userData.region as Region;
         const color = this.regionColor(region);
-        (node.material as THREE.MeshBasicMaterial).color.setHex(color);
+        (node.material as THREE.MeshStandardMaterial).emissive.setHex(color);
         (this.haloMap.get(node.userData.atomId as string)!.material as THREE.SpriteMaterial).color.setHex(
           color,
         );
       });
     } else {
       this.nodeObjects.forEach((node) => {
-        (node.material as THREE.MeshBasicMaterial).color.setHex(this.palette.nodeBase);
+        (node.material as THREE.MeshStandardMaterial).emissive.setHex(this.palette.nodeBase);
         (this.haloMap.get(node.userData.atomId as string)!.material as THREE.SpriteMaterial).color.setHex(
           this.palette.nodeBase,
         );
@@ -1111,10 +1119,16 @@ export class BrainView {
   }
 
   private nodeMaterial(active: boolean) {
-    return new THREE.MeshBasicMaterial({
-      color: active ? this.palette.nodeHot : this.palette.nodeBase,
+    // Lit spheres: dark body + emissive tint gives real 3D shading under the
+    // key light while staying in the black/white/purple palette.
+    return new THREE.MeshStandardMaterial({
+      color: 0x1a0f2e,
+      emissive: active ? this.palette.nodeHot : this.palette.nodeBase,
+      emissiveIntensity: active ? 1.4 : 0.75,
+      roughness: 0.35,
+      metalness: 0.15,
       transparent: true,
-      opacity: active ? 1 : 0.85,
+      opacity: active ? 1 : 0.95,
     });
   }
 
@@ -1165,10 +1179,10 @@ export class BrainView {
       if (!mesh) return;
       this.nodeObjects.forEach((node) => {
         const id = node.userData.atomId as string;
-        const nodeMat = node.material as THREE.MeshBasicMaterial;
+        const nodeMat = node.material as THREE.MeshStandardMaterial;
         const haloMat = this.haloMap.get(id)!.material as THREE.SpriteMaterial;
         if (node === mesh) {
-          nodeMat.color.setHex(this.palette.nodeHot);
+          nodeMat.emissive.setHex(this.palette.nodeHot);
           nodeMat.opacity = 1;
           haloMat.color.setHex(this.palette.nodeHot);
           haloMat.opacity = 0.7;
@@ -1176,12 +1190,12 @@ export class BrainView {
           const color = this.showRegions
             ? this.regionColor(node.userData.region as Region)
             : this.palette.nodeBase;
-          nodeMat.color.setHex(color);
+          nodeMat.emissive.setHex(color);
           nodeMat.opacity = 0.9;
           haloMat.color.setHex(color);
           haloMat.opacity = 0.32;
         } else {
-          nodeMat.color.setHex(this.palette.nodeUnfocus);
+          nodeMat.emissive.setHex(this.palette.nodeUnfocus);
           nodeMat.opacity = 0.3;
           haloMat.opacity = 0.1;
         }
@@ -1219,12 +1233,12 @@ export class BrainView {
       this.applySpriteBaseColors();
     } else {
       this.nodeObjects.forEach((node) => {
-        const nodeMat = node.material as THREE.MeshBasicMaterial;
+        const nodeMat = node.material as THREE.MeshStandardMaterial;
         const haloMat = this.haloMap.get(node.userData.atomId as string)!.material as THREE.SpriteMaterial;
         const color = this.showRegions
           ? this.regionColor(node.userData.region as Region)
           : this.palette.nodeBase;
-        nodeMat.color.setHex(color);
+        nodeMat.emissive.setHex(color);
         nodeMat.opacity = 0.85;
         haloMat.color.setHex(color);
         haloMat.opacity = 0.32;
