@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: website/src/brain
 parent: website/src/INDEX.md
 updated: 2026-09-06
-version: 5
+version: 6
 ---
 
 # `website/src/brain`
@@ -23,6 +23,7 @@ version: 5
 
 ## Recent
 
+- 2026-09-07 — explicit-mode: node radius ~1.7×, additive-blend synapses at 0.3–0.85 opacity (was 0.16–0.55 flat)
 - 2026-09-07 — `buildEdges`: dropped hull-surface raycast; arcs now bow inward; edge opacity scales with shared-tag count (link.strength)
 - 2026-09-06 — `BrainView`: `uPulse` uniform + inward-traveling shell wave on `setData` (data-change morph cue)
 - 2026-09-06 — `BrainView.metrics()` + `window.__kurultaiBrain` console handle (BrainStage) for node/edge/hull/FPS measurement
