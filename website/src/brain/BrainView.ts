@@ -674,8 +674,8 @@ export class BrainView {
   /** Shared node radius (degree- and score-scaled) used by both node builders. */
   private nodeRadius(atom: Atom): number {
     const degree = this.degrees.get(atom.id) || 0;
-    const base = 0.006 + Math.min(degree, 20) * 0.0012 + Math.min(atom.score, 1) * 0.003;
-    return atom.source === 'code' ? base * 0.45 : base;
+    const base = 0.011 + Math.min(degree, 20) * 0.002 + Math.min(atom.score, 1) * 0.005;
+    return atom.source === 'code' ? base * 0.5 : base;
   }
 
   /** Sphere+halo+label mesh path (≤ NODE_SPRITE_CUTOFF nodes). Byte-identical to
@@ -811,9 +811,10 @@ export class BrainView {
           new THREE.LineBasicMaterial({
             color: this.palette.edgeRest,
             transparent: true,
-            // Shared-tag count (link.strength) drives synapse brightness so
-            // multiply-tagged connections read as stronger links.
-            opacity: Math.min(0.55, 0.16 + (link.strength || 1) * 0.12),
+            // Explicit synapses: additive glow, opacity scales with shared-tag
+            // count so multiply-tagged connections read as stronger links.
+            opacity: Math.min(0.85, 0.3 + (link.strength || 1) * 0.15),
+            blending: THREE.AdditiveBlending,
             depthWrite: false,
           }),
         );
@@ -1232,7 +1233,7 @@ export class BrainView {
     this.edgeGroup.children.forEach((line) => {
       const mat = (line as THREE.Line).material as THREE.LineBasicMaterial;
       const strength = (line.userData?.strength as number) || 1;
-      mat.opacity = Math.min(0.55, 0.16 + strength * 0.12);
+      mat.opacity = Math.min(0.85, 0.3 + strength * 0.15);
       mat.color.setHex(this.palette.edgeRest);
     });
     this.opts.onClearHover();
