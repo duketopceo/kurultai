@@ -183,7 +183,7 @@ export function App() {
         </section>
         <RepoStrip repos={codeRepos} />
       </main>
-      <footer>Kurultai runs locally. Your knowledge remains yours.</footer>
+      <footer>Kurultai — your knowledge remains yours.</footer>
     </AppContext.Provider>
   );
 }
