@@ -23,7 +23,7 @@ _None._
 | [`HeyPanel.tsx`](HeyPanel.tsx) | Agent hey board panel (non-Brain) | `../api` | — | 2026-09-04 | 1 | dogfood slice |
 | [`HumanAccess.tsx`](HumanAccess.tsx) | Human login gate + Access settings panel | `../auth` | — | 2026-09-04 | 1 | 2026-09-04 owner/hub key UX; agent keys separate |
 | [`AskPanel.tsx`](AskPanel.tsx) | Ask UI | `website/src/components/../api` | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`BrainStage.tsx`](BrainStage.tsx) | 3D stage host + `__kurultaiBrain` metrics handle | `website/src/components/../brain/BrainView` · `website/src/components/../types` | — | 2026-09-06 | 2 | 2026-09-06 expose `window.__kurultaiBrain` for `metrics()` · 2026-08-16 indexed (v1 seed) |
+| [`BrainStage.tsx`](BrainStage.tsx) | 3D stage host + `__kurultaiBrain` metrics handle + BrainHud chip | `website/src/components/../brain/BrainView` · `website/src/components/../types` | — | 2026-09-06 | 2 | 2026-09-06 BrainHud live FPS/neurons/synapses chip · 2026-09-06 expose `window.__kurultaiBrain` for `metrics()` · 2026-08-16 indexed (v1 seed) |
 | [`CommandStrip.tsx`](CommandStrip.tsx) | Command strip | `website/src/components/../types` · `website/src/components/../api` · `website/src/components/../repoLattice` | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`InspectorPanel.tsx`](InspectorPanel.tsx) | Atom inspector + ontology promote | `../api` · `../types` | — | 2026-09-05 | 2 | 2026-09-05 suggest+promote · 2026-08-16 indexed (v1 seed) |
 | [`RepoBrain.tsx`](RepoBrain.tsx) | Repo brain panel | `website/src/components/../brain/BrainView` · `website/src/components/../api` · `website/src/components/../repoLattice` · `website/src/components/../types` | — | 2026-09-05 | 2 | 2026-09-05 fetchGraph with limit for repo list/repo view · 2026-08-16 indexed (v1 seed) |
@@ -32,6 +32,7 @@ _None._
 
 ## Recent
 
+- 2026-09-06 — `BrainStage`: `BrainHud` top-right mono readout (FPS · NEURONS · SYNAPSES), hidden on mobile; `.brain-hud` style in styles.css
 - 2026-09-06 — `BrainStage`: expose `window.__kurultaiBrain` (metrics console handle), removed on dispose
 - 2026-09-05 — RepoBrain fetchGraph limit wiring for repo list/repo view
 - 2026-09-05 — BrainStage forbidden zone: secondary chrome tokens/CSS only below cortex; do not restyle BrainView palette/camera

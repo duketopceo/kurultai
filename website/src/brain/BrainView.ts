@@ -31,6 +31,7 @@ uniform vec3 uPointer;
 uniform float uHover;
 uniform float uTime;
 uniform float uIntro;
+uniform float uPulse;
 varying vec3 vColor;
 varying float vAlpha;
 
@@ -43,12 +44,17 @@ void main() {
   pos.x += sin(drift + aSeed * 6.28) * 0.004 * aRotation;
   pos.y += cos(drift * 0.7 + aSeed * 3.14) * 0.004 * aRotation;
   pos.z += sin(drift * 0.5 + aSeed * 4.71) * 0.004 * aRotation;
+  // Data-change ripple: a wave travels inward across the shell while uPulse
+  // decays 1→0 — a morph cue that the graph changed.
+  float r = length(aOffset);
+  float wave = uPulse * (0.5 + 0.5 * sin(r * 9.0 - (1.0 - uPulse) * 18.0));
+  pos += normalize(aOffset) * wave * 0.025;
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mvPosition;
-  gl_PointSize = scale * (500.0 / -mvPosition.z);
+  gl_PointSize = scale * (500.0 / -mvPosition.z) * (1.0 + wave * 0.6);
   float flicker = 0.72 + 0.28 * sin(uTime * 2.6 + aSeed * 39.0);
-  vColor = mix(aColor, vec3(1.0), c * uHover * 0.3);
-  vAlpha = flicker * (0.65 + 0.2 * c * uHover);
+  vColor = mix(aColor, vec3(1.0), c * uHover * 0.3 + wave * 0.25);
+  vAlpha = flicker * (0.65 + 0.2 * c * uHover) * (1.0 + wave * 0.5);
 }
 `;
 
@@ -206,6 +212,7 @@ export class BrainView {
     uHover: { value: 0 },
     uTime: { value: 0 },
     uIntro: { value: 0 },
+    uPulse: { value: 0 },
   };
   private pointerTarget = new THREE.Vector3(999, 999, 999);
   private hoverTarget = 0;
@@ -653,6 +660,9 @@ export class BrainView {
     if (!this.spriteMode) this.applyRegionColors();
 
     if (!this.applyingOntology) this.startWorkerLayout(shown);
+    // Morph cue: shell ripple announcing the graph changed (skipped under
+    // reduced-motion, where uPulse stays 0).
+    if (!this.applyingOntology && !this.opts.reducedMotion) this.uniforms.uPulse.value = 1;
 
     if (PERF_DEBUG) {
       console.log(
@@ -1836,6 +1846,9 @@ export class BrainView {
       if (!this.dragging && !this.zoomAtomId) this.brainGroup.rotation.y += dt * 0.05;
       if (this.uniforms.uIntro.value < 1) {
         this.uniforms.uIntro.value = Math.min(1, this.uniforms.uIntro.value + dt * 0.8);
+      }
+      if (this.uniforms.uPulse.value > 0) {
+        this.uniforms.uPulse.value = Math.max(0, this.uniforms.uPulse.value - dt * 0.7);
       }
     }
 

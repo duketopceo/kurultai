@@ -142,6 +142,7 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
         <span>DRAG / ORBIT</span>
         <span>SCROLL / ZOOM</span>
       </div>
+      <BrainHud getBrain={() => brainRef.current} />
       {tooltip && (
         <div
           id="node-tooltip"
@@ -161,6 +162,26 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
     </div>
   );
 });
+
+/** Live scene readout — FPS · synapses · nodes, polled from BrainView.metrics(). */
+function BrainHud({ getBrain }: { getBrain: () => BrainView | null }) {
+  const [stats, setStats] = useState<{ fps: number; nodes: number; synapses: number } | null>(null);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const m = getBrain()?.metrics();
+      if (m && m.nodes > 0) setStats({ fps: m.fps, nodes: m.nodes, synapses: m.renderedEdges });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [getBrain]);
+  if (!stats) return null;
+  return (
+    <div className="brain-hud" aria-hidden="true">
+      <span>{Math.round(stats.fps)} FPS</span>
+      <span>{stats.nodes.toLocaleString()} NEURONS</span>
+      <span>{stats.synapses.toLocaleString()} SYNAPSES</span>
+    </div>
+  );
+}
 
 function buildLinks(atoms: Atom[]) {
   const tagIndex = new Map<string, string[]>();
