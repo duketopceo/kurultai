@@ -789,46 +789,18 @@ export class BrainView {
           return;
         }
 
-        // Build a surface-conformant Catmull-Rom curve through 4-6
-        // intermediate points projected onto the brain mesh surface.
+        // Interior arcs: nodes are hard-contained inside the cortex hull, so
+        // synapses bow gently toward the brain center rather than crawling on
+        // the hull surface — keeps wiring inside the silhouette. Longer edges
+        // bow a bit more so they clear the node core.
         const points: THREE.Vector3[] = [a.clone()];
+        const span = a.distanceTo(b);
+        const bow = 0.08 + Math.min(0.12, span * 0.08);
         const numIntermediate = 4;
         for (let i = 1; i <= numIntermediate; i++) {
           const t = i / (numIntermediate + 1);
-          const p = a.clone().lerp(b, t);
-
-          // U4: sprite mode skips the per-edge surface raycast — 4 raycasts
-          // per edge × up to MAX_EDGES edges against the ~5.6k-tri proxy costs
-          // ~1-2ms per raycast (multi-second setData at 2500 nodes), blowing
-          // the 500ms render budget. At sprite densities surface conformity is
-          // invisible (the force layout leaves the brain hull anyway),
-          // so fall through to the cheap outward lift.
-          if (this.proxy && !this.spriteMode) {
-            // Raycast from brain center through p onto the mesh surface.
-            const worldOrigin = new THREE.Vector3();
-            this.brainGroup.localToWorld(worldOrigin);
-            const worldP = p.clone();
-            this.brainGroup.localToWorld(worldP);
-            const dir = worldP.clone().sub(worldOrigin).normalize();
-            this.raycaster.set(worldOrigin, dir);
-            const hit = this.raycaster.intersectObject(this.proxy, false)[0];
-            if (hit) {
-              const localHit = hit.point.clone();
-              this.brainGroup.worldToLocal(localHit);
-              // Push slightly outward along the radial normal.
-              const normal = localHit.clone().normalize();
-              localHit.add(normal.multiplyScalar(0.005));
-              points.push(localHit);
-            } else {
-              // Fallback: push outward from origin.
-              const outward = p.clone().normalize().multiplyScalar(p.length() + 0.01);
-              points.push(outward);
-            }
-          } else {
-            // No proxy (or sprite mode) — simple outward lift.
-            const lift = p.length() * 0.18;
-            points.push(p.add(p.clone().normalize().multiplyScalar(lift)));
-          }
+          const p = a.clone().lerp(b, t).multiplyScalar(1 - bow);
+          points.push(p);
         }
         points.push(b.clone());
 
@@ -839,7 +811,9 @@ export class BrainView {
           new THREE.LineBasicMaterial({
             color: this.palette.edgeRest,
             transparent: true,
-            opacity: 0.2,
+            // Shared-tag count (link.strength) drives synapse brightness so
+            // multiply-tagged connections read as stronger links.
+            opacity: Math.min(0.55, 0.16 + (link.strength || 1) * 0.12),
             depthWrite: false,
           }),
         );
@@ -1257,7 +1231,8 @@ export class BrainView {
     }
     this.edgeGroup.children.forEach((line) => {
       const mat = (line as THREE.Line).material as THREE.LineBasicMaterial;
-      mat.opacity = 0.2;
+      const strength = (line.userData?.strength as number) || 1;
+      mat.opacity = Math.min(0.55, 0.16 + strength * 0.12);
       mat.color.setHex(this.palette.edgeRest);
     });
     this.opts.onClearHover();

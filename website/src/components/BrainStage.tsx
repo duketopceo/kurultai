@@ -192,17 +192,21 @@ function buildLinks(atoms: Atom[]) {
       tagIndex.set(t, list);
     });
   });
-  const seen = new Set<string>();
-  const links: { a: string; b: string; strength: number }[] = [];
+  const pairCount = new Map<string, number>();
   tagIndex.forEach((ids) => {
     // cap per-tag pairs to avoid O(n²) explosion on dense tags like "code" or "rs"
     const limit = Math.min(ids.length, MAX_LINKS_PER_TAG);
     for (let i = 0; i < limit; i++) {
       for (let j = i + 1; j < limit; j++) {
         const key = ids[i] < ids[j] ? `${ids[i]}:${ids[j]}` : `${ids[j]}:${ids[i]}`;
-        if (!seen.has(key)) { seen.add(key); links.push({ a: ids[i], b: ids[j], strength: 1 }); }
+        pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
       }
     }
   });
+  const links: { a: string; b: string; strength: number }[] = [];
+  for (const [key, count] of pairCount) {
+    const [a, b] = key.split(':');
+    links.push({ a, b, strength: count });
+  }
   return links;
 }
