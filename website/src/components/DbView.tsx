@@ -5,14 +5,51 @@ import { TopBar } from './TopBar';
 type Table = 'atoms' | 'links';
 const PAGE = 100;
 
-const SORTABLE: Record<Table, string[]> = {
-  atoms: ['id', 'source', 'title', 'trust_lane', 'corpus_tier', 'indexed_at', 'last_accessed_at'],
-  links: ['a', 'b', 'strength'],
+/** Friendly column presentation — raw keys stay in the row for sorting. */
+const COLS: Record<Table, { key: string; label: string; sortable: boolean; hide?: boolean }[]> = {
+  atoms: [
+    { key: 'title', label: 'Title', sortable: true },
+    { key: 'source', label: 'Source', sortable: true },
+    { key: 'tags_json', label: 'Tags', sortable: false },
+    { key: 'trust_lane', label: 'Lane', sortable: true },
+    { key: 'corpus_tier', label: 'Tier', sortable: true },
+    { key: 'indexed_at', label: 'Added', sortable: true },
+    { key: 'last_accessed_at', label: 'Last seen', sortable: true },
+    { key: 'quarantine_reason', label: 'Quarantine', sortable: false, hide: true },
+    { key: 'id', label: 'ID', sortable: true, hide: true },
+  ],
+  links: [
+    { key: 'a_title', label: 'From', sortable: true },
+    { key: 'b_title', label: 'To', sortable: true },
+    { key: 'shared_tags', label: 'Shared tags', sortable: false },
+    { key: 'strength', label: 'Strength', sortable: true },
+  ],
 };
 
-function cell(v: unknown): string {
-  if (v === null || v === undefined) return '';
-  if (Array.isArray(v)) return v.join(', ');
+function fmtTime(iso: unknown): string {
+  if (!iso || typeof iso !== 'string') return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso.slice(0, 16);
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtTags(v: unknown): string {
+  if (typeof v !== 'string') return Array.isArray(v) ? v.join(', ') : '';
+  try {
+    const arr = JSON.parse(v);
+    return Array.isArray(arr) ? arr.join(', ') : v;
+  } catch { return v; }
+}
+
+function cell(key: string, v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—';
+  if (key === 'id' || key === 'a' || key === 'b') {
+    const s = String(v);
+    return s.length > 12 ? `${s.slice(0, 8)}…` : s;
+  }
+  if (key === 'tags_json' || key === 'shared_tags') return fmtTags(v);
+  if (key.endsWith('_at')) return fmtTime(v);
+  if (key === 'trust_lane') return String(v);
   return String(v);
 }
 
@@ -60,23 +97,23 @@ export function DbPage() {
     setDir('desc');
   };
 
-  const clickSort = (col: string) => {
-    if (!SORTABLE[table].includes(col)) return;
-    if (sort === col) setDir(dir === 'desc' ? 'asc' : 'desc');
-    else { setSort(col); setDir('desc'); }
+  // links sorts on server keys a/b — map display columns across
+  const sortKey = (key: string) => (key === 'a_title' ? 'a' : key === 'b_title' ? 'b' : key);
+
+  const clickSort = (col: (typeof COLS.atoms)[number]) => {
+    if (!col.sortable) return;
+    const key = sortKey(col.key);
+    if (sort === key) setDir(dir === 'desc' ? 'asc' : 'desc');
+    else { setSort(key); setDir('desc'); }
     setOffset(0);
   };
-
-  const cols: string[] = rows[0] ? Object.keys(rows[0]) :
-    (table === 'atoms'
-      ? ['id', 'source', 'title', 'tags_json', 'trust_lane', 'corpus_tier', 'indexed_at', 'last_accessed_at', 'quarantine_reason']
-      : ['a_title', 'b_title', 'shared_tags', 'strength']);
+  const visibleCols = COLS[table].filter((c) => !c.hide);
 
   return (
     <div className="db-page">
       <TopBar daemonOk={daemonVersion !== ''} daemonVersion={daemonVersion} />
       <header className="db-header">
-        <h1>Store browser <small className="db-ro">read-only</small></h1>
+        <h1>Store <small className="db-ro">read-only</small></h1>
         <div className="db-controls">
           <div className="db-tabs" role="tablist">
             {(['atoms', 'links'] as Table[]).map((t) => (
@@ -87,7 +124,7 @@ export function DbPage() {
                 className={table === t ? 'active' : ''}
                 onClick={() => switchTable(t)}
               >
-                {t}
+                {t === 'atoms' ? 'Memories' : 'Connections'}
               </button>
             ))}
           </div>
@@ -117,13 +154,13 @@ export function DbPage() {
         <table className="db-table">
           <thead>
             <tr>
-              {cols.map((c) => (
+              {visibleCols.map((c) => (
                 <th
-                  key={c}
+                  key={c.key}
                   onClick={() => clickSort(c)}
-                  className={SORTABLE[table].includes(c) ? 'sortable' : ''}
+                  className={c.sortable ? 'sortable' : ''}
                 >
-                  {c}{sort === c ? (dir === 'desc' ? ' ▾' : ' ▴') : ''}
+                  {c.label}{sort === sortKey(c.key) ? (dir === 'desc' ? ' ▾' : ' ▴') : ''}
                 </th>
               ))}
             </tr>
@@ -131,11 +168,13 @@ export function DbPage() {
           <tbody>
             {rows.map((row, i) => (
               <tr key={i}>
-                {cols.map((c) => <td key={c}>{cell(row[c])}</td>)}
+                {visibleCols.map((c) => (
+                  <td key={c.key} title={String(row[c.key] ?? '')}>{cell(c.key, row[c.key])}</td>
+                ))}
               </tr>
             ))}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={cols.length} className="db-empty">no rows</td></tr>
+              <tr><td colSpan={visibleCols.length} className="db-empty">no rows</td></tr>
             )}
           </tbody>
         </table>
