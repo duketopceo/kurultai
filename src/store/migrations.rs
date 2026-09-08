@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 13;
+pub const CURRENT_SCHEMA_VERSION: i32 = 14;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -191,6 +191,27 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
+"#;
+
+const MIGRATION_014: &str = r#"
+CREATE TABLE IF NOT EXISTS device_flows (
+    id TEXT PRIMARY KEY,
+    device_code TEXT NOT NULL UNIQUE,
+    user_code TEXT NOT NULL UNIQUE,
+    codename TEXT NOT NULL DEFAULT 'anonymous',
+    client_id TEXT NOT NULL DEFAULT 'kurultai-cli',
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    approved_at TEXT,
+    approved_by TEXT,
+    agent_id TEXT,
+    token_hash TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_device_flows_device_code ON device_flows(device_code);
+CREATE INDEX IF NOT EXISTS idx_device_flows_user_code ON device_flows(user_code);
+CREATE INDEX IF NOT EXISTS idx_device_flows_status_expires ON device_flows(status, expires_at);
 "#;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
@@ -421,6 +442,13 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         add_column_if_missing(conn, "messages", "instance_id", "TEXT")?;
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [13])
             .map_err(|e| KurultaiError::Store(format!("migration 013 record failed: {e}")))?;
+    }
+
+    if current < 14 {
+        conn.execute_batch(MIGRATION_014)
+            .map_err(|e| KurultaiError::Store(format!("migration 014 failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [14])
+            .map_err(|e| KurultaiError::Store(format!("migration 014 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");

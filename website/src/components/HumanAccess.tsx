@@ -166,7 +166,7 @@ export function AccessSettingsButton({ mode, onChanged }: SettingsProps) {
           </header>
           <p className="access-mode">
             Instance:{' '}
-            <strong>{mode === 'locked' ? 'locked (token required)' : mode === 'open' ? 'open (local / no gate)' : '…'}</strong>
+            <strong>{mode === 'locked' ? 'locked (token required)' : mode === 'open' ? 'open (no gate)' : '…'}</strong>
           </p>
           <p className="access-mode">
             Session: <strong>{hasToken ? 'human token stored' : 'no human token'}</strong>

@@ -137,3 +137,54 @@ Adjacent, not superseding: 001 owns promote UX + secondary token system (its sli
 ## Residual + Handoff
 
 Unapplied review findings → tracker tickets + `docs/residual-review-findings/<branch>.md` (repo convention). Post-merge handoff offers: dogfood seed of `instance_of` links (explicit operator action), O3 queue (#118), Postgres ontology (T1b).
+
+---
+
+# Wave-2: Review-Fix + Ship (2026-09-06)
+
+**Status:** Wave-1 committed `03bc52a` on `feat/brain-first-principles-wave1` (local gates green at commit: tsc, 28/28 node tests, build-ui, cargo test --locked, agent-index audit 77/416). Independent `code-reviewer` pass returned **REQUEST CHANGES** (2 Critical, 5 Important). Every finding re-verified against primary sources before being planned (api.ts lines 240–290, hey.rs routes 19–26 + PostBody/ReactBody/UnreadQuery structs, store/mod.rs add_reaction, Chatboard.tsx, HeyPanel.tsx, chatboard-mapping.ts, package.json).
+
+## Settled-Decisions Brief (wave-2 additions; D1–D9 stand)
+
+| # | Decision | Provenance | Rejected alternative |
+|---|----------|------------|----------------------|
+| W1 | Wave-2 authored **natively** (session model), not Astra batch | `(session-settled: harness PRO mode disables subagents; findings are patch-size integration fixes; Astra key is the budget-capped design key at $12.10/$50 — raw single-file contract breaks partial edits anyway)` | re-running Astra batches for patch-size diffs (cost + latency + contract mismatch) |
+| W2 | **api.ts is the backend-shape mirror** — TS types match Rust Dto exactly; no optimistic fields | `(verified: C2 root cause is TS fields participants/unread_count/reactions absent from HeyThread/HeyMessage; adding them client-side is what created the phantom contract)` | adding `reactions` to `MessageDto` (Rust schema change for a presentational need) |
+| W3 | Reactions read by **aggregating `kind='reaction'` message rows** (`parent_id` → parent id, emoji = `content`) client-side in HeyPanel | `(verified: store/mod.rs add_reaction inserts reaction ROWS, kind='reaction', turns_consumed=0; no per-message reactions endpoint exists in hey.rs)` | new `/api/hey/messages/{id}/reactions` endpoint (backend diff reopens the green Rust gate without blessing) |
+| W4 | **One chrome shell per surface**: HeyPanel owns header/caption/refresh; Chatboard renders body-only (drop inner `section.panel.chrome-panel.hey-panel` + duplicate `<h2>` + duplicate caption) | `(verified: HeyPanel.tsx wraps Chatboard — both emit section + h2 "Hey board" + identical hey-caption)` | deleting the HeyPanel wrapper (it owns polling/abort/state; converting it to a presenter is a larger refactor than the bug warrants) |
+
+Unlabeled (agent inference): the `unread()` response TS type is pinned by reading the handler's return shape in `hey.rs` at fix time, not guessed; `presence` prop gets a real `HeyPresence[] → Record<string,String>` coerce built in mapping.
+
+## Findings (all evidence-verified 2026-09-06)
+
+| ID | Sev | Location | Root cause (verified) | Fix contract |
+|----|-----|----------|----------------------|--------------|
+| F1 | Critical | `website/src/api.ts` + `HeyPanel.tsx` | No `postHeyMessage`/`reactHeyMessage`/`fetchHeyUnread` wrappers exist; HeyPanel's `callEndpoint('postHeyMessage'/'reactHeyMessage'/'fetchHeyUnread')` resolves undefined → throw → swallowed by catch → **send/react/unread silently dead**. Routes exist in `hey.rs`: POST `/threads/{id}/messages` (PostBody: content, parent_id?, request_reply default false, thread_name?, repo?, instance_id?), POST `/messages/{id}/react` (ReactBody: emoji, thread_id), GET `/unread` (limit, since ISO?) | Add the three wrappers with exact TS types per W2; HeyPanel calls them directly (retire `callEndpoint` indirection, keep per-call failure tolerance) |
+| F2 | Critical | `chatboard-mapping.ts` / `Chatboard.tsx` / `HeyPanel.tsx` | `mapThreads` reads `participants`/`unread`/`unread_count` — absent from HeyThread (peerLabel always falls back to title, unread always 0); `mapMessages` reads `message.reactions` — absent from HeyMessage and never serialized by `MessageDto`; Chatboard re-reads `createdAt`/`timestamp`/`created_at` off MessageVM (which exposes `createdAtMs` as a number) → `Date.parse(NaN)` → time-less sort degenerates; `isOwn` never set | mapping: stop phantom reads — `peerLabel` fed from presence/last-message sender, `unread` from the real GET /unread result thread through HeyPanel; build `reactionIndex: Map<messageId, {emoji,count}[]>` in HeyPanel per W3 and pass into `mapMessages` (opt-in param); Chatboard consumption aligned to actual VM fields (`createdAtMs`, optional `isOwn` keyed by presence agent_id) |
+| F3 | Important | `HeyPanel.tsx` + `Chatboard.tsx` | Duplicate chrome per W4 | Chatboard body-only; single shell; CSS margins deduped for the collapsed nesting |
+| F4 | Important | `Chatboard.tsx` `send()` + `HeyPanel.tsx` | Draft cleared **before** awaiting the async onSend (fire-and-forget) → failed send erases user text; the poll's thread-id renormalization (`list.find(...)|| activeThreadId`) also orphans drafts keyed by the old id | onSend returns a success bool; clear draft only on success; migrate the draft key when the active id renormalizes (display id → canonical id) |
+| F5 | Important | `BrainView.ts` hover-trace path | Hover expansion unchecked against the 200 label draw cap → overflow at dense tiers | Clamp the traced-adjacent set to the cap (top by degree); no stage overflow; excess signaled only in the side panel |
+| F6 | Important | `website/package.json` `test:layout` | Globs only `src/brain/layout/*.test.ts` → `labels.test.ts` + `chatboard-mapping.test.ts` never run under the script | Widen to `src/brain/*.test.ts src/brain/layout/*.test.ts src/components/chatboard/*.test.ts` (explicit paths, no glob-engine dependence) |
+| F7 | Important | `BrainView.ts` layout rebuild | Rebuilds (tier change / data refresh) re-run the settle camera animation every time | Guard settle by layout identity (hash of node-id set + tier); skip on no-change rebuild |
+
+## Implementation Units (wave-2)
+
+### U6. Chatboard API + view-model contract (F1, F2)
+Files: `website/src/api.ts`, `website/src/components/HeyPanel.tsx`, `website/src/components/chatboard/chatboard-mapping.ts`, `website/src/components/chatboard/Chatboard.tsx`, `chatboard-mapping.test.ts`, `website/src/components/INDEX.md`, `website/src/components/chatboard/INDEX.md`.
+Approach: read `unread()`'s return shape in `hey.rs` first; add the 3 wrappers + types; build reactionIndex in HeyPanel from already-fetched reaction rows; align mapping/Chatboard VM consumption to real fields; extend mapping tests (reactionIndex, presence coerce, unread-fed threads, phantom-field regression: feed a raw HeyMessage-shaped object, assert no NaN/undefined leaks).
+### U7. Chrome + interaction fixes (F3, F4, F5, F6, F7)
+Files: `Chatboard.tsx`, `HeyPanel.tsx`, `website/src/styles.css` (margin dedupe, chrome family only), `website/src/brain/BrainView.ts` (F5 clamp, F7 settle guard), `website/package.json` (F6), adjacent test seam only if a clamped selector is extracted as a pure function (otherwise covered by existing layout/labels tests + smoke).
+Approach: smallest diffs; zero changes to cortex doctrine, triad, MAX_EDGES (1200), labels LOD math, grouping derivation.
+### U8. Verification pass (R7, R8)
+Gates, all green required before ship: `node --experimental-strip-types --test <F6-widened globs>` · `npx tsc --noEmit` (website/) · `scripts/build-ui.sh` · `cargo test --locked` (expected untouched-green; failure = stop + surface) · `python3 scripts/audit-agent-index.py` · daemon smoke: `kurultai daemon --port 8421` → `/ui/` renders brain + ontology + chatboard against the dogfood store (send + react round-trip exercised via curl against the same endpoints the UI calls).
+### U9. Ship (per standing user pipeline)
+ce-simplify-code pass on the U6+U7 diff (inline; expected near-trivial) → final inline report-only re-review against this plan (**substitution disclosed: PRO mode, same context — not an independent reviewer**) → residual: any unapplied finding → tracker ticket + `docs/residual-review-findings/feat-brain-first-principles-wave1.md` → INDEX ritual (every touched folder) → `ce-commit-push-pr` (checkpoint before push) → `ce-babysit-pr` (budget: 3 fix rounds; never merge red; post-merge main run must be green before closeout).
+
+## Verification
+Same gate list as U8 + PR CI green + merged-green confirmation on `main` before closeout (house rule: never merge red; CI verdict from the primary log only).
+
+## Assumptions (recorded per pipeline-mode scoping)
+- No Rust changes in wave-2; if U6 reveals the unread shape or an auth nuance requires one, **stop and surface** — a backend diff reopens the green Rust gate without blessing.
+- `instance_id` present in dogfood data for two-layer identity (`codename@instance`); if absent, identity falls back to codename-only (already handled by `identityLabel`).
+- CI for this repo mirrors the local gates (tsc/node tests/build/cargo/audit); babysit treats divergence as a real failure to repair, not a flake.
+- Budget: $0 Astra spend expected for wave-2 (native authoring per W1).

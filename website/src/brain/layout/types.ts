@@ -54,6 +54,7 @@ export interface SignedDistanceField {
 export type FdgWorkerIn =
   | { type: 'init'; nodes: FdgNode[]; links: FdgLink[]; sdf: ArrayBuffer; aabb: number[] }
   | { type: 'tick'; steps: number }
-  | { type: 'setLinks'; links: FdgLink[] };
+  | { type: 'setLinks'; links: FdgLink[] }
+  | { type: 'setSdf'; sdf: ArrayBuffer };
 
 export type FdgWorkerOut = { type: 'positions'; xyz: Float32Array; ids: string[] };

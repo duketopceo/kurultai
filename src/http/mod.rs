@@ -7,6 +7,8 @@
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
 mod auth;
+pub mod cf_access;
+mod device_auth;
 mod hey;
 mod hub_listen;
 mod mcp;
@@ -47,7 +49,7 @@ use tower_http::trace::TraceLayer;
 use uuid::Uuid;
 
 #[derive(Clone)]
-struct AppState {
+pub(crate) struct AppState {
     brain: Arc<BrainService>,
     status: Arc<DaemonStatus>,
     metrics: Arc<MetricsRegistry>,
@@ -206,6 +208,7 @@ fn router(state: AppState) -> Router {
         .route("/who_knows", post(who_knows_post))
         .merge(hey::routes())
         .merge(ui::routes())
+        .merge(device_auth::routes(state.clone()))
         .layer(middleware::from_fn_with_state(
             state.hub.clone(),
             hub_api_auth,
@@ -2406,6 +2409,7 @@ mod tests {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
                 agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },
@@ -2458,6 +2462,7 @@ mod tests {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
                 agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },
@@ -2486,6 +2491,7 @@ mod tests {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
                 agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },

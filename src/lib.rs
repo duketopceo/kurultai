@@ -17,6 +17,7 @@ pub mod http;
 pub mod hub;
 pub mod ingest;
 pub mod logging;
+pub mod login;
 pub mod mcp;
 pub mod memory;
 pub mod metrics;

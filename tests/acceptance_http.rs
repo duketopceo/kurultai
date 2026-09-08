@@ -459,6 +459,7 @@ fn gate_with_key(key: &str) -> HubGate {
         auth: HubAuth::ApiKey,
         api_keys: vec![key.into()],
         agent_store: None,
+        cf_access: None,
         #[cfg(feature = "postgres")]
         key_store: None,
     }
@@ -588,6 +589,7 @@ async fn hub_auth_accepts_sha256_hashed_key() {
             auth: HubAuth::ApiKey,
             api_keys: vec![hashed],
             agent_store: None,
+            cf_access: None,
             #[cfg(feature = "postgres")]
             key_store: None,
         },

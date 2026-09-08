@@ -47,7 +47,7 @@ export function ActivityPanel({ live, onLiveToggle }: Props) {
       </div>
       <div id="activity-stream" className="activity-stream" aria-live="polite">
         {items.length === 0 ? (
-          <p className="empty-state">Listening for local activity…</p>
+          <p className="empty-state">Listening for activity…</p>
         ) : (
           items.map((item) => (
             <div key={item.id} className="activity-item">

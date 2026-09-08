@@ -40,7 +40,7 @@ export function TopBar({ daemonOk, daemonVersion }: Props) {
           </svg>
         </span>
         <span>KURULTAI</span>
-        <small>LOCAL BRAIN</small>
+        <small>BRAIN</small>
         <small className="version-mark" title="Embedded UI bundle version">ui {UI_VERSION}</small>
       </a>
       <nav className="topbar-nav" aria-label="Site navigation">

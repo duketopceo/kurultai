@@ -461,6 +461,8 @@ button, input, textarea { font: inherit; }
   letter-spacing: .13em;
 }
 .brain-overlay  { left: 1rem; top: 1rem; }
+.brain-hud      { right: 1rem; top: 1rem; position: absolute; z-index: 3; display: flex; gap: .7rem; color: var(--text-muted); font-size: 9px; letter-spacing: .13em; }
+.brain-hud span:first-child { color: var(--electric); }
 .brain-caption  { left: 1rem; bottom: 1rem; align-items: center; }
 .pulse-ring {
   width: 8px; height: 8px;
@@ -1098,6 +1100,7 @@ header.topbar {
   .button-copy { display: none; }
   .hero h1 { font-size: 2.55rem; }
   .brain-overlay { display: none; }
+  .brain-hud { display: none; }
   .command-strip { padding-bottom: 1.2rem; }
   .search-control kbd { display: none; }
   .panel { padding: 1rem; }
