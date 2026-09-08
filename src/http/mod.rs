@@ -429,21 +429,23 @@ async fn api_db_table(
     state.status.touch_client_activity();
     let sort = params.get("sort").cloned().unwrap_or_default();
     let desc = params.get("dir").map(|d| d == "desc").unwrap_or(false);
-    let q = params.get("q").cloned();
-    let limit = params
-        .get("limit")
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(100);
-    let offset = params
-        .get("offset")
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(0);
-    match state
-        .brain
-        .store()
-        .db_rows(&table, &sort, desc, q.as_deref(), limit, offset)
-        .await
-    {
+    let browse = crate::store::DbBrowse {
+        table: table.clone(),
+        sort,
+        desc,
+        q: params.get("q").cloned(),
+        lane: params.get("lane").cloned(),
+        tier: params.get("tier").cloned(),
+        limit: params
+            .get("limit")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(100),
+        offset: params
+            .get("offset")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0),
+    };
+    match state.brain.store().db_rows(&browse).await {
         Ok(rows) => Ok(Json(serde_json::json!({
             "ok": true,
             "request_id": &request_id,
