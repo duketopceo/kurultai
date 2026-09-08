@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: website
 parent: INDEX.md
 updated: 2026-09-05
-version: 3
+version: 4
 ---
 
 # `website`
@@ -28,6 +28,7 @@ version: 3
 
 ## Recent
 
+- 2026-09-08 — `#/db` route + `DbView` store browser; styles: `.db-*` table chrome
 - 2026-09-06 — housekeeping: `brain.html` favicon + meta fix; `public/favicon.svg`; de-local copy in TopBar/AskPanel/App footer/ActivityPanel/HumanAccess
 - 2026-09-05 — tiered graph fetch: api.ts GraphQuery + App.tsx/RepoBrain limit wiring
 - 2026-09-04 — token gate auth flow; README updated for build-ui.sh

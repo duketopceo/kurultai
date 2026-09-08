@@ -92,6 +92,24 @@ export async function fetchStatus(signal?: AbortSignal): Promise<StatusResponse>
   return getJson<StatusResponse>('/api/status', signal);
 }
 
+export type DbRow = Record<string, unknown>;
+export type DbTableResponse = { ok: boolean; table: string; count: number; rows: DbRow[] };
+
+/** Read-only /ui/db browse — server-side whitelist (atoms, links); SELECT only. */
+export async function fetchDbTable(
+  table: 'atoms' | 'links',
+  opts: { sort?: string; dir?: 'asc' | 'desc'; q?: string; limit?: number; offset?: number },
+  signal?: AbortSignal,
+): Promise<DbTableResponse> {
+  const p = new URLSearchParams();
+  if (opts.sort) p.set('sort', opts.sort);
+  if (opts.dir) p.set('dir', opts.dir);
+  if (opts.q) p.set('q', opts.q);
+  p.set('limit', String(opts.limit ?? 100));
+  p.set('offset', String(opts.offset ?? 0));
+  return getJson<DbTableResponse>(`/api/db/${table}?${p.toString()}`, signal);
+}
+
 export async function fetchAtoms(limit: number, signal?: AbortSignal): Promise<Atom[]> {
   const data = await getJson<ApiAtomResult[]>(`/api/atoms?limit=${limit}`, signal);
   if (!Array.isArray(data)) return [];

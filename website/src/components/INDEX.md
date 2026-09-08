@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: website/src/components
 parent: website/src/INDEX.md
 updated: 2026-09-05
-version: 4
+version: 5
 ---
 
 # `website/src/components`
@@ -28,10 +28,12 @@ _None._
 | [`InspectorPanel.tsx`](InspectorPanel.tsx) | Atom inspector + ontology promote | `../api` · `../types` | — | 2026-09-05 | 2 | 2026-09-05 suggest+promote · 2026-08-16 indexed (v1 seed) |
 | [`RepoBrain.tsx`](RepoBrain.tsx) | Repo brain panel | `website/src/components/../brain/BrainView` · `website/src/components/../api` · `website/src/components/../repoLattice` · `website/src/components/../types` | — | 2026-09-05 | 2 | 2026-09-05 fetchGraph with limit for repo list/repo view · 2026-08-16 indexed (v1 seed) |
 | [`StatsPanel.tsx`](StatsPanel.tsx) | Stat cards | `website/src/components/../types` | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`DbView.tsx`](DbView.tsx) | Read-only store browser page (`#/db`) | `../api` · `TopBar` | — | 2026-09-08 | 1 | 2026-09-08 added |
 | [`TopBar.tsx`](TopBar.tsx) | Top bar + Access settings + theme | `../version` · `../auth` · `HumanAccess` | — | 2026-09-04 | 3 | 2026-09-04 Access settings button · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-08 — `DbView.tsx` read-only store browser at `#/db` (tabs, sort, filter, pager); TopBar nav link
 - 2026-09-07 — `buildLinks`: pair strength = number of shared tags (drives synapse opacity + layout springs)
 - 2026-09-06 — `BrainStage`: `BrainHud` top-right mono readout (FPS · NEURONS · SYNAPSES), hidden on mobile; `.brain-hud` style in styles.css
 - 2026-09-06 — `BrainStage`: expose `window.__kurultaiBrain` (metrics console handle), removed on dispose
