@@ -1458,3 +1458,12 @@ header.topbar {
 }
 .db-table tbody tr:hover td { background: rgba(168,85,247,.06); }
 .db-empty { color: var(--text-muted); text-align: center; padding: 2rem !important; }
+
+/* db chips */
+.db-chips { display: flex; gap: .45rem; align-items: center; margin-top: .7rem; flex-wrap: wrap; }
+.db-chip-label { color: var(--text-muted); font-size: .7rem; letter-spacing: .1em; margin-right: .2rem; }
+.db-chip {
+  background: none; border: 1px solid var(--line, #1c1630); color: var(--text-muted);
+  font: inherit; font-size: .72rem; padding: .2rem .65rem; border-radius: 999px; cursor: pointer;
+}
+.db-chip.active { color: var(--electric, #a855f7); border-color: var(--electric, #a855f7); }

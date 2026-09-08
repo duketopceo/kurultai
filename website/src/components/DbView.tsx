@@ -3,6 +3,8 @@ import { fetchDbTable, fetchStatus, type DbRow } from '../api';
 import { TopBar } from './TopBar';
 
 type Table = 'atoms' | 'links';
+type Lane = '' | 'trusted' | 'quarantine';
+type Tier = '' | 'hot' | 'warm' | 'cold';
 const PAGE = 100;
 
 /** Friendly column presentation — raw keys stay in the row for sorting. */
@@ -11,11 +13,11 @@ const COLS: Record<Table, { key: string; label: string; sortable: boolean; hide?
     { key: 'title', label: 'Title', sortable: true },
     { key: 'source', label: 'Source', sortable: true },
     { key: 'tags_json', label: 'Tags', sortable: false },
-    { key: 'trust_lane', label: 'Lane', sortable: true },
+    { key: 'trust_lane', label: 'Status', sortable: true },
     { key: 'corpus_tier', label: 'Tier', sortable: true },
     { key: 'indexed_at', label: 'Added', sortable: true },
     { key: 'last_accessed_at', label: 'Last seen', sortable: true },
-    { key: 'quarantine_reason', label: 'Quarantine', sortable: false, hide: true },
+    { key: 'quarantine_reason', label: 'Why held', sortable: false, hide: true },
     { key: 'id', label: 'ID', sortable: true, hide: true },
   ],
   links: [
@@ -24,6 +26,16 @@ const COLS: Record<Table, { key: string; label: string; sortable: boolean; hide?
     { key: 'shared_tags', label: 'Shared tags', sortable: false },
     { key: 'strength', label: 'Strength', sortable: true },
   ],
+};
+
+/** Aliases so machiney values read like English. */
+const ALIAS: Record<string, Record<string, string>> = {
+  trust_lane: { trusted: 'Live', quarantine: 'Held' },
+  corpus_tier: { hot: 'Hot', warm: 'Warm', cold: 'Cold' },
+  source: {
+    notes: 'Notes', code: 'Code', repos: 'Repos', pond: 'Pond',
+    hey: 'Hey board', mcp: 'MCP', github: 'GitHub',
+  },
 };
 
 function fmtTime(iso: unknown): string {
@@ -43,14 +55,12 @@ function fmtTags(v: unknown): string {
 
 function cell(key: string, v: unknown): string {
   if (v === null || v === undefined || v === '') return '—';
-  if (key === 'id' || key === 'a' || key === 'b') {
-    const s = String(v);
-    return s.length > 12 ? `${s.slice(0, 8)}…` : s;
-  }
+  const s = String(v);
+  if (key === 'id' || key === 'a' || key === 'b') return s.length > 12 ? `${s.slice(0, 8)}…` : s;
   if (key === 'tags_json' || key === 'shared_tags') return fmtTags(v);
   if (key.endsWith('_at')) return fmtTime(v);
-  if (key === 'trust_lane') return String(v);
-  return String(v);
+  const alias = ALIAS[key]?.[s];
+  return alias ?? s;
 }
 
 /** Read-only raw store browser: /ui/#/db — view, sort, filter. No writes. */
@@ -58,6 +68,8 @@ export function DbPage() {
   const [table, setTable] = useState<Table>('atoms');
   const [q, setQ] = useState('');
   const [qLive, setQLive] = useState('');
+  const [lane, setLane] = useState<Lane>('');
+  const [tier, setTier] = useState<Tier>('');
   const [sort, setSort] = useState('indexed_at');
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [offset, setOffset] = useState(0);
@@ -77,7 +89,11 @@ export function DbPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchDbTable(table, { sort, dir, q: qLive || undefined, limit: PAGE, offset });
+      const res = await fetchDbTable(table, {
+        sort, dir, q: qLive || undefined,
+        lane: lane || undefined, tier: tier || undefined,
+        limit: PAGE, offset,
+      });
       setRows(res.rows);
       setCount(res.count);
     } catch (e) {
@@ -86,18 +102,19 @@ export function DbPage() {
     } finally {
       setLoading(false);
     }
-  }, [table, sort, dir, qLive, offset]);
+  }, [table, sort, dir, qLive, lane, tier, offset]);
 
   useEffect(() => { void load(); }, [load]);
 
   const switchTable = (t: Table) => {
     setTable(t);
     setOffset(0);
+    setLane('');
+    setTier('');
     setSort(t === 'atoms' ? 'indexed_at' : 'strength');
     setDir('desc');
   };
 
-  // links sorts on server keys a/b — map display columns across
   const sortKey = (key: string) => (key === 'a_title' ? 'a' : key === 'b_title' ? 'b' : key);
 
   const clickSort = (col: (typeof COLS.atoms)[number]) => {
@@ -107,7 +124,21 @@ export function DbPage() {
     else { setSort(key); setDir('desc'); }
     setOffset(0);
   };
+
+  const hasFilters = qLive !== '' || lane !== '' || tier !== '';
+  const clearAll = () => { setQ(''); setQLive(''); setLane(''); setTier(''); setOffset(0); };
   const visibleCols = COLS[table].filter((c) => !c.hide);
+
+  const chip = (label: string, active: boolean, onClick: () => void) => (
+    <button
+      key={label}
+      className={`db-chip${active ? ' active' : ''}`}
+      aria-pressed={active}
+      onClick={() => { onClick(); setOffset(0); }}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="db-page">
@@ -136,18 +167,35 @@ export function DbPage() {
               type="search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder={table === 'atoms' ? 'filter title / source / tags…' : 'filter node or tag…'}
+              placeholder={table === 'atoms' ? 'Search title, source, or tags…' : 'Search a node or tag…'}
               aria-label="Filter rows"
             />
           </form>
+          <button className="db-chip" onClick={() => void load()} title="Refresh">↻</button>
+          {hasFilters && (
+            <button className="db-chip" onClick={clearAll}>Clear</button>
+          )}
           <span className="db-count" aria-live="polite">
-            {loading ? '…' : `${count} row${count === 1 ? '' : 's'} @ ${offset}`}
+            {loading ? '…' : `${count} shown${offset ? ` · ${offset} skipped` : ''}`}
           </span>
           <div className="db-pager">
             <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>‹ prev</button>
             <button disabled={count < PAGE} onClick={() => setOffset(offset + PAGE)}>next ›</button>
           </div>
         </div>
+        {table === 'atoms' && (
+          <div className="db-chips">
+            <span className="db-chip-label">Status:</span>
+            {chip('All', lane === '', () => setLane(''))}
+            {chip('Live', lane === 'trusted', () => setLane('trusted'))}
+            {chip('Held', lane === 'quarantine', () => setLane('quarantine'))}
+            <span className="db-chip-label">Tier:</span>
+            {chip('Any', tier === '', () => setTier(''))}
+            {chip('Hot', tier === 'hot', () => setTier('hot'))}
+            {chip('Warm', tier === 'warm', () => setTier('warm'))}
+            {chip('Cold', tier === 'cold', () => setTier('cold'))}
+          </div>
+        )}
       </header>
       {error && <p className="db-error" role="alert">{error}</p>}
       <div className="db-table-wrap">
@@ -174,7 +222,9 @@ export function DbPage() {
               </tr>
             ))}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={visibleCols.length} className="db-empty">no rows</td></tr>
+              <tr><td colSpan={visibleCols.length} className="db-empty">
+                {hasFilters ? 'nothing matches — try clearing filters' : 'no rows'}
+              </td></tr>
             )}
           </tbody>
         </table>

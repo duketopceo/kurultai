@@ -130,6 +130,22 @@ const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, ques
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
      last_accessed_at, visibility, corpus_tier, visibility_labels_json";
 
+/// Read-only browse query for the `/ui/db` table view (`GET /api/db/{table}`).
+/// `table` selects a whitelist arm; `sort` is whitelisted per arm; `q` is a
+/// parameterized text filter; `lane`/`tier` are whitelisted exact-match
+/// filters; `limit` is capped at 500.
+#[derive(Debug, Clone, Default)]
+pub struct DbBrowse {
+    pub table: String,
+    pub sort: String,
+    pub desc: bool,
+    pub q: Option<String>,
+    pub lane: Option<String>,
+    pub tier: Option<String>,
+    pub limit: usize,
+    pub offset: usize,
+}
+
 /// Retrieval filter — default skips quarantine and spans every project.
 ///
 /// `project` is namespacing, not isolation: it keeps one Claude Code session's
@@ -335,18 +351,10 @@ pub trait Store: Send + Sync {
     /// Read-only browse rows for the `/ui/db` table view (atoms / derived
     /// shared-tag links). Default: unsupported — only the SQLite store
     /// implements it today.
-    async fn db_rows(
-        &self,
-        table: &str,
-        _sort: &str,
-        _desc: bool,
-        _q: Option<&str>,
-        _limit: usize,
-        _offset: usize,
-    ) -> Result<Vec<serde_json::Value>> {
-        Err(KurultaiError::Store(format!(
-            "db browse not supported for table '{table}' on this store"
-        )))
+    async fn db_rows(&self, _browse: &DbBrowse) -> Result<Vec<serde_json::Value>> {
+        Err(KurultaiError::Store(
+            "db browse not supported on this store".into(),
+        ))
     }
 
     /// Return atoms whose `source_id` matches any of the given SQL LIKE patterns.
@@ -798,18 +806,16 @@ impl SqliteVecStore {
     /// Read-only browse rows for the `/ui/db` table view. `table` selects a
     /// fixed whitelist — SELECT only, sortable columns whitelisted, `q` always
     /// parameterized, `limit` capped at 500. Unknown tables error.
-    pub fn db_rows_sync(
-        &self,
-        table: &str,
-        sort: &str,
-        desc: bool,
-        q: Option<&str>,
-        limit: usize,
-        offset: usize,
-    ) -> Result<Vec<serde_json::Value>> {
+    pub fn db_rows_sync(&self, browse: &DbBrowse) -> Result<Vec<serde_json::Value>> {
         let conn = self.lock()?;
-        let limit = limit.clamp(1, 500) as i64;
-        let offset = offset as i64;
+        let limit = browse.limit.clamp(1, 500) as i64;
+        let offset = browse.offset as i64;
+        let (table, sort, desc) = (browse.table.as_str(), browse.sort.as_str(), browse.desc);
+        let (q, lane, tier) = (
+            browse.q.as_deref(),
+            browse.lane.as_deref(),
+            browse.tier.as_deref(),
+        );
         match table {
             "atoms" => {
                 const SORTABLE: &[&str] = &[
@@ -841,33 +847,43 @@ impl SqliteVecStore {
                         "quarantine_reason": row.get::<_, Option<String>>(8)?,
                     }))
                 };
-                let rows: Vec<serde_json::Value> = if pat.is_empty() {
-                    let sql = format!(
-                        "SELECT id, source, title, tags_json, trust_lane, corpus_tier, \
-                         indexed_at, last_accessed_at, quarantine_reason \
-                         FROM knowledge_atoms ORDER BY {sort} {dir} LIMIT ?1 OFFSET ?2"
-                    );
-                    conn.prepare(&sql)
-                        .and_then(|mut st| {
-                            st.query_map(params![limit, offset], row_map)
-                                .and_then(|r| r.collect())
-                        })
-                        .map_err(|e| KurultaiError::Store(format!("db_rows atoms: {e}")))?
+                // Whitelisted exact-match filters (lane/tier) + parameterized
+                // text filter — anonymous `?` placeholders bind in order.
+                let mut wh: Vec<String> = Vec::new();
+                let mut binds: Vec<rusqlite::types::Value> = Vec::new();
+                if !pat.is_empty() {
+                    wh.push("(title LIKE ? OR source LIKE ? OR tags_json LIKE ?)".into());
+                    for _ in 0..3 {
+                        binds.push(pat.clone().into());
+                    }
+                }
+                if let Some(l) = lane.filter(|l| matches!(*l, "trusted" | "quarantine")) {
+                    wh.push("trust_lane = ?".into());
+                    binds.push(l.to_string().into());
+                }
+                if let Some(t) = tier.filter(|t| matches!(*t, "hot" | "warm" | "cold")) {
+                    wh.push("corpus_tier = ?".into());
+                    binds.push(t.to_string().into());
+                }
+                binds.push(limit.into());
+                binds.push(offset.into());
+                let where_sql = if wh.is_empty() {
+                    String::new()
                 } else {
-                    let sql = format!(
-                        "SELECT id, source, title, tags_json, trust_lane, corpus_tier, \
-                         indexed_at, last_accessed_at, quarantine_reason \
-                         FROM knowledge_atoms \
-                         WHERE title LIKE ?1 OR source LIKE ?1 OR tags_json LIKE ?1 \
-                         ORDER BY {sort} {dir} LIMIT ?2 OFFSET ?3"
-                    );
-                    conn.prepare(&sql)
-                        .and_then(|mut st| {
-                            st.query_map(params![pat, limit, offset], row_map)
-                                .and_then(|r| r.collect())
-                        })
-                        .map_err(|e| KurultaiError::Store(format!("db_rows atoms: {e}")))?
+                    format!("WHERE {}", wh.join(" AND "))
                 };
+                let sql = format!(
+                    "SELECT id, source, title, tags_json, trust_lane, corpus_tier, \
+                     indexed_at, last_accessed_at, quarantine_reason \
+                     FROM knowledge_atoms {where_sql} ORDER BY {sort} {dir} LIMIT ? OFFSET ?"
+                );
+                let rows: Vec<serde_json::Value> = conn
+                    .prepare(&sql)
+                    .and_then(|mut st| {
+                        st.query_map(rusqlite::params_from_iter(binds.iter()), row_map)
+                            .and_then(|r| r.collect())
+                    })
+                    .map_err(|e| KurultaiError::Store(format!("db_rows atoms: {e}")))?;
                 Ok(rows)
             }
             // Synapse links are derived, not stored: same shared-tag pairing
@@ -1605,16 +1621,8 @@ impl Store for SqliteVecStore {
         Ok(found.is_some())
     }
 
-    async fn db_rows(
-        &self,
-        table: &str,
-        sort: &str,
-        desc: bool,
-        q: Option<&str>,
-        limit: usize,
-        offset: usize,
-    ) -> Result<Vec<serde_json::Value>> {
-        self.db_rows_sync(table, sort, desc, q, limit, offset)
+    async fn db_rows(&self, browse: &DbBrowse) -> Result<Vec<serde_json::Value>> {
+        self.db_rows_sync(browse)
     }
 
     async fn list_atoms(&self, limit: usize, filter: SearchFilter) -> Result<Vec<KnowledgeAtom>> {
