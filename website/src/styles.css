@@ -1420,3 +1420,41 @@ header.topbar {
 .hey-panel .hey-messages { list-style: none; margin: 0; padding: 0; max-height: 14rem; overflow: auto; }
 .hey-panel .hey-messages li { padding: .45rem 0; border-bottom: 1px solid var(--line, #222); }
 .hey-panel .hey-meta { display: block; font-size: .7rem; opacity: .65; margin-bottom: .2rem; }
+
+/* ── Store browser (/ui/#/db) — read-only raw table view ─────────────────── */
+.db-page { min-height: 100vh; background: var(--bg, #050508); color: var(--text-primary, #e6e1f5); }
+.db-header { padding: 1.2rem 1.5rem .8rem; border-bottom: 1px solid var(--line, #1c1630); }
+.db-header h1 { font-size: 1rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+.db-ro { color: var(--text-muted); font-size: .7em; letter-spacing: .1em; margin-left: .6rem; }
+.db-controls { display: flex; gap: 1rem; align-items: center; margin-top: .8rem; flex-wrap: wrap; }
+.db-tabs button {
+  background: none; border: 1px solid var(--line, #1c1630); color: var(--text-muted);
+  font: inherit; font-size: .8rem; padding: .3rem .9rem; cursor: pointer;
+}
+.db-tabs button.active { color: var(--electric, #a855f7); border-color: var(--electric, #a855f7); }
+.db-filter input {
+  background: transparent; border: 1px solid var(--line, #1c1630); color: inherit;
+  font: inherit; font-size: .8rem; padding: .3rem .7rem; min-width: 260px;
+}
+.db-count { color: var(--text-muted); font-size: .75rem; letter-spacing: .08em; }
+.db-pager button {
+  background: none; border: 1px solid var(--line, #1c1630); color: inherit;
+  font: inherit; font-size: .75rem; padding: .25rem .7rem; cursor: pointer;
+}
+.db-pager button:disabled { opacity: .35; cursor: default; }
+.db-error { color: var(--danger, #f66); padding: .6rem 1.5rem; font-size: .85rem; }
+.db-table-wrap { overflow: auto; max-height: calc(100vh - 160px); }
+.db-table { width: 100%; border-collapse: collapse; font-size: .78rem; font-family: ui-monospace, monospace; }
+.db-table th {
+  position: sticky; top: 0; background: var(--bg, #050508); text-align: left;
+  padding: .5rem .8rem; border-bottom: 1px solid var(--line, #1c1630);
+  color: var(--text-muted); font-weight: 600; letter-spacing: .08em; white-space: nowrap;
+}
+.db-table th.sortable { cursor: pointer; }
+.db-table th.sortable:hover { color: var(--electric, #a855f7); }
+.db-table td {
+  padding: .4rem .8rem; border-bottom: 1px solid rgba(120,100,160,.12);
+  max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.db-table tbody tr:hover td { background: rgba(168,85,247,.06); }
+.db-empty { color: var(--text-muted); text-align: center; padding: 2rem !important; }

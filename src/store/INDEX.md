@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: src/store
 parent: src/INDEX.md
 updated: 2026-09-06
-version: 3
+version: 4
 ---
 
 # `src/store`
@@ -25,6 +25,7 @@ _None._
 
 ## Recent
 
+- 2026-09-08 — `Store::db_rows` + `SqliteVecStore::db_rows_sync`: read-only whitelisted browse (atoms table / derived shared-tag links) for the /ui/db view
 - 2026-09-06 — v14 `device_flows` migration; `Store` device-flow + `issue_agent_token` methods
 - 2026-08-31 — review fixes: reject team atoms missing team_id, use shared hub_activity DDL
 - 2026-08-29 — `database_url_from_env` (`KURULTAI_DATABASE_URL` then `DATABASE_URL`)
