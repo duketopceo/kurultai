@@ -9,8 +9,8 @@ use kurultai::error::Result;
 use kurultai::export::{export_pack, import_pack, resolve_config_file, ImportMode};
 use kurultai::logging;
 use kurultai::mcp::{
-    ensure_default_config, init_walkthrough, provision_docs, wire_agent, AgentRead, AgentTarget,
-    BrainService,
+    ensure_default_config, ensure_default_config_at, init_walkthrough, provision_docs, wire_agent,
+    AgentRead, AgentTarget, BrainService,
 };
 use kurultai::write_policy::{WriteContext, WriteTransport};
 use std::path::PathBuf;
@@ -308,7 +308,10 @@ async fn main() -> Result<()> {
             index,
             doctor,
         } => {
-            let config_path = ensure_default_config()?;
+            let config_path = match cli.config.as_deref() {
+                Some(path) => ensure_default_config_at(path.to_path_buf())?,
+                None => ensure_default_config()?,
+            };
             let banner_mode = load_config_from(&config_path)
                 .map(|c| c.banner)
                 .unwrap_or(BannerMode::Auto);
