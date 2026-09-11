@@ -1068,23 +1068,43 @@ impl Store for PostgresStore {
         filter: SearchFilter,
         policy: TierPolicy,
     ) -> Result<Vec<GraphNode>> {
-        let sql = if filter.trusted_only {
-            format!(
-                "SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE trust_lane = 'trusted'
-                 ORDER BY last_accessed_at DESC LIMIT $1"
-            )
+        let mut conditions: Vec<&str> = Vec::new();
+        if filter.trusted_only {
+            conditions.push("trust_lane = 'trusted'");
+        }
+        if filter.source.is_some() {
+            conditions.push("source = $2");
+        }
+        if filter.exclude_source.is_some() {
+            // $2 when no source match; $3 when both present — bind order below.
+            conditions.push(if filter.source.is_some() {
+                "source != $3"
+            } else {
+                "source != $2"
+            });
+        }
+        let where_sql = if conditions.is_empty() {
+            String::new()
         } else {
-            format!(
-                "SELECT {ATOM_SELECT} FROM knowledge_atoms ORDER BY last_accessed_at DESC LIMIT $1"
-            )
+            format!("WHERE {}", conditions.join(" AND "))
         };
+        let sql = format!(
+            "SELECT {ATOM_SELECT} FROM knowledge_atoms {where_sql}
+             ORDER BY last_accessed_at DESC LIMIT $1"
+        );
         let fetch_cap = if tier.is_some() {
             (limit.saturating_mul(8)).max(limit).min(50_000)
         } else {
             limit.min(50_000)
         };
-        let rows = sqlx::query(&sql)
-            .bind(fetch_cap as i64)
+        let mut q = sqlx::query(&sql).bind(fetch_cap as i64);
+        if let Some(ref s) = filter.source {
+            q = q.bind(s);
+        }
+        if let Some(ref s) = filter.exclude_source {
+            q = q.bind(s);
+        }
+        let rows = q
             .fetch_all(&self.pool)
             .await
             .map_err(|e| KurultaiError::Store(format!("list_graph_nodes: {e}")))?;

@@ -31,7 +31,7 @@ export function ActivityPanel({ live, onLiveToggle }: Props) {
   }, [live]);
 
   return (
-    <aside className="panel stream-panel" aria-labelledby="stream-heading">
+    <aside className="panel chrome-panel stream-panel" aria-labelledby="stream-heading">
       <div className="panel-heading">
         <p className="eyebrow">Pulse</p>
         <h2 id="stream-heading">Memory stream</h2>
@@ -47,7 +47,7 @@ export function ActivityPanel({ live, onLiveToggle }: Props) {
       </div>
       <div id="activity-stream" className="activity-stream" aria-live="polite">
         {items.length === 0 ? (
-          <p className="empty-state">Listening for local activity…</p>
+          <p className="empty-state">Listening for activity…</p>
         ) : (
           items.map((item) => (
             <div key={item.id} className="activity-item">

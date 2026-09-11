@@ -9,8 +9,8 @@ use kurultai::error::Result;
 use kurultai::export::{export_pack, import_pack, resolve_config_file, ImportMode};
 use kurultai::logging;
 use kurultai::mcp::{
-    ensure_default_config, init_walkthrough, provision_docs, wire_agent, AgentRead, AgentTarget,
-    BrainService,
+    ensure_default_config, ensure_default_config_at, init_walkthrough, provision_docs, wire_agent,
+    AgentRead, AgentTarget, BrainService,
 };
 use kurultai::write_policy::{WriteContext, WriteTransport};
 use std::path::PathBuf;
@@ -21,7 +21,7 @@ use std::sync::Arc;
     name = "kurultai",
     version,
     about = "Assemble what you know, from wherever it lives.",
-    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>  ·  init --doctor\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
+    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>  ·  init --doctor\nAuth         kurultai login --base-url https://api-... --codename <name>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
 )]
 struct Cli {
     /// Log filter (overrides KURULTAI_LOG). Example: kurultai=trace,info
@@ -118,6 +118,11 @@ enum Commands {
         #[arg(long)]
         namespace: Option<String>,
     },
+    /// Manage multi-agent message board codenames (solo)
+    Agent {
+        #[command(subcommand)]
+        command: AgentCommands,
+    },
     /// HTTP API + Brain UI (`http://127.0.0.1:8421/ui/`) + poll/watch
     Daemon {
         /// Port for the HTTP server (`PORT` env for Railway/containers)
@@ -161,6 +166,21 @@ enum Commands {
     },
     /// Run diagnostic checks (DB, config, MCP, HTTP, embeddings, ontology, connectors)
     Doctor,
+    /// Sign in to a hosted Kurultai instance and store a long-lived agent token locally
+    Login {
+        /// Kurultai API base URL, e.g. https://api-knowledge.shippedit.dev
+        #[arg(long, short = 'u')]
+        base_url: String,
+        /// Codename this agent will use on the message board
+        #[arg(long, short = 'n')]
+        codename: String,
+        /// Do not try to open the approval page in a browser
+        #[arg(long)]
+        no_browser: bool,
+        /// Optional local account name for the keyring (default: <codename>-agent-token)
+        #[arg(long, short = 'a')]
+        account: Option<String>,
+    },
     /// Mint/revoke/list scoped access tokens for HTTP/MCP API consumers
     Admin {
         #[command(subcommand)]
@@ -172,6 +192,17 @@ enum Commands {
         #[command(subcommand)]
         command: HubCommands,
     },
+}
+
+#[derive(Subcommand)]
+enum AgentCommands {
+    /// Register a new codename and print the one-time API key.
+    Add {
+        /// Unique agent codename (e.g. "claude", "cursor", "devin")
+        codename: String,
+    },
+    /// List registered codenames. Never shows keys.
+    List,
 }
 
 #[derive(Subcommand)]
@@ -277,7 +308,10 @@ async fn main() -> Result<()> {
             index,
             doctor,
         } => {
-            let config_path = ensure_default_config()?;
+            let config_path = match cli.config.as_deref() {
+                Some(path) => ensure_default_config_at(path.to_path_buf())?,
+                None => ensure_default_config()?,
+            };
             let banner_mode = load_config_from(&config_path)
                 .map(|c| c.banner)
                 .unwrap_or(BannerMode::Auto);
@@ -503,6 +537,30 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Commands::Agent { command } => {
+            let config = load_config_with_env(cli.config.as_deref(), cli.env.as_deref())?;
+            let store = kurultai::store::open_store(&config).await?;
+            match command {
+                AgentCommands::Add { codename } => {
+                    let (id, key) = store.register_agent(&codename).await?;
+                    println!("Agent '{}' registered (id={}).", codename, id);
+                    println!();
+                    println!("  {key}");
+                    println!();
+                    println!("STORE THIS NOW — it is hashed at rest and cannot be shown again.");
+                }
+                AgentCommands::List => {
+                    let agents = store.list_agents().await?;
+                    if agents.is_empty() {
+                        println!("No agents registered.");
+                    } else {
+                        for a in agents {
+                            println!("  {} [{}] {}", a.codename, a.id, a.created_at);
+                        }
+                    }
+                }
+            }
+        }
         Commands::Daemon {
             port,
             no_poll,
@@ -618,6 +676,20 @@ async fn main() -> Result<()> {
                 }
                 println!("Deleted {deleted} / {total} atoms.");
             }
+        }
+        Commands::Login {
+            base_url,
+            codename,
+            no_browser,
+            account,
+        } => {
+            kurultai::login::run(kurultai::login::LoginOptions {
+                base_url,
+                codename,
+                no_browser,
+                account,
+            })
+            .await?;
         }
         Commands::Doctor => {
             kurultai::doctor::run(cli.env.as_deref(), cli.config.as_deref()).await?;

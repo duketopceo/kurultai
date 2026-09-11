@@ -1,6 +1,6 @@
 [package]
 name = "kurultai"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "Kurultai — a unified knowledge retrieval layer. Assemble what you know, from wherever it lives."
 authors = ["Luke Kimball <duketopceo@gmail.com>"]
@@ -24,7 +24,7 @@ serde_yaml = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # HTTP daemon (local brain API)
-axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "form", "tokio"] }
 tower = "0.5"
 tower-http = { version = "0.7", features = ["trace"] }
 rust-embed = { version = "8", features = ["mime-guess"] }
@@ -47,6 +47,7 @@ sha2 = "0.11"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
+rand = "0.8"
 anyhow = "1"
 thiserror = "2"
 
@@ -70,6 +71,7 @@ fastembed = { version = "6", optional = true }
 # Optional hub store (HUB-2). Default builds stay SQLite-only.
 sqlx = { version = "=0.8.6", optional = true, default-features = false, features = ["runtime-tokio-rustls", "postgres"] }
 pgvector = { version = "=0.4.2", optional = true, default-features = false, features = ["sqlx"] }
+jsonwebtoken = "9"
 
 [dev-dependencies]
 assert_cmd = "2"

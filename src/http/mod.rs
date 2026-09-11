@@ -7,6 +7,9 @@
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
 mod auth;
+pub mod cf_access;
+mod device_auth;
+mod hey;
 mod hub_listen;
 mod mcp;
 mod ui;
@@ -33,7 +36,7 @@ use crate::metrics::{MetricOp, MetricsRegistry, TimedObserve};
 use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
 use auth::hub_api_auth;
-use axum::extract::{Query, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -46,7 +49,7 @@ use tower_http::trace::TraceLayer;
 use uuid::Uuid;
 
 #[derive(Clone)]
-struct AppState {
+pub(crate) struct AppState {
     brain: Arc<BrainService>,
     status: Arc<DaemonStatus>,
     metrics: Arc<MetricsRegistry>,
@@ -188,8 +191,10 @@ fn router(state: AppState) -> Router {
         .route("/api/status", get(api_status))
         .route("/api/metrics", get(api_metrics))
         .route("/api/atoms", get(api_atoms))
+        .route("/api/db/{table}", get(api_db_table))
         .route("/api/graph", get(api_graph))
         .route("/api/ontology", get(api_ontology))
+        .route("/api/ontology/promote", post(api_ontology_promote))
         .route("/api/touch", post(api_touch))
         .route("/api/activity", get(api_activity))
         .route("/api/hub/activity", get(api_hub_activity))
@@ -202,7 +207,9 @@ fn router(state: AppState) -> Router {
         .route("/ask", get(ask_get).post(ask_post))
         .route("/cite", post(cite_post))
         .route("/who_knows", post(who_knows_post))
+        .merge(hey::routes())
         .merge(ui::routes())
+        .merge(device_auth::routes(state.clone()))
         .layer(middleware::from_fn_with_state(
             state.hub.clone(),
             hub_api_auth,
@@ -249,8 +256,9 @@ fn app_state(
     brain: Arc<BrainService>,
     status: Arc<DaemonStatus>,
     metrics: Arc<MetricsRegistry>,
-    hub: HubGate,
+    mut hub: HubGate,
 ) -> AppState {
+    hub.agent_store = Some(brain.store());
     AppState {
         brain,
         status,
@@ -409,6 +417,50 @@ async fn api_atoms(
         })
 }
 
+/// Read-only browse for the `/ui/db` table view — SELECT-only whitelist in
+/// `store.db_rows_sync`; there is no write path behind this endpoint.
+async fn api_db_table(
+    State(state): State<AppState>,
+    Path(table): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_db_table", request_id=%request_id, table=%table);
+    state.status.touch_client_activity();
+    let sort = params.get("sort").cloned().unwrap_or_default();
+    let desc = params.get("dir").map(|d| d == "desc").unwrap_or(false);
+    let browse = crate::store::DbBrowse {
+        table: table.clone(),
+        sort,
+        desc,
+        q: params.get("q").cloned(),
+        lane: params.get("lane").cloned(),
+        tier: params.get("tier").cloned(),
+        limit: params
+            .get("limit")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(100),
+        offset: params
+            .get("offset")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0),
+    };
+    match state.brain.store().db_rows(&browse).await {
+        Ok(rows) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "request_id": &request_id,
+            "table": table,
+            "count": rows.len(),
+            "rows": rows,
+        }))),
+        Err(e) => Err(json_error(
+            StatusCode::BAD_REQUEST,
+            e.to_string(),
+            &request_id,
+        )),
+    }
+}
+
 async fn api_ontology(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
@@ -444,6 +496,83 @@ async fn api_ontology(
     })))
 }
 
+#[derive(Debug, Deserialize)]
+struct OntologyPromoteBody {
+    atom_id: String,
+    class_id: String,
+}
+
+/// Atom → ontology instance + `instance_of` (does not change trust_lane).
+/// Distinct from [`api_promote`] (quarantine → trusted).
+async fn api_ontology_promote(
+    State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
+    Json(body): Json<OntologyPromoteBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_ontology_promote", request_id=%request_id);
+    state.status.touch_client_activity();
+    let atom_id = body.atom_id.trim();
+    let class_id = body.class_id.trim();
+    if atom_id.is_empty() || class_id.is_empty() {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "atom_id and class_id are required",
+            &request_id,
+        ));
+    }
+    let actor = http_actor(&principal);
+    match crate::ontology::promote_atom_to_entity(
+        state.brain.store().as_ref(),
+        atom_id,
+        class_id,
+        &actor,
+    )
+    .await
+    {
+        Ok(entity) => {
+            #[cfg(feature = "postgres")]
+            log_hub_write(
+                &state,
+                &principal,
+                "ontology_promote",
+                "http",
+                Some(class_id),
+                Some(atom_id),
+            )
+            .await;
+            Ok(Json(serde_json::json!({
+                "ok": true,
+                "request_id": &request_id,
+                "entity_id": entity.id,
+                "atom_id": entity.atom_id,
+                "class_id": class_id,
+                "actor": actor,
+            })))
+        }
+        Err(e) => {
+            let status = match &e {
+                KurultaiError::Store(msg)
+                    if msg.contains("ontology_promote")
+                        && msg.contains("atom")
+                        && msg.contains("not found") =>
+                {
+                    StatusCode::NOT_FOUND
+                }
+                KurultaiError::Store(msg)
+                    if msg.contains("ontology_promote")
+                        && msg.contains("class")
+                        && msg.contains("not found") =>
+                {
+                    StatusCode::BAD_REQUEST
+                }
+                _ => StatusCode::BAD_REQUEST,
+            };
+            Err(json_error(status, e.to_string(), &request_id))
+        }
+    }
+}
+
 async fn api_graph(
     State(state): State<AppState>,
     Query(params): Query<std::collections::HashMap<String, String>>,
@@ -469,9 +598,17 @@ async fn api_graph(
         .get("include_quarantine")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
+    let source = params
+        .get("source")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let exclude_source = params
+        .get("exclude_source")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
     match state
         .brain
-        .list_graph_nodes(tier, limit, include_quarantine)
+        .list_graph_nodes(tier, limit, include_quarantine, source, exclude_source)
         .await
     {
         Ok(nodes) => {
@@ -481,6 +618,8 @@ async fn api_graph(
                 "ok": true,
                 "request_id": &request_id,
                 "tier": tier.map(|t| t.as_str()),
+                "source": source,
+                "exclude_source": exclude_source,
                 "count": count,
                 "nodes": nodes,
             })))
@@ -1292,6 +1431,77 @@ mod tests {
             .unwrap();
         let entries: Vec<WhoKnowsEntry> = serde_json::from_slice(&bytes).unwrap();
         assert!(!entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn api_db_table_browse_and_rejects_unknown() {
+        let (app, _db_dir) = fixture_brain_app().await;
+
+        // atoms: happy path — 200 + row shape
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/atoms?limit=5")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["table"], "atoms");
+        let rows = body["rows"].as_array().unwrap();
+        assert!(!rows.is_empty());
+        assert!(rows[0].get("id").is_some() && rows[0].get("title").is_some());
+
+        // atoms: filter + sort params are accepted
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/atoms?sort=title&dir=asc&q=test&limit=10")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // links: derived shared-tag view — 200
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/links?limit=5")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // unknown table → 400, no SQL error leakage shape
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/nope")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(body["error"].as_str().unwrap().contains("unknown db table"));
     }
 
     #[tokio::test]
@@ -2314,6 +2524,8 @@ mod tests {
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },
@@ -2365,6 +2577,8 @@ mod tests {
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },
@@ -2392,6 +2606,8 @@ mod tests {
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },

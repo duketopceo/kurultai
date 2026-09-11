@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src
 parent: INDEX.md
-updated: 2026-08-31
-version: 2
+updated: 2026-09-06
+version: 4
 ---
 
 # `src`
@@ -46,9 +46,10 @@ version: 2
 | [`error.rs`](error.rs) | KurultaiError and Result | — | `src/app/context.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`features.rs`](features.rs) | Versioned feature flags (fts, brain_ui, mcp_http, hub) | — | — | 2026-08-29 | 2 | 2026-08-29 hub summary names HUB-3 transport · 2026-08-16 indexed (v1 seed) |
 | [`hashutil.rs`](hashutil.rs) | Content hashing for incremental index skip | — | `src/connectors/dayflow.rs` · `src/connectors/github.rs` · `src/connectors/pond.rs` · `src/http/auth.rs` · `src/http/ingest.rs` | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`lib.rs`](lib.rs) | Crate root: module graph and public error/env re-exports | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`lib.rs`](lib.rs) | Crate root: module graph and public error/env re-exports | — | — | 2026-09-06 | 2 | 2026-09-06 add `login` module · 2026-08-16 indexed (v1 seed) |
 | [`logging.rs`](logging.rs) | tracing-subscriber setup | `src/environment` · `src/error` | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`main.rs`](main.rs) | CLI entry: init, index, search, ask, daemon, mcp, export | — | — | 2026-08-31 | 4 | 2026-08-31 `init --doctor` diagnostic toggle · 2026-08-31 `kurultai hub key` / `hub log` · 2026-08-29 daemon PORT · 2026-08-16 indexed |
+| [`login.rs`](login.rs) | `kurultai login` device-code flow for hosted agent tokens | `src/error` · `reqwest` · `dirs` | — | 2026-09-06 | 1 | 2026-09-06 added |
+| [`main.rs`](main.rs) | CLI entry: init, index, search, ask, daemon, mcp, login, export | — | — | 2026-09-06 | 5 | 2026-09-06 `kurultai login` subcommand · 2026-08-31 `init --doctor` diagnostic toggle · 2026-08-31 `kurultai hub key` / `hub log` · 2026-08-29 daemon PORT · 2026-08-16 indexed |
 | [`metrics.rs`](metrics.rs) | Prometheus text for GET /api/metrics | — | `src/http/mod.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`project.rs`](project.rs) | project_id namespacing for shared-store sessions (#184) | — | `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` | 2026-09-01 | 2 | 2026-09-01 HUB-5 SourceConfig default_visibility_scope helper · 2026-08-16 indexed (v1 seed) |
@@ -56,6 +57,8 @@ version: 2
 
 ## Recent
 
+- 2026-09-06 — add `login.rs` and `kurultai login` subcommand; `http/device_auth.rs` device-code endpoints; schema v14
+- 2026-09-04 — `http/`, `mcp/`, `ontology/`: message board REST, hey_* MCP tools, schema v12 sync, HubGate fixture updates
 - 2026-09-01 — `types.rs`: HUB-5 `SourceConfig::default_visibility_scope` helper (personal/team/company)
 - 2026-08-31 — `main.rs`: `init --doctor` diagnostic toggle reuses `doctor` spine
 - 2026-08-31 — review fixes: auth DB 500s, reason length, team atom validation, shared hub DDL

@@ -56,18 +56,31 @@ export function normalizeGraphNode(node: GraphNode): Atom {
   };
 }
 
+import { authHeaders, emitTokenInvalid } from './auth';
+
 const dbg = (...args: unknown[]) => console.debug('[kurultai:api]', ...args);
+
+function getAuthHeaders(init?: HeadersInit): HeadersInit {
+  return authHeaders(init);
+}
+
+function maybeUnauthorized(status: number): void {
+  if (status === 401 || status === 403) {
+    emitTokenInvalid('unauthorized');
+  }
+}
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   dbg('GET', path);
   const t0 = performance.now();
   const r = await fetch(path, {
     cache: 'no-store',
-    headers: { Accept: 'application/json' },
+    headers: getAuthHeaders(),
     signal,
   });
   if (!r.ok) {
     dbg('GET failed', path, r.status);
+    maybeUnauthorized(r.status);
     throw new Error(`${path} failed (${r.status})`);
   }
   const data = await r.json() as T;
@@ -79,14 +92,61 @@ export async function fetchStatus(signal?: AbortSignal): Promise<StatusResponse>
   return getJson<StatusResponse>('/api/status', signal);
 }
 
+export type DbRow = Record<string, unknown>;
+export type DbTableResponse = { ok: boolean; table: string; count: number; rows: DbRow[] };
+
+/** Read-only /ui/db browse — server-side whitelist (atoms, links); SELECT only. */
+export async function fetchDbTable(
+  table: 'atoms' | 'links',
+  opts: {
+    sort?: string; dir?: 'asc' | 'desc'; q?: string;
+    lane?: 'trusted' | 'quarantine'; tier?: 'hot' | 'warm' | 'cold';
+    limit?: number; offset?: number;
+  },
+  signal?: AbortSignal,
+): Promise<DbTableResponse> {
+  const p = new URLSearchParams();
+  if (opts.sort) p.set('sort', opts.sort);
+  if (opts.dir) p.set('dir', opts.dir);
+  if (opts.q) p.set('q', opts.q);
+  if (opts.lane) p.set('lane', opts.lane);
+  if (opts.tier) p.set('tier', opts.tier);
+  p.set('limit', String(opts.limit ?? 100));
+  p.set('offset', String(opts.offset ?? 0));
+  return getJson<DbTableResponse>(`/api/db/${table}?${p.toString()}`, signal);
+}
+
 export async function fetchAtoms(limit: number, signal?: AbortSignal): Promise<Atom[]> {
   const data = await getJson<ApiAtomResult[]>(`/api/atoms?limit=${limit}`, signal);
   if (!Array.isArray(data)) return [];
   return data.map(normalizeAtom);
 }
 
-export async function fetchGraph(signal?: AbortSignal): Promise<Atom[]> {
-  const data = await getJson<{ nodes?: GraphNode[]; hot?: GraphNode[]; warm?: GraphNode[]; cold?: GraphNode[] }>('/api/graph', signal);
+export type GraphQuery = {
+  tier?: 'hot' | 'warm' | 'cold';
+  limit?: number;
+  /** Exact source match (e.g. `repos` for the Repos strip). */
+  source?: string;
+  /** Drop one source from results (e.g. `repos` for the cortex). */
+  excludeSource?: string;
+};
+
+export async function fetchGraph(
+  query?: GraphQuery,
+  signal?: AbortSignal,
+): Promise<Atom[]> {
+  const params = new URLSearchParams();
+  if (query?.tier) params.set('tier', query.tier);
+  if (query?.limit !== undefined) params.set('limit', String(query.limit));
+  if (query?.source) params.set('source', query.source);
+  if (query?.excludeSource) params.set('exclude_source', query.excludeSource);
+  const qs = params.toString();
+  const data = await getJson<{
+    nodes?: GraphNode[];
+    hot?: GraphNode[];
+    warm?: GraphNode[];
+    cold?: GraphNode[];
+  }>(`/api/graph${qs ? `?${qs}` : ''}`, signal);
   const nodes: GraphNode[] = data.nodes ?? [
     ...(data.hot ?? []),
     ...(data.warm ?? []),
@@ -109,6 +169,33 @@ export async function fetchOntology(signal?: AbortSignal): Promise<OntologyRespo
   };
 }
 
+export type OntologyPromoteResult = {
+  ok: boolean;
+  entity_id: string;
+  atom_id?: string | null;
+  class_id: string;
+};
+
+/** Atom → ontology instance (not trust-lane promote). */
+export async function promoteAtomToOntology(
+  atomId: string,
+  classId: string,
+  signal?: AbortSignal,
+): Promise<OntologyPromoteResult> {
+  const r = await fetch('/api/ontology/promote', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ atom_id: atomId, class_id: classId }),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `ontology promote failed (${r.status})`);
+  }
+  return r.json() as Promise<OntologyPromoteResult>;
+}
+
 export async function searchAtoms(query: string, signal?: AbortSignal): Promise<Atom[]> {
   const data = await getJson<ApiAtomResult[]>(`/api/search?q=${encodeURIComponent(query)}&limit=20`, signal);
   if (!Array.isArray(data)) return [];
@@ -118,11 +205,14 @@ export async function searchAtoms(query: string, signal?: AbortSignal): Promise<
 export async function askBrain(question: string, signal?: AbortSignal): Promise<string> {
   const r = await fetch('/api/ask', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ question }),
     signal,
   });
-  if (!r.ok) throw new Error(`ask failed (${r.status})`);
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    throw new Error(`ask failed (${r.status})`);
+  }
   const data = await r.json();
   return data.answer ?? data.text ?? JSON.stringify(data);
 }
@@ -130,14 +220,136 @@ export async function askBrain(question: string, signal?: AbortSignal): Promise<
 export async function touchAtom(atomId: string): Promise<Atom | null> {
   const r = await fetch('/api/touch', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ atom_id: atomId }),
   });
-  if (!r.ok) return null;
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    return null;
+  }
   const data = await r.json();
   return normalizeAtom(data);
 }
 
 export async function openFile(file: string): Promise<void> {
-  await fetch(`/api/open?file=${encodeURIComponent(file)}`);
+  await fetch(`/api/open?file=${encodeURIComponent(file)}`, {
+    headers: getAuthHeaders(),
+  });
 }
+
+export type HeyThread = {
+  id: string;
+  name: string;
+  parent_thread_id?: string | null;
+  turn_cap?: number;
+  turns_used?: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type HeyMessage = {
+  id: string;
+  thread_id: string;
+  agent_id: string;
+  agent_codename?: string;
+  parent_id?: string | null;
+  kind: string;
+  content: string;
+  request_reply?: boolean;
+  turns_consumed?: number;
+  created_at: string;
+  repo?: string | null;
+  instance_id?: string | null;
+};
+
+export type HeyPresence = {
+  agent_id: string;
+  agent_codename: string;
+  instance_id?: string | null;
+  repo: string;
+  message_id: string;
+  created_at: string;
+  content_preview: string;
+};
+
+export async function fetchHeyThreads(limit = 20, signal?: AbortSignal): Promise<HeyThread[]> {
+  const data = await getJson<HeyThread[]>(`/api/hey/threads?limit=${limit}`, signal);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchHeyMessages(
+  thread: string,
+  limit = 50,
+  signal?: AbortSignal,
+): Promise<HeyMessage[]> {
+  const data = await getJson<HeyMessage[]>(
+    `/api/hey/threads/${encodeURIComponent(thread)}/messages?limit=${limit}`,
+    signal,
+  );
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchHeyPresence(limit = 50, signal?: AbortSignal): Promise<HeyPresence[]> {
+  const data = await getJson<HeyPresence[]>(`/api/hey/presence?limit=${limit}`, signal);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchHeyUnread(
+  limit = 50,
+  since?: string,
+  signal?: AbortSignal,
+): Promise<HeyMessage[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (since) params.set('since', since);
+  const data = await getJson<HeyMessage[]>(`/api/hey/unread?${params}`, signal);
+  return Array.isArray(data) ? data : [];
+}
+
+export type HeyPostOptions = {
+  parent_id?: string;
+  request_reply?: boolean;
+  thread_name?: string;
+  repo?: string;
+  instance_id?: string;
+};
+
+export async function postHeyMessage(
+  thread: string,
+  content: string,
+  opts: HeyPostOptions = {},
+  signal?: AbortSignal,
+): Promise<HeyMessage> {
+  const r = await fetch(`/api/hey/threads/${encodeURIComponent(thread)}/messages`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ content, ...opts }),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `hey post failed (${r.status})`);
+  }
+  return r.json() as Promise<HeyMessage>;
+}
+
+export async function reactHeyMessage(
+  messageId: string,
+  emoji: string,
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<HeyMessage> {
+  const r = await fetch(`/api/hey/messages/${encodeURIComponent(messageId)}/react`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ emoji, thread_id: threadId }),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `hey react failed (${r.status})`);
+  }
+  return r.json() as Promise<HeyMessage>;
+}
+

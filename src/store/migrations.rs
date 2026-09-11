@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 10;
+pub const CURRENT_SCHEMA_VERSION: i32 = 14;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -145,6 +145,73 @@ INSERT OR IGNORE INTO ontology_links (id, from_id, to_id, rel, confidence, statu
     ('link:decision-is-a-memory', 'class:decision', 'class:memory', 'is_a', 1.0, 'approved', 'system'),
     ('link:person-is-a-memory', 'class:person', 'class:memory', 'is_a', 1.0, 'approved', 'system'),
     ('link:system-is-a-memory', 'class:system', 'class:memory', 'is_a', 1.0, 'approved', 'system');
+"#;
+
+const MIGRATION_011: &str = r#"
+CREATE TABLE IF NOT EXISTS agents (
+    id TEXT PRIMARY KEY,
+    codename TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    key_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_agents_key_hash ON agents(key_hash);
+"#;
+
+const MIGRATION_012: &str = r#"
+CREATE TABLE IF NOT EXISTS threads (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    parent_thread_id TEXT,
+    turn_cap INTEGER NOT NULL DEFAULT 5,
+    turns_used INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (parent_thread_id) REFERENCES threads(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_threads_name ON threads(name);
+CREATE INDEX IF NOT EXISTS idx_threads_parent ON threads(parent_thread_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    parent_id TEXT,
+    kind TEXT NOT NULL DEFAULT 'message',
+    content TEXT NOT NULL,
+    request_reply INTEGER NOT NULL DEFAULT 0,
+    turns_consumed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES messages(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
+CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages(parent_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
+"#;
+
+const MIGRATION_014: &str = r#"
+CREATE TABLE IF NOT EXISTS device_flows (
+    id TEXT PRIMARY KEY,
+    device_code TEXT NOT NULL UNIQUE,
+    user_code TEXT NOT NULL UNIQUE,
+    codename TEXT NOT NULL DEFAULT 'anonymous',
+    client_id TEXT NOT NULL DEFAULT 'kurultai-cli',
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    approved_at TEXT,
+    approved_by TEXT,
+    agent_id TEXT,
+    token_hash TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_device_flows_device_code ON device_flows(device_code);
+CREATE INDEX IF NOT EXISTS idx_device_flows_user_code ON device_flows(user_code);
+CREATE INDEX IF NOT EXISTS idx_device_flows_status_expires ON device_flows(status, expires_at);
 "#;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
@@ -353,6 +420,35 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         )?;
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [10])
             .map_err(|e| KurultaiError::Store(format!("migration 010 record failed: {e}")))?;
+    }
+
+    if current < 11 {
+        conn.execute_batch(MIGRATION_011)
+            .map_err(|e| KurultaiError::Store(format!("migration 011 failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [11])
+            .map_err(|e| KurultaiError::Store(format!("migration 011 record failed: {e}")))?;
+    }
+
+    if current < 12 {
+        conn.execute_batch(MIGRATION_012)
+            .map_err(|e| KurultaiError::Store(format!("migration 012 failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [12])
+            .map_err(|e| KurultaiError::Store(format!("migration 012 record failed: {e}")))?;
+    }
+
+    if current < 13 {
+        // Hey WIP claims: which repo an agent instance is working on.
+        add_column_if_missing(conn, "messages", "repo", "TEXT")?;
+        add_column_if_missing(conn, "messages", "instance_id", "TEXT")?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [13])
+            .map_err(|e| KurultaiError::Store(format!("migration 013 record failed: {e}")))?;
+    }
+
+    if current < 14 {
+        conn.execute_batch(MIGRATION_014)
+            .map_err(|e| KurultaiError::Store(format!("migration 014 failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [14])
+            .map_err(|e| KurultaiError::Store(format!("migration 014 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");

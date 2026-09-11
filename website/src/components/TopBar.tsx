@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { UI_VERSION } from '../version';
+import { useAuthMode } from '../auth';
+import { AccessSettingsButton } from './HumanAccess';
 
 interface Props {
   daemonOk: boolean;
@@ -14,6 +16,7 @@ function initialTheme(): string {
 
 export function TopBar({ daemonOk, daemonVersion }: Props) {
   const [theme, setTheme] = useState(initialTheme);
+  const authMode = useAuthMode();
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -37,13 +40,14 @@ export function TopBar({ daemonOk, daemonVersion }: Props) {
           </svg>
         </span>
         <span>KURULTAI</span>
-        <small>LOCAL BRAIN</small>
+        <small>BRAIN</small>
         <small className="version-mark" title="Embedded UI bundle version">ui {UI_VERSION}</small>
       </a>
       <nav className="topbar-nav" aria-label="Site navigation">
         <a href="/ui/index.html">Home</a>
         <a href="#/">Brain Explorer</a>
         <a href="#/repos">Repos <span className="beta-badge">β</span></a>
+        <a href="#/db">Store <span className="beta-badge">β</span></a>
       </nav>
       <div className="topbar-status" aria-live="polite">
         <span className="status-dot" style={{ background: daemonOk ? 'var(--electric-dim)' : 'var(--danger)' }} />
@@ -53,6 +57,7 @@ export function TopBar({ daemonOk, daemonVersion }: Props) {
             : 'connecting'}
         </span>
       </div>
+      <AccessSettingsButton mode={authMode} onChanged={() => { /* Root listens for auth-changed */ }} />
       <button
         id="theme-toggle"
         className="icon-button"
