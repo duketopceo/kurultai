@@ -542,10 +542,14 @@ fn resolve_kurultai_bin() -> Result<String> {
 
 /// Ensure a default config.toml exists matching the Rust `FileConfig` shape.
 pub fn ensure_default_config() -> Result<PathBuf> {
+    ensure_default_config_at(crate::config::config_path()?)
+}
+
+/// Same as [`ensure_default_config`] but at an explicit path (`--config` flag).
+pub fn ensure_default_config_at(path: PathBuf) -> Result<PathBuf> {
     use std::fs::OpenOptions;
     use std::io::Write;
 
-    let path = crate::config::config_path()?;
     ensure_parent_dir(&path)?;
     match OpenOptions::new().write(true).create_new(true).open(&path) {
         Ok(mut file) => {
@@ -640,6 +644,19 @@ custom = "keep-me"
             parsed["sources"]["notes"]["custom"].as_str(),
             Some("keep-me")
         );
+    }
+
+    #[test]
+    fn ensure_default_config_at_honors_explicit_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("nested").join("config.toml");
+        let written = ensure_default_config_at(cfg.clone()).unwrap();
+        assert_eq!(written, cfg);
+        assert!(cfg.exists());
+        // Second call keeps an existing config untouched.
+        fs::write(&cfg, "environment = \"dev\"\n").unwrap();
+        ensure_default_config_at(cfg.clone()).unwrap();
+        assert_eq!(fs::read_to_string(&cfg).unwrap(), "environment = \"dev\"\n");
     }
 
     #[test]

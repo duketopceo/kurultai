@@ -25,7 +25,8 @@ pub mod server;
 
 pub use brain::BrainService;
 pub use init::{
-    ensure_default_config, init_walkthrough, provision_docs, wire_agent, AgentTarget, DocsProvision,
+    ensure_default_config, ensure_default_config_at, init_walkthrough, provision_docs, wire_agent,
+    AgentTarget, DocsProvision,
 };
 pub use interface::{AgentRead, AgentWrite};
 pub use server::{handle_message, handle_message_with, run_stdio, run_stdio_with, ToolSurface};
