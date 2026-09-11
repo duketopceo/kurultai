@@ -294,3 +294,62 @@ export async function fetchHeyPresence(limit = 50, signal?: AbortSignal): Promis
   return Array.isArray(data) ? data : [];
 }
 
+export async function fetchHeyUnread(
+  limit = 50,
+  since?: string,
+  signal?: AbortSignal,
+): Promise<HeyMessage[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (since) params.set('since', since);
+  const data = await getJson<HeyMessage[]>(`/api/hey/unread?${params}`, signal);
+  return Array.isArray(data) ? data : [];
+}
+
+export type HeyPostOptions = {
+  parent_id?: string;
+  request_reply?: boolean;
+  thread_name?: string;
+  repo?: string;
+  instance_id?: string;
+};
+
+export async function postHeyMessage(
+  thread: string,
+  content: string,
+  opts: HeyPostOptions = {},
+  signal?: AbortSignal,
+): Promise<HeyMessage> {
+  const r = await fetch(`/api/hey/threads/${encodeURIComponent(thread)}/messages`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ content, ...opts }),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `hey post failed (${r.status})`);
+  }
+  return r.json() as Promise<HeyMessage>;
+}
+
+export async function reactHeyMessage(
+  messageId: string,
+  emoji: string,
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<HeyMessage> {
+  const r = await fetch(`/api/hey/messages/${encodeURIComponent(messageId)}/react`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ emoji, thread_id: threadId }),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `hey react failed (${r.status})`);
+  }
+  return r.json() as Promise<HeyMessage>;
+}
+

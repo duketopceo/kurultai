@@ -61,6 +61,7 @@ test('tickFdg keeps nodes inside a spherical SDF', () => {
   for (const node of nodes) {
     const r2 = node.x * node.x + node.y * node.y + node.z * node.z;
     assert.ok(r2 <= 1.05 * 1.05, `node ${node.id} r=${Math.sqrt(r2)}`);
+    assert.ok(sampleSdf(sdf, node.x, node.y, node.z) <= 1e-2, `node ${node.id} still exterior`);
   }
 });
 
@@ -85,6 +86,27 @@ test('tickFdg hard-clamps escapers inside the SDF even with hullK=0', () => {
       `node ${node.id} escaped: d=${sampleSdf(sdf, node.x, node.y, node.z)}`,
     );
   }
+});
+
+test('hard project is a no-op for interior nodes and null SDF', () => {
+  const sdf = makeSphereSdf(1, 24);
+  // n>=2 avoids the single-node origin snap in tickFdg.
+  const nodes: FdgNode[] = [
+    { id: 'in', x: 0.1, y: 0, z: 0, vx: 0, vy: 0, vz: 0, tags: [] },
+    { id: 'in2', x: -0.1, y: 0, z: 0, vx: 0, vy: 0, vz: 0, tags: [] },
+  ];
+  const before = { x: nodes[0].x, y: nodes[0].y, z: nodes[0].z };
+  tickFdg(nodes, [], sdf, { ...DEFAULT_FDG_PARAMS, hullK: 0, repulsion: 0, springK: 0, centerK: 0, damping: 0, tagK: 0 });
+  assert.equal(nodes[0].x, before.x);
+  assert.equal(nodes[0].y, before.y);
+  assert.equal(nodes[0].z, before.z);
+
+  const exterior: FdgNode[] = [
+    { id: 'out', x: 2, y: 0, z: 0, vx: 0, vy: 0, vz: 0, tags: [] },
+    { id: 'out2', x: -2, y: 0, z: 0, vx: 0, vy: 0, vz: 0, tags: [] },
+  ];
+  tickFdg(exterior, [], null, { ...DEFAULT_FDG_PARAMS, hullK: 0, repulsion: 0, springK: 0, centerK: 0, damping: 0, tagK: 0 });
+  assert.equal(exterior[0].x, 2);
 });
 
 test('tag attractors separate two unlinked groups vs no-tagK control', () => {
