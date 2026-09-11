@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src
 parent: website/INDEX.md
-updated: 2026-09-05
-version: 4
+updated: 2026-09-11
+version: 5
 ---
 
 # `website/src`
@@ -31,7 +31,7 @@ version: 4
 | [`state.ts`](state.ts) | App state | `website/src/brain/layout/mode` · `website/src/types` | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`styles.css`](styles.css) | Dashboard CSS (black/white/purple) | — | — | 2026-09-04 | 2 | 2026-09-04 human login + access panel styles · 2026-08-16 indexed (v1 seed) |
 | [`types.ts`](types.ts) | TS types for atoms/graph/ontology | — | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`version.ts`](version.ts) | UI version string | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`version.ts`](version.ts) | UI version string | — | — | 2026-09-11 | 2 | 2026-09-11 bump to 0.6.0 · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
