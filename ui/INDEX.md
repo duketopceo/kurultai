@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: ui
 parent: INDEX.md
-updated: 2026-09-06
-version: 4
+updated: 2026-09-11
+version: 5
 ---
 
 # `ui`
@@ -27,7 +27,7 @@ _None._
 |------|------|-------|---------|-------|-----|-----------|
 | [`README.md`](README.md) | Built UI surface notes | — | — | 2026-09-04 | 2 | 2026-09-04 clarify source is website/ and assets are built · 2026-08-16 indexed (v1 seed) |
 | [`favicon.svg`](favicon.svg) | Purple neuron tab icon (static, hand-maintained — not in `website/public/` because Vite copies it verbatim into `ui/`) | — | `ui/brain.html` | 2026-09-07 | 1 | 2026-09-07 added favicon |
-| [`brain.html`](brain.html) | Embedded brain HTML (built) | `website/` source · `website/brain.html` | `src/http/mod.rs` · `src/mcp/brain.rs` · `src/query/context.rs` · `src/query/hybrid.rs` | 2026-09-06 | 4 | 2026-09-05 rebuild with tiered graph fetch · 2026-09-04 rebuild with token gate · 2026-08-16 indexed (v1 seed) |
+| [`brain.html`](brain.html) | Embedded brain HTML (built) | `website/` source · `website/brain.html` | `src/http/mod.rs` · `src/mcp/brain.rs` · `src/query/context.rs` · `src/query/hybrid.rs` | 2026-09-11 | 5 | 2026-09-11 rebuild for v0.6.0 (chatboard + label LOD + ontology tints + version) · 2026-09-05 rebuild with tiered graph fetch · 2026-09-04 rebuild with token gate · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
