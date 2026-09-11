@@ -21,6 +21,7 @@ version: 2
 |------|------|-------|---------|-------|-----|-----------|
 | [`audit-agent-index.py`](audit-agent-index.py) | CI audit: INDEX.md coverage vs git ls-files | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`audit-ui.py`](audit-ui.py) | Audit built `ui/` for stale/dead assets and outdated deps | — | `website/` · `ui/` | 2026-09-04 | 1 | 2026-09-04 add dead-code/old-version UI audit · 2026-08-16 indexed (v1 seed) |
+| [`recall-harness.py`](recall-harness.py) | Randomized recall/search load + correctness suite (volume, deep, same/mixed-path concurrency, failover, p50/95/99) | `/api/search` · `/api/recall` · `/api/atoms` | — | 2026-09-08 | 1 | 2026-09-08 added |
 | [`build-ui.sh`](build-ui.sh) | website/ → ui/ production copy for rust-embed | — | `website/` · `ui/` | 2026-09-04 | 2 | 2026-09-04 prune legacy files and stale hashed bundles before rebuild · 2026-08-16 indexed (v1 seed) |
 | [`install.ps1`](install.ps1) | Windows installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`install.sh`](install.sh) | Unix installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -30,6 +31,8 @@ version: 2
 | [`phase-5-closeout.sh`](phase-5-closeout.sh) | Phase 5 closeout helper | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
+
+- 2026-09-08 — `recall-harness.py`: randomized recall suite — shallow/deep queries from live corpus, volume, same-path + mixed-path concurrency, correctness probes, failover timing; console summary + `--json` report
 
 - 2026-09-04 — add `audit-ui.py`; update `build-ui.sh` to prune stale assets
 - 2026-08-16 — `audit-agent-index.py` coverage check for CI

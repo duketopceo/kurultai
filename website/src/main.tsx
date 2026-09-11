@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { App } from './App';
 import { RepoBrainPage } from './components/RepoBrain';
+import { DbPage } from './components/DbView';
 import { HumanLoginGate } from './components/HumanAccess';
 import {
   AUTH_CHANGED_EVENT,
@@ -26,6 +27,7 @@ function Router() {
   }, []);
 
   if (hash.startsWith('#/repo')) return <RepoBrainPage />;
+  if (hash.startsWith('#/db')) return <DbPage />;
   return <App />;
 }
 

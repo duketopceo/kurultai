@@ -36,7 +36,7 @@ use crate::metrics::{MetricOp, MetricsRegistry, TimedObserve};
 use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
 use auth::hub_api_auth;
-use axum::extract::{Query, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -191,6 +191,7 @@ fn router(state: AppState) -> Router {
         .route("/api/status", get(api_status))
         .route("/api/metrics", get(api_metrics))
         .route("/api/atoms", get(api_atoms))
+        .route("/api/db/{table}", get(api_db_table))
         .route("/api/graph", get(api_graph))
         .route("/api/ontology", get(api_ontology))
         .route("/api/ontology/promote", post(api_ontology_promote))
@@ -414,6 +415,50 @@ async fn api_atoms(
                 &request_id,
             )
         })
+}
+
+/// Read-only browse for the `/ui/db` table view — SELECT-only whitelist in
+/// `store.db_rows_sync`; there is no write path behind this endpoint.
+async fn api_db_table(
+    State(state): State<AppState>,
+    Path(table): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_db_table", request_id=%request_id, table=%table);
+    state.status.touch_client_activity();
+    let sort = params.get("sort").cloned().unwrap_or_default();
+    let desc = params.get("dir").map(|d| d == "desc").unwrap_or(false);
+    let browse = crate::store::DbBrowse {
+        table: table.clone(),
+        sort,
+        desc,
+        q: params.get("q").cloned(),
+        lane: params.get("lane").cloned(),
+        tier: params.get("tier").cloned(),
+        limit: params
+            .get("limit")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(100),
+        offset: params
+            .get("offset")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0),
+    };
+    match state.brain.store().db_rows(&browse).await {
+        Ok(rows) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "request_id": &request_id,
+            "table": table,
+            "count": rows.len(),
+            "rows": rows,
+        }))),
+        Err(e) => Err(json_error(
+            StatusCode::BAD_REQUEST,
+            e.to_string(),
+            &request_id,
+        )),
+    }
 }
 
 async fn api_ontology(
@@ -1386,6 +1431,77 @@ mod tests {
             .unwrap();
         let entries: Vec<WhoKnowsEntry> = serde_json::from_slice(&bytes).unwrap();
         assert!(!entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn api_db_table_browse_and_rejects_unknown() {
+        let (app, _db_dir) = fixture_brain_app().await;
+
+        // atoms: happy path — 200 + row shape
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/atoms?limit=5")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["table"], "atoms");
+        let rows = body["rows"].as_array().unwrap();
+        assert!(!rows.is_empty());
+        assert!(rows[0].get("id").is_some() && rows[0].get("title").is_some());
+
+        // atoms: filter + sort params are accepted
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/atoms?sort=title&dir=asc&q=test&limit=10")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // links: derived shared-tag view — 200
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/links?limit=5")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // unknown table → 400, no SQL error leakage shape
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/nope")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(body["error"].as_str().unwrap().contains("unknown db table"));
     }
 
     #[tokio::test]

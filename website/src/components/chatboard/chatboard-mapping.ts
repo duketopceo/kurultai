@@ -1,12 +1,17 @@
 // Shared chatboard view-model contract (identical in mapping module + components):
 export interface HeyAgentRef { codename?: string; name?: string; instance_id?: string }
-export interface ThreadVM { id: string; title: string; peerLabel: string; unread: number; updatedAtMs: number; updatedLabel: string }
-export interface MessageVM { id: string; senderLabel: string; senderKind: 'agent' | 'human' | 'system'; body: string; createdAtMs: number; timeLabel: string; reactions: Array<{ emoji: string; count: number }> }
+export interface ThreadVM { id: string; title: string; peerLabel: string; agentKey: string; unread: number; updatedAtMs: number; updatedLabel: string }
+export interface MessageVM { id: string; senderLabel: string; senderKind: 'agent' | 'human' | 'system'; body: string; createdAtMs: number; timeLabel: string; agentKey: string; reactions: Array<{ emoji: string; count: number }> }
+export interface MapThreadsOptions { nowMs?: number; unreadByThread?: ReadonlyMap<string, number> }
+export interface MapMessagesOptions { nowMs?: number; reactions?: ReadonlyMap<string, MessageVM['reactions']> }
+export type PresenceStatus = 'online' | 'away' | 'offline';
 type Fields = Record<string, unknown>;
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 const MAX_DATE_MS = 8_640_000_000_000_000;
+const PRESENCE_ONLINE_MS = 15 * MINUTE;
+const PRESENCE_AWAY_MS = 4 * HOUR;
 function fields(value: unknown): Fields {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Fields
@@ -60,44 +65,49 @@ export function identityLabel(a: HeyAgentRef | { kind: 'human' | 'system' }): st
   if (codename) return instance ? `${codename}@${instance}` : codename;
   return name || instance || 'agent';
 }
-function peerLabel(value: unknown, title: string): string {
-  if (!Array.isArray(value)) return title;
-  for (const participant of value) {
-    if (participant === null || typeof participant !== 'object' || Array.isArray(participant)) {
-      continue;
-    }
-    const peer = fields(participant);
-    const kind = senderKind(peer.kind);
-    if (kind === 'human') continue;
-    return kind === 'system' ? identityLabel({ kind }) : identityLabel(agentRef(peer));
-  }
-  return title;
-}
-function mapReactions(value: unknown): MessageVM['reactions'] {
-  const result: MessageVM['reactions'] = [];
-  if (!Array.isArray(value)) return result;
-  for (const item of value) {
-    const reaction = fields(item);
-    const emoji = typeof item === 'string' ? text(item) : text(reaction.emoji);
-    if (!emoji) continue;
-    const amount = count(reaction.count, 1);
-    let existing: MessageVM['reactions'][number] | undefined;
-    for (const entry of result) {
-      if (entry.emoji === emoji) {
-        existing = entry;
-        break;
-      }
-    }
+/** Aggregate `kind: 'reaction'` rows onto their parent message, first-seen emoji order. */
+export function buildReactionIndex(raw: unknown[]): Map<string, MessageVM['reactions']> {
+  const index = new Map<string, MessageVM['reactions']>();
+  if (!Array.isArray(raw)) return index;
+  for (const item of raw) {
+    const row = fields(item);
+    if (row.kind !== 'reaction') continue;
+    const parentId = identifier(row.parent_id);
+    const emoji = text(row.content) || text(row.emoji);
+    if (!parentId || !emoji) continue;
+    const list = index.get(parentId) ?? [];
+    const existing = list.find((entry) => entry.emoji === emoji);
     if (existing) {
-      existing.count = Math.min(Number.MAX_VALUE, existing.count + amount);
+      existing.count += 1;
     } else {
-      result.push({ emoji, count: amount });
+      list.push({ emoji, count: 1 });
+    }
+    index.set(parentId, list);
+  }
+  return index;
+}
+/** Latest activity per agent_id bucketed into online/away/offline by recency. */
+export function presenceMap(raw: unknown, nowMs?: number): Record<string, PresenceStatus> {
+  const now = clock(nowMs);
+  const out: Record<string, PresenceStatus> = {};
+  if (!Array.isArray(raw)) return out;
+  const rank: Record<PresenceStatus, number> = { offline: 0, away: 1, online: 2 };
+  for (const item of raw) {
+    const row = fields(item);
+    const agentId = identifier(row.agent_id);
+    if (!agentId) continue;
+    const at = timestamp(row.created_at);
+    const elapsed = at === undefined ? Infinity : Math.max(0, now - at);
+    const status: PresenceStatus =
+      elapsed < PRESENCE_ONLINE_MS ? 'online' : elapsed < PRESENCE_AWAY_MS ? 'away' : 'offline';
+    if (rank[status] > (rank[out[agentId]] ?? -1)) {
+      out[agentId] = status;
     }
   }
-  return result;
+  return out;
 }
-export function mapThreads(raw: unknown[], nowMs?: number): ThreadVM[] {
-  const now = clock(nowMs);
+export function mapThreads(raw: unknown[], opts?: MapThreadsOptions): ThreadVM[] {
+  const now = clock(opts?.nowMs);
   if (!Array.isArray(raw)) return [];
   return raw.map((item: unknown, index: number): ThreadVM => {
     const thread = fields(item);
@@ -107,22 +117,27 @@ export function mapThreads(raw: unknown[], nowMs?: number): ThreadVM[] {
     return {
       id,
       title,
-      peerLabel: peerLabel(thread.participants, title),
-      unread: count(thread.unread, count(thread.unread_count, 0)),
+      peerLabel: title,
+      agentKey: identifier(thread.agent_id) || identifier(thread.last_agent_id),
+      unread: count(opts?.unreadByThread?.get(id), 0),
       updatedAtMs,
       updatedLabel: relativeLabel(updatedAtMs, now)
     };
   }).sort((a, b) => b.updatedAtMs - a.updatedAtMs);
 }
-export function mapMessages(raw: unknown[], nowMs?: number): MessageVM[] {
-  const now = clock(nowMs);
+export function mapMessages(raw: unknown[], opts?: MapMessagesOptions): MessageVM[] {
+  const now = clock(opts?.nowMs);
   if (!Array.isArray(raw)) return [];
-  return raw.map((item: unknown, index: number): MessageVM => {
+  const out: MessageVM[] = [];
+  raw.forEach((item: unknown, index: number) => {
     const message = fields(item);
+    if (message.kind === 'reaction') return;
     const kind = senderKind(message.kind);
     const createdAtMs = timestamp(message.created_at) ?? 0;
-    return {
-      id: identifier(message.id) || `message-${index}`,
+    const id = identifier(message.id) || `message-${index}`;
+    const reactions = opts?.reactions?.get(id);
+    out.push({
+      id,
       senderLabel: kind === 'agent'
         ? identityLabel(agentRef(message))
         : identityLabel({ kind }),
@@ -130,7 +145,9 @@ export function mapMessages(raw: unknown[], nowMs?: number): MessageVM[] {
       body: typeof message.content === 'string' ? message.content : '',
       createdAtMs,
       timeLabel: relativeLabel(createdAtMs, now),
-      reactions: mapReactions(message.reactions)
-    };
+      agentKey: identifier(message.agent_id),
+      reactions: reactions ? [...reactions] : []
+    });
   });
+  return out;
 }

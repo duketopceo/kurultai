@@ -54,18 +54,27 @@ export function Chatboard({
     label: text(thread, 'peerLabel', 'title', 'name') || text(thread, 'id'),
     agentKey: text(thread, 'peerKey', 'agentKey', 'peerAgentKey'),
     preview: text(thread, 'preview', 'lastSnippet', 'lastMessagePreview'),
+    unread: typeof field(thread, 'unread') === 'number' ? field(thread, 'unread') as number : 0,
   }));
   const messageViews = messages.map((message, index) => {
-    const timestamp = text(message, 'createdAt', 'timestamp', 'created_at');
+    const timestamp = text(message, 'timeLabel', 'createdAt', 'timestamp', 'created_at');
     const parsedTime = Date.parse(timestamp);
+    const rawReactions = field(message, 'reactions');
     return {
       id: text(message, 'id'),
       label: text(message, 'senderLabel', 'authorLabel', 'peerLabel', 'agentLabel') || 'Agent',
       agentKey: text(message, 'agentKey', 'senderKey', 'authorKey'),
       body: text(message, 'body', 'content'),
       timestamp,
-      time: Number.isFinite(parsedTime) ? parsedTime : null,
+      time: typeof field(message, 'createdAtMs') === 'number'
+        ? field(message, 'createdAtMs') as number
+        : Number.isFinite(parsedTime) ? parsedTime : null,
       own: field(message, 'isOwn') === true,
+      reactions: Array.isArray(rawReactions)
+        ? rawReactions
+            .map((r) => ({ emoji: text(r, 'emoji'), count: typeof field(r, 'count') === 'number' ? field(r, 'count') as number : 0 }))
+            .filter((r) => r.emoji && r.count > 0)
+        : [],
       index,
     };
   }).sort((a, b) => (a.time ?? 0) - (b.time ?? 0) || a.index - b.index);
@@ -150,6 +159,9 @@ export function Chatboard({
                       <span className={`kb-presence kb-presence-${status}`} role="img" aria-label={status} title={status}>●</span>
                       <span className="kb-peer-label">{thread.label}</span>
                     </span>
+                    {thread.unread > 0 ? (
+                      <span className="kb-unread" aria-label={`${thread.unread} unread`}>{thread.unread}</span>
+                    ) : null}
                     {thread.preview ? <span className="muted kb-thread-preview">{thread.preview}</span> : null}
                   </button>
                 </li>
@@ -210,6 +222,11 @@ export function Chatboard({
                     ))}
                   </p>
                   <div className="kb-reactions" role="group" aria-label={`React to message from ${message.label}`}>
+                    {message.reactions.map((r) => (
+                      <span key={r.emoji} className="kb-reaction-count" aria-label={`${r.count} ${r.emoji}`}>
+                        {r.emoji} {r.count}
+                      </span>
+                    ))}
                     {reactions.map((reaction) => (
                       <button
                         key={reaction.emoji}

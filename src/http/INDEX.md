@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: src/http
 parent: src/INDEX.md
 updated: 2026-09-06
-version: 4
+version: 5
 ---
 
 # `src/http`
@@ -31,6 +31,7 @@ _None._
 
 ## Recent
 
+- 2026-09-08 — `GET /api/db/{table}` (atoms|links) read-only browse, whitelisted sort/filter, 500-row cap
 - 2026-09-06 — add `cf_access.rs`: verified Cloudflare Access JWT satisfies hub auth (`KURULTAI_CF_ACCESS_TEAM` + `KURULTAI_CF_ACCESS_AUDS`); `HubGate.cf_access`; bearer flow extracted to `authorize_bearer`
 - 2026-09-06 — add `device_auth.rs` device-code login endpoints; `auth.rs` exempt `/auth/*`; `mod.rs` merge auth routes
 - 2026-09-04 — add `hey.rs` message board REST; `mod.rs` HubGate agent_store fixture

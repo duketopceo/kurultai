@@ -1,22 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as api from '../api';
 import { Chatboard } from './chatboard/Chatboard';
-import { mapThreads, mapMessages } from './chatboard/chatboard-mapping';
+import {
+  buildReactionIndex,
+  mapMessages,
+  mapThreads,
+  presenceMap,
+} from './chatboard/chatboard-mapping';
 type ChatboardProps = Parameters<typeof Chatboard>[0];
-// Optional endpoints are resolved at the API boundary for older deployments.
-const endpoints: Readonly<Record<string, unknown>> = api;
-async function callEndpoint(name: string, ...args: unknown[]): Promise<unknown> {
-  const endpoint = endpoints[name];
-  if (typeof endpoint !== 'function') {
-    throw new Error('Hey endpoint unavailable');
-  }
-  return endpoint(...args);
-}
 export function HeyPanel() {
   const [threads, setThreads] = useState<api.HeyThread[]>([]);
   const [messages, setMessages] = useState<api.HeyMessage[]>([]);
-  const [presence, setPresence] = useState<unknown>([]);
-  const [unread, setUnread] = useState<unknown>({});
+  const [presence, setPresence] = useState<api.HeyPresence[]>([]);
+  const [unread, setUnread] = useState<api.HeyMessage[]>([]);
   const [activeThreadId, setActiveThreadId] = useState('hey.md');
   const [refreshVersion, setRefreshVersion] = useState(0);
   const refresh = useCallback(() => {
@@ -31,8 +27,8 @@ export function HeyPanel() {
       try {
         const [list, nextPresence, nextUnread] = await Promise.all([
           api.fetchHeyThreads(20, controller.signal),
-          callEndpoint('fetchHeyPresence').catch(() => undefined),
-          callEndpoint('fetchHeyUnread').catch(() => undefined),
+          api.fetchHeyPresence(50, controller.signal).catch(() => undefined),
+          api.fetchHeyUnread(50, undefined, controller.signal).catch(() => undefined),
         ]);
         if (controller.signal.aborted) return;
         const threadId = list.find(
@@ -66,32 +62,39 @@ export function HeyPanel() {
     setActiveThreadId(threadId);
     refresh();
   }, [activeThreadId, refresh]);
-  const onSend = useCallback(async (...args: unknown[]) => {
+  const onSend = useCallback(async (body: string) => {
     try {
-      await callEndpoint('postHeyMessage', activeThreadId, ...args);
+      await api.postHeyMessage(activeThreadId, body);
       refresh();
     } catch {
       // A failed mutation leaves the current board intact.
     }
   }, [activeThreadId, refresh]);
-  const onReact = useCallback(async (...args: unknown[]) => {
+  const onReact = useCallback(async (messageId: string, emoji: string) => {
     try {
-      await callEndpoint('reactHeyMessage', ...args);
+      await api.reactHeyMessage(messageId, emoji, activeThreadId);
       refresh();
     } catch {
       // A failed mutation leaves the current board intact.
     }
-  }, [refresh]);
-  const boardProps = {
-    threads: mapThreads(threads),
-    messages: mapMessages(messages),
-    presence,
-    unread,
+  }, [activeThreadId, refresh]);
+  const unreadByThread = new Map<string, number>();
+  for (const message of unread) {
+    unreadByThread.set(
+      message.thread_id,
+      (unreadByThread.get(message.thread_id) ?? 0) + 1,
+    );
+  }
+  const reactions = buildReactionIndex(messages);
+  const boardProps: ChatboardProps = {
+    threads: mapThreads(threads, { unreadByThread }),
+    messages: mapMessages(messages, { reactions }),
+    presence: presenceMap(presence),
     activeThreadId,
     onOpenThread,
     onSend,
     onReact,
-  } as ChatboardProps;
+  };
   return (
     <section className="panel chrome-panel hey-panel" aria-label="Agent message board">
       <header className="panel-head">
