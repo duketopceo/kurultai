@@ -22,7 +22,7 @@ version: 4
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`App.tsx`](App.tsx) | Brain dashboard shell (stats + stage + inspector) | `website/src/state` · `website/src/api` · `website/src/components/TopBar` · `website/src/components/BrainStage` · `website/src/components/CommandStrip` | — | 2026-09-05 | 2 | 2026-09-05 fetchGraph limit by load tier · 2026-09-04 token prompt + logout wiring · 2026-08-16 indexed (v1 seed) |
-| [`api.ts`](api.ts) | Fetch wrappers for daemon /api/* | `website/src/types` · `website/src/auth` | — | 2026-09-05 | 4 | 2026-09-05 tiered / limited graph query helpers · 2026-09-04 use auth module; 401 → token-invalid · 2026-08-16 indexed (v1 seed) |
+| [`api.ts`](api.ts) | Fetch wrappers for daemon /api/* | `website/src/types` · `website/src/auth` | — | 2026-09-11 | 5 | 2026-09-11 hey write fns: postHeyMessage/reactHeyMessage/fetchHeyUnread · 2026-09-05 tiered / limited graph query helpers · 2026-09-04 use auth module; 401 → token-invalid · 2026-08-16 indexed (v1 seed) |
 | [`auth.ts`](auth.ts) | Human token storage, probe open/locked, auth events | — | `website/src/main.tsx` · `website/src/api.ts` | 2026-09-04 | 1 | 2026-09-04 human access probe + settings events |
 | [`assets.d.ts`](assets.d.ts) | Asset module declarations | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`main.tsx`](main.tsx) | Vite entry; probe auth; human gate only when locked | `website/src/App` · `website/src/auth` · `website/src/components/HumanAccess` | — | 2026-09-04 | 3 | 2026-09-04 probe open vs locked; HumanLoginGate · 2026-08-16 indexed (v1 seed) |
