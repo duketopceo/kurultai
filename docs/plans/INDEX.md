@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-09-05
-version: 5
+updated: 2026-09-11
+version: 6
 ---
 
 # `docs/plans`
@@ -94,6 +94,7 @@ _None._
 
 - 2026-09-05 — added 002 Brain 0→100 showcase + A2A chatboard plan (ce-plan, Astra execution contract)
 - 2026-09-05 — brain cortex + secondary chrome product plan (1A/2A/3B)
+- 2026-09-03 — `2026-09-03-001-feat-agent-message-board-plan.md` added (requirements-only brainstorm)
 - 2026-09-01 — final stretch to v0.5.0 plan + HUB-5 ✅ (#250) + HUB-6 ✅ on queue
 - 2026-08-29 — HUB-3 LFG pin + railway-hub.md pointer on the live queue
 - 2026-08-16 — `2026-08-16-001-chore-agent-repo-index-plan.md` (this map)

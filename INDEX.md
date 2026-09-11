@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-09-05
-version: 7
+updated: 2026-09-11
+version: 8
 ---
 
 # `.`
@@ -71,6 +71,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 - 2026-09-06 — docs/plans: added 002 Brain 0→100 showcase + A2A chatboard plan (ce-plan)
 - 2026-09-05 — AGENTS.md: hosted brain + ontology promote notes; index row bump
 - 2026-09-05 — website/ui: tiered graph fetch (api.ts GraphQuery + load-tier limits) and rebuild
+- 2026-09-03 — `docs/plans/2026-09-03-001-feat-agent-message-board-plan.md` added
 - 2026-09-01 — add `.devcontainer/` dogfood setup: Dockerfile + docker-compose + INDEX, unignore for sharing
 - 2026-09-01 — track `.compound-engineering/config.local.yaml`, add `.devcontainer/` to `.gitignore`
 - 2026-09-01 — v0.5.0 Team released: GitHub tag + release created; queue + Year-1 milestones marked shipped
