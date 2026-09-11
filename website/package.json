@@ -1,6 +1,6 @@
 {
   "name": "kurultai-brain-ui-source",
-  "version": "2.0.0",
+  "version": "0.6.0",
   "private": true,
   "description": "React + Three.js brain UI source. Build outputs to ui/ for Rust embedding.",
   "type": "module",
@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test:layout": "node --experimental-strip-types --test src/brain/layout/*.test.ts"
+    "test": "node --experimental-strip-types --test src/brain/layout/*.test.ts src/brain/*.test.ts src/components/chatboard/*.test.ts src/*.test.ts"
   },
   "dependencies": {
     "react": "^19.2.8",
