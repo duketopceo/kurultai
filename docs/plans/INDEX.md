@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
 updated: 2026-09-11
-version: 5
+version: 6
 ---
 
 # `docs/plans`
@@ -20,6 +20,7 @@ _None._
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md`](2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md) | Dogfood: pond sequester + hey board MCP/REST slice + non-Brain UI | — | — | 2026-09-04 | 1 | LFG implementation-ready |
+| [`2026-09-05-002-feat-brain-first-principles-astra-plan.md`](2026-09-05-002-feat-brain-first-principles-astra-plan.md) | Brain 0→100 showcase + A2A chatboard (Astra-executed); adjacent to 001 | 2026-09-05-001 | website/src | 2026-09-05 | 1 | ce-plan implementation-ready |
 | [`2026-09-03-001-feat-agent-message-board-plan.md`](2026-09-03-001-feat-agent-message-board-plan.md) | Agent message board requirements (hey.md) — full v1; slice in 2026-09-04 plan | — | — | 2026-09-03 | 1 | recovered on dogfood branch |
 | [`2026-07-21-001-feat-search-retrieval-rrf-plan.md`](2026-07-21-001-feat-search-retrieval-rrf-plan.md) | Search Retrieval RRF Diamond - Plan | — | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-07-21-002-feat-phase2-testing-gates-plan.md`](2026-07-21-002-feat-phase2-testing-gates-plan.md) | Phase 2 Testing Work Orders - Plan | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -91,6 +92,7 @@ _None._
 
 ## Recent
 
+- 2026-09-05 — added 002 Brain 0→100 showcase + A2A chatboard plan (ce-plan, Astra execution contract)
 - 2026-09-05 — brain cortex + secondary chrome product plan (1A/2A/3B)
 - 2026-09-03 — `2026-09-03-001-feat-agent-message-board-plan.md` added (requirements-only brainstorm)
 - 2026-09-01 — final stretch to v0.5.0 plan + HUB-5 ✅ (#250) + HUB-6 ✅ on queue
