@@ -201,7 +201,7 @@ pub fn init_walkthrough(
 /// Upsert `[sources.notes]` without dropping other sources. Prefers splicing the
 /// dotted table so comments elsewhere in the file survive.
 fn upsert_notes_source(raw: &str, root_path: &str) -> Result<String> {
-    let mut value: toml::Value = raw.parse().map_err(|e: toml::de::Error| {
+    let mut value: toml::Value = toml::from_str(raw).map_err(|e: toml::de::Error| {
         KurultaiError::config(format!(
             "existing config is not valid TOML ({e}); fix it before re-running init --docs"
         ))
@@ -408,7 +408,7 @@ fn wire_codex_at(path: &Path, kurultai_bin: &str) -> Result<PathBuf> {
     ensure_parent_dir(path)?;
 
     let mut root: toml::Value = match fs::read_to_string(path) {
-        Ok(raw) => raw.parse::<toml::Value>().map_err(|e| {
+        Ok(raw) => toml::from_str::<toml::Value>(&raw).map_err(|e| {
             KurultaiError::config(format!(
                 "existing {} is not valid TOML ({e}); fix or move it before re-running init — refusing to overwrite other MCP servers",
                 path.display()
@@ -606,7 +606,7 @@ root_path = "/tmp/data"
         let out = upsert_notes_source(raw, "/tmp/docs").unwrap();
         assert!(out.contains("# keep this comment"));
         assert!(out.contains("root_path = \"/tmp/data\""));
-        let parsed: toml::Value = out.parse().unwrap();
+        let parsed: toml::Value = toml::from_str(&out).unwrap();
         assert_eq!(
             parsed["sources"]["notes"]["kind"].as_str(),
             Some("markdown")
@@ -630,7 +630,7 @@ poll_interval_secs = 90
 custom = "keep-me"
 "#;
         let out = upsert_notes_source(raw, "/new").unwrap();
-        let parsed: toml::Value = out.parse().unwrap();
+        let parsed: toml::Value = toml::from_str(&out).unwrap();
         assert_eq!(
             parsed["sources"]["notes"]["root_path"].as_str(),
             Some("/new")
@@ -680,7 +680,7 @@ custom = "keep-me"
         let cfg_raw = fs::read_to_string(&cfg).unwrap();
         assert!(cfg_raw.contains("[sources.notes]"));
         assert!(cfg_raw.contains("kind = \"markdown\""));
-        let parsed: toml::Value = cfg_raw.parse().unwrap();
+        let parsed: toml::Value = toml::from_str(&cfg_raw).unwrap();
         assert_eq!(
             parsed["sources"]["notes"]["root_path"].as_str(),
             Some(docs.to_str().unwrap())
@@ -762,7 +762,7 @@ custom = "keep-me"
 
         wire_codex_at(&path, "/bin/kurultai").unwrap();
         let raw = fs::read_to_string(&path).unwrap();
-        let root: toml::Value = raw.parse().unwrap();
+        let root: toml::Value = toml::from_str(&raw).unwrap();
         assert_eq!(root["model"].as_str(), Some("gpt-5"));
         assert_eq!(root["mcp_servers"]["other"]["command"].as_str(), Some("x"));
         assert_eq!(
@@ -773,7 +773,7 @@ custom = "keep-me"
         assert_eq!(args[0].as_str(), Some("mcp"));
 
         wire_codex_at(&path, "/opt/kurultai").unwrap();
-        let root: toml::Value = fs::read_to_string(&path).unwrap().parse().unwrap();
+        let root: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(
             root["mcp_servers"]["kurultai"]["command"].as_str(),
             Some("/opt/kurultai")
