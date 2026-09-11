@@ -10,5 +10,15 @@ kurultai daemon --port 8421
 cd website && npm install && npm run dev
 ```
 
-Edit files under `ui/`, then rebuild the daemon so `/ui` picks up changes.
-Do not add a parallel dashboard under `website/`, `web/`, or another embedded HTML string in Rust.
+Edit files under `website/src/`, then rebuild the embedded UI:
+
+```bash
+./scripts/build-ui.sh
+```
+
+This also cleans stale `ui/` hashed bundles and legacy landing-page assets so
+they cannot be served by accident. Then rebuild the daemon so `/ui` picks up
+changes.
+
+Do not add a parallel dashboard under `website/`, `web/`, or another embedded
+HTML string in Rust.

@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: ui
 parent: INDEX.md
-updated: 2026-08-16
-version: 1
+updated: 2026-09-06
+version: 4
 ---
 
 # `ui`
@@ -15,6 +15,8 @@ version: 1
 
 _None._
 
+| [`favicon.svg`](favicon.svg) | Purple neuron tab icon (static, hand-maintained) | — | `ui/brain.html` | 2026-09-07 | 1 | 2026-09-07 added favicon |
+
 ## Skip interiors
 
 - `assets/` — hashed Vite bundles; rebuild with `scripts/build-ui.sh`; do not edit by hand
@@ -23,15 +25,13 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`README.md`](README.md) | ui/ — Brain UI source (daemon `GET /ui`) | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`brain.html`](brain.html) | Embedded brain HTML (built) | — | `src/http/mod.rs` · `src/mcp/brain.rs` · `src/query/context.rs` · `src/query/hybrid.rs` | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`index.css`](index.css) | Embedded dashboard CSS (built) | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`index.html`](index.html) | Embedded dashboard HTML (built) | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`index.js`](index.js) | Embedded dashboard JS (built) | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`kurultai_logo.jpg`](kurultai_logo.jpg) | kurultai_logo.jpg | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`neural_tech_banner.jpg`](neural_tech_banner.jpg) | neural_tech_banner.jpg | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`README.md`](README.md) | Built UI surface notes | — | — | 2026-09-04 | 2 | 2026-09-04 clarify source is website/ and assets are built · 2026-08-16 indexed (v1 seed) |
+| [`favicon.svg`](favicon.svg) | Purple neuron tab icon (static, hand-maintained — not in `website/public/` because Vite copies it verbatim into `ui/`) | — | `ui/brain.html` | 2026-09-07 | 1 | 2026-09-07 added favicon |
+| [`brain.html`](brain.html) | Embedded brain HTML (built) | `website/` source · `website/brain.html` | `src/http/mod.rs` · `src/mcp/brain.rs` · `src/query/context.rs` · `src/query/hybrid.rs` | 2026-09-06 | 4 | 2026-09-05 rebuild with tiered graph fetch · 2026-09-04 rebuild with token gate · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-06 — rebuild: `favicon.svg` added (purple neuron mark), `theme-color`, hosted-neutral meta description, de-localed copy
+- 2026-09-05 — rebuild with tiered graph fetch (api.ts GraphQuery + load-tier limits)
+- 2026-09-04 — rebuild with token gate; clean legacy index.* and unused images from build
 - 2026-08-16 — indexed this folder (v1 seed)
-

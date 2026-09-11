@@ -437,6 +437,14 @@ impl SourceConfig {
             .map(|s| VisibilityScope::parse(s.trim()))
             .unwrap_or(VisibilityScope::Personal)
     }
+
+    /// `extra.default_trust_lane` = `trusted` | `quarantine`.
+    /// Missing → None (connector/gate decide). Used to sequester noisy sources at ingest.
+    pub fn default_trust_lane(&self) -> Option<TrustLane> {
+        self.extra
+            .get("default_trust_lane")
+            .map(|s| TrustLane::parse(s.trim()))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

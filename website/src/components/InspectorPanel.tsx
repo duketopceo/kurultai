@@ -1,12 +1,21 @@
 import { useEffect, useState } from 'react';
 import type { Atom, OntologyResponse } from '../types';
-import { touchAtom, openFile, fetchOntology } from '../api';
+import { touchAtom, openFile, fetchOntology, promoteAtomToOntology } from '../api';
 
 interface OntologyEdgeView {
   key: string;
   rel: string;
   other: string;
 }
+
+const CLASS_OPTIONS: { id: string; label: string }[] = [
+  { id: 'class:note', label: 'Note' },
+  { id: 'class:code', label: 'Code' },
+  { id: 'class:decision', label: 'Decision' },
+  { id: 'class:person', label: 'Person' },
+  { id: 'class:system', label: 'System' },
+  { id: 'class:memory', label: 'Memory' },
+];
 
 function approvedLinksForAtom(atomId: string, onto: OntologyResponse): OntologyEdgeView[] {
   const byId = new Map(onto.entities.map((e) => [e.id, e]));
@@ -30,9 +39,31 @@ function approvedLinksForAtom(atomId: string, onto: OntologyResponse): OntologyE
   return out;
 }
 
+function suggestClassId(atom: Atom): string {
+  const tags = atom.tags.map((t) => t.toLowerCase());
+  const src = (atom.source || '').toLowerCase();
+  if (tags.some((t) => t.includes('decision') || t === 'adr') || src.includes('decision')) {
+    return 'class:decision';
+  }
+  if (tags.some((t) => t.includes('person') || t.includes('people')) || src.includes('person')) {
+    return 'class:person';
+  }
+  if (tags.some((t) => t.includes('system') || t.includes('service')) || src.includes('system')) {
+    return 'class:system';
+  }
+  if (
+    tags.some((t) => t.includes('code') || t.includes('repo')) ||
+    /^(code|github|git|repos?)\b/i.test(src)
+  ) {
+    return 'class:code';
+  }
+  return 'class:note';
+}
+
 interface Props {
   atom: Atom | null;
   allAtoms: Atom[];
+  onOntologyChanged?: (onto: OntologyResponse) => void;
 }
 
 function buildRelationshipCount(atom: Atom, allAtoms: Atom[]): number {
@@ -78,13 +109,21 @@ function labelGradientCss(label: string): string {
   return `linear-gradient(135deg, ${hexToCss(deep)}, ${hexToCss(mid)} 55%, ${hexToCss(light)})`;
 }
 
-export function InspectorPanel({ atom, allAtoms }: Props) {
+export function InspectorPanel({ atom, allAtoms, onOntologyChanged }: Props) {
   const [enriched, setEnriched] = useState<Atom | null>(null);
   const [ontoLinks, setOntoLinks] = useState<OntologyEdgeView[]>([]);
+  const [linkedClassIds, setLinkedClassIds] = useState<string[]>([]);
+  const [classId, setClassId] = useState('class:note');
+  const [busy, setBusy] = useState(false);
+  const [promoMsg, setPromoMsg] = useState<string | null>(null);
+  const [promoErr, setPromoErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!atom) { setEnriched(null); return; }
     setEnriched(atom);
+    setClassId(suggestClassId(atom));
+    setPromoMsg(null);
+    setPromoErr(null);
     if (!atom.lean) return;
     touchAtom(atom.id).then((full) => {
       if (full) setEnriched(full);
@@ -94,23 +133,68 @@ export function InspectorPanel({ atom, allAtoms }: Props) {
   useEffect(() => {
     if (!atom) {
       setOntoLinks([]);
+      setLinkedClassIds([]);
       return;
     }
     const ac = new AbortController();
     fetchOntology(ac.signal)
       .then((onto) => {
-        if (!ac.signal.aborted) setOntoLinks(approvedLinksForAtom(atom.id, onto));
+        if (ac.signal.aborted) return;
+        setOntoLinks(approvedLinksForAtom(atom.id, onto));
+        const entId = `ent:${atom.id}`;
+        const classes = onto.links
+          .filter(
+            (l) =>
+              (!l.status || l.status === 'approved') &&
+              l.rel === 'instance_of' &&
+              (l.from_id === entId || l.from_id === atom.id),
+          )
+          .map((l) => l.to_id);
+        setLinkedClassIds(classes);
       })
       .catch(() => {
-        if (!ac.signal.aborted) setOntoLinks([]);
+        if (!ac.signal.aborted) {
+          setOntoLinks([]);
+          setLinkedClassIds([]);
+        }
       });
     return () => ac.abort();
   }, [atom]);
 
   const display = enriched ?? atom;
+  const linkedToSelected = linkedClassIds.includes(classId);
+
+  const handlePromote = async () => {
+    if (!display || linkedToSelected) return;
+    setBusy(true);
+    setPromoErr(null);
+    setPromoMsg(null);
+    try {
+      const res = await promoteAtomToOntology(display.id, classId);
+      const onto = await fetchOntology();
+      setOntoLinks(approvedLinksForAtom(display.id, onto));
+      const entId = `ent:${display.id}`;
+      setLinkedClassIds(
+        onto.links
+          .filter(
+            (l) =>
+              (!l.status || l.status === 'approved') &&
+              l.rel === 'instance_of' &&
+              (l.from_id === entId || l.from_id === display.id),
+          )
+          .map((l) => l.to_id),
+      );
+      onOntologyChanged?.(onto);
+      setPromoMsg(`Linked as ${CLASS_OPTIONS.find((c) => c.id === classId)?.label ?? classId} (${res.entity_id})`);
+    } catch (e) {
+      setPromoErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <section className="panel inspector-panel" aria-labelledby="inspector-heading">
+    <section className="panel chrome-panel inspector-panel" aria-labelledby="inspector-heading">
       <div className="panel-heading">
         <p className="eyebrow">Focus</p>
         <h2 id="inspector-heading">Node inspector</h2>
@@ -152,9 +236,36 @@ export function InspectorPanel({ atom, allAtoms }: Props) {
                 ))}
               </ul>
             )}
+            <div className="inspector-promote chrome-promote">
+              <p className="chrome-promote-label">Map into ontology</p>
+              <div className="chrome-promote-row">
+                <label className="sr-only" htmlFor="ontology-class">Class</label>
+                <select
+                  id="ontology-class"
+                  className="chrome-select"
+                  value={classId}
+                  onChange={(e) => setClassId(e.target.value)}
+                  disabled={busy}
+                >
+                  {CLASS_OPTIONS.map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="chrome-btn chrome-btn-primary"
+                  onClick={handlePromote}
+                  disabled={busy || linkedToSelected}
+                >
+                  {busy ? 'Linking…' : linkedToSelected ? 'Already linked' : 'Link to class'}
+                </button>
+              </div>
+              {promoMsg && <p className="chrome-promote-ok">{promoMsg}</p>}
+              {promoErr && <p className="chrome-promote-err" role="alert">{promoErr}</p>}
+            </div>
             {display.file && (
               <button
-                className="open-button"
+                className="open-button chrome-btn"
                 type="button"
                 onClick={() => openFile(display.file)}
               >

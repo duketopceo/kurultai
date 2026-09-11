@@ -31,7 +31,9 @@ export function isJunkLatticeName(name: string): boolean {
 }
 
 export function isCodeSource(source: string): boolean {
-  return /^(code|github|git|repo)\b/i.test(source) || /github/i.test(source);
+  // `repos` is the hosted github-connector source name (dogfood); `repo` alone
+  // must not miss the plural — `\brepo\b` does not match `repos`.
+  return /^(code|github|git|repos?)\b/i.test(source) || /github/i.test(source);
 }
 
 function looksLikeRepoSegment(seg: string): boolean {

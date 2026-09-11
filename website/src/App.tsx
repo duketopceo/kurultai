@@ -8,8 +8,8 @@ import { ActivityPanel } from './components/ActivityPanel';
 import { InspectorPanel } from './components/InspectorPanel';
 import { AskPanel } from './components/AskPanel';
 import { StatsPanel } from './components/StatsPanel';
+import { HeyPanel } from './components/HeyPanel';
 import { RepoStrip, countCodeRepos } from './components/RepoBrain';
-import { isCodeSource } from './repoLattice';
 import type { Atom, LayoutMode, LoadTier, OntologyResponse } from './types';
 import { LOAD_TIER_CAPS } from './types';
 
@@ -49,17 +49,18 @@ export function App() {
       dbg('fetchGraph start, tier:', tier);
       setLoadMsg(`Loading ${tier}…`);
       const t0 = performance.now();
-      const [all, onto] = await Promise.all([
-        fetchGraph(ac.signal),
+      const cap = LOAD_TIER_CAPS[tier];
+      // Repos dominate last_accessed order; fetch cortex without them, strip separately.
+      const [brainAtoms, repoAtoms, onto] = await Promise.all([
+        fetchGraph({ limit: cap, excludeSource: 'repos' }, ac.signal),
+        fetchGraph({ limit: 8000, source: 'repos' }, ac.signal).catch(() => [] as Atom[]),
         fetchOntology(ac.signal).catch(() => ({ ok: true, entities: [], links: [] })),
       ]);
       if (!ac.signal.aborted) setOntology(onto);
-      const brainAtoms = all.filter((a) => !isCodeSource(a.source));
-      setCodeRepos(countCodeRepos(all));
-      const cap = LOAD_TIER_CAPS[tier];
+      setCodeRepos(countCodeRepos(repoAtoms));
       const atoms = brainAtoms.slice(0, cap);
       const elapsed = (performance.now() - t0).toFixed(0);
-      dbg(`fetchGraph done: ${atoms.length}/${brainAtoms.length} brain atoms (${all.length} total) in ${elapsed}ms (tier: ${tier})`);
+      dbg(`fetchGraph done: ${atoms.length} cortex + ${repoAtoms.length} repos in ${elapsed}ms (tier: ${tier})`);
       setLoadMsg(`${atoms.length} memories · ${tier}`);
       dispatch({ type: 'SET_ATOMS', atoms, total: brainAtoms.length });
     } catch (e) {
@@ -123,12 +124,26 @@ export function App() {
   const renderCap = LOAD_TIER_CAPS[loadTier];
 
   const caption = (() => {
+    if (state.layout === 'ontology') {
+      const classes = ontology.entities.filter((e) => e.kind === 'class').length;
+      const instances = ontology.entities.filter((e) => e.kind === 'instance').length;
+      if (instances === 0) {
+        return classes > 0
+          ? 'Ontology scaffold ready — select a memory, then Promote in the inspector'
+          : 'Ontology empty — select a memory and Promote in the inspector';
+      }
+      return `${classes} classes · ${instances} instances · expand a class in ontology mode`;
+    }
     const shown = Math.min(visible.length, renderCap);
     const total = Math.max(state.atomTotal, state.atoms.length);
     if (total === 0) return '0 memories — kurultai init --docs · then index --full';
     if (total > shown) return `${shown} of ${total} memories · ${loadTier} · hover to trace`;
     return `${shown} memories · ${loadTier} · hover to trace connections`;
   })();
+
+  const handleOntologyChanged = useCallback((onto: OntologyResponse) => {
+    setOntology(onto);
+  }, []);
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>
@@ -159,15 +174,16 @@ export function App() {
           onSelectAtom={handleSelectAndFocus}
           onRandom={handleRandom}
         />
-        <section className="dashboard-grid" aria-label="Brain dashboard">
+        <section className="dashboard-grid chrome-dashboard" aria-label="Brain dashboard">
           <ActivityPanel live={live} onLiveToggle={setLive} />
-          <InspectorPanel atom={selected} allAtoms={visible} />
+          <InspectorPanel atom={selected} allAtoms={visible} onOntologyChanged={handleOntologyChanged} />
           <AskPanel />
           <StatsPanel atoms={visible} atomTotal={state.atomTotal} />
+          <HeyPanel />
         </section>
         <RepoStrip repos={codeRepos} />
       </main>
-      <footer>Kurultai runs locally. Your knowledge remains yours.</footer>
+      <footer>Kurultai — your knowledge remains yours.</footer>
     </AppContext.Provider>
   );
 }

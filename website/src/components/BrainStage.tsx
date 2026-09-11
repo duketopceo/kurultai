@@ -65,7 +65,14 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
       onError: (msg) => { dbg('BrainView error:', msg); console.error('[BrainView]', msg); },
     });
     brainRef.current = brain;
-    return () => { dbg('BrainView dispose'); brain.dispose(); brainRef.current = null; };
+    // Console handle for scene measurement — `__kurultaiBrain.metrics()`.
+    (window as unknown as { __kurultaiBrain?: BrainView }).__kurultaiBrain = brain;
+    return () => {
+      dbg('BrainView dispose');
+      delete (window as unknown as { __kurultaiBrain?: BrainView }).__kurultaiBrain;
+      brain.dispose();
+      brainRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -135,6 +142,7 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
         <span>DRAG / ORBIT</span>
         <span>SCROLL / ZOOM</span>
       </div>
+      <BrainHud getBrain={() => brainRef.current} />
       {tooltip && (
         <div
           id="node-tooltip"
@@ -155,6 +163,26 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
   );
 });
 
+/** Live scene readout — FPS · synapses · nodes, polled from BrainView.metrics(). */
+function BrainHud({ getBrain }: { getBrain: () => BrainView | null }) {
+  const [stats, setStats] = useState<{ fps: number; nodes: number; synapses: number } | null>(null);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const m = getBrain()?.metrics();
+      if (m && m.nodes > 0) setStats({ fps: m.fps, nodes: m.nodes, synapses: m.renderedEdges });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [getBrain]);
+  if (!stats) return null;
+  return (
+    <div className="brain-hud" aria-hidden="true">
+      <span>{Math.round(stats.fps)} FPS</span>
+      <span>{stats.nodes.toLocaleString()} NEURONS</span>
+      <span>{stats.synapses.toLocaleString()} SYNAPSES</span>
+    </div>
+  );
+}
+
 function buildLinks(atoms: Atom[]) {
   const tagIndex = new Map<string, string[]>();
   atoms.forEach((a) => {
@@ -164,17 +192,21 @@ function buildLinks(atoms: Atom[]) {
       tagIndex.set(t, list);
     });
   });
-  const seen = new Set<string>();
-  const links: { a: string; b: string; strength: number }[] = [];
+  const pairCount = new Map<string, number>();
   tagIndex.forEach((ids) => {
     // cap per-tag pairs to avoid O(n²) explosion on dense tags like "code" or "rs"
     const limit = Math.min(ids.length, MAX_LINKS_PER_TAG);
     for (let i = 0; i < limit; i++) {
       for (let j = i + 1; j < limit; j++) {
         const key = ids[i] < ids[j] ? `${ids[i]}:${ids[j]}` : `${ids[j]}:${ids[i]}`;
-        if (!seen.has(key)) { seen.add(key); links.push({ a: ids[i], b: ids[j], strength: 1 }); }
+        pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
       }
     }
   });
+  const links: { a: string; b: string; strength: number }[] = [];
+  for (const [key, count] of pairCount) {
+    const [a, b] = key.split(':');
+    links.push({ a, b, strength: count });
+  }
   return links;
 }

@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-09-03
-version: 6
+updated: 2026-09-11
+version: 8
 ---
 
 # `.`
@@ -45,7 +45,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`.gitignore`](.gitignore) | Ignored build, env, and agent workspace paths | — | — | 2026-09-01 | 4 | 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-08-16 | 2 | 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
+| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-05 | 3 | 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Prompt snippet for wiring agents to Kurultai | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-09-01 | 3 | 2026-09-01 v0.5.0 release notes · 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor covenant | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -67,6 +67,9 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-06 — `src/http/cf_access.rs` new: verified Cloudflare Access JWT satisfies hub auth for human browser login (Google/OTP via Access, no API-key paste); `KURULTAI_CF_ACCESS_TEAM` + `KURULTAI_CF_ACCESS_AUDS`; `HubGate.cf_access` + `authorize_bearer` split in `auth.rs`
+- 2026-09-05 — AGENTS.md: hosted brain + ontology promote notes; index row bump
+- 2026-09-05 — website/ui: tiered graph fetch (api.ts GraphQuery + load-tier limits) and rebuild
 - 2026-09-03 — `docs/plans/2026-09-03-001-feat-agent-message-board-plan.md` added
 - 2026-09-01 — add `.devcontainer/` dogfood setup: Dockerfile + docker-compose + INDEX, unignore for sharing
 - 2026-09-01 — track `.compound-engineering/config.local.yaml`, add `.devcontainer/` to `.gitignore`

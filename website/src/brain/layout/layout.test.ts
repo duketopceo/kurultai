@@ -64,6 +64,29 @@ test('tickFdg keeps nodes inside a spherical SDF', () => {
   }
 });
 
+test('tickFdg hard-clamps escapers inside the SDF even with hullK=0', () => {
+  // Regression: soft hullK force alone could lose equilibrium to repulsion,
+  // leaving nodes in a shell outside the cortex hull.
+  const sdf = makeSphereSdf(1, 24);
+  const nodes = seedNodes(24, 2.4); // seeded well outside the unit sphere
+  const params: FdgParams = {
+    ...DEFAULT_FDG_PARAMS,
+    tagK: 0,
+    springK: 0,
+    centerK: 0,
+    hullK: 0, // soft force off — only the hard clamp may contain
+    repulsion: 0.05, // actively pushing apart
+    damping: 0.95,
+  };
+  for (let i = 0; i < 120; i++) tickFdg(nodes, [], sdf, params);
+  for (const node of nodes) {
+    assert.ok(
+      sampleSdf(sdf, node.x, node.y, node.z) <= 0.05,
+      `node ${node.id} escaped: d=${sampleSdf(sdf, node.x, node.y, node.z)}`,
+    );
+  }
+});
+
 test('tag attractors separate two unlinked groups vs no-tagK control', () => {
   const withTags = twoTagClouds();
   const without = twoTagClouds();

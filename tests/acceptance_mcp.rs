@@ -514,6 +514,9 @@ async fn readonly_surface_exposes_only_read_tools() {
         vec![
             "ask",
             "cite",
+            "hey_poll",
+            "hey_read",
+            "hey_threads",
             "ontology_get",
             "recall",
             "search",

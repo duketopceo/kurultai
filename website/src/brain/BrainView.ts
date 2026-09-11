@@ -4,8 +4,8 @@ import brainUrl from '../assets/brain.glb?url';
 import type { Atom, Link, Theme, LayoutMode, OntologyResponse, OntologyEntity } from '../types';
 import { hashId } from '../state';
 import { createFdgWorker } from './layout/createWorker';
-import { bakeSdfFromPositions, packSdf } from './layout/sdf';
-import type { FdgLink, FdgNode, FdgWorkerOut } from './layout/types';
+import { bakeSdfFromPositions, packSdf, sampleSdf } from './layout/sdf';
+import type { FdgLink, FdgNode, FdgWorkerOut, SignedDistanceField } from './layout/types';
 import {
   assignLayers,
   bucketsFromAssign,
@@ -31,6 +31,7 @@ uniform vec3 uPointer;
 uniform float uHover;
 uniform float uTime;
 uniform float uIntro;
+uniform float uPulse;
 varying vec3 vColor;
 varying float vAlpha;
 
@@ -43,12 +44,17 @@ void main() {
   pos.x += sin(drift + aSeed * 6.28) * 0.004 * aRotation;
   pos.y += cos(drift * 0.7 + aSeed * 3.14) * 0.004 * aRotation;
   pos.z += sin(drift * 0.5 + aSeed * 4.71) * 0.004 * aRotation;
+  // Data-change ripple: a wave travels inward across the shell while uPulse
+  // decays 1→0 — a morph cue that the graph changed.
+  float r = length(aOffset);
+  float wave = uPulse * (0.5 + 0.5 * sin(r * 9.0 - (1.0 - uPulse) * 18.0));
+  pos += normalize(aOffset) * wave * 0.025;
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mvPosition;
-  gl_PointSize = scale * (500.0 / -mvPosition.z);
+  gl_PointSize = scale * (500.0 / -mvPosition.z) * (1.0 + wave * 0.6);
   float flicker = 0.72 + 0.28 * sin(uTime * 2.6 + aSeed * 39.0);
-  vColor = mix(aColor, vec3(1.0), c * uHover * 0.3);
-  vAlpha = flicker * (0.65 + 0.2 * c * uHover);
+  vColor = mix(aColor, vec3(1.0), c * uHover * 0.3 + wave * 0.25);
+  vAlpha = flicker * (0.65 + 0.2 * c * uHover) * (1.0 + wave * 0.5);
 }
 `;
 
@@ -165,6 +171,18 @@ const ONTOLOGY_XZ_STEP = 0.72;
 // false the guards are dead-code-eliminated and no timing calls ever run.
 const PERF_DEBUG = false;
 
+/** Scene measurement snapshot returned by `BrainView.metrics()`. */
+export interface BrainMetrics {
+  nodes: number;
+  renderedEdges: number;
+  spriteMode: boolean;
+  layoutMode: LayoutMode;
+  layoutIters: number;
+  fps: number;
+  edgeLength: { min: number; median: number; mean: number; p95: number; max: number };
+  hull: { insidePct: number; meanDist: number; maxDist: number } | null;
+}
+
 export interface BrainViewOptions {
   theme: Theme;
   reducedMotion: boolean;
@@ -194,6 +212,7 @@ export class BrainView {
     uHover: { value: 0 },
     uTime: { value: 0 },
     uIntro: { value: 0 },
+    uPulse: { value: 0 },
   };
   private pointerTarget = new THREE.Vector3(999, 999, 999);
   private hoverTarget = 0;
@@ -255,6 +274,9 @@ export class BrainView {
   private ontoPos = new Map<string, THREE.Vector3>();
   private layoutWorker: Worker | null = null;
   private sdfPacked: ArrayBuffer | null = null;
+  private sdfField: SignedDistanceField | null = null;
+  private workerHasSdf = false;
+  private fpsEma = 0;
   private workerBusy = false;
   private workerIters = 0;
   private workerNodeCount = 0;
@@ -320,6 +342,14 @@ export class BrainView {
     // The brain mesh's vertical centroid sits below the origin; recenter it.
     this.brainGroup.position.y = 0.08;
     this.scene.add(this.brainGroup);
+
+    // Light rig for node spheres (MeshStandardMaterial) — cortex particles and
+    // edges are shader/basic materials and ignore lights, so this only adds
+    // volumetric shading to the neurons. Cool key light + faint purple fill.
+    this.scene.add(new THREE.HemisphereLight(0xbbaadd, 0x080510, 0.9));
+    const key = new THREE.DirectionalLight(0xffffff, 1.6);
+    key.position.set(2.5, 3, 4);
+    this.scene.add(key);
 
     this.uniforms.uIntro.value = opts.reducedMotion ? 1 : 0;
 
@@ -434,6 +464,20 @@ export class BrainView {
       SDF_RESOLUTION,
     );
     this.sdfPacked = sdf ? packSdf(sdf) : null;
+    this.sdfField = sdf;
+    // The GLB finishes loading after setData starts the FDG worker, which
+    // would otherwise run its full layout with no hull SDF at all (nodes
+    // escape into a shell around the brain). Push it in once baked.
+    if (
+      this.sdfPacked &&
+      this.layoutWorker &&
+      this.workerNodeCount > 0 &&
+      !this.workerHasSdf
+    ) {
+      const buf = this.sdfPacked.slice(0);
+      this.layoutWorker.postMessage({ type: 'setSdf', sdf: buf }, [buf]);
+      this.workerHasSdf = true;
+    }
   }
 
   /**
@@ -624,6 +668,9 @@ export class BrainView {
     if (!this.spriteMode) this.applyRegionColors();
 
     if (!this.applyingOntology) this.startWorkerLayout(shown);
+    // Morph cue: shell ripple announcing the graph changed (skipped under
+    // reduced-motion, where uPulse stays 0).
+    if (!this.applyingOntology && !this.opts.reducedMotion) this.uniforms.uPulse.value = 1;
 
     if (PERF_DEBUG) {
       console.log(
@@ -635,8 +682,8 @@ export class BrainView {
   /** Shared node radius (degree- and score-scaled) used by both node builders. */
   private nodeRadius(atom: Atom): number {
     const degree = this.degrees.get(atom.id) || 0;
-    const base = 0.006 + Math.min(degree, 20) * 0.0012 + Math.min(atom.score, 1) * 0.003;
-    return atom.source === 'code' ? base * 0.45 : base;
+    const base = 0.0075 + Math.min(degree, 20) * 0.0014 + Math.min(atom.score, 1) * 0.004;
+    return atom.source === 'code' ? base * 0.55 : base;
   }
 
   /** Sphere+halo+label mesh path (≤ NODE_SPRITE_CUTOFF nodes). Byte-identical to
@@ -750,46 +797,18 @@ export class BrainView {
           return;
         }
 
-        // Build a surface-conformant Catmull-Rom curve through 4-6
-        // intermediate points projected onto the brain mesh surface.
+        // Interior arcs: nodes are hard-contained inside the cortex hull, so
+        // synapses bow gently toward the brain center rather than crawling on
+        // the hull surface — keeps wiring inside the silhouette. Longer edges
+        // bow a bit more so they clear the node core.
         const points: THREE.Vector3[] = [a.clone()];
+        const span = a.distanceTo(b);
+        const bow = 0.08 + Math.min(0.12, span * 0.08);
         const numIntermediate = 4;
         for (let i = 1; i <= numIntermediate; i++) {
           const t = i / (numIntermediate + 1);
-          const p = a.clone().lerp(b, t);
-
-          // U4: sprite mode skips the per-edge surface raycast — 4 raycasts
-          // per edge × up to MAX_EDGES edges against the ~5.6k-tri proxy costs
-          // ~1-2ms per raycast (multi-second setData at 2500 nodes), blowing
-          // the 500ms render budget. At sprite densities surface conformity is
-          // invisible (the force layout leaves the brain hull anyway),
-          // so fall through to the cheap outward lift.
-          if (this.proxy && !this.spriteMode) {
-            // Raycast from brain center through p onto the mesh surface.
-            const worldOrigin = new THREE.Vector3();
-            this.brainGroup.localToWorld(worldOrigin);
-            const worldP = p.clone();
-            this.brainGroup.localToWorld(worldP);
-            const dir = worldP.clone().sub(worldOrigin).normalize();
-            this.raycaster.set(worldOrigin, dir);
-            const hit = this.raycaster.intersectObject(this.proxy, false)[0];
-            if (hit) {
-              const localHit = hit.point.clone();
-              this.brainGroup.worldToLocal(localHit);
-              // Push slightly outward along the radial normal.
-              const normal = localHit.clone().normalize();
-              localHit.add(normal.multiplyScalar(0.005));
-              points.push(localHit);
-            } else {
-              // Fallback: push outward from origin.
-              const outward = p.clone().normalize().multiplyScalar(p.length() + 0.01);
-              points.push(outward);
-            }
-          } else {
-            // No proxy (or sprite mode) — simple outward lift.
-            const lift = p.length() * 0.18;
-            points.push(p.add(p.clone().normalize().multiplyScalar(lift)));
-          }
+          const p = a.clone().lerp(b, t).multiplyScalar(1 - bow);
+          points.push(p);
         }
         points.push(b.clone());
 
@@ -800,7 +819,10 @@ export class BrainView {
           new THREE.LineBasicMaterial({
             color: this.palette.edgeRest,
             transparent: true,
-            opacity: 0.2,
+            // Explicit synapses: additive glow, opacity scales with shared-tag
+            // count so multiply-tagged connections read as stronger links.
+            opacity: Math.min(0.85, 0.3 + (link.strength || 1) * 0.15),
+            blending: THREE.AdditiveBlending,
             depthWrite: false,
           }),
         );
@@ -1081,14 +1103,14 @@ export class BrainView {
       this.nodeObjects.forEach((node) => {
         const region = node.userData.region as Region;
         const color = this.regionColor(region);
-        (node.material as THREE.MeshBasicMaterial).color.setHex(color);
+        (node.material as THREE.MeshStandardMaterial).emissive.setHex(color);
         (this.haloMap.get(node.userData.atomId as string)!.material as THREE.SpriteMaterial).color.setHex(
           color,
         );
       });
     } else {
       this.nodeObjects.forEach((node) => {
-        (node.material as THREE.MeshBasicMaterial).color.setHex(this.palette.nodeBase);
+        (node.material as THREE.MeshStandardMaterial).emissive.setHex(this.palette.nodeBase);
         (this.haloMap.get(node.userData.atomId as string)!.material as THREE.SpriteMaterial).color.setHex(
           this.palette.nodeBase,
         );
@@ -1097,10 +1119,16 @@ export class BrainView {
   }
 
   private nodeMaterial(active: boolean) {
-    return new THREE.MeshBasicMaterial({
-      color: active ? this.palette.nodeHot : this.palette.nodeBase,
+    // Lit spheres: dark body + emissive tint gives real 3D shading under the
+    // key light while staying in the black/white/purple palette.
+    return new THREE.MeshStandardMaterial({
+      color: 0x1a0f2e,
+      emissive: active ? this.palette.nodeHot : this.palette.nodeBase,
+      emissiveIntensity: active ? 1.4 : 0.75,
+      roughness: 0.35,
+      metalness: 0.15,
       transparent: true,
-      opacity: active ? 1 : 0.85,
+      opacity: active ? 1 : 0.95,
     });
   }
 
@@ -1151,10 +1179,10 @@ export class BrainView {
       if (!mesh) return;
       this.nodeObjects.forEach((node) => {
         const id = node.userData.atomId as string;
-        const nodeMat = node.material as THREE.MeshBasicMaterial;
+        const nodeMat = node.material as THREE.MeshStandardMaterial;
         const haloMat = this.haloMap.get(id)!.material as THREE.SpriteMaterial;
         if (node === mesh) {
-          nodeMat.color.setHex(this.palette.nodeHot);
+          nodeMat.emissive.setHex(this.palette.nodeHot);
           nodeMat.opacity = 1;
           haloMat.color.setHex(this.palette.nodeHot);
           haloMat.opacity = 0.7;
@@ -1162,12 +1190,12 @@ export class BrainView {
           const color = this.showRegions
             ? this.regionColor(node.userData.region as Region)
             : this.palette.nodeBase;
-          nodeMat.color.setHex(color);
+          nodeMat.emissive.setHex(color);
           nodeMat.opacity = 0.9;
           haloMat.color.setHex(color);
           haloMat.opacity = 0.32;
         } else {
-          nodeMat.color.setHex(this.palette.nodeUnfocus);
+          nodeMat.emissive.setHex(this.palette.nodeUnfocus);
           nodeMat.opacity = 0.3;
           haloMat.opacity = 0.1;
         }
@@ -1205,12 +1233,12 @@ export class BrainView {
       this.applySpriteBaseColors();
     } else {
       this.nodeObjects.forEach((node) => {
-        const nodeMat = node.material as THREE.MeshBasicMaterial;
+        const nodeMat = node.material as THREE.MeshStandardMaterial;
         const haloMat = this.haloMap.get(node.userData.atomId as string)!.material as THREE.SpriteMaterial;
         const color = this.showRegions
           ? this.regionColor(node.userData.region as Region)
           : this.palette.nodeBase;
-        nodeMat.color.setHex(color);
+        nodeMat.emissive.setHex(color);
         nodeMat.opacity = 0.85;
         haloMat.color.setHex(color);
         haloMat.opacity = 0.32;
@@ -1218,7 +1246,8 @@ export class BrainView {
     }
     this.edgeGroup.children.forEach((line) => {
       const mat = (line as THREE.Line).material as THREE.LineBasicMaterial;
-      mat.opacity = 0.2;
+      const strength = (line.userData?.strength as number) || 1;
+      mat.opacity = Math.min(0.85, 0.3 + strength * 0.15);
       mat.color.setHex(this.palette.edgeRest);
     });
     this.opts.onClearHover();
@@ -1397,6 +1426,7 @@ export class BrainView {
       links.push({ a, b, strength: link.strength || 1 });
     }
     const sdf = this.sdfPacked ? this.sdfPacked.slice(0) : new ArrayBuffer(0);
+    this.workerHasSdf = sdf.byteLength > 0;
     this.layoutWorker.postMessage({ type: 'init', nodes, links, sdf, aabb: [] }, sdf.byteLength ? [sdf] : []);
     if (this.layoutMode === 'ontology') return;
     this.requestWorkerTick();
@@ -1786,6 +1816,10 @@ export class BrainView {
     if (this.disposed) return;
     const dt = Math.min(this.clock.getDelta(), 0.1);
     const now = performance.now();
+    if (dt > 0) {
+      const fps = 1 / dt;
+      this.fpsEma = this.fpsEma === 0 ? fps : this.fpsEma * 0.95 + fps * 0.05;
+    }
 
     if (this.focusPulse) {
       if (now < this.focusPulse.until) {
@@ -1802,6 +1836,9 @@ export class BrainView {
       if (!this.dragging && !this.zoomAtomId) this.brainGroup.rotation.y += dt * 0.05;
       if (this.uniforms.uIntro.value < 1) {
         this.uniforms.uIntro.value = Math.min(1, this.uniforms.uIntro.value + dt * 0.8);
+      }
+      if (this.uniforms.uPulse.value > 0) {
+        this.uniforms.uPulse.value = Math.max(0, this.uniforms.uPulse.value - dt * 0.7);
       }
     }
 
@@ -1840,6 +1877,62 @@ export class BrainView {
     this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.loop);
   };
+
+  /**
+   * Scene measurement snapshot — node/edge counts, edge-length stats, hull
+   * containment (per-node signed distance to the cortex surface), layout
+   * progress, and a rolling FPS. Call from the console via
+   * `window.__kurultaiBrain.metrics()`.
+   */
+  metrics(): BrainMetrics {
+    const lengths: number[] = [];
+    for (const link of this.sortedLinks) {
+      const a = this.atomPositions.get(link.a);
+      const b = this.atomPositions.get(link.b);
+      if (a && b) lengths.push(a.distanceTo(b));
+    }
+    lengths.sort((x, y) => x - y);
+    const sum = lengths.reduce((s, v) => s + v, 0);
+    const pick = (q: number) =>
+      lengths.length ? lengths[Math.min(lengths.length - 1, Math.floor(q * lengths.length))] : 0;
+
+    let inside = 0;
+    let maxD = -Infinity;
+    let sumD = 0;
+    let sampled = 0;
+    if (this.sdfField) {
+      for (const p of this.atomPositions.values()) {
+        const d = sampleSdf(this.sdfField, p.x, p.y, p.z);
+        sumD += d;
+        sampled++;
+        if (d <= 0) inside++;
+        if (d > maxD) maxD = d;
+      }
+    }
+
+    return {
+      nodes: this.atomPositions.size,
+      renderedEdges: lengths.length,
+      spriteMode: this.spriteMode,
+      layoutMode: this.layoutMode,
+      layoutIters: this.workerIters,
+      fps: Math.round(this.fpsEma * 10) / 10,
+      edgeLength: {
+        min: pick(0),
+        median: pick(0.5),
+        mean: lengths.length ? sum / lengths.length : 0,
+        p95: pick(0.95),
+        max: lengths.length ? lengths[lengths.length - 1] : 0,
+      },
+      hull: this.sdfField
+        ? {
+            insidePct: sampled ? Math.round((inside / sampled) * 1000) / 10 : 0,
+            meanDist: sampled ? sumD / sampled : 0,
+            maxDist: maxD,
+          }
+        : null,
+    };
+  }
 
   dispose() {
     this.disposed = true;

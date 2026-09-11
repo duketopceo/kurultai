@@ -12,7 +12,7 @@ export function StatsPanel({ atoms, atomTotal }: Props) {
   const trusted = atoms.filter((a) => a.score >= 0.8).length;
 
   return (
-    <section className="panel signal-panel" aria-labelledby="signal-heading">
+    <section className="panel chrome-panel signal-panel" aria-labelledby="signal-heading">
       <div className="panel-heading">
         <p className="eyebrow">Signal</p>
         <h2 id="signal-heading">Brain state</h2>
