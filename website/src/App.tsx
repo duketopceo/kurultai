@@ -9,6 +9,7 @@ import { InspectorPanel } from './components/InspectorPanel';
 import { AskPanel } from './components/AskPanel';
 import { StatsPanel } from './components/StatsPanel';
 import { HeyPanel } from './components/HeyPanel';
+import { ProposalsPanel } from './components/ProposalsPanel';
 import { RepoStrip, countCodeRepos } from './components/RepoBrain';
 import type { Atom, LayoutMode, LoadTier, OntologyResponse } from './types';
 import { LOAD_TIER_CAPS } from './types';
@@ -179,6 +180,7 @@ export function App() {
           <InspectorPanel atom={selected} allAtoms={visible} onOntologyChanged={handleOntologyChanged} />
           <AskPanel />
           <StatsPanel atoms={visible} atomTotal={state.atomTotal} />
+          <ProposalsPanel onOntologyChanged={handleOntologyChanged} />
           <HeyPanel />
         </section>
         <RepoStrip repos={codeRepos} />

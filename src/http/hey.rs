@@ -152,7 +152,10 @@ fn extract_bearer(headers: &HeaderMap) -> Option<String> {
     }
 }
 
-async fn require_agent(state: &AppState, headers: &HeaderMap) -> Result<Agent, StatusCode> {
+pub(crate) async fn require_agent(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<Agent, StatusCode> {
     let token = extract_bearer(headers).ok_or(StatusCode::UNAUTHORIZED)?;
     let hash = sha256_hex(&token);
     state

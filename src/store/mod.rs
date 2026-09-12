@@ -7,7 +7,7 @@ use crate::hashutil::sha256_hex;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
 use crate::types::{
     normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink,
-    OntologyLinkType, SoftLabel, TrustLane, VisibilityScope,
+    OntologyLinkType, OntologyProposal, SoftLabel, TrustLane, VisibilityScope,
 };
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -448,6 +448,29 @@ pub trait Store: Send + Sync {
 
     /// All links, or those incident on an entity id / atom id.
     async fn list_ontology_links(&self, endpoint: Option<&str>) -> Result<Vec<OntologyLink>>;
+
+    /// O3: queue an ontology mutation proposal for human review (#118).
+    async fn insert_ontology_proposal(&self, p: &OntologyProposal) -> Result<()>;
+
+    /// Fetch a proposal by id.
+    async fn get_ontology_proposal(&self, id: &str) -> Result<Option<OntologyProposal>>;
+
+    /// List proposals; `status` filters to `pending`/`approved`/`rejected`.
+    async fn list_ontology_proposals(
+        &self,
+        status: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<OntologyProposal>>;
+
+    /// Transition a `pending` proposal to `approved`/`rejected`. Errors when
+    /// the proposal is missing or already decided — a no-op is not a decision.
+    async fn decide_ontology_proposal(
+        &self,
+        id: &str,
+        status: &str,
+        decided_by: &str,
+        decided_at: &str,
+    ) -> Result<OntologyProposal>;
 
     // ── Agent identity (multi-agent message board) ────────────────────────────
 
@@ -2148,6 +2171,123 @@ impl Store for SqliteVecStore {
         Ok(out)
     }
 
+    // ── O3: ontology proposals (#118) ─────────────────────────────────────────
+
+    async fn insert_ontology_proposal(&self, p: &OntologyProposal) -> Result<()> {
+        let conn = self.lock()?;
+        let payload_json = serde_json::to_string(&p.payload)
+            .map_err(|e| KurultaiError::Store(format!("proposal payload serialize: {e}")))?;
+        conn.execute(
+            "INSERT INTO ontology_proposals
+                (id, kind, payload_json, status, proposed_by, reason, created_at, decided_by, decided_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                p.id,
+                p.kind,
+                payload_json,
+                p.status,
+                p.proposed_by,
+                p.reason,
+                p.created_at,
+                p.decided_by,
+                p.decided_at,
+            ],
+        )
+        .map_err(|e| KurultaiError::Store(format!("insert_ontology_proposal: {e}")))?;
+        Ok(())
+    }
+
+    async fn get_ontology_proposal(&self, id: &str) -> Result<Option<OntologyProposal>> {
+        let conn = self.lock()?;
+        conn.query_row(
+            "SELECT id, kind, payload_json, status, proposed_by, reason,
+                    created_at, decided_by, decided_at
+             FROM ontology_proposals WHERE id = ?1",
+            [id],
+            row_to_ontology_proposal,
+        )
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("get_ontology_proposal: {e}")))
+    }
+
+    async fn list_ontology_proposals(
+        &self,
+        status: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<OntologyProposal>> {
+        let conn = self.lock()?;
+        let (sql, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match status {
+            Some(s) => (
+                "SELECT id, kind, payload_json, status, proposed_by, reason,
+                        created_at, decided_by, decided_at
+                 FROM ontology_proposals WHERE status = ?1
+                 ORDER BY created_at DESC LIMIT ?2"
+                    .to_string(),
+                vec![Box::new(s.to_string()), Box::new(limit as i64)],
+            ),
+            None => (
+                "SELECT id, kind, payload_json, status, proposed_by, reason,
+                        created_at, decided_by, decided_at
+                 FROM ontology_proposals
+                 ORDER BY created_at DESC LIMIT ?1"
+                    .to_string(),
+                vec![Box::new(limit as i64)],
+            ),
+        };
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_proposals prepare: {e}")))?;
+        let refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt
+            .query_map(refs.as_slice(), row_to_ontology_proposal)
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_proposals query: {e}")))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_proposals collect: {e}")))
+    }
+
+    async fn decide_ontology_proposal(
+        &self,
+        id: &str,
+        status: &str,
+        decided_by: &str,
+        decided_at: &str,
+    ) -> Result<OntologyProposal> {
+        let conn = self.lock()?;
+        let updated = conn
+            .execute(
+                "UPDATE ontology_proposals
+                 SET status = ?2, decided_by = ?3, decided_at = ?4
+                 WHERE id = ?1 AND status = 'pending'",
+                params![id, status, decided_by, decided_at],
+            )
+            .map_err(|e| KurultaiError::Store(format!("decide_ontology_proposal: {e}")))?;
+        if updated == 0 {
+            return match conn.query_row(
+                "SELECT status FROM ontology_proposals WHERE id = ?1",
+                [id],
+                |r| r.get::<_, String>(0),
+            ) {
+                Ok(existing) => Err(KurultaiError::Store(format!(
+                    "proposal {id} already decided ({existing})"
+                ))),
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    Err(KurultaiError::Store(format!("proposal {id} not found")))
+                }
+                Err(e) => Err(KurultaiError::Store(format!(
+                    "decide_ontology_proposal lookup: {e}"
+                ))),
+            };
+        }
+        conn.query_row(
+            "SELECT id, kind, payload_json, status, proposed_by, reason,
+                    created_at, decided_by, decided_at
+             FROM ontology_proposals WHERE id = ?1",
+            [id],
+            row_to_ontology_proposal,
+        )
+        .map_err(|e| KurultaiError::Store(format!("decide_ontology_proposal fetch: {e}")))
+    }
+
     // ── Agent identity (multi-agent message board) ────────────────────────────
 
     async fn register_agent(&self, codename: &str) -> Result<(String, String)> {
@@ -2686,6 +2826,22 @@ struct OntologyLinkRaw {
     confidence: f64,
     status: String,
     actor: String,
+}
+
+fn row_to_ontology_proposal(row: &rusqlite::Row<'_>) -> rusqlite::Result<OntologyProposal> {
+    let payload_raw: String = row.get(2)?;
+    let payload = serde_json::from_str(&payload_raw).unwrap_or_else(|_| serde_json::json!({}));
+    Ok(OntologyProposal {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        payload,
+        status: row.get(3)?,
+        proposed_by: row.get(4)?,
+        reason: row.get(5)?,
+        created_at: row.get(6)?,
+        decided_by: row.get(7)?,
+        decided_at: row.get(8)?,
+    })
 }
 
 fn row_to_ontology_link_raw(row: &rusqlite::Row<'_>) -> rusqlite::Result<OntologyLinkRaw> {

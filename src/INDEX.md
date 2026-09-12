@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src
 parent: INDEX.md
-updated: 2026-09-06
-version: 4
+updated: 2026-09-11
+version: 5
 ---
 
 # `src`
@@ -52,11 +52,12 @@ version: 4
 | [`main.rs`](main.rs) | CLI entry: init, index, search, ask, daemon, mcp, login, export | — | — | 2026-09-06 | 5 | 2026-09-06 `kurultai login` subcommand · 2026-08-31 `init --doctor` diagnostic toggle · 2026-08-31 `kurultai hub key` / `hub log` · 2026-08-29 daemon PORT · 2026-08-16 indexed |
 | [`metrics.rs`](metrics.rs) | Prometheus text for GET /api/metrics | — | `src/http/mod.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`project.rs`](project.rs) | project_id namespacing for shared-store sessions (#184) | — | `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` | 2026-09-01 | 2 | 2026-09-01 HUB-5 SourceConfig default_visibility_scope helper · 2026-08-16 indexed (v1 seed) |
+| [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope, OntologyProposal | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` · `src/ontology/mod.rs` | 2026-09-11 | 3 | 2026-09-11 `OntologyProposal` type (#118) · 2026-09-01 HUB-5 SourceConfig default_visibility_scope helper · 2026-08-16 indexed (v1 seed) |
 | [`write_policy.rs`](write_policy.rs) | Write provenance + SharedClosed quarantine containment | — | `src/mcp/server.rs` · `src/quality/promote.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-11 — O3 ontology proposal queue (#118): `types.rs` OntologyProposal; `store/` schema v15 + proposal CRUD; `ontology/` submit/decide; `http/proposals.rs` REST; `mcp/server.rs` propose tools
 - 2026-09-06 — add `login.rs` and `kurultai login` subcommand; `http/device_auth.rs` device-code endpoints; schema v14
 - 2026-09-04 — `http/`, `mcp/`, `ontology/`: message board REST, hey_* MCP tools, schema v12 sync, HubGate fixture updates
 - 2026-09-01 — `types.rs`: HUB-5 `SourceConfig::default_visibility_scope` helper (personal/team/company)

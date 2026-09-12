@@ -6,6 +6,10 @@ import type {
   GraphNode,
   OntologyResponse,
 } from './types';
+import { describeProposal, type OntologyProposal } from './proposals';
+
+export { describeProposal };
+export type { OntologyProposal };
 
 function text(value: unknown, fallback = '—'): string {
   if (value == null || value === '') return fallback;
@@ -351,5 +355,42 @@ export async function reactHeyMessage(
     throw new Error(detail || `hey react failed (${r.status})`);
   }
   return r.json() as Promise<HeyMessage>;
+}
+
+// ── O3: ontology proposal queue (#118) ───────────────────────────────────────
+
+export async function fetchOntologyProposals(
+  status?: 'pending' | 'approved' | 'rejected',
+  limit = 50,
+  signal?: AbortSignal,
+): Promise<OntologyProposal[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (status) params.set('status', status);
+  const data = await getJson<{ proposals?: OntologyProposal[] }>(
+    `/api/ontology/proposals?${params}`,
+    signal,
+  );
+  return Array.isArray(data.proposals) ? data.proposals : [];
+}
+
+/** Human decision on a pending proposal. Agent keys are refused server-side. */
+export async function decideOntologyProposal(
+  id: string,
+  action: 'approve' | 'reject',
+  signal?: AbortSignal,
+): Promise<OntologyProposal> {
+  const r = await fetch(`/api/ontology/proposals/${encodeURIComponent(id)}/decide`, {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ action }),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `proposal decide failed (${r.status})`);
+  }
+  const data = await r.json();
+  return (data.proposal ?? data) as OntologyProposal;
 }
 

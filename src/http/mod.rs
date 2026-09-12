@@ -12,6 +12,7 @@ mod device_auth;
 mod hey;
 mod hub_listen;
 mod mcp;
+mod proposals;
 mod ui;
 
 #[cfg(feature = "postgres")]
@@ -208,6 +209,7 @@ fn router(state: AppState) -> Router {
         .route("/cite", post(cite_post))
         .route("/who_knows", post(who_knows_post))
         .merge(hey::routes())
+        .merge(proposals::routes())
         .merge(ui::routes())
         .merge(device_auth::routes(state.clone()))
         .layer(middleware::from_fn_with_state(
@@ -1198,6 +1200,224 @@ mod tests {
         assert!(links.len() >= 5);
     }
 
+    // ── O3 proposal queue HTTP tests (#118) ──────────────────────────────────
+
+    async fn seed_atom(brain: &BrainService, id: &str) {
+        let atom = crate::types::KnowledgeAtom {
+            id: id.into(),
+            source: "markdown".into(),
+            source_id: format!("/{id}.md"),
+            title: "Fixture".into(),
+            summary: "s".into(),
+            content: "c".into(),
+            tags: vec!["t".into()],
+            source_updated_at: chrono::Utc::now(),
+            indexed_at: chrono::Utc::now(),
+            ..Default::default()
+        };
+        brain.store().upsert(&atom).await.unwrap();
+    }
+
+    fn proposal_app(brain: Arc<BrainService>) -> Router {
+        router(AppState {
+            brain,
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
+            hub: HubGate::default(),
+        })
+    }
+
+    #[tokio::test]
+    async fn ontology_propose_requires_agent_bearer() {
+        let brain = Arc::new(test_brain());
+        let app = proposal_app(brain);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/ontology/proposals")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"kind":"promote_atom","payload":{"atom_id":"x","class_id":"class:note"}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn ontology_proposal_submit_decide_roundtrip() {
+        let brain = Arc::new(test_brain());
+        seed_atom(&brain, "http-atom").await;
+        let (_agent_id, key) = brain.store().register_agent("proposer").await.unwrap();
+        let app = proposal_app(Arc::clone(&brain));
+
+        // Agent submits a draft.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/ontology/proposals")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {key}"))
+                    .body(Body::from(
+                        r#"{"kind":"promote_atom","payload":{"atom_id":"http-atom","class_id":"class:note"},"reason":"looks like a note"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let pid = v["proposal"]["id"].as_str().unwrap().to_string();
+        assert_eq!(v["proposal"]["status"], "pending");
+        assert_eq!(v["proposal"]["proposed_by"], "proposer");
+        // Draft only — nothing mutated.
+        assert!(brain
+            .store()
+            .get_ontology_entity("ent:http-atom")
+            .await
+            .unwrap()
+            .is_none());
+
+        // Queue lists it as pending.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/ontology/proposals?status=pending")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let proposals = v["proposals"].as_array().unwrap();
+        assert!(proposals.iter().any(|p| p["id"] == pid));
+
+        // An agent bearer may NOT decide — humans only.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/ontology/proposals/{pid}/decide"))
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {key}"))
+                    .body(Body::from(r#"{"action":"approve"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        assert!(brain
+            .store()
+            .get_ontology_entity("ent:http-atom")
+            .await
+            .unwrap()
+            .is_none());
+
+        // Human (solo path, no agent key) approves — mutation applies.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/ontology/proposals/{pid}/decide"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"action":"approve"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let entity = brain
+            .store()
+            .get_ontology_entity("ent:http-atom")
+            .await
+            .unwrap()
+            .expect("approved proposal applied");
+        assert_eq!(entity.atom_id.as_deref(), Some("http-atom"));
+
+        // Double-decide → 409.
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/ontology/proposals/{pid}/decide"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"action":"reject"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn ontology_proposal_reject_mutates_nothing() {
+        let brain = Arc::new(test_brain());
+        seed_atom(&brain, "rej-atom").await;
+        let (_id, key) = brain.store().register_agent("proposer2").await.unwrap();
+        let app = proposal_app(Arc::clone(&brain));
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/ontology/proposals")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {key}"))
+                    .body(Body::from(
+                        r#"{"kind":"promote_atom","payload":{"atom_id":"rej-atom","class_id":"class:decision"}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let pid = v["proposal"]["id"].as_str().unwrap().to_string();
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/ontology/proposals/{pid}/decide"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"action":"reject"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["proposal"]["status"], "rejected");
+        assert!(brain
+            .store()
+            .get_ontology_entity("ent:rej-atom")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
     #[tokio::test]
     async fn api_activity_empty_then_after_search() {
         let brain = Arc::new(test_brain());
@@ -1840,6 +2060,36 @@ mod tests {
             _endpoint: Option<&str>,
         ) -> crate::Result<Vec<crate::types::OntologyLink>> {
             Ok(vec![])
+        }
+        async fn insert_ontology_proposal(
+            &self,
+            _p: &crate::types::OntologyProposal,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn get_ontology_proposal(
+            &self,
+            _id: &str,
+        ) -> crate::Result<Option<crate::types::OntologyProposal>> {
+            Ok(None)
+        }
+        async fn list_ontology_proposals(
+            &self,
+            _status: Option<&str>,
+            _limit: usize,
+        ) -> crate::Result<Vec<crate::types::OntologyProposal>> {
+            Ok(vec![])
+        }
+        async fn decide_ontology_proposal(
+            &self,
+            _id: &str,
+            _status: &str,
+            _decided_by: &str,
+            _decided_at: &str,
+        ) -> crate::Result<crate::types::OntologyProposal> {
+            Err(crate::error::KurultaiError::Store(
+                "proposal not found".into(),
+            ))
         }
     }
 
