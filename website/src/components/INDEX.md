@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: website/src/components
 parent: website/src/INDEX.md
 updated: 2026-09-11
-version: 6
+version: 7
 ---
 
 # `website/src/components`
@@ -29,10 +29,12 @@ version: 6
 | [`RepoBrain.tsx`](RepoBrain.tsx) | Repo brain panel | `website/src/components/../brain/BrainView` · `website/src/components/../api` · `website/src/components/../repoLattice` · `website/src/components/../types` | — | 2026-09-05 | 2 | 2026-09-05 fetchGraph with limit for repo list/repo view · 2026-08-16 indexed (v1 seed) |
 | [`StatsPanel.tsx`](StatsPanel.tsx) | Stat cards | `website/src/components/../types` | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`DbView.tsx`](DbView.tsx) | Read-only store browser page (`#/db`) | `../api` · `TopBar` | — | 2026-09-08 | 1 | 2026-09-08 added |
+| [`ProposalsPanel.tsx`](ProposalsPanel.tsx) | O3 ontology review queue: pending proposals, approve/reject (humans) | `../api` · `../types` | `website/src/App.tsx` | 2026-09-11 | 1 | 2026-09-11 added (#118) |
 | [`TopBar.tsx`](TopBar.tsx) | Top bar + Access settings + theme | `../version` · `../auth` · `HumanAccess` | — | 2026-09-04 | 3 | 2026-09-04 Access settings button · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-11 — `ProposalsPanel.tsx`: O3 ontology review queue — pending proposals with approve/reject, refreshes ontology on approve (#118)
 - 2026-09-11 — merged: chatboard child + HeyPanel wrapper (U3 of plan 2026-09-05-002) integrated alongside incoming BrainStage HUD/metrics + DbView store browser work
 - 2026-09-08 — `DbView.tsx` read-only store browser at `#/db` (tabs, sort, filter, pager); TopBar nav link
 - 2026-09-07 — `buildLinks`: pair strength = number of shared tags (drives synapse opacity + layout springs)

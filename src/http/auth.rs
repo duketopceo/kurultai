@@ -267,6 +267,12 @@ pub const ENV_ADMIN_TOKEN: &str = "KURULTAI_ADMIN_TOKEN";
 /// POST routes that mutate durable state and must not be reachable unauthenticated.
 const WRITE_ROUTES: &[&str] = &["/api/promote", "/api/ontology/promote", "/api/touch"];
 
+/// `/api/ontology/proposals/{id}/decide` mutates ontology state on approve —
+/// guarded like the other write routes under `SharedClosed` (#118).
+fn is_decide_route(path: &str) -> bool {
+    path.starts_with("/api/ontology/proposals/") && path.ends_with("/decide")
+}
+
 pub fn resolve_admin_token() -> Option<String> {
     std::env::var(ENV_ADMIN_TOKEN)
         .ok()
@@ -326,7 +332,8 @@ pub fn write_route_decision(
     admin_token: Option<&str>,
     bearer: Option<&str>,
 ) -> WriteRouteDecision {
-    let is_write = method == axum::http::Method::POST && WRITE_ROUTES.contains(&path);
+    let is_write = method == axum::http::Method::POST
+        && (WRITE_ROUTES.contains(&path) || is_decide_route(path));
     if !is_write || mode != crate::write_policy::WriteMode::SharedClosed {
         return WriteRouteDecision::Allow;
     }

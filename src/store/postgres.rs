@@ -8,8 +8,8 @@ use crate::hashutil::sha256_hex;
 use crate::hub::HubActivityStore;
 use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
 use crate::types::{
-    normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink, TrustLane,
-    VisibilityScope,
+    normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink,
+    OntologyProposal, TrustLane, VisibilityScope,
 };
 use chrono::{DateTime, Utc};
 use pgvector::Vector;
@@ -1211,6 +1211,32 @@ impl Store for PostgresStore {
     }
 
     async fn list_ontology_links(&self, _endpoint: Option<&str>) -> Result<Vec<OntologyLink>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn insert_ontology_proposal(&self, _p: &OntologyProposal) -> Result<()> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn get_ontology_proposal(&self, _id: &str) -> Result<Option<OntologyProposal>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn list_ontology_proposals(
+        &self,
+        _status: Option<&str>,
+        _limit: usize,
+    ) -> Result<Vec<OntologyProposal>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn decide_ontology_proposal(
+        &self,
+        _id: &str,
+        _status: &str,
+        _decided_by: &str,
+        _decided_at: &str,
+    ) -> Result<OntologyProposal> {
         Err(KurultaiError::Store("ontology not on hub store yet".into()))
     }
 }

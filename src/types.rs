@@ -137,6 +137,31 @@ pub struct OntologyLink {
     pub actor: String,
 }
 
+/// O3: a proposed ontology mutation awaiting human review (#118).
+///
+/// Proposals are drafts — they never mutate entities/links until a human
+/// decides. `kind` selects the apply path in [`crate::ontology`]:
+/// `promote_atom` (`atom_id` + `class_id`), `new_link` (`from_id`, `to_id`,
+/// `rel`, optional `confidence`), `new_entity` (`id`, `kind`, `name`,
+/// optional `atom_id`/`attributes`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OntologyProposal {
+    pub id: String,
+    /// `promote_atom` | `new_link` | `new_entity`.
+    pub kind: String,
+    /// Kind-specific parameters, validated at submit time.
+    pub payload: serde_json::Value,
+    /// `pending` | `approved` | `rejected`.
+    pub status: String,
+    /// Proposer identity — agent `codename`/`codename@instance` or MCP actor.
+    pub proposed_by: String,
+    /// Proposer's rationale; reused as reviewer note on decide.
+    pub reason: Option<String>,
+    pub created_at: String,
+    pub decided_by: Option<String>,
+    pub decided_at: Option<String>,
+}
+
 /// A single knowledge atom — the unit of indexed information.
 ///
 /// Stored in SQL for speed; agents receive [`crate::brain::AgentAtomView`] via MCP,

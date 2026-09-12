@@ -28,6 +28,7 @@ version: 5
 
 ## Recent
 
+- 2026-09-11 — O3 review queue: ProposalsPanel + proposals.ts + api fns (#118)
 - 2026-09-11 — package.json: version 2.0.0 → 0.6.0 (aligned with crate); test:layout → test over all website test files
 - 2026-09-08 — `#/db` route + `DbView` store browser; styles: `.db-*` table chrome
 - 2026-09-06 — housekeeping: `brain.html` favicon + meta fix; `public/favicon.svg`; de-local copy in TopBar/AskPanel/App footer/ActivityPanel/HumanAccess

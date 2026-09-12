@@ -67,6 +67,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-11 — O3 ontology proposal/approval queue (#118): schema v15 `ontology_proposals`, `submit_proposal`/`decide_proposal`, `/api/ontology/proposals*` REST (agents propose, humans decide), MCP `ontology_propose`/`ontology_proposals`, Brain UI review queue panel
 - 2026-09-11 — v0.6.0 release prep: crate/website versions → 0.6.0, CHANGELOG, README, ci.yml runs all website tests
 - 2026-09-11 — `kurultai init --config` fix merged (#310); public→private sync
 - 2026-09-06 — `src/http/cf_access.rs` new: verified Cloudflare Access JWT satisfies hub auth for human browser login (Google/OTP via Access, no API-key paste); `KURULTAI_CF_ACCESS_TEAM` + `KURULTAI_CF_ACCESS_AUDS`; `HubGate.cf_access` + `authorize_bearer` split in `auth.rs`

@@ -29,6 +29,8 @@ const TOOL_WHO_KNOWS: &str = "who_knows";
 const TOOL_PROMOTE: &str = "promote";
 const TOOL_ONTOLOGY_GET: &str = "ontology_get";
 const TOOL_ONTOLOGY_PROMOTE: &str = "ontology_promote";
+const TOOL_ONTOLOGY_PROPOSE: &str = "ontology_propose";
+const TOOL_ONTOLOGY_PROPOSALS: &str = "ontology_proposals";
 const TOOL_RECALL: &str = "recall";
 const TOOL_HEY_THREADS: &str = "hey_threads";
 const TOOL_HEY_READ: &str = "hey_read";
@@ -394,6 +396,30 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
                 }
             }),
             json!({
+                "name": TOOL_ONTOLOGY_PROPOSE,
+                "description": "Submit a draft ontology change for human review (#118). Kinds: promote_atom {atom_id, class_id}, new_link {from_id, to_id, rel, confidence?}, new_entity {entity_kind, name, id?, atom_id?, attributes?}. Creates a pending proposal only — never mutates entities or links.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "kind": { "type": "string", "enum": ["promote_atom", "new_link", "new_entity"] },
+                        "payload": { "type": "object" },
+                        "reason": { "type": "string" }
+                    },
+                    "required": ["kind", "payload"]
+                }
+            }),
+            json!({
+                "name": TOOL_ONTOLOGY_PROPOSALS,
+                "description": "List ontology change proposals. status filters to pending|approved|rejected; omit for all.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "status": { "type": "string" },
+                        "limit": { "type": "integer" }
+                    }
+                }
+            }),
+            json!({
                 "name": TOOL_HEY_THREADS,
                 "description": "List agent message-board threads (newest first).",
                 "inputSchema": {
@@ -472,6 +498,7 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
                                 | Some(TOOL_ASK)
                                 | Some(TOOL_WHO_KNOWS)
                                 | Some(TOOL_ONTOLOGY_GET)
+                                | Some(TOOL_ONTOLOGY_PROPOSALS)
                                 | Some(TOOL_HEY_THREADS)
                                 | Some(TOOL_HEY_READ)
                                 | Some(TOOL_HEY_POLL)
@@ -519,6 +546,23 @@ struct OntologyGetArgs {
 struct OntologyPromoteArgs {
     atom_id: String,
     class_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OntologyProposeArgs {
+    kind: String,
+    #[serde(default)]
+    payload: serde_json::Value,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OntologyProposalsArgs {
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default = "default_limit")]
+    limit: usize,
 }
 
 fn default_limit() -> usize {
@@ -660,7 +704,12 @@ async fn call_tool(
     if surface == ToolSurface::ReadOnly
         && matches!(
             call.name.as_str(),
-            TOOL_REMEMBER | TOOL_PROMOTE | TOOL_ONTOLOGY_PROMOTE | TOOL_HEY_POST | TOOL_HEY_REACT
+            TOOL_REMEMBER
+                | TOOL_PROMOTE
+                | TOOL_ONTOLOGY_PROMOTE
+                | TOOL_ONTOLOGY_PROPOSE
+                | TOOL_HEY_POST
+                | TOOL_HEY_REACT
         )
     {
         return Err(KurultaiError::Other(anyhow::anyhow!(
@@ -777,6 +826,39 @@ async fn call_tool(
             )
             .await?;
             serde_json::to_string(&entity)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
+        }
+        TOOL_ONTOLOGY_PROPOSE => {
+            let args: OntologyProposeArgs =
+                serde_json::from_value(call.arguments).map_err(|e| {
+                    KurultaiError::Other(anyhow::anyhow!("bad ontology_propose args: {e}"))
+                })?;
+            let proposal = ontology::submit_proposal(
+                brain.store().as_ref(),
+                args.kind.trim(),
+                args.payload,
+                &ctx.actor(),
+                args.reason,
+            )
+            .await?;
+            serde_json::to_string(&proposal)
+                .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
+        }
+        TOOL_ONTOLOGY_PROPOSALS => {
+            let args: OntologyProposalsArgs =
+                serde_json::from_value(call.arguments).map_err(|e| {
+                    KurultaiError::Other(anyhow::anyhow!("bad ontology_proposals args: {e}"))
+                })?;
+            let status = args
+                .status
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let proposals = brain
+                .store()
+                .list_ontology_proposals(status, args.limit.clamp(1, 500))
+                .await?;
+            serde_json::to_string(&proposals)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
         }
         TOOL_HEY_THREADS => {
@@ -954,6 +1036,8 @@ mod tests {
         assert!(names.contains(&"promote"));
         assert!(names.contains(&"ontology_get"));
         assert!(names.contains(&"ontology_promote"));
+        assert!(names.contains(&"ontology_propose"));
+        assert!(names.contains(&"ontology_proposals"));
         assert!(names.contains(&"recall"));
         let mut read_names: Vec<&str> = tool_defs_for(ToolSurface::ReadOnly)
             .iter()
@@ -969,6 +1053,7 @@ mod tests {
                 "hey_read",
                 "hey_threads",
                 "ontology_get",
+                "ontology_proposals",
                 "recall",
                 "search",
                 "who_knows"
@@ -1023,6 +1108,102 @@ mod tests {
             msg.contains("read-only"),
             "expected read-only error, got: {resp}"
         );
+    }
+
+    #[tokio::test]
+    async fn readonly_surface_rejects_ontology_propose() {
+        let brain = brain_with_fixture().await;
+        let resp = handle_message(
+            &brain,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 13,
+                "method": "tools/call",
+                "params": {
+                    "name": "ontology_propose",
+                    "arguments": {
+                        "kind": "promote_atom",
+                        "payload": { "atom_id": "x", "class_id": "class:note" }
+                    }
+                }
+            }),
+            ToolSurface::ReadOnly,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let msg = resp["error"]["message"].as_str().unwrap_or("");
+        assert!(
+            msg.contains("read-only"),
+            "expected read-only error, got: {resp}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ontology_propose_writes_pending_draft_only() {
+        let brain = brain_with_fixture().await;
+        // Find a real atom to reference.
+        let atoms = brain
+            .store()
+            .list_atoms(5, crate::store::SearchFilter::default())
+            .await
+            .unwrap();
+        let atom_id = atoms.first().expect("fixture atom").id.clone();
+
+        let resp = handle_message(
+            &brain,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 14,
+                "method": "tools/call",
+                "params": {
+                    "name": "ontology_propose",
+                    "arguments": {
+                        "kind": "promote_atom",
+                        "payload": { "atom_id": atom_id, "class_id": "class:note" },
+                        "reason": "test"
+                    }
+                }
+            }),
+            ToolSurface::Full,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let text = resp["result"]["content"][0]["text"].as_str().unwrap_or("");
+        let proposal: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(proposal["status"], "pending");
+        assert!(proposal["id"].as_str().unwrap_or("").starts_with("prop:"));
+
+        // No entity/link mutation happened — still draft.
+        let ent_id = format!("ent:{atom_id}");
+        assert!(brain
+            .store()
+            .get_ontology_entity(&ent_id)
+            .await
+            .unwrap()
+            .is_none());
+
+        // And it lists via ontology_proposals.
+        let list = handle_message(
+            &brain,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 15,
+                "method": "tools/call",
+                "params": {
+                    "name": "ontology_proposals",
+                    "arguments": { "status": "pending" }
+                }
+            }),
+            ToolSurface::Full,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let ltext = list["result"]["content"][0]["text"].as_str().unwrap_or("");
+        let proposals: Vec<serde_json::Value> = serde_json::from_str(ltext).unwrap();
+        assert!(proposals.iter().any(|p| p["id"] == proposal["id"]));
     }
 
     #[tokio::test]

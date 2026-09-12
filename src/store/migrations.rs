@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 14;
+pub const CURRENT_SCHEMA_VERSION: i32 = 15;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -212,6 +212,24 @@ CREATE TABLE IF NOT EXISTS device_flows (
 CREATE INDEX IF NOT EXISTS idx_device_flows_device_code ON device_flows(device_code);
 CREATE INDEX IF NOT EXISTS idx_device_flows_user_code ON device_flows(user_code);
 CREATE INDEX IF NOT EXISTS idx_device_flows_status_expires ON device_flows(status, expires_at);
+"#;
+
+const MIGRATION_015: &str = r#"
+CREATE TABLE IF NOT EXISTS ontology_proposals (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'approved', 'rejected')),
+    proposed_by TEXT NOT NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    decided_by TEXT,
+    decided_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ontology_proposals_status
+    ON ontology_proposals(status, created_at DESC);
 "#;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
@@ -449,6 +467,13 @@ pub fn migrate(conn: &Connection) -> Result<()> {
             .map_err(|e| KurultaiError::Store(format!("migration 014 failed: {e}")))?;
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [14])
             .map_err(|e| KurultaiError::Store(format!("migration 014 record failed: {e}")))?;
+    }
+
+    if current < 15 {
+        conn.execute_batch(MIGRATION_015)
+            .map_err(|e| KurultaiError::Store(format!("migration 015 failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [15])
+            .map_err(|e| KurultaiError::Store(format!("migration 015 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");
