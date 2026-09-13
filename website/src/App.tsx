@@ -11,6 +11,10 @@ import { StatsPanel } from './components/StatsPanel';
 import { HeyPanel } from './components/HeyPanel';
 import { ProposalsPanel } from './components/ProposalsPanel';
 import { RepoStrip, countCodeRepos } from './components/RepoBrain';
+import { CommandRail, type RailTab } from './components/CommandRail';
+import { MissionControl, type MissionTab } from './components/MissionControl';
+import { SettingsPanel } from './components/SettingsPanel';
+import { LogsPanel } from './components/LogsPanel';
 import type { Atom, LayoutMode, LoadTier, OntologyResponse } from './types';
 import { LOAD_TIER_CAPS } from './types';
 
@@ -21,6 +25,13 @@ function dateValue(atom: Atom): number {
   return Number.isFinite(d) ? d : 0;
 }
 
+function initialTheme(): string {
+  if (typeof window === 'undefined') return 'dark';
+  const saved = localStorage.getItem('kurultai-theme');
+  if (saved === 'light' || saved === 'dark') return saved;
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
 export function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [selected, setSelected] = useState<Atom | null>(null);
@@ -28,10 +39,19 @@ export function App() {
   const [loadMsg, setLoadMsg] = useState('Loading memories…');
   const [codeRepos, setCodeRepos] = useState<{ name: string; count: number }[]>([]);
   const [loadTier, setLoadTier] = useState<LoadTier>('low');
+  const [layout, setLayout] = useState<LayoutMode>('brain');
+  const [theme, setTheme] = useState(initialTheme);
+  const [rightTab, setRightTab] = useState<RailTab>('hey');
+  const [missionTab, setMissionTab] = useState<MissionTab>('pulse');
   const [ontology, setOntology] = useState<OntologyResponse>({ ok: true, entities: [], links: [] });
   const graphAbortRef = useRef<AbortController | null>(null);
   const statusAbortRef = useRef<AbortController | null>(null);
   const brainRef = useRef<BrainStageHandle | null>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('kurultai-theme', theme);
+  }, [theme]);
 
   const filteredAtoms = useCallback(() => {
     if (state.since <= 0 || !state.atoms.length) return state.atoms;
@@ -51,7 +71,6 @@ export function App() {
       setLoadMsg(`Loading ${tier}…`);
       const t0 = performance.now();
       const cap = LOAD_TIER_CAPS[tier];
-      // Repos dominate last_accessed order; fetch cortex without them, strip separately.
       const [brainAtoms, repoAtoms, onto] = await Promise.all([
         fetchGraph({ limit: cap, excludeSource: 'repos' }, ac.signal),
         fetchGraph({ limit: 8000, source: 'repos' }, ac.signal).catch(() => [] as Atom[]),
@@ -97,10 +116,9 @@ export function App() {
   useEffect(() => { loadAtoms(loadTier); }, [loadTier]);
 
   const handleLayoutChange = (mode: LayoutMode) => {
+    setLayout(mode);
     dispatch({ type: 'SET_LAYOUT', layout: mode });
-    try {
-      localStorage.setItem('kurultai-layout', mode);
-    } catch { /* best-effort persistence */ }
+    try { localStorage.setItem('kurultai-layout', mode); } catch { /* ignore */ }
   };
 
   const handleLoadTier = (tier: LoadTier) => {
@@ -117,15 +135,13 @@ export function App() {
     brainRef.current?.focusAtom(atom);
   };
 
-  const handleRandom = () => {
-    brainRef.current?.randomConnection();
-  };
+  const handleRandom = () => brainRef.current?.randomConnection();
 
   const visible = filteredAtoms();
   const renderCap = LOAD_TIER_CAPS[loadTier];
 
   const caption = (() => {
-    if (state.layout === 'ontology') {
+    if (layout === 'ontology') {
       const classes = ontology.entities.filter((e) => e.kind === 'class').length;
       const instances = ontology.entities.filter((e) => e.kind === 'instance').length;
       if (instances === 0) {
@@ -142,21 +158,32 @@ export function App() {
     return `${shown} memories · ${loadTier} · hover to trace connections`;
   })();
 
-  const handleOntologyChanged = useCallback((onto: OntologyResponse) => {
-    setOntology(onto);
-  }, []);
+  const handleOntologyChanged = useCallback((onto: OntologyResponse) => setOntology(onto), []);
 
   return (
     <AppContext.Provider value={{ state, dispatch }}>
       <a className="skip-link" href="#workspace">Skip to workspace</a>
       <TopBar daemonOk={state.daemonOk} daemonVersion={state.daemonVersion} />
-      <main id="workspace">
+      <main id="workspace" className="workspace">
+        <div className="top-pill">
+          <CommandStrip
+            layout={layout}
+            loadTier={loadTier}
+            atomTotal={state.atomTotal}
+            atomsLoaded={state.atoms.length}
+            onLayoutChange={handleLayoutChange}
+            onLoadTier={handleLoadTier}
+            onSince={handleSince}
+            onSelectAtom={handleSelectAndFocus}
+            onRandom={handleRandom}
+          />
+        </div>
         <section id="brain" className="brain-hero" aria-label="Brain visualization">
           <BrainStage
             ref={brainRef}
             atoms={visible}
             renderCap={renderCap}
-            layout={state.layout}
+            layout={layout}
             ontology={ontology}
             atomTotal={state.atomTotal}
             onSelect={setSelected}
@@ -164,28 +191,44 @@ export function App() {
             caption={caption}
           />
         </section>
-        <CommandStrip
-          layout={state.layout}
-          loadTier={loadTier}
-          atomTotal={state.atomTotal}
-          atomsLoaded={state.atoms.length}
-          onLayoutChange={handleLayoutChange}
-          onLoadTier={handleLoadTier}
-          onSince={handleSince}
-          onSelectAtom={handleSelectAndFocus}
-          onRandom={handleRandom}
-        />
-        <section className="dashboard-grid chrome-dashboard" aria-label="Brain dashboard">
-          <ActivityPanel live={live} onLiveToggle={setLive} />
-          <InspectorPanel atom={selected} allAtoms={visible} onOntologyChanged={handleOntologyChanged} />
-          <AskPanel />
-          <StatsPanel atoms={visible} atomTotal={state.atomTotal} />
-          <ProposalsPanel onOntologyChanged={handleOntologyChanged} />
-          <HeyPanel />
-        </section>
-        <RepoStrip repos={codeRepos} />
+        {selected && (
+          <aside className="floating-inspector" aria-label="Node inspector">
+            <button className="floating-inspector-close" type="button" onClick={() => setSelected(null)} aria-label="Close inspector">×</button>
+            <InspectorPanel atom={selected} allAtoms={visible} onOntologyChanged={handleOntologyChanged} />
+          </aside>
+        )}
+        <CommandRail
+          active={rightTab}
+          onChange={setRightTab}
+          daemonOk={state.daemonOk}
+          daemonVersion={state.daemonVersion}
+        >
+          {{
+            hey: <HeyPanel />,
+            repos: <RepoStrip repos={codeRepos} />,
+            logs: <LogsPanel />,
+            settings: (
+              <SettingsPanel
+                theme={theme}
+                onTheme={setTheme}
+                loadTier={loadTier}
+                onLoadTier={handleLoadTier}
+                layout={layout}
+                onLayout={handleLayoutChange}
+              />
+            ),
+          }}
+        </CommandRail>
+        <MissionControl active={missionTab} onChange={setMissionTab}>
+          {{
+            pulse: <ActivityPanel live={live} onLiveToggle={setLive} />,
+            focus: <StatsPanel atoms={visible} atomTotal={state.atomTotal} />,
+            synthesize: <AskPanel />,
+            ask: <ProposalsPanel onOntologyChanged={handleOntologyChanged} />,
+          }}
+        </MissionControl>
       </main>
-      <footer>Kurultai — your knowledge remains yours.</footer>
+      <footer className="footer">Kurultai — your knowledge remains yours.</footer>
     </AppContext.Provider>
   );
 }

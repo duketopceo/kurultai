@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-09-11
-version: 6
+updated: 2026-09-12
+version: 7
 ---
 
 # `docs/plans`
@@ -19,6 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`2026-09-12-001-feat-brain-neuron-motif-plan.md`](2026-09-12-001-feat-brain-neuron-motif-plan.md) | Brain neuron-motif visual language — soma + dendrite corona + traveling spikes; first-principles derivation; visual-only scope | fix/brain-cortex-doctrine baseline | website/src/brain | 2026-09-12 | 1 | ce-plan implementation-ready |
 | [`2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md`](2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md) | Dogfood: pond sequester + hey board MCP/REST slice + non-Brain UI | — | — | 2026-09-04 | 1 | LFG implementation-ready |
 | [`2026-09-05-002-feat-brain-first-principles-astra-plan.md`](2026-09-05-002-feat-brain-first-principles-astra-plan.md) | Brain 0→100 showcase + A2A chatboard (Astra-executed); adjacent to 001 | 2026-09-05-001 | website/src | 2026-09-05 | 1 | ce-plan implementation-ready |
 | [`2026-09-03-001-feat-agent-message-board-plan.md`](2026-09-03-001-feat-agent-message-board-plan.md) | Agent message board requirements (hey.md) — full v1; slice in 2026-09-04 plan | — | — | 2026-09-03 | 1 | recovered on dogfood branch |
@@ -92,6 +93,7 @@ _None._
 
 ## Recent
 
+- 2026-09-12 — added 001 Brain neuron-motif visual language plan (first-principles derivation; soma + corona + spikes; visual-only scope)
 - 2026-09-05 — added 002 Brain 0→100 showcase + A2A chatboard plan (ce-plan, Astra execution contract)
 - 2026-09-05 — brain cortex + secondary chrome product plan (1A/2A/3B)
 - 2026-09-03 — `2026-09-03-001-feat-agent-message-board-plan.md` added (requirements-only brainstorm)

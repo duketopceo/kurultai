@@ -1,32 +1,13 @@
-import { useEffect, useState } from 'react';
 import { UI_VERSION } from '../version';
-import { useAuthMode } from '../auth';
-import { AccessSettingsButton } from './HumanAccess';
 
 interface Props {
   daemonOk: boolean;
   daemonVersion: string;
 }
 
-function initialTheme(): string {
-  const saved = localStorage.getItem('kurultai-theme');
-  if (saved === 'light' || saved === 'dark') return saved;
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-}
-
 export function TopBar({ daemonOk, daemonVersion }: Props) {
-  const [theme, setTheme] = useState(initialTheme);
-  const authMode = useAuthMode();
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem('kurultai-theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-
   return (
-    <header className="topbar">
+    <header className="topbar" aria-label="Kurultai header">
       <a className="brand" href="/ui/" aria-label="Kurultai home">
         <span className="brand-mark" aria-hidden="true">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -50,25 +31,13 @@ export function TopBar({ daemonOk, daemonVersion }: Props) {
         <a href="#/db">Store <span className="beta-badge">β</span></a>
       </nav>
       <div className="topbar-status" aria-live="polite">
-        <span className="status-dot" style={{ background: daemonOk ? 'var(--electric-dim)' : 'var(--danger)' }} />
+        <span className="status-dot" style={{ background: daemonOk ? 'var(--chrome-ok)' : 'var(--chrome-danger)' }} />
         <span id="daemon-status">
           {daemonOk
             ? `online · api ${daemonVersion || '—'}`
             : 'connecting'}
         </span>
       </div>
-      <AccessSettingsButton mode={authMode} onChanged={() => { /* Root listens for auth-changed */ }} />
-      <button
-        id="theme-toggle"
-        className="icon-button"
-        type="button"
-        aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-        aria-pressed={theme === 'light'}
-        onClick={toggleTheme}
-      >
-        <span aria-hidden="true">◐</span>
-        <span className="button-copy">Theme</span>
-      </button>
     </header>
   );
 }
