@@ -1,5 +1,6 @@
 import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { initGlitchtip } from './glitchtip.ts';
 import './styles.css';
 import { App } from './App';
 import { RepoBrainPage } from './components/RepoBrain';
@@ -102,6 +103,8 @@ function Root() {
     </StrictMode>
   );
 }
+
+initGlitchtip();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('No #root element found');

@@ -31,14 +31,16 @@ pub use mcp::resolve_mcp_http_secret;
 use crate::brain::AgentAtomView;
 use crate::daemon::DaemonStatus;
 use crate::error::KurultaiError;
+use crate::glitchtip;
 use crate::mcp::brain::BrainService;
 use crate::mcp::interface::AgentRead;
 use crate::metrics::{MetricOp, MetricsRegistry, TimedObserve};
 use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
 use auth::hub_api_auth;
+use axum::body::Body;
 use axum::extract::{Path, Query, Request, State};
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::http::{header, HeaderValue, Request as HttpRequest, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -220,8 +222,20 @@ fn router(state: AppState) -> Router {
         // routes regardless of `HubAuth` (which is `None` by default).
         .layer(middleware::from_fn(auth::write_route_guard))
         .layer(middleware::from_fn(no_store_api))
+        .layer(sentry_http_layer())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+fn sentry_http_layer() -> tower::util::Either<
+    sentry_tower::NewSentryLayer<HttpRequest<Body>>,
+    tower::layer::util::Identity,
+> {
+    if glitchtip::is_enabled() {
+        tower::util::Either::Left(sentry_tower::NewSentryLayer::<HttpRequest<Body>>::new_from_top())
+    } else {
+        tower::util::Either::Right(tower::layer::util::Identity::new())
+    }
 }
 
 /// Build the loopback `POST /ingest` router for integration tests / external embedding.

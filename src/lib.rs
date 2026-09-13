@@ -12,6 +12,7 @@ pub mod environment;
 pub mod error;
 pub mod export;
 pub mod features;
+pub mod glitchtip;
 pub mod hashutil;
 pub mod http;
 pub mod hub;

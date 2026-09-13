@@ -11,6 +11,7 @@
     "test": "node --experimental-strip-types --test src/brain/layout/*.test.ts src/brain/*.test.ts src/components/chatboard/*.test.ts src/*.test.ts"
   },
   "dependencies": {
+    "@sentry/react": "^9.47.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.185.1"
