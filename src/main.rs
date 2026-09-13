@@ -297,6 +297,7 @@ async fn main() -> Result<()> {
         env.cli_log_filter()
     };
     logging::init_logging(cli.log.as_deref().or(Some(default_filter)), env)?;
+    let _glitchtip = kurultai::glitchtip::init(env);
 
     let plain = effective_plain(cli.plain);
     let no_color = env_no_color_set();

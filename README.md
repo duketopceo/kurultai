@@ -82,6 +82,7 @@ CLI · axum daemon (/api/*) · MCP stdio · Brain UI (embedded)
 | **OpenRouter** | One `OPENROUTER_API_KEY` (or `KURULTAI_API_KEY`) — embed `openai/text-embedding-3-large`, rerank + LLM `ask` `openai/gpt-4o-mini`. FTS-only without a key; optional local ONNX via `--features local-embed` |
 | **Agents** | MCP stdio — `search`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, `ontology_promote`, `recall` |
 | **Brain UI** | Vite + React + Three.js (`website/` → built `ui/`, rust-embedded at `GET /ui/`) |
+| **Error tracking** | Optional GlitchTip at `errors.pacehq.io` — `KURULTAI_GLITCHTIP_DSN` (daemon) and `VITE_KURULTAI_GLITCHTIP_DSN` (UI build); see [`.env.example`](.env.example) |
 
 **Optional hub track (off by default):** `--features postgres` + `KURULTAI_FEATURE_HUB=1` adds a Postgres/pgvector store for shared `team` / `company` atoms. Default installs stay SQLite-only.
 
