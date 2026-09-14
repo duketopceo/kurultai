@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-09-13
-version: 13
+updated: 2026-09-14
+version: 14
 ---
 
 # `.`
@@ -68,6 +68,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-14 — `docs/plans/2026-09-14-001` Flowsint-style ontology board plan (#316): ontology toggle → 2D `@xyflow/react` board; needs human entity/link write lane
 - 2026-09-13 — v2 Brain dashboard chrome: top-pill search + tier/horizon controls, right Command rail (Hey/Repos/Logs/Settings), bottom Mission Control (Pulse/Focus/Synthesize/Ask), floating inspector, Settings + Logs tabs; `ui/` rebuilt
 - 2026-09-12 — neuron motif implemented (plan 2026-09-12-001): `dendrite.ts` faceted soma + procedural corona, `spikes.ts` traveling activity-encoded spikes, hover stimulation; `ui/` rebuilt; 48 website tests green
 - 2026-09-12 — `docs/plans/2026-09-12-001` Brain neuron-motif visual language plan (soma + dendrite corona + traveling spikes; first-principles derivation; visual-only scope)

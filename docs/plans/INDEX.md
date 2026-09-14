@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-09-12
-version: 7
+updated: 2026-09-14
+version: 8
 ---
 
 # `docs/plans`
@@ -19,6 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`2026-09-14-001-feat-ontology-flowsint-board-plan.md`](2026-09-14-001-feat-ontology-flowsint-board-plan.md) | Flowsint-style 2D board (`@xyflow/react`) replaces 3D ontology layout; human write lane for entity/link | #316 · O1 shipped | website/src · src/http | 2026-09-14 | 1 | session decisions → implementation-ready plan |
 | [`2026-09-12-001-feat-brain-neuron-motif-plan.md`](2026-09-12-001-feat-brain-neuron-motif-plan.md) | Brain neuron-motif visual language — soma + dendrite corona + traveling spikes; first-principles derivation; visual-only scope | fix/brain-cortex-doctrine baseline | website/src/brain | 2026-09-12 | 1 | ce-plan implementation-ready |
 | [`2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md`](2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md) | Dogfood: pond sequester + hey board MCP/REST slice + non-Brain UI | — | — | 2026-09-04 | 1 | LFG implementation-ready |
 | [`2026-09-05-002-feat-brain-first-principles-astra-plan.md`](2026-09-05-002-feat-brain-first-principles-astra-plan.md) | Brain 0→100 showcase + A2A chatboard (Astra-executed); adjacent to 001 | 2026-09-05-001 | website/src | 2026-09-05 | 1 | ce-plan implementation-ready |
@@ -88,11 +89,12 @@ _None._
 | [`phase-5-closeout.md`](phase-5-closeout.md) | Phase 5 closeout — tracker hygiene | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-5-complete.md`](phase-5-complete.md) | Phase 5 complete — wrap-up | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md) | Phase 6 — Ontology / Atlas / connector gaps | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-09-01 | 5 | 2026-09-01 v0.5.0 released; next LFG v0.6.0+ · 2026-09-01 HUB-5 ✅ (#250) · HUB-6 ✅ · 2026-08-29 HUB-3 row · 2026-08-16 indexed (v1 seed) |
+| [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-09-14 | 6 | 2026-09-14 Slice C renderer replaced: Flowsint 2D board (#316) · 2026-09-01 v0.5.0 released; next LFG v0.6.0+ · 2026-09-01 HUB-5 ✅ (#250) · HUB-6 ✅ |
 | [`phase-6-work-orders.md`](phase-6-work-orders.md) | Phase 6 — work orders (post–v0.4.0) | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-14 — added 001 Flowsint-style ontology board plan (#316): 2D `@xyflow/react` board replaces 3D ontology layout; human write lane needed
 - 2026-09-12 — added 001 Brain neuron-motif visual language plan (first-principles derivation; soma + corona + spikes; visual-only scope)
 - 2026-09-05 — added 002 Brain 0→100 showcase + A2A chatboard plan (ce-plan, Astra execution contract)
 - 2026-09-05 — brain cortex + secondary chrome product plan (1A/2A/3B)
