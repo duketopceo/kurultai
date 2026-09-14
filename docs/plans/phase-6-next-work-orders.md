@@ -83,6 +83,8 @@ Atlas sequencing still lives in [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md)
 
 Brain dual-mode research (brain-shape FDG + algorithmic ontology; galaxy out): [`docs/brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md`](../brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md). Plan: [`2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md`](2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md). Slice A (visual) and Slice B (O1) are independent LFGs; Slice C (ontology layout) waits on B. Do not LFG ontology **layout** before O1 ([#116](https://github.com/duketopceo/kurultai/issues/116)).
 
+**2026-09-14 update — Slice C renderer replaced:** the `ontology` mode becomes a **Flowsint-style 2D board** (`@xyflow/react` node-card canvas: expand classes, persisted drag, context menus, create-relation, add-entity) instead of the 3D Sugiyama scaffold. Requires a new **human-auth write lane** (`POST /api/ontology/entity`, `/api/ontology/link`) — proposals stay agent-submit/human-decide. Plan: [`2026-09-14-001-feat-ontology-flowsint-board-plan.md`](2026-09-14-001-feat-ontology-flowsint-board-plan.md) · Issue: [#316](https://github.com/duketopceo/kurultai/issues/316). O1 is shipped, so this is a valid next LFG.
+
 ---
 
 ## Explicitly deferred
