@@ -29,13 +29,15 @@ export interface FdgParams {
 
 export const DEFAULT_FDG_PARAMS: FdgParams = {
   theta: 0.8,
-  repulsion: 0.02,
+  repulsion: 0.028,
   springK: 0.05,
   springRest: 0.35,
-  centerK: 0.01,
+  centerK: 0.002,
   tagK: 0.02,
   // Soft hull bias during the tick; hard SDF project after integrate is authoritative.
-  hullK: 0.12,
+  // Weaker center gravity + stronger repulsion lets the cortex fill its volume
+  // instead of collapsing to a bright core.
+  hullK: 0.18,
   damping: 0.85,
   minTagMembers: 3,
 };

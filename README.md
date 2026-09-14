@@ -123,7 +123,7 @@ Loopback ingest (opt-in): set `KURULTAI_INGEST_SECRET`, then `POST /ingest` with
 | Tiered hub · Postgres store · team transport | ✅ Shipped in v0.5.0 |
 | Team web app (`web/`) | 🚧 Next.js + Clerk scaffold |
 
-Roadmap issues: [#25](https://github.com/duketopceo/kurultai/issues/25) (developer → solo), [#27](https://github.com/duketopceo/kurultai/issues/27) (team → company). Work queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md).
+Roadmap: [`ROADMAP.md`](ROADMAP.md) — solo → team → company. Issues: [#25](https://github.com/duketopceo/kurultai/issues/25) (developer → solo), [#27](https://github.com/duketopceo/kurultai/issues/27) (team → company). Work queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md).
 
 ## Contributing
 

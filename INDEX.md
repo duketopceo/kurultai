@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-09-11
-version: 9
+updated: 2026-09-13
+version: 13
 ---
 
 # `.`
@@ -58,7 +58,8 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-11 | 4 | 2026-09-11 v0.6.0 release stack facts · 2026-09-01 v0.5.0 release stack facts · 2026-08-19 rewrite for v0.4.1 stack facts · 2026-08-16 indexed (v1 seed) |
+| [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-12 | 5 | 2026-09-12 link ROADMAP.md in Status · 2026-09-11 v0.6.0 release stack facts · 2026-09-01 v0.5.0 release stack facts |
+| [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-09-12 | 1 | 2026-09-12 created — issue #122 |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-01 | 2 | 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
 | [`docker-compose.hub.yml`](docker-compose.hub.yml) | Local pgvector + hub daemon proof of Railway recipe | `Dockerfile` · `docs/deploy/railway-hub.md` | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 compose proof |
@@ -67,6 +68,11 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-13 — v2 Brain dashboard chrome: top-pill search + tier/horizon controls, right Command rail (Hey/Repos/Logs/Settings), bottom Mission Control (Pulse/Focus/Synthesize/Ask), floating inspector, Settings + Logs tabs; `ui/` rebuilt
+- 2026-09-12 — neuron motif implemented (plan 2026-09-12-001): `dendrite.ts` faceted soma + procedural corona, `spikes.ts` traveling activity-encoded spikes, hover stimulation; `ui/` rebuilt; 48 website tests green
+- 2026-09-12 — `docs/plans/2026-09-12-001` Brain neuron-motif visual language plan (soma + dendrite corona + traveling spikes; first-principles derivation; visual-only scope)
+- 2026-09-12 — Brain cortex doctrine rebalance (`website/src/brain/BrainView.ts` + `ui/` rebuild): pale-white nodes over deep black, tighter halos, per-synapse shimmer/zap
+- 2026-09-12 — `ROADMAP.md` created (issue #122): living solo → team → company audience roadmap; README Status links it
 - 2026-09-11 — O3 ontology proposal/approval queue (#118): schema v15 `ontology_proposals`, `submit_proposal`/`decide_proposal`, `/api/ontology/proposals*` REST (agents propose, humans decide), MCP `ontology_propose`/`ontology_proposals`, Brain UI review queue panel
 - 2026-09-11 — v0.6.0 release prep: crate/website versions → 0.6.0, CHANGELOG, README, ci.yml runs all website tests
 - 2026-09-11 — `kurultai init --config` fix merged (#310); public→private sync

@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website
 parent: INDEX.md
-updated: 2026-09-11
-version: 5
+updated: 2026-09-13
+version: 8
 ---
 
 # `website`
@@ -23,11 +23,15 @@ version: 5
 | [`brain.html`](brain.html) | Brain page HTML entry + favicon/theme meta | — | `src/http/mod.rs` · `src/mcp/brain.rs` · `src/query/context.rs` · `src/query/hybrid.rs` | 2026-09-06 | 2 | 2026-09-06 favicon link, theme-color, hosted-neutral description, ui-version sync · 2026-08-16 indexed (v1 seed) |
 | [`package-lock.json`](package-lock.json) | npm lockfile | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`package.json`](package.json) | Brain UI npm package (Vite) | — | — | 2026-09-11 | 2 | 2026-09-11 version → 0.6.0 + test script covers all src/**/*.test.ts · 2026-08-16 indexed (v1 seed) |
+| [`public/favicon.svg`](public/favicon.svg) | Brain tab icon — copied to `ui/favicon.svg` on build | `brain.html` | `ui/favicon.svg` | 2026-09-13 | 2 | 2026-09-13 re-added for v2 chrome build · 2026-09-06 added |
 | [`tsconfig.json`](tsconfig.json) | TS config | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`vite.config.ts`](vite.config.ts) | Vite config; copies build into ui/ | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-13 — v2 chrome layout: `src/App.tsx` + `src/styles.css` grid; new components `CommandRail.tsx`, `MissionControl.tsx`, `LogsPanel.tsx`, `SettingsPanel.tsx`; `ui/` rebuilt
+- 2026-09-12 — `src/brain/` neuron motif (plan 2026-09-12-001): dendrite.ts + spikes.ts; soma facets, corona sprites, traveling spikes; `ui/` rebuilt
+- 2026-09-12 — `src/brain/BrainView.ts` cortex-doctrine rebalance: pale-white nodes, tighter halos, synapse shimmer/zap tick; `ui/` rebuilt
 - 2026-09-11 — O3 review queue: ProposalsPanel + proposals.ts + api fns (#118)
 - 2026-09-11 — package.json: version 2.0.0 → 0.6.0 (aligned with crate); test:layout → test over all website test files
 - 2026-09-08 — `#/db` route + `DbView` store browser; styles: `.db-*` table chrome

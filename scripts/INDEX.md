@@ -19,7 +19,7 @@ version: 2
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`audit-agent-index.py`](audit-agent-index.py) | CI audit: INDEX.md coverage vs git ls-files | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`audit-agent-index.py`](audit-agent-index.py) | CI audit: INDEX.md coverage vs git ls-files | — | — | 2026-09-13 | 2 | 2026-09-13 skip `website/public/` — Vite public assets are cataloged in `website/INDEX.md` · 2026-08-16 indexed (v1 seed) |
 | [`audit-ui.py`](audit-ui.py) | Audit built `ui/` for stale/dead assets and outdated deps | — | `website/` · `ui/` | 2026-09-04 | 1 | 2026-09-04 add dead-code/old-version UI audit · 2026-08-16 indexed (v1 seed) |
 | [`recall-harness.py`](recall-harness.py) | Randomized recall/search load + correctness suite (volume, deep, same/mixed-path concurrency, failover, p50/95/99) | `/api/search` · `/api/recall` · `/api/atoms` | — | 2026-09-08 | 1 | 2026-09-08 added |
 | [`build-ui.sh`](build-ui.sh) | website/ → ui/ production copy for rust-embed | — | `website/` · `ui/` | 2026-09-04 | 2 | 2026-09-04 prune legacy files and stale hashed bundles before rebuild · 2026-08-16 indexed (v1 seed) |

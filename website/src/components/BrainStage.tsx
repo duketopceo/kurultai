@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { BrainView } from '../brain/BrainView';
+import { selectIntentionalLinks } from '../brain/linkSelect';
 import type { Atom, LayoutMode, OntologyResponse } from '../types';
 
 const dbg = (...args: unknown[]) => console.debug('[kurultai:brain]', ...args);
@@ -208,5 +209,8 @@ function buildLinks(atoms: Atom[]) {
     const [a, b] = key.split(':');
     links.push({ a, b, strength: count });
   }
-  return links;
+  // Shared-tag derivation yields cliques; keep only load-bearing synapses
+  // (mutual top-K nominations + all links of low-degree bridge/leaf nodes)
+  // so the wiring reads as intentional paths, not a filled mesh.
+  return selectIntentionalLinks(links);
 }

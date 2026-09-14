@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 SKIP_DIR_PREFIXES = (
     "ui/assets/",
+    "website/public/",
     "tests/fixtures/vault/",
     "tests/fixtures/code_repo/",
 )

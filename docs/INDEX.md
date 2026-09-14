@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-09-11
-version: 5
+updated: 2026-09-12
+version: 6
 ---
 
 # `docs`
@@ -36,6 +36,7 @@ version: 5
 
 ## Recent
 
+- 2026-09-12 — plans/ added 2026-09-12-001 Brain neuron-motif visual language plan (first-principles derivation)
 - 2026-09-05 — plans/ added 002 Brain 0→100 showcase + A2A chatboard plan
 - 2026-09-03 — `docs/plans/2026-09-03-001-feat-agent-message-board-plan.md` added
 - 2026-09-01 — v0.5.0 Team released; queue and Year-1 milestones marked shipped

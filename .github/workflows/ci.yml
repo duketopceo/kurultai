@@ -85,7 +85,7 @@ jobs:
           cache: npm
           cache-dependency-path: website/package-lock.json
       - name: Website unit tests
-        run: node --experimental-strip-types --test website/src/brain/layout/*.test.ts website/src/brain/*.test.ts website/src/components/chatboard/*.test.ts website/src/*.test.ts
+        run: cd website && npm ci && npm test
       - name: Build website/ → ui/
         run: bash scripts/build-ui.sh
       - name: Embedded ui/ matches website source
