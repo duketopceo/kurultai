@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: website/src/components
 parent: website/src/INDEX.md
-updated: 2026-09-14
+updated: 2026-09-15
 version: 10
 ---
 
@@ -39,6 +39,7 @@ version: 10
 
 ## Recent
 
+- 2026-09-15 — `OntologyBoard`: edge context menu (Delete link), node Delete entity w/ inline confirm, Escape closes overlays (#320)
 - 2026-09-14 — `OntologyBoard.tsx`: Flowsint-style 2D `@xyflow/react` board replaces the 3D ontology layout (context menus, relate dialog, add entity, persisted drag) (#316)
 - 2026-09-13 — v2 chrome layout: `CommandRail.tsx`, `MissionControl.tsx`, `LogsPanel.tsx`, `SettingsPanel.tsx`; `CommandStrip.tsx` packed into top pill; `ui/` rebuilt
 - 2026-09-12 — `BrainStage.buildLinks` routes through `selectIntentionalLinks` (`brain/linkSelect.ts`): clique-fill culled to nominated backbones + unconditional bridge/leaf edges

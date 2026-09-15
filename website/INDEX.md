@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: website
 parent: INDEX.md
-updated: 2026-09-14
+updated: 2026-09-15
 version: 9
 ---
 
@@ -29,6 +29,7 @@ version: 9
 
 ## Recent
 
+- 2026-09-15 — board v2 delete UX; `ui/` rebuilt (#320)
 - 2026-09-14 — ontology board: `@xyflow/react` dep; `src/components/OntologyBoard.tsx`; `src/brain/layout/ontoBoard.ts`; `ui/` rebuilt (#316)
 - 2026-09-13 — v2 chrome layout: `src/App.tsx` + `src/styles.css` grid; new components `CommandRail.tsx`, `MissionControl.tsx`, `LogsPanel.tsx`, `SettingsPanel.tsx`; `ui/` rebuilt
 - 2026-09-12 — `src/brain/` neuron motif (plan 2026-09-12-001): dendrite.ts + spikes.ts; soma facets, corona sprites, traveling spikes; `ui/` rebuilt

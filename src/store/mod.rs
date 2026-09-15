@@ -449,6 +449,13 @@ pub trait Store: Send + Sync {
     /// All links, or those incident on an entity id / atom id.
     async fn list_ontology_links(&self, endpoint: Option<&str>) -> Result<Vec<OntologyLink>>;
 
+    /// Board v2 (#320): delete an entity plus every link touching it so no
+    /// dangling edges remain. Missing id is an error — a no-op is not a delete.
+    async fn delete_ontology_entity(&self, id: &str) -> Result<()>;
+
+    /// Board v2 (#320): delete a link by id. Missing id is an error.
+    async fn delete_ontology_link(&self, id: &str) -> Result<()>;
+
     /// O3: queue an ontology mutation proposal for human review (#118).
     async fn insert_ontology_proposal(&self, p: &OntologyProposal) -> Result<()>;
 
@@ -2169,6 +2176,37 @@ impl Store for SqliteVecStore {
             }
         }
         Ok(out)
+    }
+
+    async fn delete_ontology_entity(&self, id: &str) -> Result<()> {
+        let conn = self.lock()?;
+        let removed = conn
+            .execute("DELETE FROM ontology_entities WHERE id = ?1", params![id])
+            .map_err(|e| KurultaiError::Store(format!("delete_ontology_entity: {e}")))?;
+        if removed == 0 {
+            return Err(KurultaiError::Store(format!(
+                "delete_ontology_entity: entity {id} not found"
+            )));
+        }
+        conn.execute(
+            "DELETE FROM ontology_links WHERE from_id = ?1 OR to_id = ?1",
+            params![id],
+        )
+        .map_err(|e| KurultaiError::Store(format!("delete_ontology_entity links: {e}")))?;
+        Ok(())
+    }
+
+    async fn delete_ontology_link(&self, id: &str) -> Result<()> {
+        let conn = self.lock()?;
+        let removed = conn
+            .execute("DELETE FROM ontology_links WHERE id = ?1", params![id])
+            .map_err(|e| KurultaiError::Store(format!("delete_ontology_link: {e}")))?;
+        if removed == 0 {
+            return Err(KurultaiError::Store(format!(
+                "delete_ontology_link: link {id} not found"
+            )));
+        }
+        Ok(())
     }
 
     // ── O3: ontology proposals (#118) ─────────────────────────────────────────

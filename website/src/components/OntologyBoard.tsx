@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -13,7 +13,13 @@ import {
   type Connection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { createOntologyEntity, createOntologyLink, fetchOntology } from '../api';
+import {
+  createOntologyEntity,
+  createOntologyLink,
+  deleteOntologyEntity,
+  deleteOntologyLink,
+  fetchOntology,
+} from '../api';
 import { boardEdges, entityToAtom, layoutOntology, type BoardNodeData } from '../brain/layout/ontoBoard';
 import type { Atom, OntologyEntity, OntologyResponse } from '../types';
 
@@ -30,7 +36,8 @@ const REL_OPTIONS = [
 
 type Menu =
   | { kind: 'pane'; x: number; y: number }
-  | { kind: 'node'; x: number; y: number; entity: OntologyEntity };
+  | { kind: 'node'; x: number; y: number; entity: OntologyEntity }
+  | { kind: 'edge'; x: number; y: number; edgeId: string };
 
 type OntoNode = Node<BoardNodeData, 'onto'>;
 
@@ -88,6 +95,7 @@ export function OntologyBoard({ ontology, atoms, onSelect, onOntologyChanged }: 
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const nodes: OntoNode[] = useMemo(
     () =>
@@ -149,6 +157,68 @@ export function OntologyBoard({ ontology, atoms, onSelect, onOntologyChanged }: 
     [connect, refresh],
   );
 
+  const removeEntity = useCallback(
+    async (id: string) => {
+      setBusy(true);
+      setErr(null);
+      try {
+        await deleteOntologyEntity(id);
+        setMenu(null);
+        setConfirmDelete(null);
+        // Drop stale board-local state for the removed entity.
+        setPositions((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          saveJson(POS_KEY, next);
+          return next;
+        });
+        setExpanded((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          saveJson(EXPAND_KEY, [...next]);
+          return next;
+        });
+        await refresh();
+      } catch (e) {
+        setErr((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [refresh],
+  );
+
+  const removeLink = useCallback(
+    async (id: string) => {
+      setBusy(true);
+      setErr(null);
+      try {
+        await deleteOntologyLink(id);
+        setMenu(null);
+        await refresh();
+      } catch (e) {
+        setErr((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [refresh],
+  );
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMenu(null);
+        setConnect(null);
+        setAddOpen(false);
+        setConfirmDelete(null);
+        setErr(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const toggleExpanded = useCallback((id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -175,6 +245,10 @@ export function OntologyBoard({ ontology, atoms, onSelect, onOntologyChanged }: 
           onNodeContextMenu={(e, n) => {
             e.preventDefault();
             setMenu({ kind: 'node', x: e.clientX, y: e.clientY, entity: n.data.entity });
+          }}
+          onEdgeContextMenu={(e, edge) => {
+            e.preventDefault();
+            setMenu({ kind: 'edge', x: e.clientX, y: e.clientY, edgeId: edge.id });
           }}
           onPaneContextMenu={(e) => {
             e.preventDefault();
@@ -238,7 +312,38 @@ export function OntologyBoard({ ontology, atoms, onSelect, onOntologyChanged }: 
             >
               Relate to…
             </button>
+            <button
+              type="button"
+              className="onto-menu-item onto-menu-danger"
+              disabled={busy}
+              onClick={() => {
+                if (confirmDelete === menu.entity.id) {
+                  removeEntity(menu.entity.id);
+                } else {
+                  setConfirmDelete(menu.entity.id);
+                }
+              }}
+            >
+              {confirmDelete === menu.entity.id
+                ? `Confirm delete ${menu.entity.name}?`
+                : 'Delete entity'}
+            </button>
           </div>
+        )}
+        {menu?.kind === 'edge' && (
+          <div className="onto-menu" style={{ left: menu.x, top: menu.y }}>
+            <button
+              type="button"
+              className="onto-menu-item onto-menu-danger"
+              disabled={busy}
+              onClick={() => removeLink(menu.edgeId)}
+            >
+              Delete link
+            </button>
+          </div>
+        )}
+        {err && !connect && !addOpen && (
+          <div className="onto-error onto-error-float" role="alert">{err}</div>
         )}
 
         {connect && (

@@ -2063,6 +2063,12 @@ mod tests {
         ) -> crate::Result<Vec<crate::types::OntologyLink>> {
             Ok(vec![])
         }
+        async fn delete_ontology_entity(&self, _id: &str) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn delete_ontology_link(&self, _id: &str) -> crate::Result<()> {
+            Ok(())
+        }
         async fn insert_ontology_proposal(
             &self,
             _p: &crate::types::OntologyProposal,
