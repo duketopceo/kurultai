@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src/brain/layout
 parent: website/src/brain/INDEX.md
-updated: 2026-09-06
-version: 2
+updated: 2026-09-14
+version: 3
 ---
 
 # `website/src/brain/layout`
@@ -29,11 +29,14 @@ _None._
 | [`octree.ts`](octree.ts) | Octree for FDG | — | `website/src/brain/layout/fdg.ts` · `website/src/brain/layout/layout.test.ts` | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`sdf.ts`](sdf.ts) | Baked SDF hull | `website/src/brain/layout/types.ts` | `website/src/brain/layout/fdg.ts` · `website/src/brain/layout/fdg.worker.ts` · `website/src/brain/layout/layout.test.ts` | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`sugiyama.test.ts`](sugiyama.test.ts) | Sugiyama unit tests | `website/src/brain/layout/sugiyama.ts` | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`ontoBoard.ts`](ontoBoard.ts) | 2D ontology board layout + edge/entity→atom mapping (#316) | `website/src/types` | `website/src/brain/layout/ontoBoard.test.ts` · `website/src/components/OntologyBoard` | 2026-09-14 | 1 | 2026-09-14 added (#316) |
+| [`ontoBoard.test.ts`](ontoBoard.test.ts) | ontoBoard unit tests | `website/src/brain/layout/ontoBoard.ts` | — | 2026-09-14 | 1 | 2026-09-14 added (#316) |
 | [`sugiyama.ts`](sugiyama.ts) | Ontology Sugiyama layers (O2) | — | `website/src/brain/layout/sugiyama.test.ts` | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`types.ts`](types.ts) | Layout types + setSdf msg | — | `website/src/brain/layout/fdg.ts` · `website/src/brain/layout/fdg.worker.ts` · `website/src/brain/layout/layout.test.ts` · `website/src/brain/layout/sdf.ts` · `src/brain/mod.rs` | 2026-09-06 | 2 | 2026-09-07 merged: setSdf msg variant stands (main); containment type touch folded in · 2026-09-06 containment fix: `setSdf` worker msg (GLB-vs-setData race) + hard clamp in `tickFdg` (out-of-grid → center-ray bisect); `types.ts` msg variant; regression test · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-14 — `ontoBoard.ts` + test: 2D board layout (is_a layers, expand-fan instances, persisted positions) + edge/entity→atom mapping (#316)
 - 2026-09-07 — merged grouping module rows (U1/U2 of plan 2026-09-05-002) with main's containment fix lineage
 - 2026-09-06 — containment fix: `setSdf` worker msg (GLB-vs-setData race) + hard clamp in `tickFdg` (out-of-grid → center-ray bisect); `types.ts` msg variant; regression test
 - 2026-09-06 — grouping module + containment re-land rows (U1/U2 of plan 2026-09-05-002)

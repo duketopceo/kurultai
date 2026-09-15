@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src/ontology
 parent: src/INDEX.md
-updated: 2026-09-11
-version: 4
+updated: 2026-09-14
+version: 5
 ---
 
 # `src/ontology`
@@ -19,10 +19,11 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`mod.rs`](mod.rs) | Entity/Link helpers + O3 proposal queue (submit/decide) | `src/error` · `src/store` · `src/types` | `src/mcp/server.rs` · `src/http/proposals.rs` | 2026-09-11 | 4 | 2026-09-11 O3 `submit_proposal`/`decide_proposal` (#118) · 2026-09-06 sync schema version assertion to v14 · 2026-09-04 sync schema version assertion to v12 · 2026-08-14 indexed (v1 seed) |
+| [`mod.rs`](mod.rs) | Entity/Link helpers + O3 proposal queue (submit/decide) + human-lane direct writes | `src/error` · `src/store` · `src/types` | `src/mcp/server.rs` · `src/http/proposals.rs` · `src/http/ontology_write.rs` | 2026-09-14 | 5 | 2026-09-14 `create_entity`/`create_link` human lane (#316) · 2026-09-11 O3 `submit_proposal`/`decide_proposal` (#118) 2026-09-11 O3 `submit_proposal`/`decide_proposal` (#118) · 2026-09-06 sync schema version assertion to v14 · 2026-09-04 sync schema version assertion to v12 · 2026-08-14 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-14 — `create_entity`/`create_link`: human-lane writes reusing proposal validation, apply immediately as `approved` (#316)
 - 2026-09-11 — O3 proposal queue: `submit_proposal` (validate + dedupe, no mutation) / `decide_proposal` (approve applies entity/link, reject no-ops); kinds promote_atom/new_link/new_entity (#118)
 - 2026-09-06 — sync schema version assertion to v14
 - 2026-09-04 — sync schema version assertion to v12
