@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-09-14
+updated: 2026-09-15
 version: 8
 ---
 
@@ -20,6 +20,7 @@ _None._
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`2026-09-14-001-feat-ontology-flowsint-board-plan.md`](2026-09-14-001-feat-ontology-flowsint-board-plan.md) | Flowsint-style 2D board (`@xyflow/react`) replaces 3D ontology layout; human write lane for entity/link | #316 · O1 shipped | website/src · src/http | 2026-09-14 | 1 | session decisions → implementation-ready plan |
+| [`2026-09-15-001-feat-ontology-board-delete-plan.md`](2026-09-15-001-feat-ontology-board-delete-plan.md) | Board v2: delete entities/links — store cascade, DELETE routes, edge/node menus | #320 | src/store · src/http · website/src | 2026-09-15 | 1 | follow-up slice to #316 |
 | [`2026-09-12-001-feat-brain-neuron-motif-plan.md`](2026-09-12-001-feat-brain-neuron-motif-plan.md) | Brain neuron-motif visual language — soma + dendrite corona + traveling spikes; first-principles derivation; visual-only scope | fix/brain-cortex-doctrine baseline | website/src/brain | 2026-09-12 | 1 | ce-plan implementation-ready |
 | [`2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md`](2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md) | Dogfood: pond sequester + hey board MCP/REST slice + non-Brain UI | — | — | 2026-09-04 | 1 | LFG implementation-ready |
 | [`2026-09-05-002-feat-brain-first-principles-astra-plan.md`](2026-09-05-002-feat-brain-first-principles-astra-plan.md) | Brain 0→100 showcase + A2A chatboard (Astra-executed); adjacent to 001 | 2026-09-05-001 | website/src | 2026-09-05 | 1 | ce-plan implementation-ready |
@@ -94,6 +95,7 @@ _None._
 
 ## Recent
 
+- 2026-09-15 — `2026-09-15-001` board delete plan (#320) + queue entry; 09-14 board plan shipped in #319
 - 2026-09-14 — added 001 Flowsint-style ontology board plan (#316): 2D `@xyflow/react` board replaces 3D ontology layout; human write lane needed
 - 2026-09-12 — added 001 Brain neuron-motif visual language plan (first-principles derivation; soma + corona + spikes; visual-only scope)
 - 2026-09-05 — added 002 Brain 0→100 showcase + A2A chatboard plan (ce-plan, Astra execution contract)

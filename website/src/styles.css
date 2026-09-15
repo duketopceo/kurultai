@@ -2009,3 +2009,10 @@ header.topbar {
 }
 .onto-dialog-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .7rem; }
 .onto-error { color: #f472b6; font-size: .68rem; margin: .4rem 0 0; word-break: break-word; }
+.onto-menu-danger { color: #f472b6; }
+.onto-menu-danger:hover { color: #fb7185; }
+.onto-error-float {
+  position: absolute; top: .75rem; left: 50%; transform: translateX(-50%);
+  z-index: 55; padding: .4rem .8rem; margin: 0;
+  background: var(--surface-strong); border: 1px solid #f472b6; border-radius: 8px;
+}

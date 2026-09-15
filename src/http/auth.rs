@@ -273,6 +273,13 @@ const WRITE_ROUTES: &[&str] = &[
     "/api/touch",
 ];
 
+/// `/api/ontology/entity[/{id}]` and `/api/ontology/link[/{id}]` are the
+/// human-lane board writes (#316, #320) — dynamic `{id}` DELETE paths need a
+/// prefix predicate since `WRITE_ROUTES` is exact-match.
+fn is_ontology_write_route(path: &str) -> bool {
+    path.starts_with("/api/ontology/entity") || path.starts_with("/api/ontology/link")
+}
+
 /// `/api/ontology/proposals/{id}/decide` mutates ontology state on approve —
 /// guarded like the other write routes under `SharedClosed` (#118).
 fn is_decide_route(path: &str) -> bool {
@@ -338,8 +345,12 @@ pub fn write_route_decision(
     admin_token: Option<&str>,
     bearer: Option<&str>,
 ) -> WriteRouteDecision {
-    let is_write = method == axum::http::Method::POST
-        && (WRITE_ROUTES.contains(&path) || is_decide_route(path));
+    let mutating = matches!(
+        *method,
+        axum::http::Method::POST | axum::http::Method::DELETE
+    );
+    let is_write = mutating
+        && (WRITE_ROUTES.contains(&path) || is_decide_route(path) || is_ontology_write_route(path));
     if !is_write || mode != crate::write_policy::WriteMode::SharedClosed {
         return WriteRouteDecision::Allow;
     }

@@ -8,10 +8,10 @@
 use super::auth::MaybeHubPrincipal;
 use super::hey::require_agent;
 use super::{http_actor, json_error, AppState};
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Json;
-use axum::routing::post;
+use axum::routing::{delete, post};
 use axum::Router;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -20,6 +20,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/ontology/entity", post(create_entity))
         .route("/api/ontology/link", post(create_link))
+        .route("/api/ontology/entity/{id}", delete(delete_entity))
+        .route("/api/ontology/link/{id}", delete(delete_link))
 }
 
 /// Refuse registered agent keys — agents propose, humans write.
@@ -158,6 +160,64 @@ async fn create_link(
                 StatusCode::NOT_FOUND
             } else {
                 StatusCode::BAD_REQUEST
+            };
+            Err(json_error(status, msg, &request_id))
+        }
+    }
+}
+
+/// Board v2 (#320): delete an entity and every link touching it.
+async fn delete_entity(
+    State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_ontology_entity_delete", request_id=%request_id);
+    state.status.touch_client_activity();
+    refuse_agents(&state, &principal, &headers, &request_id).await?;
+    match state.brain.store().delete_ontology_entity(id.trim()).await {
+        Ok(()) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "request_id": request_id,
+            "deleted": id,
+        }))),
+        Err(e) => {
+            let msg = e.to_string();
+            let status = if msg.contains("not found") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            Err(json_error(status, msg, &request_id))
+        }
+    }
+}
+
+/// Board v2 (#320): delete a typed link by id.
+async fn delete_link(
+    State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_ontology_link_delete", request_id=%request_id);
+    state.status.touch_client_activity();
+    refuse_agents(&state, &principal, &headers, &request_id).await?;
+    match state.brain.store().delete_ontology_link(id.trim()).await {
+        Ok(()) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "request_id": request_id,
+            "deleted": id,
+        }))),
+        Err(e) => {
+            let msg = e.to_string();
+            let status = if msg.contains("not found") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
             };
             Err(json_error(status, msg, &request_id))
         }

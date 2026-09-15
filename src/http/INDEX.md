@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: src/http
 parent: src/INDEX.md
-updated: 2026-09-14
+updated: 2026-09-15
 version: 7
 ---
 
@@ -33,6 +33,7 @@ _None._
 
 ## Recent
 
+- 2026-09-15 — `ontology_write.rs` DELETE routes (`entity/<built-in function id>`, `link/<built-in function id>`); `auth.rs` write guard gains DELETE + prefix predicate for ontology write paths (#320)
 - 2026-09-14 — `ontology_write.rs`: human-lane `POST /api/ontology/entity` + `/link` for the board (agents 403 — propose-only lane); both join SharedClosed WRITE_ROUTES (#316)
 - 2026-09-11 — `proposals.rs`: `/api/ontology/proposals` list+submit (agent bearer) and `/{id}/decide` (human-only; agent keys 403); decide path joins SharedClosed write guard (#118)
 - 2026-09-08 — `GET /api/db/{table}` (atoms|links) read-only browse, whitelisted sort/filter, 500-row cap

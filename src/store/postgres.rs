@@ -1214,6 +1214,14 @@ impl Store for PostgresStore {
         Err(KurultaiError::Store("ontology not on hub store yet".into()))
     }
 
+    async fn delete_ontology_entity(&self, _id: &str) -> Result<()> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn delete_ontology_link(&self, _id: &str) -> Result<()> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
     async fn insert_ontology_proposal(&self, _p: &OntologyProposal) -> Result<()> {
         Err(KurultaiError::Store("ontology not on hub store yet".into()))
     }

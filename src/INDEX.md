@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: src
 parent: INDEX.md
-updated: 2026-09-14
+updated: 2026-09-15
 version: 6
 ---
 
@@ -57,6 +57,7 @@ version: 6
 
 ## Recent
 
+- 2026-09-15 — board v2 deletes (#320): store `delete_ontology_entity`/`delete_ontology_link`, DELETE routes, write guard covers DELETE
 - 2026-09-14 — ontology board human write lane (#316): `http/ontology_write.rs` routes, `ontology/create_entity`+`create_link`, WRITE_ROUTES + agent refusal
 - 2026-09-11 — O3 ontology proposal queue (#118): `types.rs` OntologyProposal; `store/` schema v15 + proposal CRUD; `ontology/` submit/decide; `http/proposals.rs` REST; `mcp/server.rs` propose tools
 - 2026-09-06 — add `login.rs` and `kurultai login` subcommand; `http/device_auth.rs` device-code endpoints; schema v14

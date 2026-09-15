@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: src/ontology
 parent: src/INDEX.md
-updated: 2026-09-14
+updated: 2026-09-15
 version: 5
 ---
 
@@ -23,6 +23,7 @@ _None._
 
 ## Recent
 
+- 2026-09-15 — delete coverage test: entity delete cascades links, missing ids err (#320)
 - 2026-09-14 — `create_entity`/`create_link`: human-lane writes reusing proposal validation, apply immediately as `approved` (#316)
 - 2026-09-11 — O3 proposal queue: `submit_proposal` (validate + dedupe, no mutation) / `decide_proposal` (approve applies entity/link, reject no-ops); kinds promote_atom/new_link/new_entity (#118)
 - 2026-09-06 — sync schema version assertion to v14

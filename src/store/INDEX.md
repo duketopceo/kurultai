@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: src/store
 parent: src/INDEX.md
-updated: 2026-09-11
+updated: 2026-09-15
 version: 5
 ---
 
@@ -25,6 +25,7 @@ _None._
 
 ## Recent
 
+- 2026-09-15 — `delete_ontology_entity` (cascades links) + `delete_ontology_link` on Store trait; SQLite impl, Postgres stubs (#320)
 - 2026-09-11 — schema v15 `ontology_proposals`; Store: `insert/get/list/decide_ontology_proposal` (decide guarded to pending-only transitions); postgres stubs (#118)
 - 2026-09-08 — `Store::db_rows` + `SqliteVecStore::db_rows_sync`: read-only whitelisted browse (atoms table / derived shared-tag links) for the /ui/db view
 - 2026-09-06 — v14 `device_flows` migration; `Store` device-flow + `issue_agent_token` methods

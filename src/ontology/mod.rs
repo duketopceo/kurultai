@@ -907,4 +907,41 @@ mod tests {
         .await
         .is_err());
     }
+
+    #[tokio::test]
+    async fn delete_entity_cascades_links_and_missing_ids_err() {
+        let store = temp_store();
+        create_entity(&store, "class", "Doomed", None, None)
+            .await
+            .unwrap();
+        create_link(&store, "class:doomed", CLASS_MEMORY, "is_a", "human:ui")
+            .await
+            .unwrap();
+
+        store.delete_ontology_entity("class:doomed").await.unwrap();
+        assert!(store
+            .get_ontology_entity("class:doomed")
+            .await
+            .unwrap()
+            .is_none());
+        assert!(store
+            .list_ontology_links(Some("class:doomed"))
+            .await
+            .unwrap()
+            .is_empty());
+
+        assert!(store.delete_ontology_entity("class:gone").await.is_err());
+
+        let link = create_link(
+            &store,
+            CLASS_NOTE,
+            CLASS_MEMORY,
+            "associates_with",
+            "human:ui",
+        )
+        .await
+        .unwrap();
+        store.delete_ontology_link(&link.id).await.unwrap();
+        assert!(store.delete_ontology_link(&link.id).await.is_err());
+    }
 }

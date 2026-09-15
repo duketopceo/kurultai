@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: website/src
 parent: website/INDEX.md
-updated: 2026-09-14
+updated: 2026-09-15
 version: 9
 ---
 
@@ -37,6 +37,7 @@ version: 9
 
 ## Recent
 
+- 2026-09-15 — `api.ts` deleteOntologyEntity/deleteOntologyLink; OntologyBoard edge menu + delete-entity confirm + Escape (#320)
 - 2026-09-14 — ontology board wiring: `App.tsx` passes `onOntologyChanged`; `api.ts` human-lane fns; `.onto-*` styles (#316)
 - 2026-09-13 — v2 chrome layout: `CommandRail.tsx`, `MissionControl.tsx`, `LogsPanel.tsx`, `SettingsPanel.tsx`; `App.tsx` + `styles.css` grid; top pill, right rail, bottom strip, floating inspector, Settings + Logs tabs
 - 2026-09-12 — brain/ neuron motif (plan 2026-09-12-001): `dendrite.ts`/`spikes.ts` new — soma facets, dendrite corona sprites, traveling activity-encoded spikes; BrainView wired; +13 tests

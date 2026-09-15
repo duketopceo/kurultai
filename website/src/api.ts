@@ -443,3 +443,26 @@ export async function createOntologyLink(
   return data.link as OntologyLink;
 }
 
+async function deleteOntology(path: string, signal?: AbortSignal): Promise<void> {
+  const r = await fetch(path, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `${path} failed (${r.status})`);
+  }
+}
+
+/** Board v2 (#320): delete an entity plus every link touching it. */
+export async function deleteOntologyEntity(id: string, signal?: AbortSignal): Promise<void> {
+  await deleteOntology(`/api/ontology/entity/${encodeURIComponent(id)}`, signal);
+}
+
+/** Board v2 (#320): delete a typed link by id. */
+export async function deleteOntologyLink(id: string, signal?: AbortSignal): Promise<void> {
+  await deleteOntology(`/api/ontology/link/${encodeURIComponent(id)}`, signal);
+}
+
