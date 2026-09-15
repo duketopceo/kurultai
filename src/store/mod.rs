@@ -2179,8 +2179,11 @@ impl Store for SqliteVecStore {
     }
 
     async fn delete_ontology_entity(&self, id: &str) -> Result<()> {
-        let conn = self.lock()?;
-        let removed = conn
+        let mut conn = self.lock()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| KurultaiError::Store(format!("delete_ontology_entity begin tx: {e}")))?;
+        let removed = tx
             .execute("DELETE FROM ontology_entities WHERE id = ?1", params![id])
             .map_err(|e| KurultaiError::Store(format!("delete_ontology_entity: {e}")))?;
         if removed == 0 {
@@ -2188,11 +2191,13 @@ impl Store for SqliteVecStore {
                 "delete_ontology_entity: entity {id} not found"
             )));
         }
-        conn.execute(
+        tx.execute(
             "DELETE FROM ontology_links WHERE from_id = ?1 OR to_id = ?1",
             params![id],
         )
         .map_err(|e| KurultaiError::Store(format!("delete_ontology_entity links: {e}")))?;
+        tx.commit()
+            .map_err(|e| KurultaiError::Store(format!("delete_ontology_entity commit: {e}")))?;
         Ok(())
     }
 

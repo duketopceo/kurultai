@@ -124,9 +124,10 @@ export function OntologyBoard({ ontology, atoms, onSelect, onOntologyChanged }: 
   const onNodesChange = useCallback((changes: NodeChange<OntoNode>[]) => {
     for (const c of changes) {
       if (c.type === 'position' && c.position) {
+        const pos = c.position;
         setPositions((prev) => {
-          const next = { ...prev, [c.id]: c.position! };
-          if (!c.dragging) saveJson(POS_KEY, next);
+          const next = { ...prev, [c.id]: pos };
+          if (!c.dragging) queueMicrotask(() => saveJson(POS_KEY, next));
           return next;
         });
       }
