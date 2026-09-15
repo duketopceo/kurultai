@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src
 parent: INDEX.md
-updated: 2026-09-11
-version: 5
+updated: 2026-09-14
+version: 6
 ---
 
 # `src`
@@ -57,6 +57,7 @@ version: 5
 
 ## Recent
 
+- 2026-09-14 — ontology board human write lane (#316): `http/ontology_write.rs` routes, `ontology/create_entity`+`create_link`, WRITE_ROUTES + agent refusal
 - 2026-09-11 — O3 ontology proposal queue (#118): `types.rs` OntologyProposal; `store/` schema v15 + proposal CRUD; `ontology/` submit/decide; `http/proposals.rs` REST; `mcp/server.rs` propose tools
 - 2026-09-06 — add `login.rs` and `kurultai login` subcommand; `http/device_auth.rs` device-code endpoints; schema v14
 - 2026-09-04 — `http/`, `mcp/`, `ontology/`: message board REST, hey_* MCP tools, schema v12 sync, HubGate fixture updates

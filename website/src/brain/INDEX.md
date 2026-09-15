@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src/brain
 parent: website/src/INDEX.md
-updated: 2026-09-12
-version: 11
+updated: 2026-09-14
+version: 12
 ---
 
 # `website/src/brain`
@@ -31,6 +31,7 @@ version: 11
 
 ## Recent
 
+- 2026-09-14 — `layout/ontoBoard.ts`: 2D ontology board layout helpers consumed by `components/OntologyBoard` (#316)
 - 2026-09-12 — `linkSelect.ts` intentional-synapse sparsifier wired into BrainStage `buildLinks`: union top-K nominations + unconditional low-degree survivors (replaced arbitrary strength-sort cap)
 - 2026-09-12 — neuron motif (plan 2026-09-12-001): `dendrite.ts` (soma icosahedron + procedural corona textures), `spikes.ts` (traveling axon spikes, heat-encoded emission, hover stimulation), shimmer demoted to membrane noise; +13 node tests
 - 2026-09-12 — `BrainView` cortex-doctrine rebalance: nodes pale-white not purple, halos tightened (2.0x / 0.18), per-synapse shimmer + rare zap spikes in loop, edgeActive → white-hot

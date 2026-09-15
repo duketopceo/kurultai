@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src
 parent: website/INDEX.md
-updated: 2026-09-13
-version: 8
+updated: 2026-09-14
+version: 9
 ---
 
 # `website/src`
@@ -21,15 +21,15 @@ version: 8
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`App.tsx`](App.tsx) | Brain dashboard shell: top pill, brain, floating inspector, right Command rail, bottom Mission Control | `website/src/state` · `website/src/api` · `website/src/components/TopBar` · `website/src/components/BrainStage` · `website/src/components/CommandStrip` · `website/src/components/CommandRail` · `website/src/components/MissionControl` | — | 2026-09-13 | 4 | 2026-09-13 v2 chrome layout · 2026-09-11 mount ProposalsPanel (#118) · 2026-09-05 fetchGraph limit by load tier · 2026-09-04 token prompt + logout wiring · 2026-08-16 indexed (v1 seed) |
-| [`api.ts`](api.ts) | Fetch wrappers for daemon /api/* | `website/src/types` · `website/src/auth` · `website/src/proposals` | — | 2026-09-11 | 6 | 2026-09-11 O3 proposal fns: fetchOntologyProposals/decideOntologyProposal (#118) · 2026-09-11 hey write fns: postHeyMessage/reactHeyMessage/fetchHeyUnread · 2026-09-05 tiered / limited graph query helpers · 2026-09-04 use auth module; 401 → token-invalid · 2026-08-16 indexed (v1 seed) |
+| [`App.tsx`](App.tsx) | Brain dashboard shell: top pill, brain, floating inspector, right Command rail, bottom Mission Control | `website/src/state` · `website/src/api` · `website/src/components/TopBar` · `website/src/components/BrainStage` · `website/src/components/CommandStrip` · `website/src/components/CommandRail` · `website/src/components/MissionControl` | — | 2026-09-14 | 5 | 2026-09-14 pass `onOntologyChanged` to BrainStage board (#316) · 2026-09-13 v2 chrome layout 2026-09-13 v2 chrome layout · 2026-09-11 mount ProposalsPanel (#118) · 2026-09-05 fetchGraph limit by load tier · 2026-09-04 token prompt + logout wiring · 2026-08-16 indexed (v1 seed) |
+| [`api.ts`](api.ts) | Fetch wrappers for daemon /api/* | `website/src/types` · `website/src/auth` · `website/src/proposals` | — | 2026-09-14 | 7 | 2026-09-14 `createOntologyEntity`/`createOntologyLink` human-lane fns (#316) · 2026-09-11 O3 proposal fns (#118) 2026-09-11 O3 proposal fns: fetchOntologyProposals/decideOntologyProposal (#118) · 2026-09-11 hey write fns: postHeyMessage/reactHeyMessage/fetchHeyUnread · 2026-09-05 tiered / limited graph query helpers · 2026-09-04 use auth module; 401 → token-invalid · 2026-08-16 indexed (v1 seed) |
 | [`auth.ts`](auth.ts) | Human token storage, probe open/locked, auth events | — | `website/src/main.tsx` · `website/src/api.ts` | 2026-09-04 | 1 | 2026-09-04 human access probe + settings events |
 | [`assets.d.ts`](assets.d.ts) | Asset module declarations | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`main.tsx`](main.tsx) | Vite entry; probe auth; human gate only when locked | `website/src/App` · `website/src/auth` · `website/src/components/HumanAccess` | — | 2026-09-04 | 3 | 2026-09-04 probe open vs locked; HumanLoginGate · 2026-08-16 indexed (v1 seed) |
 | [`repoLattice.test.ts`](repoLattice.test.ts) | Repo lattice unit tests | `website/src/repoLattice.ts` | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`repoLattice.ts`](repoLattice.ts) | Repo lattice helper | — | `website/src/repoLattice.test.ts` | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`state.ts`](state.ts) | App state | `website/src/brain/layout/mode` · `website/src/types` | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`styles.css`](styles.css) | Dashboard CSS (black/white/purple) + v2 chrome grid (top pill, right rail, bottom strip) | — | — | 2026-09-13 | 4 | 2026-09-13 v2 chrome layout, chrome accent tokens · 2026-09-11 `.proposals-*` review queue styles (#118) · 2026-09-04 human login + access panel styles · 2026-08-16 indexed (v1 seed) |
+| [`styles.css`](styles.css) | Dashboard CSS (black/white/purple) + v2 chrome grid + ontology board styles | — | — | 2026-09-14 | 5 | 2026-09-14 `.onto-*` board/menu/dialog styles (#316) · 2026-09-13 v2 chrome layout, chrome accent tokens 2026-09-13 v2 chrome layout, chrome accent tokens · 2026-09-11 `.proposals-*` review queue styles (#118) · 2026-09-04 human login + access panel styles · 2026-08-16 indexed (v1 seed) |
 | [`types.ts`](types.ts) | TS types for atoms/graph/ontology | — | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`proposals.ts`](proposals.ts) | O3 proposal type + describeProposal (pure, node-testable) | — | `website/src/api` · `website/src/proposals.test.ts` · `website/src/components/ProposalsPanel` | 2026-09-11 | 1 | 2026-09-11 added (#118) |
 | [`proposals.test.ts`](proposals.test.ts) | describeProposal unit tests | `website/src/proposals` | — | 2026-09-11 | 1 | 2026-09-11 added (#118) |
@@ -37,6 +37,7 @@ version: 8
 
 ## Recent
 
+- 2026-09-14 — ontology board wiring: `App.tsx` passes `onOntologyChanged`; `api.ts` human-lane fns; `.onto-*` styles (#316)
 - 2026-09-13 — v2 chrome layout: `CommandRail.tsx`, `MissionControl.tsx`, `LogsPanel.tsx`, `SettingsPanel.tsx`; `App.tsx` + `styles.css` grid; top pill, right rail, bottom strip, floating inspector, Settings + Logs tabs
 - 2026-09-12 — brain/ neuron motif (plan 2026-09-12-001): `dendrite.ts`/`spikes.ts` new — soma facets, dendrite corona sprites, traveling activity-encoded spikes; BrainView wired; +13 tests
 - 2026-09-12 — `brain/BrainView.ts` cortex-doctrine rebalance: pale-white nodes, tighter halos, per-synapse shimmer + zap tick

@@ -1903,3 +1903,109 @@ header.topbar {
   .command-rail { min-height: 18rem; }
   .floating-inspector { right: .5rem; width: calc(100vw - 1rem); }
 }
+
+/* ── Ontology board (#316) — 2D Flowsint-style workspace over the stage ─────── */
+.onto-board-host {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: var(--bg);
+}
+.onto-board { position: absolute; inset: 0; }
+.onto-board .react-flow { background: var(--bg); font-family: var(--font-mono); }
+.onto-board .react-flow__attribution { display: none; }
+.onto-board .react-flow__controls {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.onto-board .react-flow__controls-button {
+  background: var(--surface-strong);
+  border-bottom: 1px solid var(--line);
+  fill: var(--text-muted);
+}
+.onto-board .react-flow__controls-button:hover { background: var(--bg-grid); fill: var(--text); }
+
+.onto-card {
+  position: relative;
+  min-width: 9rem;
+  padding: .45rem .65rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: .72rem;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  box-shadow: 0 0 0 1px transparent, 0 0 18px var(--glow);
+}
+.react-flow__node.selected .onto-card,
+.onto-card:hover { border-color: var(--electric-strong); box-shadow: 0 0 22px var(--glow-strong); }
+.onto-card-class { border-left: 3px solid var(--electric); }
+.onto-card-instance { border-left: 3px solid var(--text-muted); }
+.onto-card-metric { border-left: 3px solid var(--electric-dim); }
+.onto-kind {
+  font-size: .55rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--electric-strong);
+}
+.onto-name { font-weight: 600; }
+.onto-backed { position: absolute; right: .4rem; top: .35rem; font-size: .55rem; color: var(--electric-strong); }
+.onto-expand {
+  position: absolute; right: -.45rem; bottom: -.45rem;
+  font-size: .6rem; padding: .05rem .35rem;
+  border-radius: 999px; border: 1px solid var(--line-strong);
+  background: var(--surface-solid); color: var(--electric-strong);
+}
+.onto-handle { width: 6px; height: 6px; background: var(--electric); border: 1px solid var(--bg); }
+
+.onto-board .react-flow__edge-path { stroke: var(--electric-dim); stroke-width: 1.4; }
+.onto-board .onto-edge-contradicts .react-flow__edge-path { stroke: #f472b6; stroke-dasharray: 5 4; }
+.onto-board .onto-edge-instance_of .react-flow__edge-path { stroke-dasharray: 2 4; }
+.onto-board .react-flow__edge-text { fill: var(--text-muted); font-size: .55rem; font-family: var(--font-mono); }
+.onto-board .react-flow__edge-textbg { fill: var(--bg); }
+
+.onto-menu {
+  position: fixed; z-index: 60;
+  min-width: 11rem; padding: .3rem;
+  background: var(--surface-strong);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.6);
+}
+.onto-menu-item {
+  display: block; width: 100%; text-align: left;
+  padding: .4rem .6rem; border: 0; border-radius: 7px;
+  background: transparent; color: var(--text);
+  font-family: var(--font-mono); font-size: .72rem; cursor: pointer;
+}
+.onto-menu-item:hover { background: var(--bg-grid); color: var(--electric-strong); }
+
+.onto-dialog {
+  position: absolute; top: 1.25rem; left: 50%; transform: translateX(-50%);
+  z-index: 55; width: min(26rem, calc(100% - 2rem));
+  padding: .9rem 1rem;
+  background: var(--surface-strong);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.65);
+}
+.onto-dialog h3 {
+  margin: 0 0 .6rem; font-family: var(--font-display);
+  font-size: .8rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--electric-strong);
+}
+.onto-dialog-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .75rem; }
+.onto-field { display: flex; align-items: center; gap: .6rem; margin: .45rem 0; font-size: .72rem; color: var(--text-muted); }
+.onto-field span { width: 8.5rem; letter-spacing: .08em; text-transform: uppercase; font-size: .6rem; }
+.onto-field input, .onto-field select, .onto-dialog select {
+  flex: 1; padding: .35rem .5rem;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: 7px;
+  font-family: var(--font-mono); font-size: .75rem;
+}
+.onto-dialog-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .7rem; }
+.onto-error { color: #f472b6; font-size: .68rem; margin: .4rem 0 0; word-break: break-word; }

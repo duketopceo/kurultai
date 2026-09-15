@@ -265,7 +265,13 @@ async fn authorize_bearer(
 pub const ENV_ADMIN_TOKEN: &str = "KURULTAI_ADMIN_TOKEN";
 
 /// POST routes that mutate durable state and must not be reachable unauthenticated.
-const WRITE_ROUTES: &[&str] = &["/api/promote", "/api/ontology/promote", "/api/touch"];
+const WRITE_ROUTES: &[&str] = &[
+    "/api/promote",
+    "/api/ontology/entity",
+    "/api/ontology/link",
+    "/api/ontology/promote",
+    "/api/touch",
+];
 
 /// `/api/ontology/proposals/{id}/decide` mutates ontology state on approve —
 /// guarded like the other write routes under `SharedClosed` (#118).

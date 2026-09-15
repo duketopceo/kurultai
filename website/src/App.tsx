@@ -188,6 +188,7 @@ export function App() {
             atomTotal={state.atomTotal}
             onSelect={setSelected}
             onHover={(atom) => { if (atom) setSelected(atom); }}
+            onOntologyChanged={handleOntologyChanged}
             caption={caption}
           />
         </section>

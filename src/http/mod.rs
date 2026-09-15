@@ -12,6 +12,7 @@ mod device_auth;
 mod hey;
 mod hub_listen;
 mod mcp;
+mod ontology_write;
 mod proposals;
 mod ui;
 
@@ -210,6 +211,7 @@ fn router(state: AppState) -> Router {
         .route("/who_knows", post(who_knows_post))
         .merge(hey::routes())
         .merge(proposals::routes())
+        .merge(ontology_write::routes())
         .merge(ui::routes())
         .merge(device_auth::routes(state.clone()))
         .layer(middleware::from_fn_with_state(

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { BrainView } from '../brain/BrainView';
+import { OntologyBoard } from './OntologyBoard';
 import { selectIntentionalLinks } from '../brain/linkSelect';
 import type { Atom, LayoutMode, OntologyResponse } from '../types';
 
@@ -25,10 +26,11 @@ interface Props {
   atomTotal: number;
   onSelect: (atom: Atom) => void;
   onHover: (atom: Atom | null) => void;
+  onOntologyChanged: (onto: OntologyResponse) => void;
   caption: string;
 }
 
-export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, caption }, ref) {
+export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, onOntologyChanged, caption }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const brainRef = useRef<BrainView | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -99,8 +101,9 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
 
   useEffect(() => {
     if (!brainRef.current || !ready) return;
+    // The 2D board owns ontology mode; BrainView keeps running brain layout underneath.
     dbg('setLayout:', layout);
-    brainRef.current.setLayout(layout);
+    brainRef.current.setLayout(layout === 'ontology' ? 'brain' : layout);
   }, [layout, ready]);
 
   return (
@@ -139,11 +142,24 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
         </div>
       )}
       <div id="brain-canvas" ref={hostRef} aria-label="3D memory graph" style={{ width: '100%', height: '100%' }} />
-      <div className="brain-overlay" aria-hidden="true">
-        <span>DRAG / ORBIT</span>
-        <span>SCROLL / ZOOM</span>
-      </div>
-      <BrainHud getBrain={() => brainRef.current} />
+      {layout === 'ontology' ? (
+        <div className="onto-board-host">
+          <OntologyBoard
+            ontology={ontology}
+            atoms={atoms}
+            onSelect={onSelect}
+            onOntologyChanged={onOntologyChanged}
+          />
+        </div>
+      ) : (
+        <>
+          <div className="brain-overlay" aria-hidden="true">
+            <span>DRAG / ORBIT</span>
+            <span>SCROLL / ZOOM</span>
+          </div>
+          <BrainHud getBrain={() => brainRef.current} />
+        </>
+      )}
       {tooltip && (
         <div
           id="node-tooltip"

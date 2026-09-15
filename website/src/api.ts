@@ -4,6 +4,8 @@ import type {
   StatusResponse,
   ActivityItem,
   GraphNode,
+  OntologyEntity,
+  OntologyLink,
   OntologyResponse,
 } from './types';
 import { describeProposal, type OntologyProposal } from './proposals';
@@ -392,5 +394,52 @@ export async function decideOntologyProposal(
   }
   const data = await r.json();
   return (data.proposal ?? data) as OntologyProposal;
+}
+
+// ── #316: human-lane board writes (agents are refused server-side) ────────────
+
+export async function createOntologyEntity(
+  input: {
+    kind: 'class' | 'instance' | 'metric';
+    name: string;
+    atom_id?: string;
+    attributes?: Record<string, unknown>;
+  },
+  signal?: AbortSignal,
+): Promise<OntologyEntity> {
+  const r = await fetch('/api/ontology/entity', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(input),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `entity create failed (${r.status})`);
+  }
+  const data = await r.json();
+  return data.entity as OntologyEntity;
+}
+
+export async function createOntologyLink(
+  fromId: string,
+  toId: string,
+  rel: string,
+  signal?: AbortSignal,
+): Promise<OntologyLink> {
+  const r = await fetch('/api/ontology/link', {
+    method: 'POST',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ from_id: fromId, to_id: toId, rel }),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `link create failed (${r.status})`);
+  }
+  const data = await r.json();
+  return data.link as OntologyLink;
 }
 

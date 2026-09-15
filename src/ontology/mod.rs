@@ -381,6 +381,81 @@ pub async fn decide_proposal(
         .await
 }
 
+/// Human-lane direct entity write (#316). Validates like a `new_entity`
+/// proposal but applies immediately — the board user is the approver.
+/// `entity_kind` must be `class` | `instance` | `metric`; `atom_id` is an
+/// optional backing atom. Returns the stored entity.
+pub async fn create_entity(
+    store: &dyn Store,
+    entity_kind: &str,
+    name: &str,
+    atom_id: Option<&str>,
+    attributes: Option<serde_json::Value>,
+) -> Result<OntologyEntity> {
+    let payload = serde_json::json!({
+        "entity_kind": entity_kind,
+        "name": name,
+        "atom_id": atom_id,
+        "attributes": attributes.unwrap_or_else(|| serde_json::json!({})),
+    });
+    let normalized = validate_proposal(store, PROPOSAL_NEW_ENTITY, &payload).await?;
+    let entity = OntologyEntity {
+        id: payload_str(&normalized, "id")?.to_string(),
+        kind: payload_str(&normalized, "entity_kind")?.to_string(),
+        name: payload_str(&normalized, "name")?.to_string(),
+        atom_id: normalized
+            .get("atom_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        attributes: normalized
+            .get("attributes")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({})),
+    };
+    store.upsert_ontology_entity(&entity).await?;
+    Ok(entity)
+}
+
+/// Human-lane direct link write (#316). Validates endpoints and the closed
+/// rel enum like a `new_link` proposal, then upserts an `approved` link.
+pub async fn create_link(
+    store: &dyn Store,
+    from_id: &str,
+    to_id: &str,
+    rel: &str,
+    actor: &str,
+) -> Result<OntologyLink> {
+    let payload = serde_json::json!({
+        "from_id": from_id,
+        "to_id": to_id,
+        "rel": rel,
+        "confidence": 1.0,
+    });
+    let normalized = validate_proposal(store, PROPOSAL_NEW_LINK, &payload).await?;
+    let rel_str = payload_str(&normalized, "rel")?;
+    let rel = OntologyLinkType::parse(rel_str)
+        .ok_or_else(|| KurultaiError::Store(format!("ontology_link: unknown rel {rel_str}")))?;
+    let link = OntologyLink {
+        id: format!(
+            "link:{}:{}:{}",
+            payload_str(&normalized, "from_id")?,
+            rel_str,
+            payload_str(&normalized, "to_id")?
+        ),
+        from_id: payload_str(&normalized, "from_id")?.to_string(),
+        to_id: payload_str(&normalized, "to_id")?.to_string(),
+        rel,
+        confidence: normalized
+            .get("confidence")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0) as f32,
+        status: "approved".into(),
+        actor: actor.to_string(),
+    };
+    store.upsert_ontology_link(&link).await?;
+    Ok(link)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -753,5 +828,83 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("duplicate"));
+    }
+
+    #[tokio::test]
+    async fn human_create_entity_validates_and_stores() {
+        let store = temp_store();
+
+        let cls = create_entity(&store, "class", "Vector Store", None, None)
+            .await
+            .unwrap();
+        assert_eq!(cls.id, "class:vector-store");
+        assert_eq!(cls.kind, "class");
+        assert_eq!(cls.name, "Vector Store");
+
+        // Backed entity requires a real atom.
+        assert!(
+            create_entity(&store, "instance", "Ghost", Some("atom:nope"), None)
+                .await
+                .is_err()
+        );
+        store.upsert(&sample_atom("atom-7")).await.unwrap();
+        let inst = create_entity(&store, "instance", "Fixture 7", Some("atom-7"), None)
+            .await
+            .unwrap();
+        assert_eq!(inst.atom_id.as_deref(), Some("atom-7"));
+
+        // Bad kind and duplicate id are rejected.
+        assert!(create_entity(&store, "widget", "Nope", None, None)
+            .await
+            .is_err());
+        assert!(create_entity(&store, "class", "Vector Store", None, None)
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn human_create_link_validates_endpoints_and_rel() {
+        let store = temp_store();
+        create_entity(&store, "class", "Board Class", None, None)
+            .await
+            .unwrap();
+
+        let link = create_link(
+            &store,
+            "class:board-class",
+            CLASS_MEMORY,
+            "is_a",
+            "human:ui",
+        )
+        .await
+        .unwrap();
+        assert_eq!(link.rel, OntologyLinkType::IsA);
+        assert_eq!(link.status, "approved");
+        assert_eq!(link.actor, "human:ui");
+
+        // Unknown rel, missing endpoint, and duplicate edge are rejected.
+        assert!(create_link(
+            &store,
+            "class:board-class",
+            CLASS_MEMORY,
+            "nope",
+            "human:ui"
+        )
+        .await
+        .is_err());
+        assert!(
+            create_link(&store, "class:ghost", CLASS_MEMORY, "is_a", "human:ui")
+                .await
+                .is_err()
+        );
+        assert!(create_link(
+            &store,
+            "class:board-class",
+            CLASS_MEMORY,
+            "is_a",
+            "human:ui"
+        )
+        .await
+        .is_err());
     }
 }
