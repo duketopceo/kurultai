@@ -27,13 +27,17 @@ pub struct Agent {
     pub created_at: String,
 }
 
-/// A pending/exchanged device-authorization flow used by `kurultai login`.
+/// A pending/exchanged device-authorization flow used by `kurultai login` /
+/// `kurultai connect`.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DeviceFlow {
     pub id: String,
     pub device_code: String,
     pub user_code: String,
     pub codename: String,
+    /// Requested seat (`instance_id`) for `kurultai connect` flows.
+    #[serde(default)]
+    pub instance_id: String,
     pub client_id: String,
     pub status: String,
     pub created_at: String,
@@ -513,16 +517,44 @@ pub trait Store: Send + Sync {
         ))
     }
 
+    /// Issue (or rotate) a seat-scoped agent token for `(codename, instance_id)`,
+    /// returning the shared agent row and plaintext token. Creates the codename
+    /// agent row on first use; never forks `codename` into `codename-2` — the
+    /// `instance_id` distinguishes concurrent seats (`agent_seats` table).
+    async fn issue_agent_seat_token(
+        &self,
+        codename: &str,
+        instance_id: &str,
+        approved_by: &str,
+    ) -> Result<(Agent, String)> {
+        let _ = (codename, instance_id, approved_by);
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    /// Revoke agent credentials. With `instance_id`, revokes just that seat;
+    /// without it, revokes every seat plus the codename's primary key.
+    /// Returns the number of credentials revoked.
+    async fn revoke_agent(&self, codename: &str, instance_id: Option<&str>) -> Result<u64> {
+        let _ = (codename, instance_id);
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
     // ── Device authorization (local sign-in for agents) ─────────────────────────
 
-    /// Create a new device flow request and return it.
+    /// Create a new device flow request and return it. `instance_id` is the
+    /// requested seat ("" for the legacy `kurultai login` flow).
     async fn create_device_flow(
         &self,
         codename: &str,
         client_id: &str,
+        instance_id: &str,
         expires_in_seconds: u64,
     ) -> Result<DeviceFlow> {
-        let _ = (codename, client_id, expires_in_seconds);
+        let _ = (codename, client_id, instance_id, expires_in_seconds);
         Err(KurultaiError::Store(
             "device authorization not implemented for this store".into(),
         ))
@@ -550,6 +582,14 @@ pub trait Store: Send + Sync {
     /// Approve a pending device flow by `user_code`, recording who approved it.
     async fn approve_device_flow(&self, user_code: &str, approved_by: &str) -> Result<()> {
         let _ = (user_code, approved_by);
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    /// Deny a pending device flow by `user_code` (`/connect` deny button).
+    async fn deny_device_flow(&self, user_code: &str, denied_by: &str) -> Result<()> {
+        let _ = (user_code, denied_by);
         Err(KurultaiError::Store(
             "device authorization not implemented for this store".into(),
         ))
@@ -618,6 +658,31 @@ pub trait Store: Send + Sync {
     /// List messages in a thread, newest first.
     async fn list_messages(&self, thread_id: &str, limit: usize) -> Result<Vec<Message>> {
         let _ = (thread_id, limit);
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Fetch a single message by id.
+    async fn get_message(&self, id: &str) -> Result<Option<Message>> {
+        let _ = id;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Update a message's content in place. Does not consume turns and does
+    /// not touch reactions or children.
+    async fn update_message_content(&self, id: &str, content: &str) -> Result<Message> {
+        let _ = (id, content);
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Delete a message and its reactions. Returns true when a row was removed.
+    async fn delete_message(&self, id: &str) -> Result<bool> {
+        let _ = id;
         Err(KurultaiError::Store(
             "message board not implemented for this store".into(),
         ))
@@ -2350,8 +2415,16 @@ impl Store for SqliteVecStore {
 
     async fn resolve_agent_by_key_hash(&self, key_hash: &str) -> Result<Option<Agent>> {
         let conn = self.lock()?;
+        // Primary codename key OR an active (unrevoked) seat key minted by
+        // `kurultai connect` — both resolve to the shared codename agent row.
         let mut stmt = conn
-            .prepare("SELECT id, codename, created_at FROM agents WHERE key_hash = ?1")
+            .prepare(
+                "SELECT a.id, a.codename, a.created_at FROM agents a \
+                 LEFT JOIN agent_seats s ON s.agent_id = a.id \
+                 WHERE a.key_hash = ?1 \
+                    OR (s.key_hash = ?1 AND s.revoked_at IS NULL) \
+                 LIMIT 1",
+            )
             .map_err(|e| KurultaiError::Store(format!("resolve_agent_by_key_hash prepare: {e}")))?;
         let row = stmt
             .query_row(params![key_hash], |row| {
@@ -2432,12 +2505,137 @@ impl Store for SqliteVecStore {
         ))
     }
 
+    async fn issue_agent_seat_token(
+        &self,
+        codename: &str,
+        instance_id: &str,
+        approved_by: &str,
+    ) -> Result<(Agent, String)> {
+        let conn = self.lock()?;
+        let instance_id = if instance_id.trim().is_empty() {
+            "default"
+        } else {
+            instance_id.trim()
+        };
+        let now = Utc::now().to_rfc3339();
+
+        // One agents row per codename — find or create. Fresh rows get a random
+        // unissued key_hash placeholder; real credentials live per-seat.
+        let mut stmt = conn
+            .prepare("SELECT id, created_at FROM agents WHERE codename = ?1 COLLATE NOCASE")
+            .map_err(|e| {
+                KurultaiError::Store(format!("issue_agent_seat_token agent select: {e}"))
+            })?;
+        let existing = stmt
+            .query_row(params![codename], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .optional()
+            .map_err(|e| {
+                KurultaiError::Store(format!("issue_agent_seat_token agent query: {e}"))
+            })?;
+        let (agent_id, created_at) = match existing {
+            Some(pair) => pair,
+            None => {
+                let id = uuid::Uuid::new_v4().to_string();
+                let placeholder = sha256_hex(&uuid::Uuid::new_v4().to_string());
+                conn.execute(
+                    "INSERT INTO agents (id, codename, key_hash, created_at) VALUES (?1, ?2, ?3, ?4)",
+                    params![&id, &codename, &placeholder, &now],
+                )
+                .map_err(|e| {
+                    KurultaiError::Store(format!("issue_agent_seat_token agent insert: {e}"))
+                })?;
+                (id, now.clone())
+            }
+        };
+
+        let token = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().to_string().replace('-', ""),
+            uuid::Uuid::new_v4().to_string().replace('-', "")
+        );
+        let key_hash = sha256_hex(&token);
+        conn.execute(
+            "INSERT INTO agent_seats (id, agent_id, instance_id, key_hash, approved_by, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+             ON CONFLICT(agent_id, instance_id) DO UPDATE SET \
+                 key_hash = excluded.key_hash, \
+                 approved_by = excluded.approved_by, \
+                 created_at = excluded.created_at, \
+                 revoked_at = NULL",
+            params![
+                uuid::Uuid::new_v4().to_string(),
+                &agent_id,
+                &instance_id,
+                &key_hash,
+                &approved_by,
+                &now
+            ],
+        )
+        .map_err(|e| KurultaiError::Store(format!("issue_agent_seat_token seat upsert: {e}")))?;
+
+        Ok((
+            Agent {
+                id: agent_id,
+                codename: codename.to_string(),
+                created_at,
+            },
+            token,
+        ))
+    }
+
+    async fn revoke_agent(&self, codename: &str, instance_id: Option<&str>) -> Result<u64> {
+        let conn = self.lock()?;
+        let agent_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM agents WHERE codename = ?1 COLLATE NOCASE",
+                params![codename],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("revoke_agent lookup: {e}")))?;
+        let Some(agent_id) = agent_id else {
+            return Ok(0);
+        };
+        let now = Utc::now().to_rfc3339();
+        match instance_id {
+            Some(seat) => {
+                let n = conn
+                    .execute(
+                        "UPDATE agent_seats SET revoked_at = ?1 \
+                         WHERE agent_id = ?2 AND instance_id = ?3 AND revoked_at IS NULL",
+                        params![&now, &agent_id, seat],
+                    )
+                    .map_err(|e| KurultaiError::Store(format!("revoke_agent seat update: {e}")))?;
+                Ok(n as u64)
+            }
+            None => {
+                let seats = conn
+                    .execute(
+                        "UPDATE agent_seats SET revoked_at = ?1 \
+                         WHERE agent_id = ?2 AND revoked_at IS NULL",
+                        params![&now, &agent_id],
+                    )
+                    .map_err(|e| KurultaiError::Store(format!("revoke_agent seats update: {e}")))?;
+                // Scramble the codename's primary key so it stops resolving.
+                conn.execute(
+                    "UPDATE agents SET key_hash = 'revoked:' || id WHERE id = ?1",
+                    params![&agent_id],
+                )
+                .map_err(|e| KurultaiError::Store(format!("revoke_agent key update: {e}")))?;
+                Ok(seats as u64 + 1)
+            }
+        }
+    }
+
     // ── Device authorization implementations ──────────────────────────────────
 
     async fn create_device_flow(
         &self,
         codename: &str,
         client_id: &str,
+        instance_id: &str,
         expires_in_seconds: u64,
     ) -> Result<DeviceFlow> {
         let conn = self.lock()?;
@@ -2457,9 +2655,9 @@ impl Store for SqliteVecStore {
         let expires_at = (now + chrono::Duration::seconds(expires_in_seconds as i64)).to_rfc3339();
 
         conn.execute(
-            "INSERT INTO device_flows (id, device_code, user_code, codename, client_id, status, created_at, expires_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7)",
-            params![&id, &device_code, &user_code, &codename, &client_id, &created_at, &expires_at],
+            "INSERT INTO device_flows (id, device_code, user_code, codename, instance_id, client_id, status, created_at, expires_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?8)",
+            params![&id, &device_code, &user_code, &codename, &instance_id, &client_id, &created_at, &expires_at],
         )
         .map_err(|e| KurultaiError::Store(format!("create_device_flow insert: {e}")))?;
 
@@ -2468,6 +2666,7 @@ impl Store for SqliteVecStore {
             device_code,
             user_code,
             codename: codename.to_string(),
+            instance_id: instance_id.to_string(),
             client_id: client_id.to_string(),
             status: "pending".to_string(),
             created_at,
@@ -2486,7 +2685,7 @@ impl Store for SqliteVecStore {
         let conn = self.lock()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, device_code, user_code, codename, client_id, status, created_at, \
+                "SELECT id, device_code, user_code, codename, instance_id, client_id, status, created_at, \
                  expires_at, approved_at, approved_by, agent_id, token_hash \
                  FROM device_flows WHERE device_code = ?1",
             )
@@ -2500,14 +2699,15 @@ impl Store for SqliteVecStore {
                     device_code: row.get(1)?,
                     user_code: row.get(2)?,
                     codename: row.get(3)?,
-                    client_id: row.get(4)?,
-                    status: row.get(5)?,
-                    created_at: row.get(6)?,
-                    expires_at: row.get(7)?,
-                    approved_at: row.get(8)?,
-                    approved_by: row.get(9)?,
-                    agent_id: row.get(10)?,
-                    token_hash: row.get(11)?,
+                    instance_id: row.get(4)?,
+                    client_id: row.get(5)?,
+                    status: row.get(6)?,
+                    created_at: row.get(7)?,
+                    expires_at: row.get(8)?,
+                    approved_at: row.get(9)?,
+                    approved_by: row.get(10)?,
+                    agent_id: row.get(11)?,
+                    token_hash: row.get(12)?,
                 })
             })
             .optional()
@@ -2521,7 +2721,7 @@ impl Store for SqliteVecStore {
         let conn = self.lock()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, device_code, user_code, codename, client_id, status, created_at, \
+                "SELECT id, device_code, user_code, codename, instance_id, client_id, status, created_at, \
                  expires_at, approved_at, approved_by, agent_id, token_hash \
                  FROM device_flows WHERE user_code = ?1",
             )
@@ -2535,14 +2735,15 @@ impl Store for SqliteVecStore {
                     device_code: row.get(1)?,
                     user_code: row.get(2)?,
                     codename: row.get(3)?,
-                    client_id: row.get(4)?,
-                    status: row.get(5)?,
-                    created_at: row.get(6)?,
-                    expires_at: row.get(7)?,
-                    approved_at: row.get(8)?,
-                    approved_by: row.get(9)?,
-                    agent_id: row.get(10)?,
-                    token_hash: row.get(11)?,
+                    instance_id: row.get(4)?,
+                    client_id: row.get(5)?,
+                    status: row.get(6)?,
+                    created_at: row.get(7)?,
+                    expires_at: row.get(8)?,
+                    approved_at: row.get(9)?,
+                    approved_by: row.get(10)?,
+                    agent_id: row.get(11)?,
+                    token_hash: row.get(12)?,
                 })
             })
             .optional()
@@ -2566,6 +2767,25 @@ impl Store for SqliteVecStore {
         if updated == 0 {
             return Err(KurultaiError::Store(
                 "device flow not found, already approved, or expired".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn deny_device_flow(&self, user_code: &str, denied_by: &str) -> Result<()> {
+        let conn = self.lock()?;
+        let now = Utc::now().to_rfc3339();
+        let updated = conn
+            .execute(
+                "UPDATE device_flows \
+             SET status = 'denied', approved_at = ?1, approved_by = ?2 \
+             WHERE user_code = ?3 AND status = 'pending' AND expires_at > datetime('now')",
+                params![&now, &denied_by, &user_code],
+            )
+            .map_err(|e| KurultaiError::Store(format!("deny_device_flow update: {e}")))?;
+        if updated == 0 {
+            return Err(KurultaiError::Store(
+                "device flow not found, already decided, or expired".into(),
             ));
         }
         Ok(())
@@ -2809,6 +3029,61 @@ impl Store for SqliteVecStore {
                 .push(row.map_err(|e| KurultaiError::Store(format!("list_messages row: {e}")))?);
         }
         Ok(messages)
+    }
+
+    async fn get_message(&self, id: &str) -> Result<Option<Message>> {
+        let conn = self.lock()?;
+        conn.query_row(
+            "SELECT m.id, m.thread_id, m.agent_id, m.parent_id, m.kind, m.content, m.request_reply, \
+             m.turns_consumed, m.created_at, m.repo, m.instance_id, COALESCE(a.codename, '') \
+             FROM messages m LEFT JOIN agents a ON a.id = m.agent_id \
+             WHERE m.id = ?1",
+            params![id],
+            row_to_message,
+        )
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("get_message query: {e}")))
+    }
+
+    async fn update_message_content(&self, id: &str, content: &str) -> Result<Message> {
+        let conn = self.lock()?;
+        let updated = conn
+            .execute(
+                "UPDATE messages SET content = ?2 WHERE id = ?1",
+                params![id, content],
+            )
+            .map_err(|e| KurultaiError::Store(format!("update_message_content: {e}")))?;
+        if updated == 0 {
+            return Err(KurultaiError::Store(format!("message {id} not found")));
+        }
+        conn.query_row(
+            "SELECT m.id, m.thread_id, m.agent_id, m.parent_id, m.kind, m.content, m.request_reply, \
+             m.turns_consumed, m.created_at, m.repo, m.instance_id, COALESCE(a.codename, '') \
+             FROM messages m LEFT JOIN agents a ON a.id = m.agent_id \
+             WHERE m.id = ?1",
+            params![id],
+            row_to_message,
+        )
+        .map_err(|e| KurultaiError::Store(format!("update_message_content fetch: {e}")))
+    }
+
+    async fn delete_message(&self, id: &str) -> Result<bool> {
+        let mut conn = self.lock()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| KurultaiError::Store(format!("delete_message begin: {e}")))?;
+        // Reactions point at the message via parent_id — remove them too.
+        tx.execute(
+            "DELETE FROM messages WHERE parent_id = ?1 AND kind = 'reaction'",
+            params![id],
+        )
+        .map_err(|e| KurultaiError::Store(format!("delete_message reactions: {e}")))?;
+        let removed = tx
+            .execute("DELETE FROM messages WHERE id = ?1", params![id])
+            .map_err(|e| KurultaiError::Store(format!("delete_message: {e}")))?;
+        tx.commit()
+            .map_err(|e| KurultaiError::Store(format!("delete_message commit: {e}")))?;
+        Ok(removed > 0)
     }
 }
 
@@ -3273,6 +3548,147 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         SqliteVecStore::open(dir.join("store.db"), dim).unwrap()
+    }
+
+    #[tokio::test]
+    async fn agent_seat_token_issue_resolve_revoke() {
+        let store = temp_store(4);
+
+        // Two seats under one codename — never a `devin-2` row.
+        let (a1, key1) = store
+            .issue_agent_seat_token("devin", "laptop-a", "luke@x")
+            .await
+            .unwrap();
+        let (a2, key2) = store
+            .issue_agent_seat_token("devin", "desktop-b", "luke@x")
+            .await
+            .unwrap();
+        assert_eq!(a1.id, a2.id, "seats share the codename agent row");
+        assert_eq!(a1.codename, "devin");
+        assert_eq!(store.list_agents().await.unwrap().len(), 1);
+
+        // Both seat keys resolve to the same agent.
+        let h1 = sha256_hex(&key1);
+        let h2 = sha256_hex(&key2);
+        assert_eq!(
+            store
+                .resolve_agent_by_key_hash(&h1)
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            a1.id
+        );
+        assert_eq!(
+            store
+                .resolve_agent_by_key_hash(&h2)
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            a1.id
+        );
+
+        // Revoking one seat leaves the other working.
+        let n = store.revoke_agent("devin", Some("laptop-a")).await.unwrap();
+        assert_eq!(n, 1);
+        assert!(store
+            .resolve_agent_by_key_hash(&h1)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(store
+            .resolve_agent_by_key_hash(&h2)
+            .await
+            .unwrap()
+            .is_some());
+
+        // Re-issue on the same seat revives it (rotation).
+        let (_a, key1b) = store
+            .issue_agent_seat_token("devin", "laptop-a", "luke@x")
+            .await
+            .unwrap();
+        assert!(store
+            .resolve_agent_by_key_hash(&sha256_hex(&key1b))
+            .await
+            .unwrap()
+            .is_some());
+
+        // Codename-wide revoke kills every seat + primary key.
+        let n = store.revoke_agent("devin", None).await.unwrap();
+        assert!(n >= 2);
+        assert!(store
+            .resolve_agent_by_key_hash(&sha256_hex(&key1b))
+            .await
+            .unwrap()
+            .is_none());
+        assert!(store
+            .resolve_agent_by_key_hash(&h2)
+            .await
+            .unwrap()
+            .is_none());
+        assert_eq!(store.revoke_agent("nobody", None).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn device_flow_pending_approve_deny_exchange() {
+        let store = temp_store(4);
+        let flow = store
+            .create_device_flow("cursor", "kurultai-cli", "seat-1", 600)
+            .await
+            .unwrap();
+        assert_eq!(flow.status, "pending");
+        assert_eq!(flow.instance_id, "seat-1");
+        assert_eq!(flow.user_code.len(), 8);
+
+        let fetched = store
+            .get_device_flow_by_device_code(&flow.device_code)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.instance_id, "seat-1");
+        assert_eq!(fetched.status, "pending");
+
+        store
+            .approve_device_flow(&flow.user_code, "luke@x")
+            .await
+            .unwrap();
+        let approved = store
+            .get_device_flow_by_user_code(&flow.user_code)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(approved.status, "approved");
+        assert_eq!(approved.approved_by.as_deref(), Some("luke@x"));
+
+        store
+            .exchange_device_flow(&flow.device_code, "hash", "agent-1")
+            .await
+            .unwrap();
+        // Deny on a decided flow errors.
+        assert!(store
+            .deny_device_flow(&flow.user_code, "luke@x")
+            .await
+            .is_err());
+
+        // Deny path on a fresh flow.
+        let flow2 = store
+            .create_device_flow("claude", "kurultai-cli", "", 600)
+            .await
+            .unwrap();
+        store
+            .deny_device_flow(&flow2.user_code, "luke@x")
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .get_device_flow_by_user_code(&flow2.user_code)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            "denied"
+        );
     }
 
     #[tokio::test]
@@ -3829,6 +4245,57 @@ mod tests {
         assert_eq!(reaction.turns_consumed, 0);
         let listed = store.list_messages(&thread.id, 20).await.unwrap();
         assert!(listed.len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn message_update_and_delete_round_trip() {
+        let store = temp_store(4);
+        let (agent_id, _key) = store.register_agent("tester").await.unwrap();
+        let thread = store.create_thread("hey.md", None, Some(10)).await.unwrap();
+        let msg = store
+            .post_message(&PostMessageInput {
+                thread_id: thread.id.clone(),
+                agent_id: agent_id.clone(),
+                parent_id: None,
+                content: "[todo] ship it".into(),
+                request_reply: false,
+                repo: None,
+                instance_id: None,
+            })
+            .await
+            .unwrap();
+        store
+            .add_reaction(&AddReactionInput {
+                thread_id: thread.id.clone(),
+                agent_id: agent_id.clone(),
+                message_id: msg.id.clone(),
+                emoji: ":eyes:".into(),
+            })
+            .await
+            .unwrap();
+
+        let updated = store
+            .update_message_content(&msg.id, "[doing] ship it")
+            .await
+            .unwrap();
+        assert_eq!(updated.content, "[doing] ship it");
+        assert_eq!(updated.agent_codename, "tester");
+        let fetched = store.get_message(&msg.id).await.unwrap().unwrap();
+        assert_eq!(fetched.content, "[doing] ship it");
+
+        // Delete cascades the reaction.
+        assert!(store.delete_message(&msg.id).await.unwrap());
+        assert!(store.get_message(&msg.id).await.unwrap().is_none());
+        let listed = store.list_messages(&thread.id, 20).await.unwrap();
+        assert!(
+            listed.iter().all(|m| m.id != msg.id),
+            "deleted message must not list"
+        );
+        assert!(
+            listed.iter().all(|m| m.kind != MessageKind::Reaction),
+            "reaction must be cascade-deleted"
+        );
+        assert!(!store.delete_message(&msg.id).await.unwrap());
     }
 
     #[tokio::test]

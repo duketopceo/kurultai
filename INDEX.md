@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-09-15
-version: 15
+updated: 2026-09-16
+version: 16
 ---
 
 # `.`
@@ -68,6 +68,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-16 — `feat/connect-device-flow`: `kurultai connect <url>` RFC 8628 device auth — `POST /api/device/code|token`, `/connect` approval page (CF Access → hub key → loopback), schema v16 `agent_seats` (codename+instance_id keys, no `codename-2`), omaseal/0600-key storage, `wire_agent` reuse, `agent revoke`, 401 `run kurultai connect` hint.
 - 2026-09-15 — zero-friction solo path (#329): `init --key/--key-file/--no-key` + key file fallback (0600), `kurultai webui` (spawn/poll/open/--print-url), `daemon --bind` incl. `tailscale` 100.x resolution + non-loopback warning, `FEATURE_MATRIX.md` ported from private.
 - 2026-09-15 — Wave H serve-path hardening milestone: issues #323-#326 (versioning, prepared payload, tier policy, reindex outbox) + `docs/plans/phase-6-next-work-orders.md` update.
 - 2026-09-15 — `feat/tier-policy-rules` (#325): `[tiers]`/`[[tiers.rule]]` config → `TierPolicy.rules` + `classify_atom`; BrainService wired via `brain_from_app`.

@@ -836,7 +836,10 @@ export class BrainView {
       colors[i * 3] = color.r;
       colors[i * 3 + 1] = color.g;
       colors[i * 3 + 2] = color.b;
-      alphas[i] = 1;
+      // Sprite-mode corona alpha must attenuate with density like the mesh
+      // path's coronaRestOpacity() — additive sprites at alpha≈1 fuse into a
+      // blown-out white mass above a few hundred nodes.
+      alphas[i] = 0.10 + 0.90 * Math.pow(this.sizeScale, 2.2);
 
       this.atomPositions.set(atom.id, pos);
       // Separate instance: atomPositions is mutated by layout animations.
@@ -902,7 +905,7 @@ export class BrainView {
         const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(28));
         // Explicit synapses: additive glow, opacity scales with shared-tag
         // count so multiply-tagged connections read as stronger links.
-        const baseOpacity = Math.min(0.85, 0.3 + (link.strength || 1) * 0.15);
+        const baseOpacity = this.edgeRestOpacity(link.strength || 1);
         const line = new THREE.Line(
           geo,
           new THREE.LineBasicMaterial({
@@ -1245,6 +1248,12 @@ export class BrainView {
     });
   }
 
+  /** Synapse rest opacity attenuates with density — hundreds of additive
+   *  edges at 0.3+ fuse the core into a white mass. */
+  private edgeRestOpacity(strength: number) {
+    return Math.min(0.85, 0.3 + strength * 0.15) * (0.10 + 0.90 * Math.pow(this.sizeScale, 2.2));
+  }
+
   /** Corona rest opacity attenuates with density — additive coronas are the
    *  main source of the fused white core at 500+ nodes. Exponential falloff
    *  so small graphs keep their dendrite coronas, dense graphs keep wiring. */
@@ -1374,7 +1383,7 @@ export class BrainView {
     this.edgeGroup.children.forEach((line) => {
       const mat = (line as THREE.Line).material as THREE.LineBasicMaterial;
       const strength = (line.userData?.strength as number) || 1;
-      mat.opacity = Math.min(0.85, 0.3 + strength * 0.15);
+      mat.opacity = this.edgeRestOpacity(strength);
       mat.color.setHex(this.palette.edgeRest);
     });
     this.refreshLabelPlan();

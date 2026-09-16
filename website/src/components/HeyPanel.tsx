@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as api from '../api';
 import { Chatboard } from './chatboard/Chatboard';
+import { HeyKanban } from './hey-kanban/HeyKanban';
 import {
   buildReactionIndex,
   mapMessages,
@@ -14,6 +15,7 @@ export function HeyPanel() {
   const [presence, setPresence] = useState<api.HeyPresence[]>([]);
   const [unread, setUnread] = useState<api.HeyMessage[]>([]);
   const [activeThreadId, setActiveThreadId] = useState('hey.md');
+  const [view, setView] = useState<'board' | 'kanban'>('board');
   const [refreshVersion, setRefreshVersion] = useState(0);
   const refresh = useCallback(() => {
     setRefreshVersion((version) => version + 1);
@@ -62,9 +64,9 @@ export function HeyPanel() {
     setActiveThreadId(threadId);
     refresh();
   }, [activeThreadId, refresh]);
-  const onSend = useCallback(async (body: string) => {
+  const onSend = useCallback(async (body: string, parentId?: string) => {
     try {
-      await api.postHeyMessage(activeThreadId, body);
+      await api.postHeyMessage(activeThreadId, body, parentId ? { parent_id: parentId } : {});
       refresh();
     } catch {
       // A failed mutation leaves the current board intact.
@@ -78,6 +80,22 @@ export function HeyPanel() {
       // A failed mutation leaves the current board intact.
     }
   }, [activeThreadId, refresh]);
+  const onEdit = useCallback(async (messageId: string, body: string) => {
+    try {
+      await api.updateHeyMessage(messageId, body);
+      refresh();
+    } catch {
+      // A failed mutation leaves the current board intact.
+    }
+  }, [refresh]);
+  const onDelete = useCallback(async (messageId: string) => {
+    try {
+      await api.deleteHeyMessage(messageId);
+      refresh();
+    } catch {
+      // A failed mutation leaves the current board intact.
+    }
+  }, [refresh]);
   const unreadByThread = new Map<string, number>();
   for (const message of unread) {
     unreadByThread.set(
@@ -94,17 +112,45 @@ export function HeyPanel() {
     onOpenThread,
     onSend,
     onReact,
+    onEdit,
+    onDelete,
   };
   return (
     <section className="panel chrome-panel hey-panel" aria-label="Agent message board">
       <header className="panel-head">
         <h2>Hey board</h2>
-        <button type="button" className="ghost" onClick={refresh}>
-          Refresh
-        </button>
+        <div className="hey-view-toggle" role="group" aria-label="Board view">
+          <button
+            type="button"
+            className={`ghost kb-focus-ring${view === 'board' ? ' active' : ''}`}
+            aria-pressed={view === 'board'}
+            onClick={() => setView('board')}
+          >
+            Board
+          </button>
+          <button
+            type="button"
+            className={`ghost kb-focus-ring${view === 'kanban' ? ' active' : ''}`}
+            aria-pressed={view === 'kanban'}
+            onClick={() => setView('kanban')}
+          >
+            Kanban
+          </button>
+          <button type="button" className="ghost kb-focus-ring" onClick={refresh}>
+            Refresh
+          </button>
+        </div>
       </header>
       <p className="muted hey-caption">Active WIP / agent coordination — not long-term memory.</p>
-      <Chatboard {...boardProps} />
+      {view === 'kanban' ? (
+        <HeyKanban
+          threadId={activeThreadId}
+          messages={messages}
+          onChanged={refresh}
+        />
+      ) : (
+        <Chatboard {...boardProps} />
+      )}
     </section>
   );
 }

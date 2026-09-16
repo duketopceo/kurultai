@@ -500,7 +500,7 @@ mod tests {
     #[tokio::test]
     async fn seed_classes_and_is_a_links() {
         let store = temp_store();
-        assert_eq!(migrations::CURRENT_SCHEMA_VERSION, 15);
+        assert_eq!(migrations::CURRENT_SCHEMA_VERSION, 16);
 
         let entities = store.list_ontology_entities(50).await.unwrap();
         let ids: Vec<&str> = entities.iter().map(|e| e.id.as_str()).collect();

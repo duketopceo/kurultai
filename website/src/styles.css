@@ -1643,10 +1643,20 @@ header.topbar {
   grid-area: brain;
   position: relative;
   min-height: 0;
+  /* The v1 hero rule (above) sets max-width + auto margins + hero padding for
+   * the standalone landing layout; inside the workspace grid those defeat the
+   * grid-area stretch and collapse the stage to fit-content. Neutralize them. */
+  max-width: none;
+  margin: 0;
+  padding: 0;
   border-radius: .6rem;
   overflow: hidden;
   border: 1px solid var(--line);
 }
+
+/* Inside the workspace grid the stage fills the hero cell rather than the
+ * v1 viewport-proportional height. */
+.brain-hero .brain-stage { height: 100%; min-height: 0; }
 
 .command-rail {
   grid-area: right;
@@ -1720,11 +1730,35 @@ header.topbar {
   grid-area: bottom;
   display: flex;
   align-items: center;
-  gap: .3rem;
-  padding: .35rem .5rem;
+  gap: .5rem;
+  padding: .5rem .6rem;
   background: var(--surface-strong);
   border: 1px solid var(--line);
   border-radius: .5rem;
+  min-height: 0;
+}
+
+.mission-content {
+  flex: 1;
+  align-self: stretch;
+  min-width: 0;
+  display: flex;
+  padding: 0 .2rem;
+  font-size: .78rem;
+}
+
+.mission-content > .panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mission-content .activity-stream {
+  max-height: none;
+  min-height: 0;
+  flex: 1;
 }
 
 .mission-tab {
@@ -1741,13 +1775,6 @@ header.topbar {
   color: var(--bg);
   background: var(--electric);
   border-color: var(--electric-strong);
-}
-
-.mission-content {
-  flex: 1;
-  min-width: 0;
-  padding: 0 .4rem;
-  font-size: .78rem;
 }
 
 .floating-inspector {
@@ -2015,4 +2042,101 @@ header.topbar {
   position: absolute; top: .75rem; left: 50%; transform: translateX(-50%);
   z-index: 55; padding: .4rem .8rem; margin: 0;
   background: var(--surface-strong); border: 1px solid #f472b6; border-radius: 8px;
+}
+
+/* ── Hey kanban view (#331) ────────────────────────────────── */
+.hey-view-toggle { display: flex; gap: .3rem; align-items: center; }
+.hey-view-toggle .ghost.active { border-color: var(--chrome-accent, var(--electric)); color: var(--chrome-accent-strong, var(--electric-strong)); }
+
+.hey-kanban {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(11rem, 1fr);
+  gap: .75rem;
+  overflow-x: auto;
+  padding-bottom: .5rem;
+  min-height: 12rem;
+}
+.hey-kanban-col {
+  display: flex; flex-direction: column; min-height: 8rem;
+  background: var(--chrome-surface, var(--surface));
+  border: 1px solid var(--chrome-line, var(--line));
+  border-radius: var(--chrome-radius, 6px);
+}
+.hey-kanban-col[data-drag-over="true"] { border-color: var(--chrome-accent, var(--electric)); }
+.hey-kanban-col[data-drop-rejected="true"] { border-color: var(--danger); }
+.hey-kanban-col-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .45rem .6rem; border-bottom: 1px solid var(--chrome-line, var(--line));
+}
+.hey-kanban-col-title {
+  margin: 0; font-size: .68rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--chrome-muted, var(--text-muted)); font-weight: 600;
+}
+.hey-kanban-count {
+  font-size: .65rem; padding: 0 .4rem; border-radius: 999px;
+  border: 1px solid var(--chrome-line, var(--line)); color: var(--chrome-muted, var(--text-muted));
+}
+.hey-kanban-cards {
+  list-style: none; margin: 0; padding: .45rem; flex: 1;
+  display: flex; flex-direction: column; gap: .45rem; min-height: 2rem;
+}
+.hey-kanban-card {
+  background: var(--chrome-surface-strong, var(--surface-strong));
+  border: 1px solid var(--chrome-line, var(--line));
+  border-radius: var(--chrome-radius, 6px);
+  padding: .45rem .55rem;
+  cursor: grab;
+  transition: border-color .15s var(--chrome-ease, ease);
+}
+.hey-kanban-card:hover { border-color: var(--chrome-line-strong, var(--line-strong)); }
+.hey-kanban-card[data-dragging="true"] { opacity: .5; cursor: grabbing; }
+.hey-kanban-card-body {
+  margin: 0; font-size: .78rem; line-height: 1.4; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.hey-kanban-card-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: .35rem; font-size: .65rem; color: var(--chrome-muted, var(--text-muted));
+}
+.hey-kanban-edit-btn { font-size: .62rem; padding: .05rem .4rem; }
+.hey-kanban-add { padding: 0 .45rem .45rem; }
+.hey-kanban-add input {
+  width: 100%; font: inherit; font-size: .72rem;
+  background: transparent; color: inherit;
+  border: 1px dashed var(--chrome-line, var(--line)); border-radius: var(--chrome-radius, 6px);
+  padding: .3rem .5rem;
+}
+.hey-kanban-add input:focus { outline: none; border-style: solid; border-color: var(--chrome-accent, var(--electric)); }
+.hey-kanban-edit { display: flex; flex-direction: column; gap: .3rem; }
+.hey-kanban-edit textarea {
+  width: 100%; resize: vertical; font: inherit; font-size: .75rem;
+  background: var(--chrome-surface, var(--surface)); color: inherit;
+  border: 1px solid var(--chrome-line, var(--line)); border-radius: var(--chrome-radius, 6px);
+  padding: .4rem .5rem;
+}
+.hey-kanban-edit-actions { display: flex; gap: .4rem; }
+
+/* ── Chatboard message actions + reply banner (#331) ───────── */
+.kb-msg-actions {
+  display: flex; gap: .35rem; margin-top: .25rem; opacity: 0;
+  transition: opacity .15s var(--chrome-ease, ease);
+}
+.kb-msg:hover .kb-msg-actions,
+.kb-msg:focus-within .kb-msg-actions { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .kb-msg-actions, .hey-kanban-card { transition: none; }
+}
+.kb-msg-action { font-size: .62rem; padding: .05rem .4rem; }
+.kb-msg-edit { display: flex; flex-direction: column; gap: .3rem; margin: .25rem 0; }
+.kb-msg-edit-actions { display: flex; gap: .4rem; }
+.kb-reply-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  font-size: .72rem; padding: .3rem .5rem;
+  border-left: 2px solid var(--chrome-accent, var(--electric));
+  background: var(--chrome-glow, var(--surface));
+  border-radius: 0 var(--chrome-radius, 6px) var(--chrome-radius, 6px) 0;
+}
+@media (max-width: 720px) {
+  .hey-kanban { grid-auto-columns: minmax(9.5rem, 85vw); }
 }

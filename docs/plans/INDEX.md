@@ -20,6 +20,7 @@ _None._
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`2026-09-14-001-feat-ontology-flowsint-board-plan.md`](2026-09-14-001-feat-ontology-flowsint-board-plan.md) | Flowsint-style 2D board (`@xyflow/react`) replaces 3D ontology layout; human write lane for entity/link | #316 · O1 shipped | website/src · src/http | 2026-09-14 | 1 | session decisions → implementation-ready plan |
+| [`2026-09-16-001-feat-hey-admin-kanban-plan.md`](2026-09-16-001-feat-hey-admin-kanban-plan.md) | Hey admin lane (CF Access email + PATCH/DELETE), kanban view, lower-UI spacing, hosted redeploy (#331) | #331 | src/http · src/store · website/src · deploy | 2026-09-16 | 1 | knowledge.shippedit.dev rebuild slice |
 | [`2026-09-15-002-feat-declarative-tier-policy-plan.md`](2026-09-15-002-feat-declarative-tier-policy-plan.md) | Declarative `[tiers]` rules: TierRule + classify_atom + config wiring (#325) | #325 | src/memory · src/config · src/mcp | 2026-09-15 | 1 | Wave H serve-path (CobbleDB-inspired) |
 | [`2026-09-15-001-feat-ontology-board-delete-plan.md`](2026-09-15-001-feat-ontology-board-delete-plan.md) | Board v2: delete entities/links — store cascade, DELETE routes, edge/node menus | #320 | src/store · src/http · website/src | 2026-09-15 | 1 | follow-up slice to #316 |
 | [`2026-09-12-001-feat-brain-neuron-motif-plan.md`](2026-09-12-001-feat-brain-neuron-motif-plan.md) | Brain neuron-motif visual language — soma + dendrite corona + traveling spikes; first-principles derivation; visual-only scope | fix/brain-cortex-doctrine baseline | website/src/brain | 2026-09-12 | 1 | ce-plan implementation-ready |
@@ -96,6 +97,7 @@ _None._
 
 ## Recent
 
+- 2026-09-16 — `2026-09-16-001` Hey admin lane + kanban + lower-UI pass plan (#331)
 - 2026-09-15 — `2026-09-15-002` declarative tier policy plan (#325, Wave H)
 - 2026-09-15 — `2026-09-15-001` board delete plan (#320) + queue entry; 09-14 board plan shipped in #319
 - 2026-09-14 — added 001 Flowsint-style ontology board plan (#316): 2D `@xyflow/react` board replaces 3D ontology layout; human write lane needed

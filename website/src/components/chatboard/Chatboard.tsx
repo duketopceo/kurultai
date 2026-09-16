@@ -6,8 +6,10 @@ export type ChatboardProps = {
   activeThreadId: string | null;
   presence: Record<string, string>;
   onOpenThread(id: string): void;
-  onSend(body: string): void;
+  onSend(body: string, parentId?: string): void;
   onReact(messageId: string, emoji: string): void;
+  onEdit?(messageId: string, body: string): void;
+  onDelete?(messageId: string): void;
   disabled?: boolean;
 };
 function field(value: unknown, key: string): unknown {
@@ -41,10 +43,15 @@ export function Chatboard({
   onOpenThread,
   onSend,
   onReact,
+  onEdit,
+  onDelete,
   disabled = false,
 }: ChatboardProps) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
+  const [replyTo, setReplyTo] = useState<{ id: string; label: string; body: string } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
   const threadButtons = useRef(new Map<string, HTMLButtonElement>());
   const stream = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
@@ -98,15 +105,17 @@ export function Chatboard({
     if (composerDisabled || activeThreadId === null || !body) {
       return;
     }
-    onSend(body);
+    onSend(body, replyTo?.id);
+    setReplyTo(null);
     setDrafts((current) => ({ ...current, [activeThreadId]: '' }));
   }
+  function saveEdit(messageId: string) {
+    const body = editDraft.trim();
+    setEditingId(null);
+    if (body && onEdit) onEdit(messageId, body);
+  }
   return (
-    <section className="panel chrome-panel hey-panel kb-chatboard" aria-label="Agent message board">
-      <header className="panel-head">
-        <h2>Hey board</h2>
-      </header>
-      <p className="muted hey-caption">Active WIP / agent coordination — not long-term memory.</p>
+    <div className="kb-chatboard" aria-label="Agent message board">
       <div className="kb-panes" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 3fr)' }}>
         <nav className="kb-thread-pane" aria-label="Chat threads">
           <h3 className="kb-pane-title">Threads</h3>
@@ -216,11 +225,75 @@ export function Chatboard({
                       </time>
                     ) : null}
                   </div>
-                  <p className="kb-msg-body">
-                    {message.body.split('\n').map((line, index) => (
-                      <span key={index}>{index > 0 ? <br /> : null}{line}</span>
-                    ))}
-                  </p>
+                  {editingId === message.id ? (
+                    <form
+                      className="kb-msg-edit"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        saveEdit(message.id);
+                      }}
+                    >
+                      <textarea
+                        className="kb-composer-input kb-focus-ring"
+                        rows={3}
+                        value={editDraft}
+                        autoFocus
+                        onChange={(event) => setEditDraft(event.currentTarget.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') setEditingId(null);
+                          if (event.key === 'Enter' && !event.shiftKey) {
+                            event.preventDefault();
+                            saveEdit(message.id);
+                          }
+                        }}
+                      />
+                      <div className="kb-msg-edit-actions">
+                        <button type="submit" className="kb-send kb-focus-ring">Save</button>
+                        <button type="button" className="ghost kb-focus-ring" onClick={() => setEditingId(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <p className="kb-msg-body">
+                      {message.body.split('\n').map((line, index) => (
+                        <span key={index}>{index > 0 ? <br /> : null}{line}</span>
+                      ))}
+                    </p>
+                  )}
+                  <div className="kb-msg-actions" role="group" aria-label="Message actions">
+                    <button
+                      type="button"
+                      className="ghost kb-msg-action kb-focus-ring"
+                      disabled={disabled}
+                      onClick={() => setReplyTo(message)}
+                    >
+                      Reply
+                    </button>
+                    {onEdit ? (
+                      <button
+                        type="button"
+                        className="ghost kb-msg-action kb-focus-ring"
+                        disabled={disabled}
+                        onClick={() => {
+                          setEditingId(message.id);
+                          setEditDraft(message.body);
+                        }}
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+                    {onDelete ? (
+                      <button
+                        type="button"
+                        className="ghost kb-msg-action kb-focus-ring"
+                        disabled={disabled}
+                        onClick={() => onDelete(message.id)}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
                   <div className="kb-reactions" role="group" aria-label={`React to message from ${message.label}`}>
                     {message.reactions.map((r) => (
                       <span key={r.emoji} className="kb-reaction-count" aria-label={`${r.count} ${r.emoji}`}>
@@ -258,6 +331,22 @@ export function Chatboard({
               send();
             }}
           >
+            {replyTo ? (
+              <div className="kb-reply-banner" role="status">
+                <span className="muted">
+                  Replying to {replyTo.label}: {replyTo.body.slice(0, 80)}
+                  {replyTo.body.length > 80 ? '…' : ''}
+                </span>
+                <button
+                  type="button"
+                  className="ghost kb-focus-ring"
+                  aria-label="Cancel reply"
+                  onClick={() => setReplyTo(null)}
+                >
+                  ×
+                </button>
+              </div>
+            ) : null}
             <textarea
               className="kb-composer-input kb-focus-ring"
               aria-label="Message; Enter sends, Shift+Enter adds a new line"
@@ -291,6 +380,6 @@ export function Chatboard({
           </form>
         </div>
       </div>
-    </section>
+    </div>
   );
 }

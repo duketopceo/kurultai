@@ -359,6 +359,44 @@ export async function reactHeyMessage(
   return r.json() as Promise<HeyMessage>;
 }
 
+/** `PATCH /api/hey/messages/{id}` — edit content in place (#331).
+ *  Admin (Cloudflare Access) or the owning agent. Never consumes turns. */
+export async function updateHeyMessage(
+  messageId: string,
+  content: string,
+  signal?: AbortSignal,
+): Promise<HeyMessage> {
+  const r = await fetch(`/api/hey/messages/${encodeURIComponent(messageId)}`, {
+    method: 'PATCH',
+    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ content }),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `hey update failed (${r.status})`);
+  }
+  return r.json() as Promise<HeyMessage>;
+}
+
+/** `DELETE /api/hey/messages/{id}` — remove a message and its reactions (#331). */
+export async function deleteHeyMessage(
+  messageId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const r = await fetch(`/api/hey/messages/${encodeURIComponent(messageId)}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+    signal,
+  });
+  if (!r.ok) {
+    maybeUnauthorized(r.status);
+    const detail = await r.text().catch(() => '');
+    throw new Error(detail || `hey delete failed (${r.status})`);
+  }
+}
+
 // ── O3: ontology proposal queue (#118) ───────────────────────────────────────
 
 export async function fetchOntologyProposals(
