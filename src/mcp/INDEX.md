@@ -19,7 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`brain.rs`](brain.rs) | BrainService implementing AgentRead | `src/activity` · `src/brain` · `src/embed` · `src/error` · `src/hashutil` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`brain.rs`](brain.rs) | BrainService implementing AgentRead | `src/activity` · `src/brain` · `src/embed` · `src/error` · `src/hashutil` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-09-15 | 2 | 2026-09-15 `tier_policy` field + `with_tier_policy` — configured rules reach tier calls (#325) |
 | [`init.rs`](init.rs) | kurultai init --agent cursor/claude/codex/hermes | `src/config` · `src/error` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`interface.rs`](interface.rs) | AgentRead trait | `src/synthesize` · `src/types` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-07-23 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`mod.rs`](mod.rs) | MCP module: stdio server + init wiring | — | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -27,6 +27,7 @@ _None._
 
 ## Recent
 
+- 2026-09-15 — `brain.rs`: `BrainService.tier_policy` + `with_tier_policy`; tier calls use configured policy (#325)
 - 2026-09-11 — `ontology_propose`/`ontology_proposals` tools: agents submit drafts, humans decide via REST/UI (#118)
 - 2026-09-04 — `server.rs` adds `hey_threads/read/poll` tools and read-only tool list
 - 2026-08-16 — indexed this folder (v1 seed)

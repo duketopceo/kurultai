@@ -645,6 +645,7 @@ poll_interval_secs = 300
             inactivity_threshold_hours: None,
             mcp_http_secret: None,
             banner: crate::art::BannerMode::Auto,
+            tier_policy: crate::memory::TierPolicy::default(),
         };
 
         let pack = tmp.path().join("fb.kurultai");

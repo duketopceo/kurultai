@@ -24,6 +24,31 @@ pub struct FileConfig {
     /// Deployment environment: dev | staging | prod
     #[serde(default)]
     pub environment: Option<String>,
+
+    /// `[tiers]` hot/warm/cold policy + declarative sequester rules (#325).
+    #[serde(default)]
+    pub tiers: FileTiersConfig,
+}
+
+/// `[tiers]` — thresholds override the `TierPolicy` defaults; `[[tiers.rule]]`
+/// entries cap matching atoms. Missing section = defaults, no rules.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct FileTiersConfig {
+    pub hot_access_days: Option<i64>,
+    pub hot_index_hours: Option<i64>,
+    pub cold_days: Option<i64>,
+    #[serde(default)]
+    pub rule: Vec<FileTierRule>,
+}
+
+/// `[[tiers.rule]]` — all set fields must match (AND); `cap` is required and
+/// must be `warm` or `cold` (rules never promote).
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct FileTierRule {
+    pub source: Option<String>,
+    pub tag: Option<String>,
+    pub trust_lane: Option<String>,
+    pub cap: Option<String>,
 }
 
 /// `[cli]` presentation settings.

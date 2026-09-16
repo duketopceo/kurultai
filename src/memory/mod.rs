@@ -2,4 +2,4 @@
 
 pub mod tier;
 
-pub use tier::{classify, GraphNode, MemoryTier, TierPolicy};
+pub use tier::{classify, classify_atom, GraphNode, MemoryTier, TierPolicy, TierRule};

@@ -145,6 +145,7 @@ mod tests {
             inactivity_threshold_hours: None,
             mcp_http_secret: None,
             banner: crate::art::BannerMode::Auto,
+            tier_policy: crate::memory::TierPolicy::default(),
         };
 
         let registry = ConnectorRegistry::from_config(&config).await.unwrap();
@@ -175,6 +176,7 @@ mod tests {
             inactivity_threshold_hours: None,
             mcp_http_secret: None,
             banner: crate::art::BannerMode::Auto,
+            tier_policy: crate::memory::TierPolicy::default(),
         };
         let registry = ConnectorRegistry::from_config(&config).await.unwrap();
         assert_eq!(registry.len(), 1);
@@ -202,6 +204,7 @@ mod tests {
             inactivity_threshold_hours: None,
             mcp_http_secret: None,
             banner: crate::art::BannerMode::Auto,
+            tier_policy: crate::memory::TierPolicy::default(),
         };
         match ConnectorRegistry::from_config(&config).await {
             Ok(_) => panic!("expected unimplemented connector error"),
