@@ -33,6 +33,9 @@ pub(crate) fn routes(state: AppState) -> Router<AppState> {
 const DEFAULT_CLIENT_ID: &str = "kurultai-cli";
 const DEFAULT_EXPIRES_IN: u64 = 600; // 10 minutes
 const DEFAULT_INTERVAL: u64 = 5;
+/// Codenames reserved for human/admin identities — a device flow must never
+/// mint a seat key that Hey PATCH/DELETE would treat as the admin identity.
+const RESERVED_CODENAMES: &[&str] = &["luke"];
 
 #[derive(Debug, Deserialize)]
 struct DeviceCodeRequest {
@@ -165,7 +168,18 @@ async fn approver_identity(
             ))
         }
         ApproverGate::Loopback => {
-            if peer.map(|p| p.ip().is_loopback()).unwrap_or(false) {
+            // A reverse proxy / tunnel sidecar makes remote clients appear
+            // loopback — refuse the loopback approver when forwarding headers
+            // show the request came through a proxy.
+            let proxied = [
+                "x-forwarded-for",
+                "x-real-ip",
+                "cf-connecting-ip",
+                "forwarded",
+            ]
+            .iter()
+            .any(|h| headers.contains_key(*h));
+            if !proxied && peer.map(|p| p.ip().is_loopback()).unwrap_or(false) {
                 Ok("loopback".to_string())
             } else {
                 Err((
@@ -189,6 +203,15 @@ async fn device_code_post(
     } else {
         body.codename.trim().to_string()
     };
+    if RESERVED_CODENAMES
+        .iter()
+        .any(|r| codename.eq_ignore_ascii_case(r))
+    {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            "codename is reserved for a human admin identity",
+        );
+    }
     let client_id = if body.client_id.trim().is_empty() {
         DEFAULT_CLIENT_ID.to_string()
     } else {
@@ -306,12 +329,45 @@ async fn connect_page_get(
     render_connect_page(&state, &code, None, &approver).await
 }
 
+/// CSRF guard for the cookie-authenticated approve form: browsers always send
+/// `Origin` on cross-site form POSTs, so a mismatched Origin/Referer means a
+/// forged request. Non-browser clients (curl) send neither and pass through.
+fn same_origin_form_post(headers: &axum::http::HeaderMap) -> bool {
+    let source = headers
+        .get(axum::http::header::ORIGIN)
+        .or_else(|| headers.get(axum::http::header::REFERER));
+    let Some(source) = source else {
+        return true;
+    };
+    let Ok(source) = source.to_str() else {
+        return false;
+    };
+    let Some(host) = headers
+        .get(axum::http::header::HOST)
+        .and_then(|h| h.to_str().ok())
+    else {
+        return false;
+    };
+    // source looks like "https://host[:port][/path]" — compare the authority.
+    let authority = source
+        .split("://")
+        .nth(1)
+        .unwrap_or(source)
+        .split('/')
+        .next()
+        .unwrap_or_default();
+    authority == host
+}
+
 async fn connect_page_post(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     Form(form): Form<ConnectForm>,
 ) -> Response {
+    if !same_origin_form_post(&headers) {
+        return json_error(StatusCode::FORBIDDEN, "cross-origin form post rejected");
+    }
     let approver = match approver_identity(&state, &headers, Some(peer)).await {
         Ok(a) => a,
         Err((st, body)) => return (st, body).into_response(),
@@ -352,8 +408,9 @@ async fn render_connect_page(
             .ok()
             .flatten()
     };
-    let error_block =
-        error.map_or_else(String::new, |e| format!(r#"<div class="error">{e}</div>"#));
+    let error_block = error.map_or_else(String::new, |e| {
+        format!(r#"<div class="error">{}</div>"#, html_escape(e))
+    });
     let detail = match &flow {
         Some(f) => format!(
             "<p>Agent <strong>{}</strong> (seat <strong>{}</strong>) is requesting a key.</p>",
@@ -370,7 +427,10 @@ async fn render_connect_page(
     let code_field = if code.is_empty() {
         r#"<input type="text" name="code" placeholder="ABCD1234" autofocus />"#.to_string()
     } else {
-        format!(r#"<input type="text" name="code" value="{code}" readonly />"#)
+        format!(
+            r#"<input type="text" name="code" value="{}" readonly />"#,
+            html_escape(code)
+        )
     };
     Html(format!(
         r#"<!DOCTYPE html>
@@ -416,6 +476,8 @@ p {{ color: #a3a3a3; line-height: 1.5; }}
 }
 
 fn decision_page(code: &str, approver: &str, approved: bool) -> String {
+    let code = html_escape(code);
+    let approver = html_escape(approver);
     let (title, body) = if approved {
         (
             "Agent approved",
@@ -537,5 +599,52 @@ mod tests {
     fn html_escape_blocks_markup() {
         assert_eq!(html_escape("<script>"), "&lt;script&gt;");
         assert_eq!(html_escape("a&b\"c"), "a&amp;b&quot;c");
+    }
+
+    #[test]
+    fn reserved_codename_rejected() {
+        for c in ["luke", "Luke", "LUKE"] {
+            assert!(
+                RESERVED_CODENAMES.iter().any(|r| c.eq_ignore_ascii_case(r)),
+                "{c} must be reserved"
+            );
+        }
+        assert!(!RESERVED_CODENAMES
+            .iter()
+            .any(|r| "cursor".eq_ignore_ascii_case(r)));
+    }
+
+    #[test]
+    fn csrf_origin_check() {
+        use axum::http::{HeaderMap, HeaderValue};
+        let mut h = HeaderMap::new();
+        // No Origin/Referer (non-browser client) passes.
+        assert!(same_origin_form_post(&h));
+        // Same-origin passes.
+        h.insert("host", HeaderValue::from_static("knowledge.shippedit.dev"));
+        h.insert(
+            "origin",
+            HeaderValue::from_static("https://knowledge.shippedit.dev"),
+        );
+        assert!(same_origin_form_post(&h));
+        // Cross-origin fails.
+        h.insert("origin", HeaderValue::from_static("https://evil.example"));
+        assert!(!same_origin_form_post(&h));
+        // Origin host-prefix tricks fail (exact authority match).
+        h.insert(
+            "origin",
+            HeaderValue::from_static("https://knowledge.shippedit.dev.evil.example"),
+        );
+        assert!(!same_origin_form_post(&h));
+        // Referer fallback: same-origin referer passes.
+        h.remove("origin");
+        h.insert(
+            "referer",
+            HeaderValue::from_static("https://knowledge.shippedit.dev/connect?code=ABCD"),
+        );
+        assert!(same_origin_form_post(&h));
+        // Missing Host fails closed when an Origin is present.
+        h.remove("host");
+        assert!(!same_origin_form_post(&h));
     }
 }
