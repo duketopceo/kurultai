@@ -3,6 +3,7 @@ pub mod app;
 pub mod art;
 pub mod brain;
 pub mod config;
+pub mod connect;
 pub mod connectors;
 pub mod daemon;
 pub mod distill;

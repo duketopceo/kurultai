@@ -142,17 +142,23 @@ impl CfAccess {
     /// Verify any Access assertion on the request. On success attaches a
     /// [`CfAccessIdentity`] extension and returns true; otherwise false.
     pub async fn authorize(&self, req: &mut Request<Body>) -> bool {
-        let Some(token) = extract_assertion(req.headers()) else {
+        let Some(identity) = self.verify_headers(req.headers()).await else {
             return false;
         };
+        req.extensions_mut().insert(identity);
+        true
+    }
+
+    /// Verify the Access assertion carried by these headers. Unlike
+    /// [`authorize`] this does not need a `Request`, so route handlers can use
+    /// it for per-route authorization (e.g. the Hey admin lane).
+    pub async fn verify_headers(&self, headers: &HeaderMap) -> Option<CfAccessIdentity> {
+        let token = extract_assertion(headers)?;
         match self.verify(&token).await {
-            Ok(identity) => {
-                req.extensions_mut().insert(identity);
-                true
-            }
+            Ok(identity) => Some(identity),
             Err(e) => {
                 tracing::warn!(error = %e, "CF Access JWT rejected");
-                false
+                None
             }
         }
     }

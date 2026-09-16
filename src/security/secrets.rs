@@ -60,6 +60,48 @@ pub fn api_key_from_keyfile() -> Option<SecretString> {
     (!key.is_empty()).then(|| SecretString::new(key.to_string()))
 }
 
+/// Key file for a `kurultai connect` agent credential — lives under
+/// `<config-dir>/agent-keys/<name>.key`, mode 0600. `name` is sanitized to a
+/// filename-safe slug (e.g. `dev-cursor-agent-token`).
+pub fn agent_key_file_path(name: &str) -> Option<std::path::PathBuf> {
+    let slug: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    crate::config::config_path()
+        .ok()
+        .map(|p| p.with_file_name("agent-keys").join(format!("{slug}.key")))
+}
+
+/// Persist an agent credential to `agent_key_file_path()` with 0600 perms.
+/// Fallback when `omaseal` is not installed. Never logs the value.
+pub fn write_agent_key_file(name: &str, key: &str) -> Result<std::path::PathBuf> {
+    use std::io::Write;
+    let path = agent_key_file_path(name)
+        .ok_or_else(|| KurultaiError::config("could not resolve agent key file path"))?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| KurultaiError::config(format!("create agent key dir: {e}")))?;
+    }
+    let mut f = std::fs::File::create(&path)
+        .map_err(|e| KurultaiError::config(format!("write agent key file: {e}")))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = f.set_permissions(std::fs::Permissions::from_mode(0o600));
+    }
+    f.write_all(key.trim().as_bytes())
+        .and_then(|_| f.write_all(b"\n"))
+        .map_err(|e| KurultaiError::config(format!("write agent key file: {e}")))?;
+    Ok(path)
+}
+
 /// Persist a key to `key_file_path()` with 0600 perms. Never logs the value.
 pub fn write_key_file(key: &str) -> Result<std::path::PathBuf> {
     use std::io::Write;

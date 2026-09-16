@@ -22,7 +22,7 @@ use std::sync::Arc;
     name = "kurultai",
     version,
     about = "Assemble what you know, from wherever it lives.",
-    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>  ·  init --doctor\nAuth         kurultai login --base-url https://api-... --codename <name>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        webui  ·  mcp  ·  daemon [--port 8421 --bind tailscale]    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
+    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>  ·  init --doctor\nAuth         kurultai connect <instance-url> [--codename <name>]  ·  login --base-url … --codename <name>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        webui  ·  mcp  ·  daemon [--port 8421 --bind tailscale]    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
 )]
 struct Cli {
     /// Log filter (overrides KURULTAI_LOG). Example: kurultai=trace,info
@@ -198,6 +198,25 @@ enum Commands {
     },
     /// Run diagnostic checks (DB, config, MCP, HTTP, embeddings, ontology, connectors)
     Doctor,
+    /// Connect this machine to a Kurultai instance — browser-approved device
+    /// authorization (RFC 8628) that mints + stores an agent key and wires MCP
+    Connect {
+        /// Instance URL, e.g. https://knowledge.shippedit.dev or http://127.0.0.1:8421
+        url: String,
+        /// Codename for this agent (product family, e.g. cursor, claude, devin)
+        #[arg(long, short = 'n')]
+        codename: Option<String>,
+        /// Seat id distinguishing this machine under the codename
+        /// (default: $KURULTAI_INSTANCE_ID → hostname)
+        #[arg(long)]
+        instance_id: Option<String>,
+        /// MCP clients to wire: cursor, claude, codex, hermes, all, or none
+        #[arg(long, default_value = "all")]
+        agent: AgentTarget,
+        /// Print the approval URL instead of opening a browser
+        #[arg(long)]
+        no_open: bool,
+    },
     /// Sign in to a hosted Kurultai instance and store a long-lived agent token locally
     Login {
         /// Kurultai API base URL, e.g. https://api-knowledge.shippedit.dev
@@ -235,6 +254,15 @@ enum AgentCommands {
     },
     /// List registered codenames. Never shows keys.
     List,
+    /// Revoke an agent's credentials — all seats and the primary key, or one
+    /// seat with `--instance-id`.
+    Revoke {
+        /// Agent codename to revoke
+        codename: String,
+        /// Revoke only this seat (other seats keep working)
+        #[arg(long)]
+        instance_id: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -607,6 +635,23 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
+                AgentCommands::Revoke {
+                    codename,
+                    instance_id,
+                } => {
+                    let n = store
+                        .revoke_agent(&codename, instance_id.as_deref())
+                        .await?;
+                    match (n, &instance_id) {
+                        (0, _) => println!("No credentials found for '{codename}'."),
+                        (_, Some(seat)) => {
+                            println!("Revoked seat '{seat}' for '{codename}' ({n} credential).")
+                        }
+                        (_, None) => println!(
+                            "Revoked '{codename}' — primary key + all seats ({n} credential(s))."
+                        ),
+                    }
+                }
             }
         }
         Commands::Daemon {
@@ -749,6 +794,23 @@ async fn main() -> Result<()> {
                 }
                 println!("Deleted {deleted} / {total} atoms.");
             }
+        }
+        Commands::Connect {
+            ref url,
+            ref codename,
+            ref instance_id,
+            agent,
+            no_open,
+        } => {
+            kurultai::connect::run(kurultai::connect::ConnectOptions {
+                url: url.clone(),
+                codename: codename.clone(),
+                instance_id: instance_id.clone(),
+                agent,
+                no_open,
+                lane: env.as_str().to_string(),
+            })
+            .await?;
         }
         Commands::Login {
             base_url,

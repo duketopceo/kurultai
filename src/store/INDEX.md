@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src/store
 parent: src/INDEX.md
-updated: 2026-09-15
-version: 5
+updated: 2026-09-16
+version: 6
 ---
 
 # `src/store`
@@ -19,12 +19,13 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`migrations.rs`](migrations.rs) | SQLite schema migrations | `src/error` | `src/export/mod.rs` · `src/http/ingest.rs` · `src/ontology/mod.rs` · `src/quality/gate.rs` · `src/quality/near_dupe.rs` | 2026-09-11 | 3 | 2026-09-11 v15 `ontology_proposals` table (#118) · 2026-09-06 v14 `device_flows` table · 2026-08-16 indexed (v1 seed) |
-| [`mod.rs`](mod.rs) | Store trait, open_store, SqliteVecStore | `src/error` · `src/hashutil` · `src/memory` · `src/types` | `src/export/mod.rs` · `src/http/ingest.rs` · `src/ontology/mod.rs` · `src/quality/gate.rs` · `src/app/context.rs` · `src/http/device_auth.rs` | 2026-09-15 | 5 | 2026-09-15 `classify_atom` in tier paths — sequester rules apply (#325) |
+| [`migrations.rs`](migrations.rs) | SQLite schema migrations | `src/error` | `src/export/mod.rs` · `src/http/ingest.rs` · `src/ontology/mod.rs` · `src/quality/gate.rs` · `src/quality/near_dupe.rs` | 2026-09-16 | 4 | 2026-09-16 v16 `agent_seats` + `device_flows.instance_id` · 2026-09-11 v15 `ontology_proposals` table (#118) · 2026-09-06 v14 `device_flows` table · 2026-08-16 indexed (v1 seed) |
+| [`mod.rs`](mod.rs) | Store trait, open_store, SqliteVecStore | `src/error` · `src/hashutil` · `src/memory` · `src/types` | `src/export/mod.rs` · `src/http/ingest.rs` · `src/ontology/mod.rs` · `src/quality/gate.rs` · `src/app/context.rs` · `src/http/device_auth.rs` · `src/http/device.rs` | 2026-09-16 | 6 | 2026-09-16 `issue_agent_seat_token`/`revoke_agent`/`deny_device_flow`; key-hash resolve covers seats · 2026-09-15 `classify_atom` in tier paths — sequester rules apply (#325) |
 | [`postgres.rs`](postgres.rs) | Optional PostgresStore (--features postgres) | `src/error` · `src/hashutil` · `src/hub/activity.rs` · `src/memory` · `src/types` | `src/export/mod.rs` · `src/http/ingest.rs` · `src/ontology/mod.rs` · `src/quality/gate.rs` · `src/quality/near_dupe.rs` | 2026-09-15 | 4 | 2026-09-15 `classify_atom` in tier paths — sequester rules apply (#325) |
 
 ## Recent
 
+- 2026-09-16 — schema v16 `agent_seats` + `device_flows.instance_id`; `issue_agent_seat_token` (codename+seat, no `codename-2`), `revoke_agent`, `deny_device_flow`; `resolve_agent_by_key_hash` resolves active seat keys
 - 2026-09-15 — `mod.rs`/`postgres.rs`: tier paths use `classify_atom` so `TierPolicy.rules` apply (#325)
 - 2026-09-15 — `delete_ontology_entity` (cascades links) + `delete_ontology_link` on Store trait; SQLite impl, Postgres stubs (#320)
 - 2026-09-11 — schema v15 `ontology_proposals`; Store: `insert/get/list/decide_ontology_proposal` (decide guarded to pending-only transitions); postgres stubs (#118)

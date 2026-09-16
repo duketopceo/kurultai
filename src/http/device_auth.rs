@@ -94,7 +94,7 @@ fn is_expired(flow: &DeviceFlow) -> bool {
     }
 }
 
-fn request_scheme(headers: &axum::http::HeaderMap) -> &'static str {
+pub(crate) fn request_scheme(headers: &axum::http::HeaderMap) -> &'static str {
     if let Some(proto) = headers
         .get("x-forwarded-proto")
         .and_then(|v| v.to_str().ok())
@@ -145,7 +145,9 @@ fn is_human_ui_host(headers: &axum::http::HeaderMap) -> bool {
     !host_lower.starts_with("api-") && !host_lower.starts_with("api.")
 }
 
-fn human_auth_url(headers: &axum::http::HeaderMap) -> String {
+/// `{scheme}://{human-host}` — the human-facing base URL (strips `api-`/`api.`
+/// prefixes, honors `KURULTAI_AUTH_HOST`). Shared with the `/connect` flow.
+pub(crate) fn human_base_url(headers: &axum::http::HeaderMap) -> String {
     let scheme = request_scheme(headers);
     let host = if let Ok(host) = std::env::var("KURULTAI_AUTH_HOST") {
         if !host.is_empty() {
@@ -170,7 +172,11 @@ fn human_auth_url(headers: &axum::http::HeaderMap) -> String {
             host.to_string()
         }
     };
-    format!("{scheme}://{host}/auth/device")
+    format!("{scheme}://{host}")
+}
+
+fn human_auth_url(headers: &axum::http::HeaderMap) -> String {
+    format!("{}/auth/device", human_base_url(headers))
 }
 
 async fn device_code_post(
@@ -192,7 +198,7 @@ async fn device_code_post(
     let flow = match state
         .brain
         .store()
-        .create_device_flow(&codename, &client_id, DEFAULT_EXPIRES_IN)
+        .create_device_flow(&codename, &client_id, "", DEFAULT_EXPIRES_IN)
         .await
     {
         Ok(f) => f,

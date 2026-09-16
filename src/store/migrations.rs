@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 15;
+pub const CURRENT_SCHEMA_VERSION: i32 = 16;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -230,6 +230,27 @@ CREATE TABLE IF NOT EXISTS ontology_proposals (
 
 CREATE INDEX IF NOT EXISTS idx_ontology_proposals_status
     ON ontology_proposals(status, created_at DESC);
+"#;
+
+/// `agent_seats` — one active key per (codename, instance_id) seat, minted by
+/// the `kurultai connect` device-authorization flow. Codename stays a single
+/// `agents` row (two-layer identity: codename = product, instance_id = seat);
+/// seats never fork the codename into `cursor-2`-style rows.
+const MIGRATION_016: &str = r#"
+CREATE TABLE IF NOT EXISTS agent_seats (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    instance_id TEXT NOT NULL DEFAULT '',
+    key_hash TEXT NOT NULL,
+    approved_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    revoked_at TEXT,
+    UNIQUE(agent_id, instance_id),
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_seats_key_hash ON agent_seats(key_hash);
+CREATE INDEX IF NOT EXISTS idx_agent_seats_agent ON agent_seats(agent_id);
 "#;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
@@ -474,6 +495,21 @@ pub fn migrate(conn: &Connection) -> Result<()> {
             .map_err(|e| KurultaiError::Store(format!("migration 015 failed: {e}")))?;
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [15])
             .map_err(|e| KurultaiError::Store(format!("migration 015 record failed: {e}")))?;
+    }
+
+    if current < 16 {
+        // `kurultai connect` device authorization: seat-level agent keys
+        // (codename + instance_id) and the requested instance on the flow.
+        conn.execute_batch(MIGRATION_016)
+            .map_err(|e| KurultaiError::Store(format!("migration 016 failed: {e}")))?;
+        add_column_if_missing(
+            conn,
+            "device_flows",
+            "instance_id",
+            "TEXT NOT NULL DEFAULT ''",
+        )?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [16])
+            .map_err(|e| KurultaiError::Store(format!("migration 016 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");

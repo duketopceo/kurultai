@@ -85,7 +85,7 @@ async fn wait_ready(base: &str) -> Result<()> {
     )))
 }
 
-fn open_browser(url: &str) {
+pub(crate) fn open_browser(url: &str) {
     #[cfg(target_os = "macos")]
     let opener = "open";
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -98,6 +98,6 @@ fn open_browser(url: &str) {
         .stderr(Stdio::null())
         .spawn()
     {
-        eprintln!("webui: could not open browser ({opener}: {e}) — open {url} manually");
+        eprintln!("could not open browser ({opener}: {e}) — open {url} manually");
     }
 }

@@ -8,6 +8,7 @@
 
 mod auth;
 pub mod cf_access;
+mod device;
 mod device_auth;
 mod hey;
 mod hub_listen;
@@ -218,6 +219,7 @@ fn router(state: AppState) -> Router {
         .merge(ontology_write::routes())
         .merge(ui::routes())
         .merge(device_auth::routes(state.clone()))
+        .merge(device::routes(state.clone()))
         .layer(middleware::from_fn_with_state(
             state.hub.clone(),
             hub_api_auth,

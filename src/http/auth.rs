@@ -5,7 +5,7 @@ use crate::store::Store;
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::{header, request::Parts, HeaderMap, StatusCode};
 use axum::middleware::Next;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use std::sync::Arc;
 
 #[cfg(feature = "postgres")]
@@ -143,7 +143,7 @@ fn secrets_equal(a: &str, b: &str) -> bool {
         == 0
 }
 
-fn extract_bearer(headers: &HeaderMap) -> Option<String> {
+pub(crate) fn extract_bearer(headers: &HeaderMap) -> Option<String> {
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     if !value.to_ascii_lowercase().starts_with("bearer ") {
         return None;
@@ -162,7 +162,9 @@ pub fn token_accepted(token: &str, keys: &[String]) -> bool {
         .any(|k| secrets_equal(k, token) || secrets_equal(k, &hashed))
 }
 
-/// Paths exempt from hub API-key authentication (`/health`, `/ui`, and `/auth`).
+/// Paths exempt from hub API-key authentication (`/health`, `/ui`, `/auth`,
+/// the `kurultai connect` device endpoints, and the `/connect` approval page —
+/// those routes do their own gating in `http::device`).
 pub fn path_requires_hub_auth(path: &str) -> bool {
     if path == "/health" || path.starts_with("/health/") {
         return false;
@@ -173,7 +175,26 @@ pub fn path_requires_hub_auth(path: &str) -> bool {
     if path == "/auth" || path.starts_with("/auth/") {
         return false;
     }
+    if path.starts_with("/api/device/") {
+        return false;
+    }
+    if path == "/connect" {
+        return false;
+    }
     true
+}
+
+/// 401 body with a recovery hint for revoked/unknown agent keys.
+fn unauthorized_response(hint: &str) -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        axum::Json(serde_json::json!({
+            "ok": false,
+            "error": "unauthorized",
+            "hint": hint,
+        })),
+    )
+        .into_response()
 }
 
 pub async fn hub_api_auth(
@@ -204,7 +225,9 @@ pub async fn hub_api_auth(
         }
     }
 
-    Err(StatusCode::UNAUTHORIZED)
+    Ok(unauthorized_response(
+        "invalid or revoked credential — run `kurultai connect <instance-url>` to mint a fresh agent key",
+    ))
 }
 
 /// Check a bearer token against issued hub keys, static API keys, and
@@ -347,7 +370,7 @@ pub fn write_route_decision(
 ) -> WriteRouteDecision {
     let mutating = matches!(
         *method,
-        axum::http::Method::POST | axum::http::Method::DELETE
+        axum::http::Method::POST | axum::http::Method::DELETE | axum::http::Method::PATCH
     );
     let is_write = mutating
         && (WRITE_ROUTES.contains(&path) || is_decide_route(path) || is_ontology_write_route(path));
@@ -391,6 +414,11 @@ mod tests {
         assert!(!path_requires_hub_auth("/ui/"));
         assert!(!path_requires_hub_auth("/ui/index.html"));
         assert!(!path_requires_hub_auth("/ui/assets/app.js"));
+
+        // `kurultai connect` endpoints self-gate (see http::device).
+        assert!(!path_requires_hub_auth("/api/device/code"));
+        assert!(!path_requires_hub_auth("/api/device/token"));
+        assert!(!path_requires_hub_auth("/connect"));
 
         assert!(path_requires_hub_auth("/api/status"));
         assert!(path_requires_hub_auth("/api/search"));
