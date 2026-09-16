@@ -14,6 +14,7 @@ version: 10
 ## Children
 
 - [`chatboard/`](chatboard/INDEX.md) — A2A agent chatboard
+- [`hey-kanban/`](hey-kanban/INDEX.md) — Hey kanban view (lane-token cards)
 
 ## Files
 
