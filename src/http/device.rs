@@ -35,7 +35,7 @@ const DEFAULT_EXPIRES_IN: u64 = 600; // 10 minutes
 const DEFAULT_INTERVAL: u64 = 5;
 /// Codenames reserved for human/admin identities — a device flow must never
 /// mint a seat key that Hey PATCH/DELETE would treat as the admin identity.
-const RESERVED_CODENAMES: &[&str] = &["luke"];
+pub(crate) const RESERVED_CODENAMES: &[&str] = &["luke"];
 
 #[derive(Debug, Deserialize)]
 struct DeviceCodeRequest {
@@ -332,7 +332,7 @@ async fn connect_page_get(
 /// CSRF guard for the cookie-authenticated approve form: browsers always send
 /// `Origin` on cross-site form POSTs, so a mismatched Origin/Referer means a
 /// forged request. Non-browser clients (curl) send neither and pass through.
-fn same_origin_form_post(headers: &axum::http::HeaderMap) -> bool {
+pub(crate) fn same_origin_form_post(headers: &axum::http::HeaderMap) -> bool {
     let source = headers
         .get(axum::http::header::ORIGIN)
         .or_else(|| headers.get(axum::http::header::REFERER));

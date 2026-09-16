@@ -194,6 +194,15 @@ async fn device_code_post(
     } else {
         body.codename
     };
+    if super::device::RESERVED_CODENAMES
+        .iter()
+        .any(|r| codename.eq_ignore_ascii_case(r))
+    {
+        return json_error(
+            StatusCode::BAD_REQUEST,
+            "codename is reserved for a human admin identity",
+        );
+    }
 
     let flow = match state
         .brain
@@ -311,6 +320,9 @@ async fn device_page_post(
             "approve via the human UI hostname",
         );
     }
+    if !super::device::same_origin_form_post(&headers) {
+        return json_error(StatusCode::FORBIDDEN, "cross-origin form post rejected");
+    }
     let Some(approver) = access_user_email(&headers) else {
         let page = render_approve_page(
             &form.user_code,
@@ -344,18 +356,25 @@ async fn device_page_post(
 }
 
 fn render_approve_page(user_code: &str, error: Option<&str>, approver: &str) -> String {
-    let error_block =
-        error.map_or_else(String::new, |e| format!(r#"<div class="error">{e}</div>"#));
+    let error_block = error.map_or_else(String::new, |e| {
+        format!(r#"<div class="error">{}</div>"#, html_escape(e))
+    });
     let user_field = if user_code.is_empty() {
         r#"<input type="text" name="user_code" placeholder="ABCD-1234" value="" autofocus />"#
             .to_string()
     } else {
-        format!(r#"<input type="text" name="user_code" value="{user_code}" readonly />"#)
+        format!(
+            r#"<input type="text" name="user_code" value="{}" readonly />"#,
+            html_escape(user_code)
+        )
     };
     let approver_block = if approver.is_empty() {
         String::new()
     } else {
-        format!(r#"<p>Signed in as <strong>{approver}</strong>.</p>"#)
+        format!(
+            r#"<p>Signed in as <strong>{}</strong>.</p>"#,
+            html_escape(approver)
+        )
     };
 
     format!(
@@ -411,12 +430,21 @@ p {{ color: #a3a3a3; }}
 <body>
 <div class="card">
 <h1>Agent approved</h1>
-<p>The agent using code <strong>{user_code}</strong> has been approved by <strong>{approver}</strong>.</p>
+<p>The agent using code <strong>{}</strong> has been approved by <strong>{}</strong>.</p>
 <p>You can close this tab.</p>
 </div>
 </body>
-</html>"#
+</html>"#,
+        html_escape(user_code),
+        html_escape(approver)
     )
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn json_error(status: StatusCode, message: &str) -> Response {
