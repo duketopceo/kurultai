@@ -91,7 +91,7 @@ _None._
 | [`phase-5-closeout.md`](phase-5-closeout.md) | Phase 5 closeout — tracker hygiene | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-5-complete.md`](phase-5-complete.md) | Phase 5 complete — wrap-up | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md) | Phase 6 — Ontology / Atlas / connector gaps | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-09-14 | 6 | 2026-09-14 Slice C renderer replaced: Flowsint 2D board (#316) · 2026-09-01 v0.5.0 released; next LFG v0.6.0+ · 2026-09-01 HUB-5 ✅ (#250) · HUB-6 ✅ |
+| [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-09-15 | 7 | 2026-09-15 Wave H serve-path milestone (#323-#326) + board v2 shipped · 2026-09-14 Slice C renderer replaced: Flowsint 2D board (#316) · 2026-09-01 v0.5.0 released; next LFG v0.6.0+ |
 | [`phase-6-work-orders.md`](phase-6-work-orders.md) | Phase 6 — work orders (post–v0.4.0) | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
