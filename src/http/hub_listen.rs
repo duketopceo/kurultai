@@ -213,6 +213,32 @@ pub fn bind_request_from_env(bind_all: bool) -> BindRequest {
 /// Decide listen address or return a start-fail config error.
 pub fn resolve_listen_socket(port: u16, bind_all: bool, hub: &HubGate) -> Result<SocketAddr> {
     let req = bind_request_from_env(bind_all);
+    resolve_listen_request(port, req, hub)
+}
+
+/// `daemon --bind <ADDR>` — flag wins over env. `tailscale` resolves the
+/// local tailnet IPv4 via `tailscale ip -4`, then a UDP-route probe fallback
+/// (no new deps); anything else goes through `parse_bind_request`.
+pub fn resolve_listen_socket_flag(
+    port: u16,
+    bind_all: bool,
+    bind: Option<&str>,
+    hub: &HubGate,
+) -> Result<SocketAddr> {
+    let req = match bind.map(str::trim).filter(|s| !s.is_empty()) {
+        None => bind_request_from_env(bind_all),
+        Some(s) => {
+            let mut req = parse_bind_request(Some(s), None);
+            if req.kind == BindKind::Tailscale && req.listen.is_unspecified() {
+                req.listen = resolve_tailscale_ip()?;
+            }
+            req
+        }
+    };
+    resolve_listen_request(port, req, hub)
+}
+
+fn resolve_listen_request(port: u16, req: BindRequest, hub: &HubGate) -> Result<SocketAddr> {
     match hub_listen_decision(
         req,
         hub.auth,
@@ -222,6 +248,39 @@ pub fn resolve_listen_socket(port: u16, bind_all: bool, hub: &HubGate) -> Result
     ) {
         HubListenDecision::Allow { listen, .. } => Ok(SocketAddr::new(listen, port)),
         HubListenDecision::Refuse { reason } => Err(KurultaiError::config(reason)),
+    }
+}
+
+/// Local tailnet IPv4 (100.64/10). `tailscale ip -4` first; fallback is a
+/// UDP connect probe to Tailscale's DNS resolver — no packets are sent, the
+/// kernel just reveals which interface would route 100.x.
+pub fn resolve_tailscale_ip() -> Result<IpAddr> {
+    if let Ok(out) = std::process::Command::new("tailscale")
+        .args(["ip", "-4"])
+        .output()
+    {
+        if out.status.success() {
+            if let Some(ip) = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter_map(|l| l.trim().parse::<IpAddr>().ok())
+                .find(|ip| is_tailscale_cg_nat(*ip))
+            {
+                return Ok(ip);
+            }
+        }
+    }
+    let probe = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
+        .and_then(|s| {
+            s.connect((Ipv4Addr::new(100, 100, 100, 100), 80))?;
+            s.local_addr()
+        })
+        .ok()
+        .map(|a| a.ip());
+    match probe {
+        Some(ip) if is_tailscale_cg_nat(ip) => Ok(ip),
+        _ => Err(KurultaiError::config(
+            "--bind tailscale: could not resolve a tailnet IPv4 (is tailscaled up?)",
+        )),
     }
 }
 
@@ -414,5 +473,35 @@ mod tests {
         );
         assert_eq!(host_from_url("foo.example"), Some("foo.example".into()));
         assert_eq!(host_from_url(""), None);
+    }
+}
+
+#[cfg(test)]
+mod flag_tests {
+    use super::*;
+
+    fn gate() -> HubGate {
+        HubGate::default()
+    }
+
+    #[test]
+    fn flag_loopback_allows() {
+        let a = resolve_listen_socket_flag(8421, false, Some("127.0.0.1"), &gate()).unwrap();
+        assert_eq!(a, SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8421));
+    }
+
+    #[test]
+    fn flag_literal_ip_refuses_without_auth() {
+        let r = resolve_listen_socket_flag(8421, false, Some("192.168.1.5"), &gate());
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn flag_wins_over_env() {
+        std::env::set_var("KURULTAI_HUB_BIND", "0.0.0.0");
+        // Loopback flag overrides a broad env bind.
+        let a = resolve_listen_socket_flag(8421, false, Some("127.0.0.1"), &gate()).unwrap();
+        std::env::remove_var("KURULTAI_HUB_BIND");
+        assert!(a.ip().is_loopback());
     }
 }

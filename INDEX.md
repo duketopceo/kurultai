@@ -50,11 +50,11 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-09-11 | 4 | 2026-09-11 v0.6.0 release notes · 2026-09-01 v0.5.0 release notes · 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor covenant | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CONCEPTS.md`](CONCEPTS.md) | Shared domain vocabulary (atoms, hub, FTS-first, ontology) | — | — | 2026-08-29 | 2 | 2026-08-29 Hub paragraph points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup, tests, PR and architecture guidelines | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-11 | 3 | 2026-09-11 website test script now covers all src/**/*.test.ts · 2026-08-16 agent-index subsection · 2026-08-16 indexed (v1 seed) |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup, tests, PR and architecture guidelines | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-15 | 4 | 2026-09-15 FEATURE_MATRIX sync-contract note (#329) |
 | [`Cargo.lock`](Cargo.lock) | Locked Rust dependency graph for reproducible CI | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.6.0) and optional features | — | — | 2026-09-11 | 5 | 2026-09-11 bump to v0.6.0 · 2026-09-01 bump to v0.5.0 · 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-16 indexed (v1 seed) |
 | [`Dockerfile`](Dockerfile) | Multi-stage hub image (`--features postgres`) | `docs/deploy/railway-hub.md` | `docker-compose.hub.yml` | 2026-08-29 | 1 | 2026-08-29 HUB-3 Railway/compose image |
-| [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | Kurultai Feature Matrix (KHAN-251) | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | Kurultai Feature Matrix (KHAN-251) | — | — | 2026-09-15 | 2 | 2026-09-15 ported from kurultai-private + sync-contract note (#329) |
 | [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -68,6 +68,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-15 — zero-friction solo path (#329): `init --key/--key-file/--no-key` + key file fallback (0600), `kurultai webui` (spawn/poll/open/--print-url), `daemon --bind` incl. `tailscale` 100.x resolution + non-loopback warning, `FEATURE_MATRIX.md` ported from private.
 - 2026-09-15 — Wave H serve-path hardening milestone: issues #323-#326 (versioning, prepared payload, tier policy, reindex outbox) + `docs/plans/phase-6-next-work-orders.md` update.
 - 2026-09-15 — `feat/tier-policy-rules` (#325): `[tiers]`/`[[tiers.rule]]` config → `TierPolicy.rules` + `classify_atom`; BrainService wired via `brain_from_app`.
 - 2026-09-15 — ontology board v2 (#320): store deletes + `DELETE /api/ontology/entity|link/{id}` (human lane, DELETE added to write guard); board edge menu + delete-entity confirm + Escape; `ui/` rebuilt

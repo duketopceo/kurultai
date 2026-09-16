@@ -23,7 +23,7 @@ pub use auth::{
     resolve_hub_gate_from_env, write_route_decision, HubAuth, HubGate, MaybeHubPrincipal,
     WriteRouteDecision, ENV_ADMIN_TOKEN,
 };
-pub use hub_listen::resolve_listen_socket;
+pub use hub_listen::{resolve_listen_socket, resolve_listen_socket_flag};
 mod ingest;
 
 pub use ingest::resolve_ingest_secret;
@@ -68,6 +68,8 @@ pub struct ServeOptions {
     pub mcp_http_secret: Option<String>,
     /// Bind `0.0.0.0` instead of loopback (hub mode).
     pub bind_all: bool,
+    /// `daemon --bind` override — wins over env when set.
+    pub bind: Option<String>,
     pub hub: HubGate,
 }
 
@@ -95,6 +97,7 @@ pub async fn serve(brain: BrainService, status: Arc<DaemonStatus>, port: u16) ->
             port,
             mcp_http_secret: None,
             bind_all: false,
+            bind: None,
             hub: HubGate::default(),
         },
     )
@@ -133,7 +136,8 @@ pub async fn serve_with(
         None
     };
     let bind_all = opts.bind_all || auth::resolve_bind_all_from_env();
-    let addr = hub_listen::resolve_listen_socket(opts.port, bind_all, &hub)?;
+    let addr =
+        hub_listen::resolve_listen_socket_flag(opts.port, bind_all, opts.bind.as_deref(), &hub)?;
     let state = app_state(
         Arc::clone(&brain),
         status,

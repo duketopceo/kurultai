@@ -5,7 +5,7 @@ use crate::environment::Environment;
 use crate::error::{KurultaiError, Result};
 use crate::pipeline::IndexPipeline;
 use crate::rerank::{NullReranker, OpenRouterReranker, Reranker};
-use crate::security::api_key_from_env_optional;
+use crate::security::{api_key_from_env_optional, api_key_from_keyfile};
 use crate::store::{migrations, SqliteVecStore, Store};
 use crate::synthesize::{synthesizer_from_env, Synthesizer};
 use crate::types::Config;
@@ -106,7 +106,8 @@ impl App {
 pub fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>> {
     // API keys come from env only — never from config files.
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
-        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));
+        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"))
+        .or_else(api_key_from_keyfile);
 
     match api_key {
         Some(key) => {
@@ -170,7 +171,8 @@ fn build_reranker(config: &Config) -> Arc<dyn Reranker> {
         return Arc::new(NullReranker::new());
     };
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
-        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));
+        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"))
+        .or_else(api_key_from_keyfile);
     match api_key {
         Some(key) => Arc::new(OpenRouterReranker::new(
             key.expose().to_string(),
