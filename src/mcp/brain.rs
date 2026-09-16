@@ -35,6 +35,8 @@ pub struct BrainService {
     activity: Arc<ActivityLog>,
     /// Sources excluded from unscoped search/ask/who_knows/recall (pin `source=` bypasses).
     noisy_sources: Arc<Vec<String>>,
+    /// Hot/warm/cold classification policy (thresholds + sequester rules, #325).
+    tier_policy: TierPolicy,
 }
 
 /// Second-hop expansion: search shared tags from primary hits, merge unique atoms (#74).
@@ -154,7 +156,14 @@ impl BrainService {
                     .map(|s| (*s).to_string())
                     .collect(),
             ),
+            tier_policy: TierPolicy::default(),
         }
+    }
+
+    /// Configured tier policy (`[tiers]` + `[[tiers.rule]]`, #325).
+    pub fn with_tier_policy(mut self, policy: TierPolicy) -> Self {
+        self.tier_policy = policy;
+        self
     }
 
     /// Override noisy-source denylist (empty = sequester nothing).
@@ -434,9 +443,9 @@ impl BrainService {
             .collect())
     }
 
-    /// Hot / warm / cold counts under default [`TierPolicy`].
+    /// Hot / warm / cold counts under the configured [`TierPolicy`].
     pub async fn tier_counts(&self) -> Result<(u64, u64, u64)> {
-        self.store.count_by_tier(TierPolicy::default()).await
+        self.store.count_by_tier(self.tier_policy.clone()).await
     }
 
     /// Graph stubs for the Brain UI (foveated whole-brain load).
@@ -455,7 +464,7 @@ impl BrainService {
                 SearchFilter::trusted(!include_quarantine)
                     .with_source(source)
                     .with_exclude_source(exclude_source),
-                TierPolicy::default(),
+                self.tier_policy.clone(),
             )
             .await
     }

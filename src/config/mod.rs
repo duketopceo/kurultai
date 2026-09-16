@@ -134,6 +134,7 @@ mod tests {
             inactivity_threshold_hours: None,
             mcp_http_secret: None,
             banner: crate::art::BannerMode::Auto,
+            tier_policy: crate::memory::TierPolicy::default(),
         };
         assert!(validate(&config).is_err());
     }

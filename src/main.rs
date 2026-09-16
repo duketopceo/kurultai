@@ -915,6 +915,7 @@ fn brain_from_app(app: &App) -> BrainService {
         Arc::clone(&app.reranker),
         Arc::clone(&app.synthesizer),
     )
+    .with_tier_policy(app.config.tier_policy.clone())
 }
 
 async fn bootstrap_app(cli: &Cli) -> Result<App> {

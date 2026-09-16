@@ -4,7 +4,7 @@ pub mod postgres;
 
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
-use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
+use crate::memory::{classify_atom, GraphNode, MemoryTier, TierPolicy};
 use crate::types::{
     normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink,
     OntologyLinkType, OntologyProposal, SoftLabel, TrustLane, VisibilityScope,
@@ -1944,7 +1944,7 @@ impl Store for SqliteVecStore {
         let mut cold = 0u64;
         for row in rows {
             let atom = row.map_err(|e| KurultaiError::Store(format!("count_by_tier row: {e}")))?;
-            match classify(atom.indexed_at, atom.last_accessed_at, now, policy) {
+            match classify_atom(&atom, now, &policy) {
                 MemoryTier::Hot => hot += 1,
                 MemoryTier::Warm => warm += 1,
                 MemoryTier::Cold => cold += 1,
@@ -2007,7 +2007,7 @@ impl Store for SqliteVecStore {
         for row in rows {
             let atom =
                 row.map_err(|e| KurultaiError::Store(format!("list_graph_nodes row: {e}")))?;
-            let t = classify(atom.indexed_at, atom.last_accessed_at, now, policy);
+            let t = classify_atom(&atom, now, &policy);
             if let Some(want) = tier {
                 if t != want {
                     continue;

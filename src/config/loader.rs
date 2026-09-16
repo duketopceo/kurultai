@@ -87,6 +87,7 @@ fn default_config(env: Environment) -> Result<Config> {
         inactivity_threshold_hours: None,
         mcp_http_secret: None,
         banner: BannerMode::Auto,
+        tier_policy: crate::memory::TierPolicy::default(),
     })
 }
 
@@ -160,7 +161,49 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
         inactivity_threshold_hours: file.runtime.inactivity_threshold_hours,
         mcp_http_secret: file.runtime.mcp_http_secret,
         banner: file.cli.banner,
+        tier_policy: tiers_to_policy(file.tiers)?,
     })
+}
+
+/// `[tiers]` → [`TierPolicy`]: threshold overrides plus validated sequester
+/// rules. `cap` must be `warm` or `cold` (rules cap, never promote); a bad
+/// `trust_lane`/`cap` fails the load with a clear error (#325).
+fn tiers_to_policy(t: crate::config::file::FileTiersConfig) -> Result<crate::memory::TierPolicy> {
+    let mut policy = crate::memory::TierPolicy {
+        hot_access_days: t.hot_access_days.unwrap_or(7),
+        hot_index_hours: t.hot_index_hours.unwrap_or(48),
+        cold_days: t.cold_days.unwrap_or(180),
+        rules: Vec::new(),
+    };
+    for (i, r) in t.rule.iter().enumerate() {
+        let cap_raw = r.cap.as_deref().unwrap_or("").trim();
+        let cap = crate::memory::MemoryTier::parse(cap_raw)
+            .filter(|c| *c != crate::memory::MemoryTier::Hot)
+            .ok_or_else(|| {
+                KurultaiError::config(format!(
+                    "tiers.rule[{i}].cap must be \"warm\" or \"cold\", got {cap_raw:?}"
+                ))
+            })?;
+        // TrustLane::parse fails closed to Quarantine — too loose for config;
+        // validate strictly so a typo can't silently quarantine-cap everything.
+        let trust_lane = match r.trust_lane.as_deref().map(str::trim) {
+            None => None,
+            Some("trusted") => Some(crate::types::TrustLane::Trusted),
+            Some("quarantine") => Some(crate::types::TrustLane::Quarantine),
+            Some(raw) => {
+                return Err(KurultaiError::config(format!(
+                    "tiers.rule[{i}].trust_lane must be \"trusted\" or \"quarantine\", got {raw:?}"
+                )))
+            }
+        };
+        policy.rules.push(crate::memory::TierRule {
+            source: r.source.clone(),
+            tag: r.tag.clone(),
+            trust_lane,
+            cap,
+        });
+    }
+    Ok(policy)
 }
 
 fn value_to_string(value: &toml::Value) -> String {
@@ -407,5 +450,86 @@ dimension = 4
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    fn write_cfg(tag: &str, toml: &str) -> PathBuf {
+        let dir = tempfile_dir(tag);
+        let path = dir.join("config.toml");
+        std::fs::write(&path, toml).unwrap();
+        path
+    }
+
+    #[test]
+    fn tiers_section_defaults_when_absent() {
+        let path = write_cfg(
+            "cfg-tiers-none",
+            r#"environment = "dev"
+[storage]
+path = "/tmp/kurultai-tiers-none.db"
+"#,
+        );
+        let cfg = load_config_from(&path).unwrap();
+        assert_eq!(cfg.tier_policy.hot_access_days, 7);
+        assert!(cfg.tier_policy.rules.is_empty());
+    }
+
+    #[test]
+    fn tiers_rules_parse_and_override() {
+        let path = write_cfg(
+            "cfg-tiers-rules",
+            r#"environment = "dev"
+[storage]
+path = "/tmp/kurultai-tiers-rules.db"
+[tiers]
+hot_access_days = 3
+[[tiers.rule]]
+source = "pond"
+cap = "cold"
+[[tiers.rule]]
+tag = "session-transcript"
+trust_lane = "quarantine"
+cap = "warm"
+"#,
+        );
+        let cfg = load_config_from(&path).unwrap();
+        assert_eq!(cfg.tier_policy.hot_access_days, 3);
+        assert_eq!(cfg.tier_policy.rules.len(), 2);
+        let r0 = &cfg.tier_policy.rules[0];
+        assert_eq!(r0.source.as_deref(), Some("pond"));
+        assert_eq!(r0.cap, crate::memory::MemoryTier::Cold);
+        let r1 = &cfg.tier_policy.rules[1];
+        assert_eq!(r1.tag.as_deref(), Some("session-transcript"));
+        assert_eq!(r1.trust_lane, Some(crate::types::TrustLane::Quarantine));
+        assert_eq!(r1.cap, crate::memory::MemoryTier::Warm);
+    }
+
+    #[test]
+    fn tiers_rule_rejects_hot_cap() {
+        let path = write_cfg(
+            "cfg-tiers-hotcap",
+            r#"environment = "dev"
+[storage]
+path = "/tmp/kurultai-tiers-hot.db"
+[[tiers.rule]]
+source = "pond"
+cap = "hot"
+"#,
+        );
+        assert!(load_config_from(&path).is_err());
+    }
+
+    #[test]
+    fn tiers_rule_rejects_bad_trust_lane() {
+        let path = write_cfg(
+            "cfg-tiers-badlane",
+            r#"environment = "dev"
+[storage]
+path = "/tmp/kurultai-tiers-lane.db"
+[[tiers.rule]]
+trust_lane = "trusted-typo"
+cap = "cold"
+"#,
+        );
+        assert!(load_config_from(&path).is_err());
     }
 }

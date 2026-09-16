@@ -517,6 +517,10 @@ pub struct Config {
     /// CLI banner presentation (`[cli] banner`); default auto = TTY only.
     #[serde(default)]
     pub banner: crate::art::BannerMode,
+    /// Hot/warm/cold classification policy (`[tiers]` + `[[tiers.rule]]`, #325).
+    /// Runtime-only: populated by config loader; skipped on (de)serialize.
+    #[serde(skip)]
+    pub tier_policy: crate::memory::TierPolicy,
 }
 
 #[cfg(test)]

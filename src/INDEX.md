@@ -49,14 +49,16 @@ version: 6
 | [`lib.rs`](lib.rs) | Crate root: module graph and public error/env re-exports | — | — | 2026-09-06 | 2 | 2026-09-06 add `login` module · 2026-08-16 indexed (v1 seed) |
 | [`logging.rs`](logging.rs) | tracing-subscriber setup | `src/environment` · `src/error` | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`login.rs`](login.rs) | `kurultai login` device-code flow for hosted agent tokens | `src/error` · `reqwest` · `dirs` | — | 2026-09-06 | 1 | 2026-09-06 added |
-| [`main.rs`](main.rs) | CLI entry: init, index, search, ask, daemon, mcp, login, export | — | — | 2026-09-06 | 5 | 2026-09-06 `kurultai login` subcommand · 2026-08-31 `init --doctor` diagnostic toggle · 2026-08-31 `kurultai hub key` / `hub log` · 2026-08-29 daemon PORT · 2026-08-16 indexed |
+| [`main.rs`](main.rs) | CLI entry: init, index, search, ask, daemon, mcp, login, export | — | — | 2026-09-15 | 6 | 2026-09-15 `brain_from_app` wires `config.tier_policy` into BrainService (#325) |
 | [`metrics.rs`](metrics.rs) | Prometheus text for GET /api/metrics | — | `src/http/mod.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`project.rs`](project.rs) | project_id namespacing for shared-store sessions (#184) | — | `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope, OntologyProposal | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` · `src/ontology/mod.rs` | 2026-09-11 | 3 | 2026-09-11 `OntologyProposal` type (#118) · 2026-09-01 HUB-5 SourceConfig default_visibility_scope helper · 2026-08-16 indexed (v1 seed) |
+| [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope, OntologyProposal | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` · `src/ontology/mod.rs` | 2026-09-15 | 4 | 2026-09-15 `Config.tier_policy` runtime field (#325) |
 | [`write_policy.rs`](write_policy.rs) | Write provenance + SharedClosed quarantine containment | — | `src/mcp/server.rs` · `src/quality/promote.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-15 — `types.rs`: `Config.tier_policy` (serde-skipped, loader-populated) (#325)
+- 2026-09-15 — `main.rs`: `brain_from_app` applies `config.tier_policy` (#325)
 - 2026-09-15 — board v2 deletes (#320): store `delete_ontology_entity`/`delete_ontology_link`, DELETE routes, write guard covers DELETE
 - 2026-09-14 — ontology board human write lane (#316): `http/ontology_write.rs` routes, `ontology/create_entity`+`create_link`, WRITE_ROUTES + agent refusal
 - 2026-09-11 — O3 ontology proposal queue (#118): `types.rs` OntologyProposal; `store/` schema v15 + proposal CRUD; `ontology/` submit/decide; `http/proposals.rs` REST; `mcp/server.rs` propose tools
