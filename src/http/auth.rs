@@ -277,7 +277,7 @@ const WRITE_ROUTES: &[&str] = &[
 /// human-lane board writes (#316, #320) — dynamic `{id}` DELETE paths need a
 /// prefix predicate since `WRITE_ROUTES` is exact-match.
 fn is_ontology_write_route(path: &str) -> bool {
-    path.starts_with("/api/ontology/entity") || path.starts_with("/api/ontology/link")
+    path.starts_with("/api/ontology/entity/") || path.starts_with("/api/ontology/link/")
 }
 
 /// `/api/ontology/proposals/{id}/decide` mutates ontology state on approve —

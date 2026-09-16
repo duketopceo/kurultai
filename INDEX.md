@@ -68,7 +68,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
-- 2026-09-15 — ontology board v2 (#320): store deletes + `DELETE /api/ontology/entity|link/<built-in function id>` (human lane, DELETE added to write guard); board edge menu + delete-entity confirm + Escape; `ui/` rebuilt
+- 2026-09-15 — ontology board v2 (#320): store deletes + `DELETE /api/ontology/entity|link/{id}` (human lane, DELETE added to write guard); board edge menu + delete-entity confirm + Escape; `ui/` rebuilt
 - 2026-09-14 — Flowsint-style ontology board shipped (#316): `website/` `@xyflow/react` board replaces 3D ontology layout; `src/http/ontology_write.rs` human-lane entity/link writes (agents refused); `src/ontology` create_entity/create_link; `ui/` rebuilt
 - 2026-09-14 — `docs/plans/2026-09-14-001` Flowsint-style ontology board plan (#316): ontology toggle → 2D `@xyflow/react` board; needs human entity/link write lane
 - 2026-09-13 — v2 Brain dashboard chrome: top-pill search + tier/horizon controls, right Command rail (Hey/Repos/Logs/Settings), bottom Mission Control (Pulse/Focus/Synthesize/Ask), floating inspector, Settings + Logs tabs; `ui/` rebuilt
