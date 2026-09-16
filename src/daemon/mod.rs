@@ -37,6 +37,8 @@ pub struct DaemonOptions {
     pub inactivity_threshold_hours: Option<u64>,
     /// Shared secret for MCP HTTP/SSE (`POST /mcp`). None disables.
     pub mcp_http_secret: Option<String>,
+    /// `--bind` override (e.g. `tailscale`, `0.0.0.0`, a literal IP). None = env/default.
+    pub bind: Option<String>,
 }
 
 /// Live daemon scheduler state for `/api/status` (#73).
@@ -301,6 +303,7 @@ pub async fn run(
             port: opts.port,
             mcp_http_secret: opts.mcp_http_secret,
             bind_all: http::resolve_bind_all_from_env(),
+            bind: opts.bind,
             hub: http::resolve_hub_gate_from_env(),
         },
     )
@@ -668,6 +671,7 @@ mod tests {
             nightly_full_sync_hour: None,
             inactivity_threshold_hours: None,
             mcp_http_secret: None,
+            bind: None,
         }
     }
 

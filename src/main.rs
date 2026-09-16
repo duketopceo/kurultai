@@ -13,6 +13,7 @@ use kurultai::mcp::{
     AgentRead, AgentTarget, BrainService,
 };
 use kurultai::write_policy::{WriteContext, WriteTransport};
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -21,7 +22,7 @@ use std::sync::Arc;
     name = "kurultai",
     version,
     about = "Assemble what you know, from wherever it lives.",
-    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>  ·  init --doctor\nAuth         kurultai login --base-url https://api-... --codename <name>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
+    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>  ·  init --doctor\nAuth         kurultai login --base-url https://api-... --codename <name>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        webui  ·  mcp  ·  daemon [--port 8421 --bind tailscale]    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
 )]
 struct Cli {
     /// Log filter (overrides KURULTAI_LOG). Example: kurultai=trace,info
@@ -60,6 +61,15 @@ enum Commands {
         /// Run `doctor` diagnostics after setup
         #[arg(long)]
         doctor: bool,
+        /// OpenRouter API key for vector recall + LLM ask (non-interactive)
+        #[arg(long, value_name = "KEY", hide_env = true)]
+        key: Option<String>,
+        /// Read the OpenRouter key from a file instead of prompting
+        #[arg(long, value_name = "PATH")]
+        key_file: Option<PathBuf>,
+        /// Never prompt for a key (agents/CI; also implied by non-TTY stdin)
+        #[arg(long)]
+        no_key: bool,
     },
     /// Ingest configured sources into the brain
     Index {
@@ -137,6 +147,28 @@ enum Commands {
         /// Disable notify filesystem watch (markdown/github roots)
         #[arg(long)]
         no_watch: bool,
+        /// Bind address: 127.0.0.1 (default), 0.0.0.0, a literal IP, or
+        /// `tailscale` (resolves the local 100.x tailnet IPv4)
+        #[arg(long, value_name = "ADDR")]
+        bind: Option<String>,
+    },
+    /// Print (or open) the Brain UI URL — spawns a daemon if none is serving
+    Webui {
+        /// Daemon HTTP port
+        #[arg(long, default_value = "8421")]
+        port: u16,
+        /// Open the URL in a browser (default when stdout is a TTY)
+        #[arg(long)]
+        open: bool,
+        /// Do not open a browser even on a TTY
+        #[arg(long)]
+        no_open: bool,
+        /// Print the URL and exit (headless agents)
+        #[arg(long)]
+        print_url: bool,
+        /// Extra args forwarded to the spawned daemon (e.g. --bind tailscale)
+        #[arg(last = true, value_name = "DAEMON_ARGS")]
+        daemon_args: Vec<String>,
     },
     /// Export this setup to a `.kurultai` pack
     Export {
@@ -307,6 +339,9 @@ async fn main() -> Result<()> {
             ref docs,
             index,
             doctor,
+            ref key,
+            ref key_file,
+            no_key,
         } => {
             let config_path = match cli.config.as_deref() {
                 Some(path) => ensure_default_config_at(path.to_path_buf())?,
@@ -326,6 +361,9 @@ async fn main() -> Result<()> {
                 "{}",
                 init_walkthrough(&config_path, provisioned.as_ref(), &mcp_paths, agent, index,)
             );
+            if let Some(msg) = init_key_setup(key.as_deref(), key_file.as_deref(), no_key)? {
+                println!("{msg}");
+            }
             if index {
                 let app = bootstrap_app(&cli).await?;
                 tracing::info!(full = true, "starting index");
@@ -448,6 +486,16 @@ async fn main() -> Result<()> {
             println!("  Version: {}", env!("CARGO_PKG_VERSION"));
             println!("  Environment: {}", app.environment);
             println!("  Storage: {}", app.config.storage_path);
+            {
+                // Best-effort daemon bind surface (#: `webui`/`daemon --bind`).
+                let hub = kurultai::http::resolve_hub_gate_from_env();
+                let bind_all = kurultai::http::resolve_bind_all_from_env();
+                if let Ok(addr) =
+                    kurultai::http::resolve_listen_socket_flag(port, bind_all, None, &hub)
+                {
+                    println!("  Daemon:  http://{addr}/ui/ (`kurultai webui`)");
+                }
+            }
             println!("  Schema:  v{}", app.schema_version());
             if app.embedder.is_live() {
                 println!(
@@ -566,10 +614,12 @@ async fn main() -> Result<()> {
             no_poll,
             poll_interval,
             no_watch,
+            ref bind,
         } => {
             let hub = kurultai::http::resolve_hub_gate_from_env();
             let bind_all = kurultai::http::resolve_bind_all_from_env();
-            let addr = kurultai::http::resolve_listen_socket(port, bind_all, &hub)?;
+            let addr =
+                kurultai::http::resolve_listen_socket_flag(port, bind_all, bind.as_deref(), &hub)?;
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
             let interval = kurultai::daemon::normalize_poll_interval_secs(
@@ -587,6 +637,13 @@ async fn main() -> Result<()> {
                 "daemon starting"
             );
             println!("Daemon listening on http://{addr}");
+            if !addr.ip().is_loopback() {
+                eprintln!(
+                    "warning: bound non-loopback {addr} — HTTP is unauthenticated unless \
+                     KURULTAI_MCP_HTTP_SECRET / KURULTAI_INGEST_SECRET are set \
+                     (see docs/deploy/railway-hub.md)"
+                );
+            }
             if kurultai::features::enabled("hub") {
                 println!("Store: hub Postgres (KURULTAI_FEATURE_HUB=1)");
             } else {
@@ -641,8 +698,24 @@ async fn main() -> Result<()> {
                     nightly_full_sync_hour: app.config.nightly_full_sync_hour,
                     inactivity_threshold_hours: app.config.inactivity_threshold_hours,
                     mcp_http_secret: mcp_secret,
+                    bind: bind.clone(),
                 },
             )
+            .await?;
+        }
+        Commands::Webui {
+            port,
+            open,
+            no_open,
+            print_url,
+            ref daemon_args,
+        } => {
+            kurultai::webui::run(kurultai::webui::WebuiOptions {
+                port,
+                open: open || (!no_open && std::io::stdout().is_terminal()),
+                print_url,
+                daemon_args: daemon_args.clone(),
+            })
             .await?;
         }
         Commands::Prune { generated } => {
@@ -897,6 +970,49 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// `init` optional OpenRouter key step: `--key`/`--key-file` store directly;
+/// interactive TTYs get a skippable prompt; non-TTY behaves as `--no-key`.
+/// Returns a one-line outcome message (never echoes the key).
+fn init_key_setup(
+    key: Option<&str>,
+    key_file: Option<&std::path::Path>,
+    no_key: bool,
+) -> Result<Option<String>> {
+    use kurultai::security::write_key_file;
+
+    let stored = |k: &str| -> Result<Option<String>> {
+        let path = write_key_file(k)?;
+        Ok(Some(format!(
+            "Key saved to {} (0600). Unlocked: vector recall, rerank, LLM `ask`. \
+             Works keyless: FTS search, who-knows, extractive ask.",
+            path.display()
+        )))
+    };
+
+    if let Some(k) = key {
+        return stored(k);
+    }
+    if let Some(path) = key_file {
+        let k = std::fs::read_to_string(path)
+            .map_err(|e| kurultai::KurultaiError::config(format!("--key-file {path:?}: {e}")))?;
+        return stored(&k);
+    }
+    if no_key || !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        return Ok(None);
+    }
+    eprint!("Add an OpenRouter key for vector recall + LLM ask? [paste / skip] ");
+    let mut line = String::new();
+    if std::io::stdin().read_line(&mut line).is_err() {
+        return Ok(None);
+    }
+    let line = line.trim();
+    if line.is_empty() || line.eq_ignore_ascii_case("skip") || line.eq_ignore_ascii_case("n") {
+        println!("Skipped — FTS search, who-knows, and extractive ask work keyless.");
+        return Ok(None);
+    }
+    stored(line)
 }
 
 /// Split a comma-separated CLI value into trimmed, non-empty parts.

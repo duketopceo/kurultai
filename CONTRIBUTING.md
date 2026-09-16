@@ -77,6 +77,7 @@ See [`INDEX.md`](INDEX.md) and [`docs/agent-index.md`](docs/agent-index.md). Do 
 - Integration tests in `tests/`
 - Use fixtures in `tests/fixtures/` for consistent test data
 - Aim for increasing coverage as per #23
+- Acceptance coverage lives in [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md). The matrix is authoritative in `kurultai-private`: after each release tag, private merges public `main` and re-checks it — features sync downstream, data never does.
 
 ## Architecture Guidelines
 
