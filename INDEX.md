@@ -68,6 +68,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-15 — Wave H serve-path hardening milestone: issues #323-#326 (versioning, prepared payload, tier policy, reindex outbox) + `docs/plans/phase-6-next-work-orders.md` update.
 - 2026-09-15 — `feat/tier-policy-rules` (#325): `[tiers]`/`[[tiers.rule]]` config → `TierPolicy.rules` + `classify_atom`; BrainService wired via `brain_from_app`.
 - 2026-09-15 — ontology board v2 (#320): store deletes + `DELETE /api/ontology/entity|link/{id}` (human lane, DELETE added to write guard); board edge menu + delete-entity confirm + Escape; `ui/` rebuilt
 - 2026-09-14 — Flowsint-style ontology board shipped (#316): `website/` `@xyflow/react` board replaces 3D ontology layout; `src/http/ontology_write.rs` human-lane entity/link writes (agents refused); `src/ontology` create_entity/create_link; `ui/` rebuilt

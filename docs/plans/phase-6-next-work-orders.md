@@ -87,6 +87,8 @@ Brain dual-mode research (brain-shape FDG + algorithmic ontology; galaxy out): [
 
 **2026-09-15 — board v2:** delete entities/links (store cascade + `DELETE` routes + edge/node menus, Escape). Plan: [`2026-09-15-001-feat-ontology-board-delete-plan.md`](2026-09-15-001-feat-ontology-board-delete-plan.md) · Issue: [#320](https://github.com/duketopceo/kurultai/issues/320). Next after: rename/attribute editing, board search/filter, multi-select.
 
+**2026-09-15 — Wave H (serve-path hardening, CobbleDB-inspired):** milestone `Wave H: Serve-path hardening (CobbleDB-inspired)` — solo-scale adaptations of the Pillar/Lorry/CobbleDB split (durable versioned state → replayable publish → prepared serve records): [#323](https://github.com/duketopceo/kurultai/issues/323) embedding/chunk versioning · [#324](https://github.com/duketopceo/kurultai/issues/324) prepared hot-tier Brain payload (sequences with tiered loading) · [#325](https://github.com/duketopceo/kurultai/issues/325) declarative tier policy · [#326](https://github.com/duketopceo/kurultai/issues/326) durable reindex outbox (after #323). Ref: <https://www.perplexity.ai/hub/blog/cobbledb>.
+
 ---
 
 ## Explicitly deferred
