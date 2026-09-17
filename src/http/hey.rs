@@ -4,8 +4,9 @@ use super::AppState;
 use crate::error::KurultaiError;
 use crate::hashutil::sha256_hex;
 use crate::store::{AddReactionInput, Agent, Message, PostMessageInput, Thread};
-use axum::extract::{Path, Query, State};
+use axum::extract::{ConnectInfo, Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
+use std::net::SocketAddr;
 
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
@@ -240,7 +241,11 @@ async fn human_admin_agent(state: &AppState) -> Result<Agent, StatusCode> {
 
 /// Agent bearer first; then the human admin lane (CF Access email or the
 /// operator admin token). Returns 401 when neither authenticates.
-async fn require_writer(state: &AppState, headers: &HeaderMap) -> Result<HeyPrincipal, StatusCode> {
+async fn require_writer(
+    state: &AppState,
+    headers: &HeaderMap,
+    peer: SocketAddr,
+) -> Result<HeyPrincipal, StatusCode> {
     if let Some(token) = extract_bearer(headers) {
         if let Ok(agent) = resolve_agent_token(state, &token).await {
             return Ok(HeyPrincipal {
@@ -271,6 +276,26 @@ async fn require_writer(state: &AppState, headers: &HeaderMap) -> Result<HeyPrin
                 });
             }
         }
+    }
+    // Zero-friction solo path: when the daemon runs with no auth surface at all
+    // (no hub API keys, no CF Access, no admin token) AND the request arrives on
+    // loopback, the local operator is the only possible writer — post as the
+    // human admin so the UI composer works without minting a key first. The
+    // loopback check matters: `daemon --bind tailscale|all` with zero auth is a
+    // documented config, and without it any tailnet/remote client could write
+    // (and edit/delete others' messages) as `luke`.
+    if peer.ip().is_loopback()
+        && state.hub.auth == super::auth::HubAuth::None
+        && state.hub.api_keys.is_empty()
+        && state.hub.cf_access.is_none()
+        && super::auth::resolve_admin_token().is_none()
+    {
+        let agent = human_admin_agent(state).await?;
+        return Ok(HeyPrincipal {
+            agent,
+            admin: true,
+            human: Some("local".into()),
+        });
     }
     Err(StatusCode::UNAUTHORIZED)
 }
@@ -303,10 +328,11 @@ async fn list_threads(
 
 async fn create_thread(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(body): Json<CreateThreadBody>,
 ) -> Result<Json<ThreadDto>, (StatusCode, String)> {
-    let _writer = require_writer(&state, &headers)
+    let _writer = require_writer(&state, &headers, peer)
         .await
         .map_err(|s| (s, "agent or admin auth required".into()))?;
     let name = body.name.trim();
@@ -383,11 +409,12 @@ async fn resolve_thread_id(
 
 async fn post_message(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(body): Json<PostBody>,
 ) -> Result<Json<MessageDto>, (StatusCode, String)> {
-    let writer = require_writer(&state, &headers)
+    let writer = require_writer(&state, &headers, peer)
         .await
         .map_err(|s| (s, "agent or admin auth required".into()))?;
     let agent = writer.agent;
@@ -486,11 +513,12 @@ async fn presence(
 
 async fn react(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(body): Json<ReactBody>,
 ) -> Result<Json<MessageDto>, (StatusCode, String)> {
-    let writer = require_writer(&state, &headers)
+    let writer = require_writer(&state, &headers, peer)
         .await
         .map_err(|s| (s, "agent or admin auth required".into()))?;
     let emoji = body.emoji.trim();
@@ -520,11 +548,12 @@ struct UpdateBody {
 /// human) may edit any message; agents only their own. Never consumes turns.
 async fn update_message(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(id): Path<String>,
     Json(body): Json<UpdateBody>,
 ) -> Result<Json<MessageDto>, (StatusCode, String)> {
-    let writer = require_writer(&state, &headers)
+    let writer = require_writer(&state, &headers, peer)
         .await
         .map_err(|s| (s, "agent or admin auth required".into()))?;
     let content = body.content.trim();
@@ -554,10 +583,11 @@ async fn update_message(
 /// Admin may delete any; agents only their own.
 async fn delete_message(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let writer = require_writer(&state, &headers)
+    let writer = require_writer(&state, &headers, peer)
         .await
         .map_err(|s| (s, "agent or admin auth required".into()))?;
     let existing = state
