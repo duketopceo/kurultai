@@ -1,6 +1,6 @@
 # Kurultai Install Guide (macOS)
 
-**Version:** v0.4.1
+**Version:** v0.5.0
 **Platform:** macOS (Apple Silicon arm64 / Intel x86_64)
 
 Kurultai is a local knowledge brain. It indexes notes, chats, JSON dumps, and code into one SQLite store, then exposes search/ask/MCP with excerpts and citations. The "desktop app" is a CLI binary + local HTTP daemon serving a browser-based Brain UI.
@@ -20,7 +20,7 @@ This installs `kurultai` to `~/.local/bin/kurultai`. Add it to your PATH (add to
 ```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
-kurultai --version    # → kurultai 0.4.1
+kurultai --version    # → kurultai 0.5.0
 ```
 
 ## Option B — Install via cargo
@@ -30,7 +30,7 @@ kurultai --version    # → kurultai 0.4.1
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
-cargo install --git https://github.com/duketopceo/kurultai --tag v0.4.1 --locked
+cargo install --git https://github.com/duketopceo/kurultai --tag v0.5.0 --locked
 # Binary lands at ~/.cargo/bin/kurultai (already on PATH after rustup)
 kurultai --version
 ```
@@ -41,7 +41,7 @@ kurultai --version
 git clone https://github.com/duketopceo/kurultai.git
 cd kurultai
 cargo build --release          # ~4-5 min clean build, 0 warnings
-./target/release/kurultai --version    # → kurultai 0.4.1
+./target/release/kurultai --version    # → kurultai 0.5.0
 ```
 
 Optional: copy the binary somewhere on your PATH:

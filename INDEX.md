@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-09-05
-version: 7
+updated: 2026-09-17
+version: 8
 ---
 
 # `.`
@@ -55,7 +55,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.5.0) and optional features | — | — | 2026-09-01 | 4 | 2026-09-01 bump to v0.5.0 · 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-16 indexed (v1 seed) |
 | [`Dockerfile`](Dockerfile) | Multi-stage hub image (`--features postgres`) | `docs/deploy/railway-hub.md` | `docker-compose.hub.yml` | 2026-08-29 | 1 | 2026-08-29 HUB-3 Railway/compose image |
 | [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | Kurultai Feature Matrix (KHAN-251) | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-09-17 | 2 | 2026-09-17 version refs 0.4.1 → 0.5.0 (repo shipped v0.5.0 2026-09-01, doc never bumped) · 2026-08-16 indexed (v1 seed) |
 | [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-01 | 3 | 2026-09-01 v0.5.0 release stack facts · 2026-08-19 rewrite for v0.4.1 stack facts · 2026-08-16 indexed (v1 seed) |
@@ -67,6 +67,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-17 — `INSTALL_GUIDE.md` + `docs/AGENT_SETUP_PROMPT.md`: version refs bumped 0.4.1/0.4.0 → 0.5.0 (stale since the v0.5.0 release); `.gitignore` gains `.worktrees/`
 - 2026-09-06 — `src/http/cf_access.rs` new: verified Cloudflare Access JWT satisfies hub auth for human browser login (Google/OTP via Access, no API-key paste); `KURULTAI_CF_ACCESS_TEAM` + `KURULTAI_CF_ACCESS_AUDS`; `HubGate.cf_access` + `authorize_bearer` split in `auth.rs`
 - 2026-09-05 — AGENTS.md: hosted brain + ontology promote notes; index row bump
 - 2026-09-05 — website/ui: tiered graph fetch (api.ts GraphQuery + load-tier limits) and rebuild

@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-09-01
-version: 3
+updated: 2026-09-17
+version: 4
 ---
 
 # `docs`
@@ -26,7 +26,7 @@ version: 3
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Copy-paste agent setup prompt | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Copy-paste agent setup prompt | — | — | 2026-09-17 | 2 | 2026-09-17 cargo --tag v0.4.0 → v0.5.0 (stale since v0.5.0 release) · 2026-08-16 indexed (v1 seed) |
 | [`PROJECT_SCOPING.md`](PROJECT_SCOPING.md) | Project scoping notes | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`agent-index.md`](agent-index.md) | Agent INDEX.md schema, skip list, update ritual | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`crew-instance-node3.md`](crew-instance-node3.md) | Crew instance notes | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -36,6 +36,7 @@ version: 3
 
 ## Recent
 
+- 2026-09-17 — `AGENT_SETUP_PROMPT.md`: cargo --tag v0.4.0 → v0.5.0
 - 2026-09-01 — v0.5.0 Team released; queue and Year-1 milestones marked shipped
 - 2026-09-01 — HUB-5 ✅ (#250) · HUB-6 ✅; final stretch to v0.5.0 plan added
 - 2026-08-29 — `deploy/` HUB-3 Railway recipe; multi-user hosted-hub row
