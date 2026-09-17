@@ -782,7 +782,12 @@ export class BrainView {
       mesh.userData.baseRadius = radius;
 
       const halo = new THREE.Sprite(this.haloMaterial(false, this.degrees.get(atom.id) || 0));
-      const haloScale = radius * coronaParams(this.degrees.get(atom.id) || 0).scale;
+      // Corona footprint shrinks with density — large overlapping coronas are
+      // the main source of the fused white core at several hundred nodes.
+      const haloScale =
+        radius *
+        coronaParams(this.degrees.get(atom.id) || 0).scale *
+        (0.4 + 0.35 * this.sizeScale);
       halo.scale.setScalar(haloScale);
       halo.userData.baseScale = haloScale;
       halo.position.copy(mesh.position);
@@ -830,7 +835,7 @@ export class BrainView {
       positions[i * 3 + 2] = pos.z;
       // Same degree formula as the soma radius, converted to the gl_PointSize
       // curve — plus headroom so the corona filaments survive rasterization.
-      sizes[i] = radius * NODE_SPRITE_SIZE_SCALE * 1.6;
+      sizes[i] = radius * NODE_SPRITE_SIZE_SCALE * (0.6 + 0.35 * this.sizeScale);
       const c = this.showRegions ? this.regionColor(region) : this.palette.nodeBase;
       color.setHex(c);
       colors[i * 3] = color.r;
@@ -838,8 +843,9 @@ export class BrainView {
       colors[i * 3 + 2] = color.b;
       // Sprite-mode corona alpha must attenuate with density like the mesh
       // path's coronaRestOpacity() — additive sprites at alpha≈1 fuse into a
-      // blown-out white mass above a few hundred nodes.
-      alphas[i] = 0.10 + 0.90 * Math.pow(this.sizeScale, 2.2);
+      // blown-out white mass above a few hundred nodes. Steeper exponent than
+      // the mesh path: sprite overlap compounds quadratically in dense cores.
+      alphas[i] = 0.02 + 0.7 * Math.pow(this.sizeScale, 4.0);
 
       this.atomPositions.set(atom.id, pos);
       // Separate instance: atomPositions is mutated by layout animations.
@@ -1251,20 +1257,20 @@ export class BrainView {
   /** Synapse rest opacity attenuates with density — hundreds of additive
    *  edges at 0.3+ fuse the core into a white mass. */
   private edgeRestOpacity(strength: number) {
-    return Math.min(0.85, 0.3 + strength * 0.15) * (0.10 + 0.90 * Math.pow(this.sizeScale, 2.2));
+    return Math.min(0.85, 0.3 + strength * 0.15) * (0.03 + 0.97 * Math.pow(this.sizeScale, 3.5));
   }
 
   /** Corona rest opacity attenuates with density — additive coronas are the
    *  main source of the fused white core at 500+ nodes. Exponential falloff
    *  so small graphs keep their dendrite coronas, dense graphs keep wiring. */
   private coronaRestOpacity() {
-    return 0.26 * (0.04 + 0.96 * Math.pow(this.sizeScale, 2.2));
+    return 0.12 * (0.03 + 0.97 * Math.pow(this.sizeScale, 3.0));
   }
 
   /** Soma emissive attenuates with density for the same reason — 500 somas
    *  at 0.55 in a packed core read as one white mass, not 500 neurons. */
   private somaEmissive() {
-    return 0.55 * (0.05 + 0.95 * Math.pow(this.sizeScale, 2.2));
+    return 0.5 * (0.04 + 0.96 * Math.pow(this.sizeScale, 3.0));
   }
 
   private haloMaterial(active: boolean, degree = 0) {

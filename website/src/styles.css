@@ -1780,7 +1780,7 @@ header.topbar {
 .floating-inspector {
   position: fixed;
   top: 5rem;
-  right: 1rem;
+  right: calc(min(26rem, 352px) + 1.5rem);
   width: min(26rem, calc(100vw - 2rem));
   max-height: calc(100vh - 8rem);
   overflow-y: auto;
@@ -2043,6 +2043,19 @@ header.topbar {
   z-index: 55; padding: .4rem .8rem; margin: 0;
   background: var(--surface-strong); border: 1px solid #f472b6; border-radius: 8px;
 }
+
+/* ── Thin dark scrollbars — native grey bars clash with the palette ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--chrome-line-strong, var(--line-strong, #333)) transparent;
+}
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--chrome-line-strong, var(--line-strong, #333));
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--chrome-accent, var(--electric, #7c5cff)); }
 
 /* ── Hey kanban view (#331) ────────────────────────────────── */
 .hey-view-toggle { display: flex; gap: .3rem; align-items: center; }
