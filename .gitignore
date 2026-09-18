@@ -55,3 +55,6 @@ web/.env.*.local
 # Python
 __pycache__/
 *.py[cod]
+
+# eval run reports (local artifacts)
+evals/reports/

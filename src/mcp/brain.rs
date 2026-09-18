@@ -37,6 +37,10 @@ pub struct BrainService {
     noisy_sources: Arc<Vec<String>>,
     /// Hot/warm/cold classification policy (thresholds + sequester rules, #325).
     tier_policy: TierPolicy,
+    /// Ephemeral web augmentation for `ask --web` (default null — never persisted).
+    web_searcher: Arc<dyn crate::web::WebSearcher>,
+    /// Optional Jev judge for the `ask --web` local-sufficiency gate.
+    judge: Arc<dyn crate::eval::judge::Judge>,
 }
 
 /// Second-hop expansion: search shared tags from primary hits, merge unique atoms (#74).
@@ -121,6 +125,38 @@ async fn multi_hop_expand(
     Ok(merged)
 }
 
+/// Convert a [`crate::web::WebHit`] into an ephemeral pseudo-hit for the
+/// synthesizer context. `source=web`, `metadata.source_uri=url` so citations
+/// carry the URL; never upserted, never touched.
+fn web_hit_to_result(hit: &crate::web::WebHit) -> SearchResult {
+    let atom = KnowledgeAtom {
+        id: format!("web-{}", &crate::hashutil::sha256_hex(&hit.url)[..16]),
+        source: "web".into(),
+        source_id: hit.url.clone(),
+        title: hit.title.clone(),
+        summary: hit.snippet.chars().take(200).collect(),
+        content: hit.snippet.clone(),
+        tags: vec!["web".into()],
+        source_updated_at: Utc::now(),
+        indexed_at: Utc::now(),
+        metadata: {
+            let mut m = std::collections::HashMap::new();
+            m.insert("source_uri".to_string(), hit.url.clone());
+            if let Some(d) = &hit.date {
+                m.insert("published".to_string(), d.clone());
+            }
+            m
+        },
+        ..Default::default()
+    };
+    SearchResult {
+        atom,
+        score: 0.0,
+        rank: 0,
+        matched_by: vec!["web".into()],
+    }
+}
+
 impl BrainService {
     pub fn new(
         store: Arc<dyn Store>,
@@ -157,7 +193,21 @@ impl BrainService {
                     .collect(),
             ),
             tier_policy: TierPolicy::default(),
+            web_searcher: Arc::new(crate::web::NullWebSearcher),
+            judge: Arc::new(crate::eval::judge::NullJudge),
         }
+    }
+
+    /// Ephemeral web augmentation backend for `ask --web` (never persisted).
+    pub fn with_web_searcher(mut self, searcher: Arc<dyn crate::web::WebSearcher>) -> Self {
+        self.web_searcher = searcher;
+        self
+    }
+
+    /// Optional Jev judge for the ask-web sufficiency gate.
+    pub fn with_judge(mut self, judge: Arc<dyn crate::eval::judge::Judge>) -> Self {
+        self.judge = judge;
+        self
     }
 
     /// Configured tier policy (`[tiers]` + `[[tiers.rule]]`, #325).
@@ -388,6 +438,109 @@ impl BrainService {
         self.touch_non_noisy(&hits).await;
         self.activity.record("ask", question, ids, detail);
         Ok(answer)
+    }
+
+    /// `ask` with opt-in ephemeral web augmentation (`ask --web`).
+    ///
+    /// Local retrieval runs first. When the local context is judged thin —
+    /// Jev `noul` when a judge is configured, else a minimum-hit floor — one
+    /// Perplexity `/search` call appends `source=web` pseudo-hits to the
+    /// synthesizer context. Web hits are never written to the store and are
+    /// excluded from `touch_access`, activity ids, `graph_chain`, and quality
+    /// boosts; citations carry `source=web` + `url` via `metadata.source_uri`.
+    pub async fn ask_with_web(
+        &self,
+        question: &str,
+        hub_team_id: Option<&str>,
+        min_local_hits: usize,
+    ) -> Result<Answer> {
+        let filter = SearchFilter::default().with_hub_team(hub_team_id);
+        let primary = self
+            .hybrid_hits_filtered(question, 16, filter.clone())
+            .await?;
+        let primary = self.apply_retrieval_policy(primary, 8, None);
+        let hits = multi_hop_expand(self, primary, 8).await?;
+        let hits = self.apply_retrieval_policy(hits, 8, None);
+
+        let sufficient = self
+            .local_context_sufficient(question, &hits, min_local_hits)
+            .await;
+        let mut web_hits: Vec<crate::web::WebHit> = Vec::new();
+        if !sufficient && self.web_searcher.is_live() {
+            match self.web_searcher.search(question, 3).await {
+                Ok(h) => web_hits = h,
+                Err(e) => {
+                    tracing::warn!("web search failed: {e:#} — answering locally");
+                }
+            }
+        } else if !sufficient && !self.web_searcher.is_live() {
+            tracing::info!("local context thin but no PERPLEXITY_API_KEY — answering locally");
+        }
+
+        let mut merged = hits.clone();
+        merged.extend(web_hits.iter().map(web_hit_to_result));
+        let mut answer = self.synthesizer.synthesize(question, &merged).await?;
+        // Provenance is local-only: web pseudo-hits never enter graph_chain.
+        answer.graph_chain = crate::synthesize::graph_chain_from_hits(&hits);
+        let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
+        let detail: Option<String> = {
+            let t: String = answer.answer.chars().take(160).collect();
+            if t.is_empty() {
+                None
+            } else {
+                Some(format!("web={} {}", web_hits.len(), t))
+            }
+        };
+        self.touch_non_noisy(&hits).await;
+        self.activity.record("ask_web", question, ids, detail);
+        Ok(answer)
+    }
+
+    /// Is the local context enough to answer, or should we spend a web call?
+    /// Judge `noul` when live; otherwise a minimum-hit floor.
+    async fn local_context_sufficient(
+        &self,
+        question: &str,
+        hits: &[SearchResult],
+        min_local_hits: usize,
+    ) -> bool {
+        if hits.len() < min_local_hits {
+            return false;
+        }
+        if !self.judge.is_live() {
+            return true;
+        }
+        let state = serde_json::json!({
+            "question": question,
+            "excerpts": hits.iter().take(4).map(|r| {
+                serde_json::json!({
+                    "title": r.atom.title,
+                    "excerpt": r.atom.content.chars().take(300).collect::<String>(),
+                })
+            }).collect::<Vec<_>>(),
+        });
+        let questions = vec![(
+            "sufficient".to_string(),
+            crate::eval::judge::Question::Noul {
+                instructions:
+                    "Do the excerpts contain enough information to answer the question directly?"
+                        .into(),
+                on_true: "Sufficient — answer locally".into(),
+                on_false: "Insufficient — needs outside context".into(),
+            },
+        )];
+        match self.judge.decide(&state, &questions).await {
+            Ok(answers) => answers
+                .noul
+                .get("sufficient")
+                .and_then(serde_json::Value::as_f64)
+                .map(|p| p >= 0.5)
+                .unwrap_or(true),
+            Err(e) => {
+                tracing::warn!("sufficiency judge failed: {e:#} — answering locally");
+                true
+            }
+        }
     }
 
     pub async fn who_knows_with_team(

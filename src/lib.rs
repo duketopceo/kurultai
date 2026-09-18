@@ -11,6 +11,7 @@ pub mod doctor;
 pub mod embed;
 pub mod environment;
 pub mod error;
+pub mod eval;
 pub mod export;
 pub mod features;
 pub mod hashutil;
@@ -32,6 +33,7 @@ pub mod security;
 pub mod store;
 pub mod synthesize;
 pub mod types;
+pub mod web;
 pub mod webui;
 pub mod write_policy;
 

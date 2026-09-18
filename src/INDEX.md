@@ -34,6 +34,8 @@ version: 7
 - [`security/`](security/INDEX.md) — Paths, redaction, hub keys
 - [`store/`](store/INDEX.md) — SQLite kernel + optional Postgres hub store
 - [`synthesize/`](synthesize/INDEX.md) — ask / who-knows
+- [`eval/`](eval/INDEX.md) — retrieval eval runner + metrics + Jev judge
+- [`web/`](web/INDEX.md) — ephemeral Perplexity search (`ask --web`)
 
 ## Files
 
@@ -44,13 +46,13 @@ version: 7
 | [`doctor.rs`](doctor.rs) | kurultai doctor PASS/FAIL/WARN diagnostics | `src/config` · `src/embed` · `src/environment` · `src/error` · `src/mcp` | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`environment.rs`](environment.rs) | KURULTAI_ENV paths (dev/staging/prod store locations) | `src/error` | `src/app/context.rs` · `src/config/loader.rs` · `src/doctor.rs` · `src/logging.rs` · `src/types.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`error.rs`](error.rs) | KurultaiError and Result | — | `src/app/context.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`features.rs`](features.rs) | Versioned feature flags (fts, brain_ui, mcp_http, hub) | — | — | 2026-08-29 | 2 | 2026-08-29 hub summary names HUB-3 transport · 2026-08-16 indexed (v1 seed) |
+| [`features.rs`](features.rs) | Versioned feature flags (fts, brain_ui, mcp_http, hub, web_search) | — | — | 2026-09-17 | 3 | 2026-09-17 `web_search` flag (ask --web) · 2026-08-29 hub summary names HUB-3 transport · 2026-08-16 indexed (v1 seed) |
 | [`hashutil.rs`](hashutil.rs) | Content hashing for incremental index skip | — | `src/connectors/dayflow.rs` · `src/connectors/github.rs` · `src/connectors/pond.rs` · `src/http/auth.rs` · `src/http/ingest.rs` | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`lib.rs`](lib.rs) | Crate root: module graph and public error/env re-exports | — | — | 2026-09-16 | 4 | 2026-09-16 `connect` module export · 2026-09-15 `webui` module export (#329) |
+| [`lib.rs`](lib.rs) | Crate root: module graph and public error/env re-exports | — | — | 2026-09-17 | 5 | 2026-09-17 `eval` + `web` module exports · 2026-09-16 `connect` module export · 2026-09-15 `webui` module export (#329) |
 | [`logging.rs`](logging.rs) | tracing-subscriber setup | `src/environment` · `src/error` | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`connect.rs`](connect.rs) | `kurultai connect` device-authorization CLI — code → poll → omaseal/key-file → `wire_agent` | `src/error` · `src/mcp` · `src/security` · `src/webui` · `reqwest` | — | 2026-09-16 | 1 | 2026-09-16 added |
 | [`login.rs`](login.rs) | `kurultai login` device-code flow for hosted agent tokens | `src/error` · `reqwest` · `dirs` | — | 2026-09-06 | 1 | 2026-09-06 added |
-| [`main.rs`](main.rs) | CLI entry: init, index, search, ask, daemon, mcp, connect, login, export | — | — | 2026-09-16 | 8 | 2026-09-16 `connect` cmd + `agent revoke` (seat/codename) · 2026-09-15 `webui` cmd + init key prompt + `daemon --bind` (#329) |
+| [`main.rs`](main.rs) | CLI entry: init, index, search, ask [--web], eval, daemon, mcp, connect, login, export | — | — | 2026-09-17 | 9 | 2026-09-17 `eval` cmd + `ask --web` + brain_from_app web/judge wiring · 2026-09-16 `connect` cmd + `agent revoke` · 2026-09-15 `webui` cmd + init key prompt + `daemon --bind` (#329) |
 | [`metrics.rs`](metrics.rs) | Prometheus text for GET /api/metrics | — | `src/http/mod.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`project.rs`](project.rs) | project_id namespacing for shared-store sessions (#184) | — | `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope, OntologyProposal | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` · `src/ontology/mod.rs` | 2026-09-15 | 4 | 2026-09-15 `Config.tier_policy` runtime field (#325) |
@@ -59,6 +61,7 @@ version: 7
 
 ## Recent
 
+- 2026-09-17 — `eval/` (runner + metrics + Jev judge), `web/` (Perplexity searcher), `brain.rs` `ask_with_web` + sufficiency gate, `main.rs` `eval` cmd + `ask --web`, `features.rs` `web_search` flag
 - 2026-09-16 — `connect.rs` + `main.rs`: `kurultai connect <url>` (RFC 8628 device flow, omaseal/0600 key storage, `wire_agent` reuse) and `agent revoke [--instance-id]`
 - 2026-09-15 — `main.rs`/`webui.rs`: `kurultai webui`, init `--key/--key-file/--no-key`, `daemon --bind` (#329)
 - 2026-09-15 — `types.rs`: `Config.tier_policy` (serde-skipped, loader-populated) (#325)

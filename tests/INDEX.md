@@ -36,9 +36,12 @@ version: 5
 | [`phase5_daemon_test.rs`](phase5_daemon_test.rs) | Phase 5: daemon poll_once indexes without full sync. | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`retrieval_hybrid.rs`](retrieval_hybrid.rs) | Phase 2 (#23) hybrid retrieval integration — FTS ∥ vector → RRF → stub rerank. | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`stress_http.rs`](stress_http.rs) | HTTP stress test — 1000 mixed read/write requests against the Axum stack. | `kurultai` crate public HTTP API | — | 2026-08-31 | 1 | 2026-08-31 added stress test |
+| [`evals_search.rs`](evals_search.rs) | Eval harness: run_eval over served fixture app, matcher variants, stub-judge nDCG, ignored live Jev smoke | `src/eval` · `src/http` | `tests/fixtures/evals/` | 2026-09-17 | 1 | 2026-09-17 added |
+| [`acceptance_ask_web.rs`](acceptance_ask_web.rs) | `ask_with_web` acceptance — sufficiency gate, source=web citations, null-searcher degrade | `src/web` · `src/mcp` | — | 2026-09-17 | 1 | 2026-09-17 added |
 
 ## Recent
 
+- 2026-09-17 — `evals_search.rs` + `acceptance_ask_web.rs` + `fixtures/evals/golden.json`: offline eval harness + ask-web acceptance
 - 2026-09-11 — `acceptance_ontology.rs` v15; `acceptance_mcp.rs` read-only list gains `ontology_proposals` (#118)
 - 2026-09-06 — `acceptance_ontology.rs`: sync schema version assertion to v14
 - 2026-09-04 — `acceptance_mcp.rs` / `acceptance_ontology.rs`: update tool list + schema version assertions
