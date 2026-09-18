@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: .github/workflows
 parent: .github/INDEX.md
-updated: 2026-09-13
-version: 3
+updated: 2026-09-18
+version: 4
 ---
 
 # `.github/workflows`
@@ -19,6 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`argus-reviewer.yml`](argus-reviewer.yml) | Argus reviewer on PRs — code-review-only (`run: 'false'`), pinned `duketopceo/Argus/action@ca2e0ae` | `secrets.OPENROUTER_API_KEY` · `argus-reviewer.config.ts` · `package.json` | `argus-reviewer-report/` artifact · `argus-reviewer` commit status | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
 | [`ci.yml`](ci.yml) | CI: fmt/clippy/nextest, Brain UI, macOS smoke, cargo-audit, postgres, agent-index | `.github/workflows/ci.yml` | `scripts/audit-agent-index.py` · `website/package.json` | 2026-09-13 | 4 | 2026-09-13 run `npm ci` in `website/` before tests so `three` resolves · 2026-09-11 website unit tests step covers all src/**/*.test.ts · 2026-08-16 added Agent index job · 2026-08-16 indexed (v1 seed) |
 | [`deploy.yml`](deploy.yml) | Deploy pipeline: staging branch → staging env, main → production env. | — | — | 2026-07-19 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`release.yml`](release.yml) | Build platform binaries and attach them to a GitHub Release. | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -26,6 +27,7 @@ _None._
 
 ## Recent
 
+- 2026-09-18 — `argus-reviewer.yml` new: Argus code-review-only lane on PRs (action pinned `@ca2e0ae`, `run: 'false'`, `sandbox: 'false'`); needs `OPENROUTER_API_KEY` repo secret
 - 2026-09-13 — `ci.yml`: run `npm ci` in `website/` before `npm test`, and `cd website` so `three` dependency resolves for brain tests
 - 2026-09-11 — `ci.yml`: layout-only test step → all website unit tests (labels, chatboard, repoLattice)
 - 2026-08-16 — `ci.yml`: Agent index job runs `scripts/audit-agent-index.py`

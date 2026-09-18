@@ -33,6 +33,9 @@ config.toml
 # Local embedding model cache (fastembed / ONNX)
 .fastembed_cache/
 
+# Root npm shim — Argus reviewer action anchor only, not a JS app
+node_modules/
+
 # Frontend Website (marketing)
 website/node_modules/
 website/dist/
