@@ -13,13 +13,13 @@ version: 1
 
 ## Children
 
-_None._
+- [`evals/`](evals/INDEX.md) — Offline golden subset for `tests/evals_search.rs`
 
 ## Skip interiors
 
 - `vault/` — markdown ingest corpus (no INDEX.md inside; connector tests)
 - `code_repo/` — code ingest corpus (no INDEX.md inside)
-- `evals/` — offline golden subset for `tests/evals_search.rs` (no INDEX.md inside)
+
 
 ## Files
 
