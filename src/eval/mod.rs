@@ -151,6 +151,10 @@ pub struct EvalReport {
     pub judge_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub judge_cost_usd: Option<f64>,
+    /// First judge error when grading was disabled mid-run (e.g. insufficient
+    /// inference credits). Absent when grading stayed healthy or was off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub judge_disabled_reason: Option<String>,
     pub queries: Vec<QueryReport>,
     pub aggregate: Aggregate,
 }
@@ -217,6 +221,12 @@ pub async fn run_eval(cfg: &EvalConfig, golden: &GoldenSet) -> Result<EvalReport
     let mut reports = Vec::new();
     let mut judge_cost = 0.0f64;
     let mut judge_model: Option<String> = None;
+    // Circuit breaker: stop calling the judge after N consecutive failures
+    // (dead key, out of credits, API down) so a broken backend doesn't burn a
+    // request per remaining query. Report flags the degradation.
+    const JUDGE_FAIL_MAX: usize = 3;
+    let mut judge_failures = 0usize;
+    let mut judge_disabled_reason: Option<String> = None;
 
     for q in &golden.queries {
         let start = Instant::now();
@@ -268,17 +278,27 @@ pub async fn run_eval(cfg: &EvalConfig, golden: &GoldenSet) -> Result<EvalReport
                     }
                 }
 
-                if judge.is_live() && !hits.is_empty() {
+                if judge.is_live() && judge_disabled_reason.is_none() && !hits.is_empty() {
                     match grade_hits(&*judge, q, &hits, cfg.k).await {
                         Ok((ndcg, cost, model)) => {
                             rep.ndcg_at_k = Some(ndcg);
                             judge_cost += cost;
+                            judge_failures = 0;
                             if judge_model.is_none() {
                                 judge_model = model;
                             }
                         }
                         Err(e) => {
-                            tracing::warn!("judge failed for {}: {e:#} — skipping nDCG", q.id)
+                            judge_failures += 1;
+                            if judge_failures >= JUDGE_FAIL_MAX {
+                                judge_disabled_reason = Some(format!("{e:#}"));
+                                tracing::warn!(
+                                    "judge disabled after {JUDGE_FAIL_MAX} consecutive failures \
+                                     — remaining queries labels-only"
+                                );
+                            } else {
+                                tracing::warn!("judge failed for {}: {e:#} — skipping nDCG", q.id)
+                            }
                         }
                     }
                 }
@@ -298,17 +318,27 @@ pub async fn run_eval(cfg: &EvalConfig, golden: &GoldenSet) -> Result<EvalReport
                 rep.hits = ans.citations.len();
                 rep.answer_confidence = Some(ans.confidence);
 
-                if judge.is_live() && q.judge_answer {
+                if judge.is_live() && judge_disabled_reason.is_none() && q.judge_answer {
                     match grade_answer(&*judge, q, &ans).await {
                         Ok((grounded, cost, model)) => {
                             rep.groundedness = Some(grounded);
                             judge_cost += cost;
+                            judge_failures = 0;
                             if judge_model.is_none() {
                                 judge_model = model;
                             }
                         }
                         Err(e) => {
-                            tracing::warn!("judge failed for {}: {e:#} — skipping", q.id)
+                            judge_failures += 1;
+                            if judge_failures >= JUDGE_FAIL_MAX {
+                                judge_disabled_reason = Some(format!("{e:#}"));
+                                tracing::warn!(
+                                    "judge disabled after {JUDGE_FAIL_MAX} consecutive failures \
+                                     — remaining queries labels-only"
+                                );
+                            } else {
+                                tracing::warn!("judge failed for {}: {e:#} — skipping", q.id)
+                            }
                         }
                     }
                 }
@@ -343,6 +373,7 @@ pub async fn run_eval(cfg: &EvalConfig, golden: &GoldenSet) -> Result<EvalReport
         judge: judge.name().to_string(),
         judge_model,
         judge_cost_usd: (judge_cost > 0.0).then_some(judge_cost),
+        judge_disabled_reason,
         queries: reports,
         aggregate,
     })

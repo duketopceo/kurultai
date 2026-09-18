@@ -231,6 +231,75 @@ async fn eval_runner_uses_injected_judge_for_ndcg() {
     );
 }
 
+/// Judge that always fails — simulates a dead key / insufficient credits.
+struct FailingJudge {
+    calls: AtomicU64,
+}
+
+#[async_trait::async_trait]
+impl kurultai::eval::judge::Judge for FailingJudge {
+    fn name(&self) -> &'static str {
+        "failing"
+    }
+    fn is_live(&self) -> bool {
+        true
+    }
+    async fn decide(
+        &self,
+        _state: &serde_json::Value,
+        _questions: &[(String, kurultai::eval::judge::Question)],
+    ) -> anyhow::Result<kurultai::eval::judge::DecisionAnswers> {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        anyhow::bail!("402 insufficient credits")
+    }
+}
+
+/// A dead/out-of-credit judge must trip the circuit breaker: stop calling
+/// after 3 failures, finish the run labels-only, and flag the report.
+#[tokio::test]
+async fn eval_runner_disables_judge_after_consecutive_failures() {
+    let (base_url, _dir) = serve_fixture_brain().await;
+    // Five queries over the fixture vault — enough to exceed the breaker.
+    let golden = GoldenSet {
+        version: 1,
+        queries: (0..5)
+            .map(|i| eval::GoldenQuery {
+                id: format!("breaker-{i}"),
+                kind: "search".into(),
+                query: "deploy".into(),
+                relevant: vec![eval::Matcher {
+                    source_id_contains: Some("ops/deploy.md".into()),
+                    ..Default::default()
+                }],
+                deny_sources: vec![],
+                judge_answer: false,
+            })
+            .collect(),
+    };
+    let judge = Arc::new(FailingJudge {
+        calls: AtomicU64::new(0),
+    });
+    let report = eval::run_eval(
+        &EvalConfig {
+            base_url,
+            k: 5,
+            judge: false,
+            judge_model: None,
+            judge_override: Some(judge.clone()),
+        },
+        &golden,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(judge.calls.load(Ordering::Relaxed), 3, "breaker at 3");
+    assert!(report.judge_disabled_reason.is_some());
+    assert!(report.aggregate.mean_ndcg_at_k.is_none());
+    // Labels-only metrics still produced for all queries.
+    assert_eq!(report.queries.len(), 5);
+    assert!(report.queries.iter().all(|r| r.recall_at_k.is_some()));
+}
+
 /// Live smoke for the Jev decisions path — manual only:
 /// `OPENROUTER_API_KEY=... cargo test --test evals_search judge_live -- --ignored`
 #[tokio::test]
