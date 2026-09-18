@@ -705,6 +705,23 @@ async fn main() -> Result<()> {
             } else {
                 println!("  Synthesizer: extractive (set OPENROUTER_API_KEY for LLM ask)");
             }
+            {
+                let judge = kurultai::eval::judge::judge_from_config(&app.config);
+                if judge.is_live() {
+                    println!(
+                        "  Judge: {} ({})",
+                        judge.name(),
+                        app.config
+                            .judge_model
+                            .as_deref()
+                            .unwrap_or(kurultai::eval::judge::DEFAULT_JUDGE_MODEL)
+                    );
+                } else if !app.config.judge_enabled {
+                    println!("  Judge: disabled ([judge] enabled = false)");
+                } else {
+                    println!("  Judge: none (set OPENROUTER_API_KEY for Jev grading)");
+                }
+            }
             println!("  Atoms:   {}", atom_count);
             println!("  Trusted: {}", trusted);
             println!("  Quarantine: {}", quarantine);
@@ -1258,7 +1275,7 @@ fn brain_from_app(app: &App) -> BrainService {
     } else {
         std::sync::Arc::new(kurultai::web::NullWebSearcher)
     })
-    .with_judge(kurultai::eval::judge::judge_from_env(None))
+    .with_judge(kurultai::eval::judge::judge_from_config(&app.config))
 }
 
 async fn bootstrap_app(cli: &Cli) -> Result<App> {

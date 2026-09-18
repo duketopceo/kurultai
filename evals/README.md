@@ -48,6 +48,11 @@ Without `--judge` or a key, the run is labels-only — still useful for
 recall/precision/MRR regression checks. CI runs `tests/evals_search.rs`
 offline (fixture vault, no secrets, no network).
 
+`[judge]` in config.toml controls the shared judge: `enabled = false`
+forces `NullJudge` everywhere (evals, `ask --web` sufficiency, review)
+even with a key present; `model` overrides the pin. `kurultai status`
+shows the resolved judge lane.
+
 ## `ask --web`
 
 `kurultai ask "…" --web` augments thin local context with one Perplexity

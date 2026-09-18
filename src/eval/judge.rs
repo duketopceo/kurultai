@@ -218,3 +218,12 @@ pub fn judge_from_env(model: Option<String>) -> Arc<dyn Judge> {
         None => Arc::new(NullJudge),
     }
 }
+
+/// Build the judge honoring `[judge]` config: `enabled = false` forces
+/// [`NullJudge`] even when a key resolves; `model` overrides the pin.
+pub fn judge_from_config(cfg: &crate::types::Config) -> Arc<dyn Judge> {
+    if !cfg.judge_enabled {
+        return Arc::new(NullJudge);
+    }
+    judge_from_env(cfg.judge_model.clone())
+}

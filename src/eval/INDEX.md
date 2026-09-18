@@ -22,7 +22,7 @@ version: 1
 | [`mod.rs`](mod.rs) |  GoldenSet/Matcher types, `run_eval` HTTP runner (`POST /api/search` + `/api/ask`), report + aggregate, judge circuit breaker  | `reqwest` · `src/eval/judge` · `src/eval/metrics` | `src/main.rs` | 2026-09-18 | 3 | 2026-09-18 `pub mod review` (pre-merge commit judge) · 2026-09-18 judge circuit breaker (3 consecutive failures → labels-only, `judge_disabled_reason` in report) · 2026-09-17 added |
 | [`metrics.rs`](metrics.rs) | Pure metrics: recall_at_k, precision_at_k, mrr, ndcg_at_k, mean | — | `src/eval/mod.rs` | 2026-09-17 | 1 | 2026-09-17 added |
 | [`review.rs`](review.rs) | Pre-merge commit review: `collect_commits` (git rev-list, bot-excluded) + `review_commits` (11-question Jev suite) + hard/advisory flag thresholds | `git` CLI · `src/eval/judge` | `src/main.rs` | 2026-09-18 | 1 | 2026-09-18 added |
-| [`judge.rs`](judge.rs) | `Judge` trait + `OpenRouterJudge` (decisions API, pinned `typesafe/jev-1.13`) + `NullJudge` + `judge_from_env` | `reqwest` · `src/security` | `src/eval/mod.rs` · `src/mcp/brain.rs` | 2026-09-17 | 1 | 2026-09-17 added |
+| [`judge.rs`](judge.rs) | `Judge` trait + `OpenRouterJudge` (decisions API, pinned `typesafe/jev-1.13`) + `NullJudge` + `judge_from_env` | `reqwest` · `src/security` | `src/eval/mod.rs` · `src/mcp/brain.rs` | 2026-09-18 | 2 | 2026-09-18 `judge_from_config` honors `[judge] enabled`/`model` · 2026-09-17 added |
 
 ## Recent
 

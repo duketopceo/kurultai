@@ -62,13 +62,14 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-12 | 5 | 2026-09-12 link ROADMAP.md in Status · 2026-09-11 v0.6.0 release stack facts · 2026-09-01 v0.5.0 release stack facts |
 | [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-09-12 | 1 | 2026-09-12 created — issue #122 |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-01 | 2 | 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
+| [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-18 | 3 | 2026-09-18 [judge] section docs · 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
 | [`docker-compose.hub.yml`](docker-compose.hub.yml) | Local pgvector + hub daemon proof of Railway recipe | `Dockerfile` · `docs/deploy/railway-hub.md` | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 compose proof |
 | [`hey.md`](hey.md) | Informal notes / scratch | — | — | 2026-08-08 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`rust-toolchain.toml`](rust-toolchain.toml) | Rust toolchain pin | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-18 — Jev first-class: `[judge]` config (enabled/model), `/api/ask` + MCP `ask` `web` flag → `ask_with_web`, `status` judge line, `judge_from_config` in `brain_from_app`.
 - 2026-09-17 — retrieval evals + `ask --web` shipped on `feat/retrieval-evals`: `evals/` golden set, `src/eval/` (runner+metrics+Jev judge), `src/web/` (Perplexity), `kurultai eval` + `ask --web`, `web_search` feature flag.
 - 2026-09-17 — `docs/plans/2026-09-17-001` retrieval evals + `ask --web` plan: frozen golden set, `kurultai eval` HTTP runner (Recall@k/P@k/MRR/nDCG, noise exclusion), Jev judge via OpenRouter decisions API (env-gated, pinned `typesafe/jev-1.13`), opt-in ephemeral `ask --web` Perplexity REST augmentation.
 - 2026-09-17 — UI polish + E2E pass: Brain density attenuation (sprite/edge/corona/soma scale with `sizeScale` — dense tiers no longer fuse white), thin dark scrollbars, floating inspector clears command rail, Hey solo write path (`require_writer` → `luke`/local when zero auth configured); `ui/` rebuilt.

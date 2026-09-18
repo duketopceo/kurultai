@@ -73,6 +73,13 @@ dimension = 3072
 
 # --- Runtime (rerank + search tuning) --------------------------------------
 
+[judge]
+# Jev judge for `kurultai eval`, `ask --web` sufficiency, and `kurultai review`.
+# Uses the same OPENROUTER_API_KEY as [embed]; set enabled = false to force
+# labels-only/no-web-gate behavior even with a key present.
+# enabled = true
+# model = "typesafe/jev-1.13"   # pinned; ~latest alias moves
+
 [runtime]
 poll_interval_secs = 300
 # Rerank top fused hits via OpenRouter (same API key as [embed]):

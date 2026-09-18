@@ -344,7 +344,8 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "question": { "type": "string" }
+                        "question": { "type": "string" },
+                        "web": { "type": "boolean", "description": "Augment thin local context with ephemeral web search (requires web_search feature + PERPLEXITY_API_KEY on the server)", "default": false }
                     },
                     "required": ["question"]
                 }
@@ -600,6 +601,10 @@ struct RecallArgs {
 #[derive(Debug, Deserialize)]
 struct AskArgs {
     question: String,
+    /// Ephemeral Perplexity web augmentation when local context is thin
+    /// (no-op unless the server has web search configured).
+    #[serde(default)]
+    web: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -787,7 +792,11 @@ async fn call_tool(
         TOOL_ASK => {
             let args: AskArgs = serde_json::from_value(call.arguments)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad ask args: {e}")))?;
-            let answer = brain.ask(&args.question).await?;
+            let answer = if args.web {
+                brain.ask_with_web(&args.question, None, 2).await?
+            } else {
+                brain.ask(&args.question).await?
+            };
             serde_json::to_string(&answer)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
         }

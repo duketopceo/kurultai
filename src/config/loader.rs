@@ -88,6 +88,8 @@ fn default_config(env: Environment) -> Result<Config> {
         mcp_http_secret: None,
         banner: BannerMode::Auto,
         tier_policy: crate::memory::TierPolicy::default(),
+        judge_enabled: true,
+        judge_model: None,
     })
 }
 
@@ -162,6 +164,8 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
         mcp_http_secret: file.runtime.mcp_http_secret,
         banner: file.cli.banner,
         tier_policy: tiers_to_policy(file.tiers)?,
+        judge_enabled: file.judge.enabled.unwrap_or(true),
+        judge_model: file.judge.model,
     })
 }
 
@@ -396,6 +400,41 @@ banner = "sometimes"
     fn default_config_toml_documents_cli_banner() {
         assert!(default_config_toml().contains("[cli]"));
         assert!(default_config_toml().contains("banner"));
+    }
+
+    #[test]
+    fn loads_judge_config() {
+        let dir = tempfile_dir("cfg-judge");
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+environment = "dev"
+[storage]
+path = "/tmp/kurultai-judge.db"
+[judge]
+enabled = false
+model = "typesafe/jev-1.12"
+"#,
+        )
+        .unwrap();
+        let cfg = load_config_from(&path).unwrap();
+        assert!(!cfg.judge_enabled);
+        assert_eq!(cfg.judge_model.as_deref(), Some("typesafe/jev-1.12"));
+    }
+
+    #[test]
+    fn judge_defaults_enabled_without_section() {
+        let dir = tempfile_dir("cfg-judge-default");
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            "environment = \"dev\"\n[storage]\npath = \"/tmp/k-judge-def.db\"\n",
+        )
+        .unwrap();
+        let cfg = load_config_from(&path).unwrap();
+        assert!(cfg.judge_enabled);
+        assert!(cfg.judge_model.is_none());
     }
 
     #[test]
