@@ -528,6 +528,9 @@ async fn main() -> Result<()> {
             if let Some(g) = a.mean_groundedness {
                 println!("  groundedness {:.3}", g);
             }
+            if let Some(reason) = &report.judge_disabled_reason {
+                println!("  judge disabled mid-run: {}", reason);
+            }
             if a.noise_violations > 0 {
                 println!("  noise violations: {}", a.noise_violations);
             }
