@@ -58,3 +58,24 @@ counted in access/tier stats.
 Gate: `KURULTAI_FEATURE_WEB_SEARCH=1` + `PERPLEXITY_API_KEY`. The sufficiency
 check is Jev `noul` when a judge is configured, else a minimum-hit floor —
 sufficient local context spends zero paid calls.
+
+## Pre-merge commit review
+
+`kurultai review <range>` grades every non-bot commit in a range with the
+same Jev judge — 11 typed questions per commit (`git show` → decisions):
+secrets, security risk, unauth-write / network-exposure / XSS / CSRF
+surfaces, message-vs-diff match, test adequacy, follow-up needed, plus
+quality and risk rubrics.
+
+```bash
+kurultai review origin/main..HEAD            # pre-merge check
+kurultai review HEAD~5..HEAD --json out.json # report artifact
+```
+
+Hard flags (probability ≥ 0.5): `leaks_secret`, `security_risk`,
+`unauth_write`, `network_exposure`, `injection_xss`, `csrf`, and
+`matches_message` < 0.5. Any hard flag → the commit prints `FAIL` and the
+command exits 1. Advisory flags (`needs_followup` ≥ 0.7, `tests_adequate`
+< 0.3) print `warn` but don't fail. No OpenRouter key → skips with a
+message and exits 0, so it's safe to wire into local hooks/CI that may
+lack secrets. Cost is ~$0.0002/commit.

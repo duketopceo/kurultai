@@ -94,6 +94,21 @@ enum Commands {
         #[arg(long)]
         web: bool,
     },
+    /// Pre-merge commit review: judge each commit in a range for secrets,
+    /// security regressions, and message/diff mismatches (needs OPENROUTER_API_KEY)
+    Review {
+        /// Commit range, e.g. origin/main..HEAD
+        range: String,
+        /// Repo path (default: current directory)
+        #[arg(long)]
+        repo: Option<std::path::PathBuf>,
+        /// Judge model override (default: pinned typesafe/jev-1.13)
+        #[arg(long)]
+        judge_model: Option<String>,
+        /// Write the full JSON report to this path
+        #[arg(long)]
+        json: Option<std::path::PathBuf>,
+    },
     /// Run the retrieval eval golden set against a live daemon
     Eval {
         /// Daemon base URL
@@ -488,6 +503,70 @@ async fn main() -> Result<()> {
             println!("confidence: {:.2}", answer.confidence);
             for c in &answer.citations {
                 println!("  cite: {} / {} — {}", c.source, c.source_id, c.title);
+            }
+        }
+        Commands::Review {
+            ref range,
+            ref repo,
+            ref judge_model,
+            ref json,
+        } => {
+            let judge = kurultai::eval::judge::judge_from_env(judge_model.clone());
+            if !judge.is_live() {
+                println!("review: no OpenRouter key — skipping (set OPENROUTER_API_KEY)");
+                return Ok(());
+            }
+            let repo = repo
+                .clone()
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let commits = kurultai::eval::review::collect_commits(&repo, range)?;
+            if commits.is_empty() {
+                println!("review: no non-bot commits in {range}");
+                return Ok(());
+            }
+            let report = kurultai::eval::review::review_commits(range, &commits, &judge).await?;
+            println!(
+                "review: {} commits in {} — {} flagged (judge: {} {})",
+                report.reviewed,
+                report.range,
+                report.failed,
+                report.judge,
+                report.judge_model.as_deref().unwrap_or("")
+            );
+            for c in &report.commits {
+                let flags: Vec<String> = c
+                    .flags
+                    .iter()
+                    .map(|f| format!("{}={:.2}[{}]", f.check, f.probability, f.severity))
+                    .collect();
+                let mark = if c.flags.iter().any(|f| f.severity == "hard") {
+                    "FAIL"
+                } else if !c.flags.is_empty() {
+                    "warn"
+                } else {
+                    " ok "
+                };
+                println!(
+                    "  {} {} {:.60} {}",
+                    mark,
+                    &c.sha[..c.sha.len().min(8)],
+                    c.subject,
+                    flags.join(" ")
+                );
+            }
+            if let Some(cost) = report.judge_cost_usd {
+                println!("  judge cost ${:.5}", cost);
+            }
+            if let Some(path) = json {
+                let pretty = serde_json::to_string_pretty(&report)
+                    .map_err(|e| anyhow::anyhow!("serialize review report: {e}"))?;
+                std::fs::write(path, pretty)?;
+                println!("  report → {}", path.display());
+            }
+            if report.failed > 0 {
+                return Err(
+                    anyhow::anyhow!("{} commit(s) flagged by review", report.failed).into(),
+                );
             }
         }
         Commands::Eval {

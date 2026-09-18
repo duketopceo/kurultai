@@ -8,6 +8,7 @@
 
 pub mod judge;
 pub mod metrics;
+pub mod review;
 
 use std::path::Path;
 use std::sync::Arc;

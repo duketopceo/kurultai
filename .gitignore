@@ -58,3 +58,4 @@ __pycache__/
 
 # eval run reports (local artifacts)
 evals/reports/
+.codebase-memory/
