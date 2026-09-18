@@ -28,6 +28,10 @@ pub struct FileConfig {
     /// `[tiers]` hot/warm/cold policy + declarative sequester rules (#325).
     #[serde(default)]
     pub tiers: FileTiersConfig,
+
+    /// `[judge]` — Jev judge enable/model (evals, ask --web, review).
+    #[serde(default)]
+    pub judge: FileJudgeConfig,
 }
 
 /// `[tiers]` — thresholds override the `TierPolicy` defaults; `[[tiers.rule]]`
@@ -91,6 +95,16 @@ impl Default for FileEmbedConfig {
             dimension: Some(3072),
         }
     }
+}
+
+/// `[judge]` — the Jev judge used by evals, `ask --web` sufficiency, and
+/// `kurultai review`. Enabled by default when an OpenRouter key resolves.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct FileJudgeConfig {
+    /// `false` forces `NullJudge` regardless of keys (labels-only everywhere).
+    pub enabled: Option<bool>,
+    /// Judge model override; default is the pinned `typesafe/jev-1.13`.
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]

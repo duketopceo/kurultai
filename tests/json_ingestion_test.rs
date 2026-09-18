@@ -357,6 +357,8 @@ async fn json_connector_from_registry_via_config() {
         mcp_http_secret: None,
         banner: kurultai::art::BannerMode::Auto,
         tier_policy: kurultai::memory::TierPolicy::default(),
+        judge_enabled: true,
+        judge_model: None,
     };
 
     let registry = ConnectorRegistry::from_config(&config).await.unwrap();

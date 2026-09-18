@@ -205,6 +205,8 @@ mod tests {
             mcp_http_secret: None,
             banner: crate::art::BannerMode::Auto,
             tier_policy: crate::memory::TierPolicy::default(),
+            judge_enabled: true,
+            judge_model: None,
         }
     }
 

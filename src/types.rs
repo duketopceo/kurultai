@@ -521,6 +521,16 @@ pub struct Config {
     /// Runtime-only: populated by config loader; skipped on (de)serialize.
     #[serde(skip)]
     pub tier_policy: crate::memory::TierPolicy,
+    /// `[judge] enabled` — false forces `NullJudge` regardless of keys.
+    #[serde(default = "default_true")]
+    pub judge_enabled: bool,
+    /// `[judge] model` — override the pinned Jev judge model.
+    #[serde(default)]
+    pub judge_model: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[cfg(test)]

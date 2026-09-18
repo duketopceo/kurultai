@@ -860,6 +860,10 @@ struct SearchQuery {
 #[derive(Debug, Deserialize)]
 struct AskQuery {
     question: String,
+    /// `?web=true` — ephemeral Perplexity augmentation when local context is
+    /// thin (no-op unless the daemon has web search configured).
+    #[serde(default)]
+    web: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -984,6 +988,10 @@ async fn search_get(
 #[derive(Debug, Deserialize)]
 struct AskBody {
     question: String,
+    /// `web: true` — ephemeral Perplexity augmentation when local context is
+    /// thin (no-op unless the daemon has web search configured).
+    #[serde(default)]
+    web: bool,
 }
 
 async fn ask_post(
@@ -995,11 +1003,18 @@ async fn ask_post(
     let _span = tracing::info_span!("ask_post", request_id=%request_id);
     state.status.touch_client_activity();
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Ask);
-    match state
-        .brain
-        .ask_with_team(&body.question, principal.team_id())
-        .await
-    {
+    let fut = if body.web {
+        state
+            .brain
+            .ask_with_web(&body.question, principal.team_id(), 2)
+            .await
+    } else {
+        state
+            .brain
+            .ask_with_team(&body.question, principal.team_id())
+            .await
+    };
+    match fut {
         Ok(answer) => {
             timer.success(answer.citations.len() as u64);
             Ok(Json(answer))
@@ -1024,11 +1039,18 @@ async fn ask_get(
     let _span = tracing::info_span!("ask_get", request_id=%request_id);
     state.status.touch_client_activity();
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Ask);
-    match state
-        .brain
-        .ask_with_team(&query.question, principal.team_id())
-        .await
-    {
+    let res = if query.web {
+        state
+            .brain
+            .ask_with_web(&query.question, principal.team_id(), 2)
+            .await
+    } else {
+        state
+            .brain
+            .ask_with_team(&query.question, principal.team_id())
+            .await
+    };
+    match res {
         Ok(answer) => {
             timer.success(answer.citations.len() as u64);
             Ok(Json(answer))
@@ -1503,6 +1525,37 @@ mod tests {
         let answer: Answer = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(answer.confidence, 0.0);
         assert!(answer.citations.is_empty());
+    }
+
+    /// `web: true` must degrade to a local answer when the daemon has no web
+    /// searcher configured — the flag is opt-in, never an error.
+    #[tokio::test]
+    async fn ask_web_flag_degrades_to_local_answer() {
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
+            hub: HubGate::default(),
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/ask")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"question":"anything?","web":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let answer: Answer = serde_json::from_slice(&bytes).unwrap();
+        assert!(answer.citations.iter().all(|c| c.source != "web"));
     }
 
     async fn fixture_brain_app() -> (Router, tempfile::TempDir) {
