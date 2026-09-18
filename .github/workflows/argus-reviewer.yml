@@ -1,0 +1,46 @@
+name: argus-reviewer PR review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    # 'labeled' fires on EVERY label — only argus-probe is the fork-gate
+    # signal worth a full review run.
+    if: github.event.action != 'labeled' || github.event.label.name == 'argus-probe'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      checks: read
+      statuses: write
+    steps:
+      # Don't persist the token into .git/config.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # Full history so the secrets lane diffs against the merge base
+          # locally (it falls back to fetching the base SHA when absent).
+          fetch-depth: 0
+
+      # Pinned to the run:'false' commit on duketopceo/Argus — re-pin to a
+      # release tag once the Argus stack merges and a release is cut.
+      - uses: duketopceo/Argus/action@ca2e0ae193d4cb8a5f586255a57d05774cb2100f
+        id: review
+        with:
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          # Review-only: kurultai's app is a CLI + axum daemon on ephemeral
+          # ports — no per-PR web target, so the browser-flow lane is off.
+          run: 'false'
+          sandbox: 'false'
+
+      - name: Upload argus-reviewer report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: argus-reviewer-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: argus-reviewer-report/
+          if-no-files-found: ignore

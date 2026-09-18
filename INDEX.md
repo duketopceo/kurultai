@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-09-16
-version: 16
+updated: 2026-09-18
+version: 17
 ---
 
 # `.`
@@ -43,7 +43,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`.coderabbit.yaml`](.coderabbit.yaml) | CodeRabbit: auto-review off | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`.dockerignore`](.dockerignore) | Docker build context excludes for the hub image | — | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 hub image context |
 | [`.env.example`](.env.example) | Example env vars (API keys, hub bind, eval/web) | — | — | 2026-09-17 | 3 | 2026-09-17 eval/web block (`PERPLEXITY_API_KEY`, `KURULTAI_FEATURE_WEB_SEARCH`) · 2026-08-29 hub env block (HUB-3) · 2026-08-16 indexed (v1 seed) |
-| [`.gitignore`](.gitignore) | Ignored build, env, agent workspace, eval report paths | — | — | 2026-09-17 | 5 | 2026-09-17 `evals/reports/` · 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
+| [`.gitignore`](.gitignore) | Ignored build, env, agent workspace, eval report paths | — | — | 2026-09-18 | 6 | 2026-09-18 root `node_modules/` (Argus tooling shim) · 2026-09-17 `evals/reports/` · 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-05 | 3 | 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
@@ -62,13 +62,17 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-12 | 5 | 2026-09-12 link ROADMAP.md in Status · 2026-09-11 v0.6.0 release stack facts · 2026-09-01 v0.5.0 release stack facts |
 | [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-09-12 | 1 | 2026-09-12 created — issue #122 |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`argus-reviewer.config.ts`](argus-reviewer.config.ts) | Argus reviewer config — code-review-only (`run: 'false'`), OpenRouter BYOK, Jev secrets adjudication on | `.github/workflows/argus-reviewer.yml` · `package.json` | — | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
 | [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-01 | 2 | 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
 | [`docker-compose.hub.yml`](docker-compose.hub.yml) | Local pgvector + hub daemon proof of Railway recipe | `Dockerfile` · `docs/deploy/railway-hub.md` | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 compose proof |
 | [`hey.md`](hey.md) | Informal notes / scratch | — | — | 2026-08-08 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`package.json`](package.json) | npm shim — anchors `argus-reviewer-e2e` (git-pinned) so the Argus action's `npm ci`/`npx` resolve; not a JS app | `.github/workflows/argus-reviewer.yml` | `package-lock.json` · `.gitignore` | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
+| [`package-lock.json`](package-lock.json) | Lockfile for the Argus tooling shim — pins `github:duketopceo/Argus#ca2e0ae` | `package.json` | — | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
 | [`rust-toolchain.toml`](rust-toolchain.toml) | Rust toolchain pin | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-18 — Argus reviewer PR wiring on `feat/argus-pr-review`: `.github/workflows/argus-reviewer.yml` (pinned action, `run: 'false'` review-only), root `package.json`/`package-lock.json` npm shim (git-pinned `argus-reviewer-e2e`), `argus-reviewer.config.ts`, `.gitignore` root `node_modules/`; needs `OPENROUTER_API_KEY` repo secret
 - 2026-09-17 — retrieval evals + `ask --web` shipped on `feat/retrieval-evals`: `evals/` golden set, `src/eval/` (runner+metrics+Jev judge), `src/web/` (Perplexity), `kurultai eval` + `ask --web`, `web_search` feature flag.
 - 2026-09-17 — `docs/plans/2026-09-17-001` retrieval evals + `ask --web` plan: frozen golden set, `kurultai eval` HTTP runner (Recall@k/P@k/MRR/nDCG, noise exclusion), Jev judge via OpenRouter decisions API (env-gated, pinned `typesafe/jev-1.13`), opt-in ephemeral `ask --web` Perplexity REST augmentation.
 - 2026-09-17 — UI polish + E2E pass: Brain density attenuation (sprite/edge/corona/soma scale with `sizeScale` — dense tiers no longer fuse white), thin dark scrollbars, floating inspector clears command rail, Hey solo write path (`require_writer` → `luke`/local when zero auth configured); `ui/` rebuilt.

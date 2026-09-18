@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: .github
 parent: INDEX.md
-updated: 2026-08-16
-version: 1
+updated: 2026-09-18
+version: 2
 ---
 
 # `.github`
@@ -26,6 +26,7 @@ version: 1
 
 ## Recent
 
+- 2026-09-18 — `workflows/argus-reviewer.yml` new: Argus review-only PR lane (needs `OPENROUTER_API_KEY` secret)
 - 2026-08-31 — `CODEOWNERS`: require @duketopceo approval for all changes
 - 2026-08-16 — `workflows/ci.yml`: Agent index audit job
 - 2026-08-16 — indexed this folder (v1 seed)
