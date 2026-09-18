@@ -25,6 +25,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 - [`.compound-engineering/`](.compound-engineering/INDEX.md) — Compound Engineering per-checkout local configuration
 - [`.devcontainer/`](.devcontainer/INDEX.md) — Local dev-container dogfood definitions (Debian + Ubuntu)
 - [`docs/`](docs/INDEX.md) — Product + agent docs
+- [`evals/`](evals/INDEX.md) — Retrieval eval golden set + labeling guide
 - [`plans/`](plans/INDEX.md) — Legacy root-level plans (prefer docs/plans/)
 - [`plugin/`](plugin/INDEX.md) — Agent Zero plugin (tools, daemon proxy, embedded Brain UI)
 - [`scripts/`](scripts/INDEX.md) — Install, UI build, closeout, index audit
@@ -41,15 +42,15 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 |------|------|-------|---------|-------|-----|-----------|
 | [`.coderabbit.yaml`](.coderabbit.yaml) | CodeRabbit: auto-review off | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`.dockerignore`](.dockerignore) | Docker build context excludes for the hub image | — | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 hub image context |
-| [`.env.example`](.env.example) | Example env vars (API keys, hub bind) | — | — | 2026-08-29 | 2 | 2026-08-29 hub env block (HUB-3) · 2026-08-16 indexed (v1 seed) |
-| [`.gitignore`](.gitignore) | Ignored build, env, and agent workspace paths | — | — | 2026-09-01 | 4 | 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
+| [`.env.example`](.env.example) | Example env vars (API keys, hub bind, eval/web) | — | — | 2026-09-17 | 3 | 2026-09-17 eval/web block (`PERPLEXITY_API_KEY`, `KURULTAI_FEATURE_WEB_SEARCH`) · 2026-08-29 hub env block (HUB-3) · 2026-08-16 indexed (v1 seed) |
+| [`.gitignore`](.gitignore) | Ignored build, env, agent workspace, eval report paths | — | — | 2026-09-17 | 5 | 2026-09-17 `evals/reports/` · 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-05 | 3 | 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Prompt snippet for wiring agents to Kurultai | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-09-11 | 4 | 2026-09-11 v0.6.0 release notes · 2026-09-01 v0.5.0 release notes · 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor covenant | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`CONCEPTS.md`](CONCEPTS.md) | Shared domain vocabulary (atoms, hub, FTS-first, ontology) | — | — | 2026-08-29 | 2 | 2026-08-29 Hub paragraph points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
+| [`CONCEPTS.md`](CONCEPTS.md) | Shared domain vocabulary (atoms, hub, FTS-first, ontology, golden set, judge, web augmentation) | — | — | 2026-09-17 | 3 | 2026-09-17 golden set / judge / web augmentation terms · 2026-08-29 Hub paragraph points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup, tests, PR and architecture guidelines | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-15 | 4 | 2026-09-15 FEATURE_MATRIX sync-contract note (#329) |
 | [`Cargo.lock`](Cargo.lock) | Locked Rust dependency graph for reproducible CI | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.6.0) and optional features | — | — | 2026-09-11 | 5 | 2026-09-11 bump to v0.6.0 · 2026-09-01 bump to v0.5.0 · 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-16 indexed (v1 seed) |
@@ -68,6 +69,8 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-17 — retrieval evals + `ask --web` shipped on `feat/retrieval-evals`: `evals/` golden set, `src/eval/` (runner+metrics+Jev judge), `src/web/` (Perplexity), `kurultai eval` + `ask --web`, `web_search` feature flag.
+- 2026-09-17 — `docs/plans/2026-09-17-001` retrieval evals + `ask --web` plan: frozen golden set, `kurultai eval` HTTP runner (Recall@k/P@k/MRR/nDCG, noise exclusion), Jev judge via OpenRouter decisions API (env-gated, pinned `typesafe/jev-1.13`), opt-in ephemeral `ask --web` Perplexity REST augmentation.
 - 2026-09-17 — UI polish + E2E pass: Brain density attenuation (sprite/edge/corona/soma scale with `sizeScale` — dense tiers no longer fuse white), thin dark scrollbars, floating inspector clears command rail, Hey solo write path (`require_writer` → `luke`/local when zero auth configured); `ui/` rebuilt.
 - 2026-09-16 — `feat/connect-device-flow`: `kurultai connect <url>` RFC 8628 device auth — `POST /api/device/code|token`, `/connect` approval page (CF Access → hub key → loopback), schema v16 `agent_seats` (codename+instance_id keys, no `codename-2`), omaseal/0600-key storage, `wire_agent` reuse, `agent revoke`, 401 `run kurultai connect` hint.
 - 2026-09-15 — zero-friction solo path (#329): `init --key/--key-file/--no-key` + key file fallback (0600), `kurultai webui` (spawn/poll/open/--print-url), `daemon --bind` incl. `tailscale` 100.x resolution + non-loopback warning, `FEATURE_MATRIX.md` ported from private.

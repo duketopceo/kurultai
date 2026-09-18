@@ -89,6 +89,31 @@ enum Commands {
     Ask {
         /// The question to answer
         question: String,
+        /// Augment thin local context with a Perplexity web call (ephemeral;
+        /// needs PERPLEXITY_API_KEY and KURULTAI_FEATURE_WEB_SEARCH=1)
+        #[arg(long)]
+        web: bool,
+    },
+    /// Run the retrieval eval golden set against a live daemon
+    Eval {
+        /// Daemon base URL
+        #[arg(long, default_value = "http://127.0.0.1:8421")]
+        base_url: String,
+        /// Path to the golden query set
+        #[arg(long, default_value = "evals/golden.json")]
+        golden: PathBuf,
+        /// Top-k window for metrics
+        #[arg(long, default_value = "10")]
+        k: usize,
+        /// Grade hits and answers with the Jev judge (needs OPENROUTER_API_KEY)
+        #[arg(long)]
+        judge: bool,
+        /// Judge model override (default: pinned typesafe/jev-1.13)
+        #[arg(long)]
+        judge_model: Option<String>,
+        /// Also write the JSON report to this path
+        #[arg(long)]
+        json: Option<PathBuf>,
     },
     /// Which sources know about a topic
     #[command(name = "who-knows", visible_alias = "who_knows")]
@@ -449,16 +474,68 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Commands::Ask { ref question } => {
+        Commands::Ask { ref question, web } => {
             let app = bootstrap_app(&cli).await?;
-            tracing::info!(question = %question, "ask requested");
+            tracing::info!(question = %question, web, "ask requested");
             let brain = brain_from_app(&app);
-            let answer = brain.ask(question).await?;
+            let answer = if web {
+                brain.ask_with_web(question, None, 2).await?
+            } else {
+                brain.ask(question).await?
+            };
             println!("Q: {}", answer.question);
             println!("A: {}", answer.answer);
             println!("confidence: {:.2}", answer.confidence);
             for c in &answer.citations {
                 println!("  cite: {} / {} — {}", c.source, c.source_id, c.title);
+            }
+        }
+        Commands::Eval {
+            ref base_url,
+            ref golden,
+            k,
+            judge,
+            ref judge_model,
+            ref json,
+        } => {
+            let set = kurultai::eval::GoldenSet::load(golden)?;
+            let cfg = kurultai::eval::EvalConfig {
+                base_url: base_url.clone(),
+                k,
+                judge,
+                judge_model: judge_model.clone(),
+                judge_override: None,
+            };
+            let report = kurultai::eval::run_eval(&cfg, &set).await?;
+            let a = &report.aggregate;
+            println!(
+                "eval: {} queries against {} (k={})",
+                a.queries, report.base_url, report.k
+            );
+            println!(
+                "  recall@{} {:.3}  precision@{} {:.3}  mrr {:.3}",
+                report.k, a.mean_recall_at_k, report.k, a.mean_precision_at_k, a.mean_mrr
+            );
+            if let Some(n) = a.mean_ndcg_at_k {
+                println!(
+                    "  ndcg@{} {:.3}  (judge: {} {})",
+                    report.k,
+                    n,
+                    report.judge,
+                    report.judge_model.as_deref().unwrap_or("")
+                );
+            }
+            if let Some(g) = a.mean_groundedness {
+                println!("  groundedness {:.3}", g);
+            }
+            if a.noise_violations > 0 {
+                println!("  noise violations: {}", a.noise_violations);
+            }
+            if let Some(path) = json {
+                let pretty = serde_json::to_string_pretty(&report)
+                    .map_err(|e| anyhow::anyhow!("serialize eval report: {e}"))?;
+                std::fs::write(path, pretty)?;
+                println!("  report → {}", path.display());
             }
         }
         Commands::WhoKnows { ref topic, limit } => {
@@ -1094,6 +1171,12 @@ fn brain_from_app(app: &App) -> BrainService {
         Arc::clone(&app.synthesizer),
     )
     .with_tier_policy(app.config.tier_policy.clone())
+    .with_web_searcher(if kurultai::features::enabled("web_search") {
+        kurultai::web::web_searcher_from_env()
+    } else {
+        std::sync::Arc::new(kurultai::web::NullWebSearcher)
+    })
+    .with_judge(kurultai::eval::judge::judge_from_env(None))
 }
 
 async fn bootstrap_app(cli: &Cli) -> Result<App> {

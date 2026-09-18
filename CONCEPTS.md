@@ -91,3 +91,15 @@ See: [docs/solutions/architecture-patterns/one-brain-ui-daemon-ui-only.md](docs/
 ### Yurt
 
 CLI / brand mascot (⌂) for Kurultai. Terminal art variants live in `src/art.rs` and appear only on human TTY surfaces when banner policy allows — never on MCP stdio or plain/NO_COLOR paths.
+
+### Golden set
+
+Frozen, hand-labeled query set (`evals/golden.json`) used by `kurultai eval` to score retrieval quality — Recall@k, Precision@k, MRR, nDCG@k, groundedness, and noise-source violations. Labels match on title / source_id / title_hash, never atom `id`.
+
+### Judge
+
+Optional eval-time grader (`src/eval/judge.rs`) — TypeSafe Jev via the OpenRouter decisions API, pinned `typesafe/jev-1.13`, env-gated on the same key chain as embedder/synthesizer. Scoring-side only: never in the ingest quality gate.
+
+### Web augmentation
+
+`ask --web` ephemeral Perplexity `/search` results (`src/web/`) that join the answer context as `source=web` citations — never stored, embedded, or counted in access stats. Gated by `KURULTAI_FEATURE_WEB_SEARCH` + `PERPLEXITY_API_KEY` plus a local-sufficiency check.

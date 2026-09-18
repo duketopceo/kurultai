@@ -19,6 +19,7 @@ _None._
 
 - `vault/` — markdown ingest corpus (no INDEX.md inside; connector tests)
 - `code_repo/` — code ingest corpus (no INDEX.md inside)
+- `evals/` — offline golden subset for `tests/evals_search.rs` (no INDEX.md inside)
 
 ## Files
 
