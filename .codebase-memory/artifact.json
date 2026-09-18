@@ -1,0 +1,12 @@
+{
+    "schema_version": 2,
+    "commit": "994568da476e2f96c29b5bad2487b53498cd6424",
+    "indexed_at": "2026-09-18T05:46:18Z",
+    "project": "home-lukekimball-Documents-github-personal-kurultai",
+    "nodes": 9995,
+    "edges": 42665,
+    "original_size": 29097984,
+    "compressed_size": 5419394,
+    "compression_level": 9,
+    "reconcile_basis": "git-clean-head"
+}

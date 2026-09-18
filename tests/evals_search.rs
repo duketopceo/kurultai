@@ -300,6 +300,85 @@ async fn eval_runner_disables_judge_after_consecutive_failures() {
     assert!(report.queries.iter().all(|r| r.recall_at_k.is_some()));
 }
 
+/// Judge that flags a commit containing a "secret" marker.
+struct FlaggingJudge;
+
+#[async_trait::async_trait]
+impl kurultai::eval::judge::Judge for FlaggingJudge {
+    fn name(&self) -> &'static str {
+        "flagging"
+    }
+    fn is_live(&self) -> bool {
+        true
+    }
+    async fn decide(
+        &self,
+        state: &serde_json::Value,
+        questions: &[(String, kurultai::eval::judge::Question)],
+    ) -> anyhow::Result<kurultai::eval::judge::DecisionAnswers> {
+        let has_secret = state["diff"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("sk-or-v1-");
+        let mut answers = kurultai::eval::judge::DecisionAnswers {
+            resolved_model: Some("stub-1.0".into()),
+            cost_usd: Some(0.0001),
+            ..Default::default()
+        };
+        for (qid, q) in questions {
+            match q {
+                kurultai::eval::judge::Question::Score { .. } => {
+                    answers.score.insert(qid.clone(), serde_json::json!(2.0));
+                }
+                kurultai::eval::judge::Question::Noul { .. } => {
+                    let p = match qid.as_str() {
+                        "leaks_secret" if has_secret => 0.95,
+                        "matches_message" => 0.9,
+                        "tests_adequate" => 0.8,
+                        _ => 0.05,
+                    };
+                    answers.noul.insert(qid.clone(), serde_json::json!(p));
+                }
+            }
+        }
+        Ok(answers)
+    }
+}
+
+#[tokio::test]
+async fn review_commits_flags_secret_and_passes_clean() {
+    let judge: Arc<dyn kurultai::eval::judge::Judge> = Arc::new(FlaggingJudge);
+    let commits = vec![
+        eval::review::Commit {
+            sha: "aaa111".into(),
+            author: "dev".into(),
+            subject: "clean change".into(),
+            body: String::new(),
+            stat: " 1 file changed".into(),
+            diff: "+let x = 1;".into(),
+        },
+        eval::review::Commit {
+            sha: "bbb222".into(),
+            author: "dev".into(),
+            subject: "oops".into(),
+            body: String::new(),
+            stat: " 1 file changed".into(),
+            diff: "+key = \"sk-or-v1-abc123\"".into(),
+        },
+    ];
+    let report = eval::review::review_commits("HEAD~2..HEAD", &commits, &judge)
+        .await
+        .unwrap();
+    assert_eq!(report.reviewed, 2);
+    assert_eq!(report.failed, 1);
+    assert!(report.commits[0].flags.is_empty());
+    assert_eq!(
+        report.commits[1].flags[0].check, "leaks_secret",
+        "secret commit flagged hard"
+    );
+    assert_eq!(report.commits[1].flags[0].severity, "hard");
+}
+
 /// Live smoke for the Jev decisions path — manual only:
 /// `OPENROUTER_API_KEY=... cargo test --test evals_search judge_live -- --ignored`
 #[tokio::test]

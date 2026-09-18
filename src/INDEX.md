@@ -52,7 +52,7 @@ version: 7
 | [`logging.rs`](logging.rs) | tracing-subscriber setup | `src/environment` · `src/error` | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`connect.rs`](connect.rs) | `kurultai connect` device-authorization CLI — code → poll → omaseal/key-file → `wire_agent` | `src/error` · `src/mcp` · `src/security` · `src/webui` · `reqwest` | — | 2026-09-16 | 1 | 2026-09-16 added |
 | [`login.rs`](login.rs) | `kurultai login` device-code flow for hosted agent tokens | `src/error` · `reqwest` · `dirs` | — | 2026-09-06 | 1 | 2026-09-06 added |
-| [`main.rs`](main.rs) |  CLI entry: init, index, search, ask [--web], eval, daemon, mcp, connect, login, export  | — | — | 2026-09-18 | 10 | 2026-09-18 print judge-disabled reason in eval output · 2026-09-17 `eval` cmd + `ask --web` + brain_from_app web/judge wiring · 2026-09-16 `connect` cmd + `agent revoke` · 2026-09-15 `webui` cmd + init key prompt + `daemon --bind` (#329) |
+| [`main.rs`](main.rs) |  CLI entry: init, index, search, ask [--web], eval, daemon, mcp, connect, login, export  | — | — | 2026-09-18 | 11 | 2026-09-18 `review` cmd — pre-merge Jev commit gate, exit 1 on hard flags · 2026-09-18 print judge-disabled reason in eval output · 2026-09-17 `eval` cmd + `ask --web` + brain_from_app web/judge wiring · 2026-09-16 `connect` cmd + `agent revoke` · 2026-09-15 `webui` cmd + init key prompt + `daemon --bind` (#329) |
 | [`metrics.rs`](metrics.rs) | Prometheus text for GET /api/metrics | — | `src/http/mod.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`project.rs`](project.rs) | project_id namespacing for shared-store sessions (#184) | — | `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope, OntologyProposal | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` · `src/ontology/mod.rs` | 2026-09-15 | 4 | 2026-09-15 `Config.tier_policy` runtime field (#325) |
@@ -61,6 +61,7 @@ version: 7
 
 ## Recent
 
+- 2026-09-18 — `eval/review.rs` + `Commands::Review`: pre-merge Jev commit gate (secrets/security/mismatch → exit 1)
 - 2026-09-18 — `eval/mod.rs` judge circuit breaker (dead key / insufficient credits → labels-only, flagged); `main.rs` prints disable reason
 - 2026-09-17 — `eval/` (runner + metrics + Jev judge), `web/` (Perplexity searcher), `brain.rs` `ask_with_web` + sufficiency gate, `main.rs` `eval` cmd + `ask --web`, `features.rs` `web_search` flag
 - 2026-09-16 — `connect.rs` + `main.rs`: `kurultai connect <url>` (RFC 8628 device flow, omaseal/0600 key storage, `wire_agent` reuse) and `agent revoke [--instance-id]`
