@@ -85,7 +85,11 @@ fn hostname() -> Option<String> {
 /// the hostname default.
 fn persistent_seat_id() -> Option<String> {
     let path = crate::config::config_path().ok()?.with_file_name("seat-id");
-    if let Ok(v) = std::fs::read_to_string(&path) {
+    persistent_seat_id_at(&path)
+}
+
+fn persistent_seat_id_at(path: &std::path::Path) -> Option<String> {
+    if let Ok(v) = std::fs::read_to_string(path) {
         let v = v.trim();
         if !v.is_empty() {
             return Some(v.to_string());
@@ -98,7 +102,7 @@ fn persistent_seat_id() -> Option<String> {
         &rand[..6]
     );
     std::fs::create_dir_all(path.parent()?).ok()?;
-    std::fs::write(&path, format!("{id}\n")).ok()?;
+    std::fs::write(path, format!("{id}\n")).ok()?;
     Some(id)
 }
 
@@ -280,12 +284,15 @@ mod tests {
     #[test]
     fn seat_id_persists_across_calls() {
         // Seat file must be stable: same profile → same id on every call.
-        // (Goes through persistent_seat_id directly — env vars race across
-        // parallel tests, so default_instance_id isn't reliable here.)
-        let a = persistent_seat_id().expect("config dir should resolve");
-        let b = persistent_seat_id().expect("config dir should resolve");
+        // Uses a tempdir — the real config path races with parallel tests
+        // that mint seats via default_instance_id.
+        let dir = std::env::temp_dir().join(format!("kurultai-seat-test-{}", uuid::Uuid::new_v4()));
+        let path = dir.join("seat-id");
+        let a = persistent_seat_id_at(&path).expect("tempdir seat mints");
+        let b = persistent_seat_id_at(&path).expect("tempdir seat reloads");
         assert_eq!(a, b);
         assert!(!a.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
