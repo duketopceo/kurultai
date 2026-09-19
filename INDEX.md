@@ -69,6 +69,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-19 — mobile overflow fix (`styles.css`): dead `.nav-links` selector → `.topbar-nav`; wrap rules moved after base rules (cascade order bug, found by E2E scrollWidth probe at 390px)
 - 2026-09-19 — Hey board repair round 2: active-thread hop fixed in `HeyPanel` (id-vs-name resolution — UUID-named threads stole selection); `Chatboard` gains whole-thread `kb-expanded` overlay via `createPortal` + 8-char UUID labels; `hey.rs` `resolve_thread_id` prefers `get_thread(id)` over name; `ui/` rebuilt
 - 2026-09-18 — Hey rail spacing repair (`website/src/styles.css` + rebuilt `ui/`): `.panel-head` rule added (Hey/Proposals headers unstyled), kanban stacks vertically in rail, threads chip row, ellipsis fix
 - 2026-09-18 — Jev first-class: `[judge]` config (enabled/model), `/api/ask` + MCP `ask` `web` flag → `ask_with_web`, `status` judge line, `judge_from_config` in `brain_from_app`.
