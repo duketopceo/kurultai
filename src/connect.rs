@@ -84,9 +84,7 @@ fn hostname() -> Option<String> {
 /// Returns None when the config dir is unavailable so callers fall back to
 /// the hostname default.
 fn persistent_seat_id() -> Option<String> {
-    let path = crate::config::config_path()
-        .ok()?
-        .with_file_name("seat-id");
+    let path = crate::config::config_path().ok()?.with_file_name("seat-id");
     if let Ok(v) = std::fs::read_to_string(&path) {
         let v = v.trim();
         if !v.is_empty() {
@@ -94,7 +92,11 @@ fn persistent_seat_id() -> Option<String> {
         }
     }
     let rand = uuid::Uuid::new_v4().to_string().replace('-', "");
-    let id = format!("{}-{}", hostname().unwrap_or_else(|| "seat".into()), &rand[..6]);
+    let id = format!(
+        "{}-{}",
+        hostname().unwrap_or_else(|| "seat".into()),
+        &rand[..6]
+    );
     std::fs::create_dir_all(path.parent()?).ok()?;
     std::fs::write(&path, format!("{id}\n")).ok()?;
     Some(id)
