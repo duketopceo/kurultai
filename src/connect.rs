@@ -46,7 +46,11 @@ struct DeviceTokenResponse {
     instance_id: String,
 }
 
-/// Default seat id: `KURULTAI_INSTANCE_ID` → `$HOSTNAME` → `hostname` → "default".
+/// Default seat id: `KURULTAI_INSTANCE_ID` → persistent `<config-dir>/seat-id`
+/// → `$HOSTNAME` → `hostname` → "default". The seat file mints
+/// `{hostname}-{rand}` once and is reused across sessions, so each
+/// machine/profile keeps a stable, unique seat instead of every agent on one
+/// host collapsing into `devin@<hostname>` and rotating each other's key.
 fn default_instance_id() -> String {
     if let Ok(v) = std::env::var("KURULTAI_INSTANCE_ID") {
         let v = v.trim();
@@ -54,19 +58,62 @@ fn default_instance_id() -> String {
             return v.to_string();
         }
     }
+    if let Some(id) = persistent_seat_id() {
+        return id;
+    }
+    hostname().unwrap_or_else(|| "default".to_string())
+}
+
+fn hostname() -> Option<String> {
     if let Ok(v) = std::env::var("HOSTNAME") {
         let v = v.trim();
         if !v.is_empty() {
-            return v.to_string();
+            return Some(v.to_string());
         }
     }
     if let Ok(out) = Command::new("hostname").output() {
         let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
         if !v.is_empty() {
-            return v;
+            return Some(v);
         }
     }
-    "default".to_string()
+    None
+}
+
+/// Read `<config-dir>/seat-id`, minting `{hostname}-{6hex}` on first use.
+/// Returns None when the config dir is unavailable so callers fall back to
+/// the hostname default.
+fn persistent_seat_id() -> Option<String> {
+    let path = crate::config::config_path()
+        .ok()?
+        .with_file_name("seat-id");
+    if let Ok(v) = std::fs::read_to_string(&path) {
+        let v = v.trim();
+        if !v.is_empty() {
+            return Some(v.to_string());
+        }
+    }
+    let rand = uuid::Uuid::new_v4().to_string().replace('-', "");
+    let id = format!("{}-{}", hostname().unwrap_or_else(|| "seat".into()), &rand[..6]);
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    std::fs::write(&path, format!("{id}\n")).ok()?;
+    Some(id)
+}
+
+/// Sanitize a seat id for use inside a credential name (`devin@host` → `devin-host`).
+fn seat_slug(instance_id: &str) -> String {
+    instance_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
 }
 
 fn binary_available(name: &str) -> bool {
@@ -157,7 +204,14 @@ pub async fn run(opts: ConnectOptions) -> Result<()> {
                 let token = res.json::<DeviceTokenResponse>().await.map_err(|e| {
                     KurultaiError::Other(anyhow::anyhow!("token response parse failed: {e}"))
                 })?;
-                let name = format!("{}-{}-agent-token", opts.lane, token.codename);
+                // Seat-scoped name: two seats under one codename+lane on the
+                // same machine must not overwrite each other's stored key.
+                let name = format!(
+                    "{}-{}-{}-agent-token",
+                    opts.lane,
+                    token.codename,
+                    seat_slug(&token.instance_id)
+                );
                 let where_stored = store_agent_key(&name, &token.agent_key)?;
                 println!();
                 println!(
@@ -222,9 +276,29 @@ mod tests {
     }
 
     #[test]
-    fn key_name_is_lane_scoped() {
-        // Mirrors the store_agent_key naming used on success.
-        let name = format!("{}-{}-agent-token", "dev", "cursor");
-        assert_eq!(name, "dev-cursor-agent-token");
+    fn seat_id_persists_across_calls() {
+        // Seat file must be stable: same profile → same id on every call.
+        // (Goes through persistent_seat_id directly — env vars race across
+        // parallel tests, so default_instance_id isn't reliable here.)
+        let a = persistent_seat_id().expect("config dir should resolve");
+        let b = persistent_seat_id().expect("config dir should resolve");
+        assert_eq!(a, b);
+        assert!(!a.is_empty());
+    }
+
+    #[test]
+    fn seat_slug_replaces_unsafe_chars() {
+        assert_eq!(seat_slug("devin@pace-server"), "devin-pace-server");
+        assert_eq!(seat_slug("omarchy"), "omarchy");
+        assert_eq!(seat_slug("my seat/1"), "my-seat-1");
+    }
+
+    #[test]
+    fn key_name_is_lane_and_seat_scoped() {
+        // Mirrors the store_agent_key naming used on success — two seats of
+        // the same codename+lane must produce different credential names.
+        let name = |seat: &str| format!("{}-{}-{}-agent-token", "dev", "cursor", seat_slug(seat));
+        assert_eq!(name("omarchy"), "dev-cursor-omarchy-agent-token");
+        assert_ne!(name("omarchy"), name("pace-server"));
     }
 }
