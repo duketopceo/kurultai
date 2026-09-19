@@ -33,8 +33,11 @@ export function HeyPanel() {
           api.fetchHeyUnread(50, undefined, controller.signal).catch(() => undefined),
         ]);
         if (controller.signal.aborted) return;
-        const threadId = list.find(
-          (thread) => thread.id === activeThreadId || thread.name === activeThreadId,
+        // Resolve by id first — thread names can be other threads' UUIDs, so a
+        // combined id/name match makes the active thread hop between threads.
+        const threadId = (
+          list.find((thread) => thread.id === activeThreadId)
+          ?? list.find((thread) => thread.name === activeThreadId)
         )?.id || activeThreadId;
         setThreads(list);
         if (nextPresence !== undefined) setPresence(nextPresence);

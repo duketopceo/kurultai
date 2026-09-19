@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { MessageVM, ThreadVM } from './chatboard-mapping';
 export type ChatboardProps = {
   threads: ThreadVM[];
@@ -35,6 +36,9 @@ const reactions = [
   { emoji: '❤️', label: 'Heart' },
   { emoji: '👀', label: 'Eyes' },
 ];
+function shortThreadLabel(label: string): string {
+  return /^[0-9a-f]{8}-[0-9a-f-]{20,}$/i.test(label) ? label.slice(0, 8) : label;
+}
 export function Chatboard({
   threads,
   messages,
@@ -52,17 +56,22 @@ export function Chatboard({
   const [replyTo, setReplyTo] = useState<{ id: string; label: string; body: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState('');
+  const [expanded, setExpanded] = useState(false);
   const threadButtons = useRef(new Map<string, HTMLButtonElement>());
   const stream = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
   const previousThreadId = useRef<string | null>(null);
-  const threadViews = threads.map((thread) => ({
+  const threadViews = threads.map((thread) => {
+    const fullLabel = text(thread, 'peerLabel', 'title', 'name') || text(thread, 'id');
+    return {
     id: text(thread, 'id'),
-    label: text(thread, 'peerLabel', 'title', 'name') || text(thread, 'id'),
+    label: shortThreadLabel(fullLabel),
+    fullLabel,
     agentKey: text(thread, 'peerKey', 'agentKey', 'peerAgentKey'),
     preview: text(thread, 'preview', 'lastSnippet', 'lastMessagePreview'),
     unread: typeof field(thread, 'unread') === 'number' ? field(thread, 'unread') as number : 0,
-  }));
+    };
+  });
   const messageViews = messages.map((message, index) => {
     const timestamp = text(message, 'timeLabel', 'createdAt', 'timestamp', 'created_at');
     const parsedTime = Date.parse(timestamp);
@@ -100,6 +109,14 @@ export function Chatboard({
     }
     previousThreadId.current = activeThreadId;
   }, [activeThreadId, messages]);
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpanded(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [expanded]);
   function send() {
     const body = draft.trim();
     if (composerDisabled || activeThreadId === null || !body) {
@@ -114,9 +131,9 @@ export function Chatboard({
     setEditingId(null);
     if (body && onEdit) onEdit(messageId, body);
   }
-  return (
-    <div className="kb-chatboard" aria-label="Agent message board">
-      <div className="kb-panes" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 3fr)' }}>
+  const board = (
+    <div className={`kb-chatboard${expanded ? ' kb-expanded' : ''}`} aria-label="Agent message board">
+      <div className="kb-panes">
         <nav className="kb-thread-pane" aria-label="Chat threads">
           <h3 className="kb-pane-title">Threads</h3>
           <ul className="hey-threads kb-thread-list">
@@ -137,6 +154,7 @@ export function Chatboard({
                     aria-current={thread.id === activeThreadId ? 'true' : undefined}
                     tabIndex={thread.id === tabThreadId ? 0 : -1}
                     disabled={disabled}
+                    title={thread.fullLabel}
                     onFocus={() => setFocusedThreadId(thread.id)}
                     onClick={() => onOpenThread(thread.id)}
                     onKeyDown={(event) => {
@@ -193,6 +211,16 @@ export function Chatboard({
                 </span>
               ) : activeThreadId === null ? 'Select a thread' : 'Conversation'}
             </h3>
+            <button
+              type="button"
+              className="ghost kb-expand kb-focus-ring"
+              aria-label={expanded ? 'Collapse board' : 'Expand board to full view'}
+              aria-expanded={expanded}
+              title={expanded ? 'Collapse (Esc)' : 'Expand — view the whole thread'}
+              onClick={() => setExpanded((current) => !current)}
+            >
+              {expanded ? '✕ Close' : '⤢ Expand'}
+            </button>
           </header>
           <div
             ref={stream}
@@ -382,4 +410,8 @@ export function Chatboard({
       </div>
     </div>
   );
+  // Portal to <body> in expanded mode — ancestors with transform/filter trap
+  // position:fixed, which confined the overlay to the rail. Portaling also
+  // drops the .hey-panel descendant overrides, restoring the two-pane layout.
+  return expanded ? createPortal(board, document.body) : board;
 }
