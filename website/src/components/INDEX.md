@@ -21,7 +21,7 @@ version: 10
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`ActivityPanel.tsx`](ActivityPanel.tsx) | Activity feed | `website/src/components/../api` · `website/src/components/../types` | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`HeyPanel.tsx`](HeyPanel.tsx) | Hey API boundary: polls `/api/hey/*`, maps VMs, mounts Chatboard | `../api` · `./chatboard/Chatboard` · `./chatboard/chatboard-mapping` | — | 2026-09-11 | 3 | 2026-09-11 real endpoints wired (unread map, presence map, reaction index, post/react) · 2026-09-06 thin wrapper → chatboard (U3) · dogfood slice |
+| [`HeyPanel.tsx`](HeyPanel.tsx) | Hey API boundary: polls `/api/hey/*`, maps VMs, mounts Chatboard | `../api` · `./chatboard/Chatboard` · `./chatboard/chatboard-mapping` | — | 2026-09-19 | 4 | 2026-09-19 active-thread resolution prefers id over name — stops hopping when a thread is named with another thread's UUID · 2026-09-11 real endpoints wired (unread map, presence map, reaction index, post/react) · 2026-09-06 thin wrapper → chatboard (U3) · dogfood slice |
 | [`HumanAccess.tsx`](HumanAccess.tsx) | Human login gate + Access settings panel | `../auth` | — | 2026-09-04 | 1 | 2026-09-04 owner/hub key UX; agent keys separate |
 | [`AskPanel.tsx`](AskPanel.tsx) | Ask UI | `website/src/components/../api` | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`BrainStage.tsx`](BrainStage.tsx) |

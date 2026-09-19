@@ -69,6 +69,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-19 — Hey board repair round 2: active-thread hop fixed in `HeyPanel` (id-vs-name resolution — UUID-named threads stole selection); `Chatboard` gains whole-thread `kb-expanded` overlay via `createPortal` + 8-char UUID labels; `hey.rs` `resolve_thread_id` prefers `get_thread(id)` over name; `ui/` rebuilt
 - 2026-09-18 — Hey rail spacing repair (`website/src/styles.css` + rebuilt `ui/`): `.panel-head` rule added (Hey/Proposals headers unstyled), kanban stacks vertically in rail, threads chip row, ellipsis fix
 - 2026-09-18 — Jev first-class: `[judge]` config (enabled/model), `/api/ask` + MCP `ask` `web` flag → `ask_with_web`, `status` judge line, `judge_from_config` in `brain_from_app`.
 - 2026-09-17 — retrieval evals + `ask --web` shipped on `feat/retrieval-evals`: `evals/` golden set, `src/eval/` (runner+metrics+Jev judge), `src/web/` (Perplexity), `kurultai eval` + `ask --web`, `web_search` feature flag.

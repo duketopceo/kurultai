@@ -394,6 +394,17 @@ async fn resolve_thread_id(
     state: &AppState,
     id_or_name: &str,
 ) -> Result<String, (StatusCode, String)> {
+    // Prefer an id match: thread names can collide with other threads' ids
+    // (e.g. UUID-named threads), and a path id must not hop to a named thread.
+    if let Some(t) = state
+        .brain
+        .store()
+        .get_thread(id_or_name)
+        .await
+        .map_err(map_store_err)?
+    {
+        return Ok(t.id);
+    }
     if let Some(t) = state
         .brain
         .store()
@@ -403,7 +414,6 @@ async fn resolve_thread_id(
     {
         return Ok(t.id);
     }
-    // Treat as raw id (list_messages will fail if missing).
     Ok(id_or_name.to_string())
 }
 

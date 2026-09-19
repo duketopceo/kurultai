@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src/components/chatboard
 parent: website/src/components/INDEX.md
-updated: 2026-09-11
-version: 2
+updated: 2026-09-19
+version: 3
 ---
 
 # `website/src/components/chatboard`
@@ -19,11 +19,12 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`Chatboard.tsx`](Chatboard.tsx) | Presentational chatboard: thread list, stream, composer, reactions, keyboard nav, unread badges | `react` · `./chatboard-mapping` | — | 2026-09-11 | 2 | 2026-09-11 unread badge + aggregated reaction chips rendered · 2026-09-06 Astra-generated chatboard set (U3) |
+| [`Chatboard.tsx`](Chatboard.tsx) | Presentational chatboard: thread list, stream, composer, reactions, keyboard nav, unread badges, expanded whole-thread overlay | `react` · `react-dom` (portal) · `./chatboard-mapping` | — | 2026-09-19 | 3 | 2026-09-19 expand overlay via portal (Esc/close), UUID thread labels shorten to 8 chars, full name in tooltip · 2026-09-11 unread badge + aggregated reaction chips rendered · 2026-09-06 Astra-generated chatboard set (U3) |
 | [`chatboard-mapping.ts`](chatboard-mapping.ts) | Defensive raw-API → view-model mapping (identity, threads, messages, reaction index, presence) | — | — | 2026-09-11 | 2 | 2026-09-11 options-object API + buildReactionIndex + presenceMap + agentKey (test spec implemented) · 2026-09-06 Astra-generated mapping (U3) |
 | [`chatboard-mapping.test.ts`](chatboard-mapping.test.ts) | Node tests for identity/mapping/defensive contracts | `./chatboard-mapping` | — | 2026-09-06 | 1 | 2026-09-06 orchestrator-authored (Astra test truncated; substituted) |
 
 ## Recent
 
+- 2026-09-19 — whole-thread view: `kb-expanded` overlay rendered via `createPortal` to `<body>` (fixed positioning was trapped by transformed rail ancestors); UUID-named threads shorten to 8-char labels with full name in `title`; conversation head gains Expand/Close
 - 2026-09-11 — mapping API finished to spec (options objects, `buildReactionIndex`, `presenceMap`, `agentKey`); reaction rows filtered from stream; kb-* styles added to styles.css; api.ts gains postHeyMessage/reactHeyMessage/fetchHeyUnread
 - 2026-09-06 — chatboard set landed (U3 of plan 2026-09-05-002)

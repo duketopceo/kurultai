@@ -1492,6 +1492,7 @@ header.topbar {
 .db-chip.active { color: var(--electric, #a855f7); border-color: var(--electric, #a855f7); }
 
 /* ── Hey chatboard (secondary chrome language) ─────────────── */
+.kb-panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); }
 .kb-chatboard .kb-panes { gap: 1rem; }
 /* Inside the rail the 1fr/3fr split starves the thread list (~80px) and
  * clips every thread name. Stack the panes: threads become a wrapping chip
@@ -1534,7 +1535,12 @@ header.topbar {
   background: var(--chrome-accent, var(--electric)); color: var(--bg, #050508);
   font-size: .65rem; font-weight: 600; line-height: 1.4;
 }
-.kb-conversation-head { border-bottom: 1px solid var(--chrome-line, var(--line)); padding-bottom: .5rem; margin-bottom: .5rem; }
+.kb-conversation-head {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  border-bottom: 1px solid var(--chrome-line, var(--line)); padding-bottom: .5rem; margin-bottom: .5rem;
+}
+.kb-conversation-head .kb-pane-title { margin: 0; min-width: 0; }
+.kb-expand { flex-shrink: 0; font-size: .72rem; }
 .kb-stream { flex: 1; min-height: 8rem; max-height: 20rem; overflow-y: auto; padding-right: .25rem; }
 .kb-message-list { list-style: none; margin: 0; padding: 0; }
 .kb-msg { padding: .6rem 0; border-bottom: 1px solid var(--chrome-line, var(--line)); }
@@ -1572,8 +1578,32 @@ header.topbar {
 .kb-send:disabled { opacity: .4; cursor: default; }
 .kb-empty { font-size: .78rem; padding: .5rem 0; }
 .kb-focus-ring:focus-visible { outline: 2px solid var(--chrome-accent, var(--electric)); outline-offset: 1px; }
+/* Expanded board: whole thread readable in an overlay, dimming the rest of the
+ * dashboard. Reverts the rail-specific overrides (stacked panes, chip threads,
+ * capped stream) back to the two-pane conversation layout. */
+.kb-chatboard.kb-expanded {
+  position: fixed; inset: 4vh 5vw; z-index: 60;
+  display: flex; flex-direction: column;
+  background: var(--chrome-surface-strong, var(--surface-strong, #0b0913));
+  border: 1px solid var(--chrome-line, var(--line)); border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 0 0 100vmax rgba(3, 2, 10, .72), 0 24px 64px rgba(0, 0, 0, .6);
+}
+.kb-chatboard.kb-expanded .kb-panes {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) !important;
+  flex: 1; min-height: 0;
+}
+.kb-chatboard.kb-expanded .kb-thread-list {
+  flex-direction: column; flex-wrap: nowrap; max-height: none; overflow-y: auto;
+}
+.kb-chatboard.kb-expanded .kb-thread { width: 100%; }
+.kb-chatboard.kb-expanded .kb-thread-preview { display: block; }
+.kb-chatboard.kb-expanded .kb-conversation { min-height: 0; }
+.kb-chatboard.kb-expanded .kb-stream { max-height: none; }
 @media (max-width: 720px) {
-  .kb-chatboard .kb-panes { grid-template-columns: 1fr !important; }
+  .kb-chatboard:not(.kb-expanded) .kb-panes { grid-template-columns: 1fr !important; }
+  .kb-chatboard.kb-expanded { inset: 2vh 3vw; }
+  .kb-chatboard.kb-expanded .kb-panes { grid-template-columns: 1fr !important; }
 }
 
 /* ── V2 chrome: top pill + right rail + bottom strip ─────────── */
