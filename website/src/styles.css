@@ -1493,6 +1493,21 @@ header.topbar {
 
 /* ── Hey chatboard (secondary chrome language) ─────────────── */
 .kb-chatboard .kb-panes { gap: 1rem; }
+/* Inside the rail the 1fr/3fr split starves the thread list (~80px) and
+ * clips every thread name. Stack the panes: threads become a wrapping chip
+ * row on top, the conversation takes the full rail width below. */
+.hey-panel .kb-panes { grid-template-columns: 1fr !important; gap: .6rem; }
+.hey-panel .kb-thread-list {
+  flex-direction: row; flex-wrap: wrap; gap: .3rem;
+  max-height: 5.4rem; overflow-y: auto;
+}
+.hey-panel .kb-thread-item { flex: 0 1 auto; min-width: 0; }
+.hey-panel .kb-thread {
+  width: auto; max-width: 100%; flex-direction: row; align-items: center; gap: .3rem;
+  padding: .3rem .55rem;
+}
+.hey-panel .kb-thread-preview { display: none; }
+.hey-panel .kb-thread-pane .kb-pane-title { margin-bottom: .35rem; }
 .kb-pane-title {
   margin: 0 0 .5rem; font-size: .7rem; letter-spacing: .12em; text-transform: uppercase;
   color: var(--chrome-muted, var(--text-muted));
@@ -1507,7 +1522,7 @@ header.topbar {
 }
 .kb-thread:hover { border-color: var(--chrome-line, var(--line)); }
 .kb-thread.active { border-color: var(--chrome-accent, var(--electric)); background: var(--chrome-glow, transparent); }
-.kb-peer { display: inline-flex; align-items: center; gap: .4rem; min-width: 0; }
+.kb-peer { display: inline-flex; align-items: center; gap: .4rem; min-width: 0; max-width: 100%; }
 .kb-peer-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kb-presence { font-size: .6rem; line-height: 1; color: var(--chrome-muted, var(--text-muted)); opacity: .45; }
 .kb-presence-online { color: var(--chrome-ok, #7fd4a8); opacity: 1; text-shadow: 0 0 6px var(--chrome-ok, #7fd4a8); }
@@ -1519,10 +1534,10 @@ header.topbar {
   background: var(--chrome-accent, var(--electric)); color: var(--bg, #050508);
   font-size: .65rem; font-weight: 600; line-height: 1.4;
 }
-.kb-conversation-head { border-bottom: 1px solid var(--chrome-line, var(--line)); padding-bottom: .4rem; margin-bottom: .25rem; }
+.kb-conversation-head { border-bottom: 1px solid var(--chrome-line, var(--line)); padding-bottom: .5rem; margin-bottom: .5rem; }
 .kb-stream { flex: 1; min-height: 8rem; max-height: 20rem; overflow-y: auto; padding-right: .25rem; }
 .kb-message-list { list-style: none; margin: 0; padding: 0; }
-.kb-msg { padding: .5rem 0; border-bottom: 1px solid var(--chrome-line, var(--line)); }
+.kb-msg { padding: .6rem 0; border-bottom: 1px solid var(--chrome-line, var(--line)); }
 .kb-msg:last-child { border-bottom: none; }
 .kb-msg-own .kb-msg-body { color: var(--chrome-accent-strong, inherit); }
 .kb-msg-meta { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; font-size: .7rem; opacity: .75; margin-bottom: .2rem; }
@@ -2058,15 +2073,30 @@ header.topbar {
 *::-webkit-scrollbar-thumb:hover { background: var(--chrome-accent, var(--electric, #7c5cff)); }
 
 /* ── Hey kanban view (#331) ────────────────────────────────── */
+/* `.panel-head` is the compact header used inside rail panels (Hey,
+ * Proposals) — `.panel-heading` is the standalone-page variant. Without a
+ * rule the header renders unstyled: title and toggle collapse together. */
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem;
+  border-bottom: 1px solid var(--chrome-line, var(--line));
+  padding-bottom: .6rem;
+  margin-bottom: .75rem;
+}
+.panel-head h2 { margin: 0; font: 500 13px var(--font-display); letter-spacing: .04em; }
+
 .hey-view-toggle { display: flex; gap: .3rem; align-items: center; }
 .hey-view-toggle .ghost.active { border-color: var(--chrome-accent, var(--electric)); color: var(--chrome-accent-strong, var(--electric-strong)); }
 
 .hey-kanban {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(11rem, 1fr);
+  grid-auto-flow: row;
+  grid-template-columns: 1fr;
   gap: .75rem;
-  overflow-x: auto;
+  overflow-x: visible;
   padding-bottom: .5rem;
   min-height: 12rem;
 }
@@ -2151,5 +2181,5 @@ header.topbar {
   border-radius: 0 var(--chrome-radius, 6px) var(--chrome-radius, 6px) 0;
 }
 @media (max-width: 720px) {
-  .hey-kanban { grid-auto-columns: minmax(9.5rem, 85vw); }
+  .hey-kanban { gap: .6rem; }
 }

@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: website/src
 parent: website/INDEX.md
-updated: 2026-09-15
+updated: 2026-09-18
 version: 9
 ---
 
@@ -29,7 +29,7 @@ version: 9
 | [`repoLattice.test.ts`](repoLattice.test.ts) | Repo lattice unit tests | `website/src/repoLattice.ts` | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`repoLattice.ts`](repoLattice.ts) | Repo lattice helper | — | `website/src/repoLattice.test.ts` | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`state.ts`](state.ts) | App state | `website/src/brain/layout/mode` · `website/src/types` | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`styles.css`](styles.css) | Dashboard CSS (black/white/purple) + v2 chrome grid + ontology board styles | — | — | 2026-09-17 | 6 | 2026-09-17 thin dark scrollbars; floating-inspector offset clears command rail · 2026-09-14 `.onto-*` board/menu/dialog styles (#316) · 2026-09-13 v2 chrome layout, chrome accent tokens 2026-09-13 v2 chrome layout, chrome accent tokens · 2026-09-11 `.proposals-*` review queue styles (#118) · 2026-09-04 human login + access panel styles · 2026-08-16 indexed (v1 seed) |
+| [`styles.css`](styles.css) | Dashboard CSS (black/white/purple) + v2 chrome grid + ontology board styles | — | — | 2026-09-18 | 7 | 2026-09-18 Hey rail spacing fix: add missing `.panel-head` rule, kanban stacks vertically in rail, threads as chip row, `.kb-peer` max-width ellipsis · 2026-09-17 thin dark scrollbars; floating-inspector offset clears command rail · 2026-09-14 `.onto-*` board/menu/dialog styles (#316) · 2026-09-13 v2 chrome layout, chrome accent tokens 2026-09-13 v2 chrome layout, chrome accent tokens · 2026-09-11 `.proposals-*` review queue styles (#118) · 2026-09-04 human login + access panel styles · 2026-08-16 indexed (v1 seed) |
 | [`types.ts`](types.ts) | TS types for atoms/graph/ontology | — | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`proposals.ts`](proposals.ts) | O3 proposal type + describeProposal (pure, node-testable) | — | `website/src/api` · `website/src/proposals.test.ts` · `website/src/components/ProposalsPanel` | 2026-09-11 | 1 | 2026-09-11 added (#118) |
 | [`proposals.test.ts`](proposals.test.ts) | describeProposal unit tests | `website/src/proposals` | — | 2026-09-11 | 1 | 2026-09-11 added (#118) |
@@ -37,6 +37,7 @@ version: 9
 
 ## Recent
 
+- 2026-09-18 — Hey rail spacing repair in `styles.css`: `.panel-head` rule added (HeyPanel/ProposalsPanel headers were unstyled), `.hey-kanban` stacks vertically inside the rail (columns no longer clipped), threads render as a wrapping chip row, `.kb-peer` ellipsis works; `ui/` rebuilt
 - 2026-09-17 — density attenuation in `brain/BrainView.ts` (sprite/edge/corona/soma all scale with `sizeScale`); thin dark scrollbars + inspector rail offset in `styles.css`; `ui/` rebuilt
 - 2026-09-15 — `api.ts` deleteOntologyEntity/deleteOntologyLink; OntologyBoard edge menu + delete-entity confirm + Escape (#320)
 - 2026-09-14 — ontology board wiring: `App.tsx` passes `onOntologyChanged`; `api.ts` human-lane fns; `.onto-*` styles (#316)
