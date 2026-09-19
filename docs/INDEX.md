@@ -31,11 +31,13 @@ version: 6
 | [`agent-index.md`](agent-index.md) | Agent INDEX.md schema, skip list, update ritual | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`crew-instance-node3.md`](crew-instance-node3.md) | Crew instance notes | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`mac-dev.md`](mac-dev.md) | macOS dev setup | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`HANDOFF-omarchy-macbook-m1.md`](HANDOFF-omarchy-macbook-m1.md) | m1→max migration handoff: shipped PRs, watcher hot-loop bug, new-machine connect bootstrap | — | — | 2026-09-19 | 1 | 2026-09-19 added |
 | [`multi-user-kurultai.md`](multi-user-kurultai.md) | Multi-user / hub product notes | — | — | 2026-08-29 | 2 | 2026-08-29 hosted-hub row points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`upstream-inspiration.md`](upstream-inspiration.md) | Upstream inspiration notes | — | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-19 — `HANDOFF-omarchy-macbook-m1.md` migration handoff + `brainstorms/` connect-flow requirements doc
 - 2026-09-12 — plans/ added 2026-09-12-001 Brain neuron-motif visual language plan (first-principles derivation)
 - 2026-09-05 — plans/ added 002 Brain 0→100 showcase + A2A chatboard plan
 - 2026-09-03 — `docs/plans/2026-09-03-001-feat-agent-message-board-plan.md` added
