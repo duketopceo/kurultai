@@ -163,6 +163,10 @@ type SynapseData = Link & {
 export type Region = 'left' | 'right' | 'stem';
 
 const MAX_NODES = 2500;
+// Sprite path renders the whole fetched set in one draw call — the mesh cap
+// exists for per-node geometry, not for points. At `max` the cortex should
+// show every memory, not a 2500-node slice.
+const SPRITE_NODE_CAP = 20_000;
 /** Top-N links by strength. Lowered from 3000 to cut edge geometry cost. */
 const MAX_EDGES = 1200;
 
@@ -686,7 +690,7 @@ export class BrainView {
     });
 
     // Hybrid path selection (KTD3 / R4): > cutoff → sprite cloud, else meshes.
-    this.spriteMode = Math.min(atoms.length, MAX_NODES) > NODE_SPRITE_CUTOFF;
+    this.spriteMode = atoms.length > NODE_SPRITE_CUTOFF;
     // Release the previous cloud whenever we rebuild (mode switch or refresh).
     this.disposeSpriteHoverLabel();
     this.disposeNodeSpriteCloud();
@@ -709,10 +713,16 @@ export class BrainView {
     this.usedVerts = new Set();
     if (!this.verts.length) return;
 
-    const shown = atoms.slice(0, MAX_NODES);
+    const shown = atoms.slice(0, this.spriteMode ? SPRITE_NODE_CAP : MAX_NODES);
     this._shownIds = shown.map((a) => a.id);
     // Density-aware sizing: ~1.0 up to ~180 nodes, ~0.57 at 500, ~0.35 floor.
-    this.sizeScale = Math.min(1, Math.max(0.35, Math.pow(180 / Math.max(1, shown.length), 0.45)));
+    // Sprite mode lets the floor keep dropping — at `max` the full cortex
+    // needs smaller points or the core fuses into one white mass.
+    const sizeFloor = this.spriteMode ? 0.18 : 0.35;
+    this.sizeScale = Math.min(
+      1,
+      Math.max(sizeFloor, Math.pow(180 / Math.max(1, shown.length), 0.45)),
+    );
     this.magnifyT = 0;
     this.magnifyAppliedId = null;
     this.spikes?.setSizeScale(0.6 + 0.4 * this.sizeScale);

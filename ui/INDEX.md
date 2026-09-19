@@ -21,6 +21,7 @@ version: 2
 | `README.md` | Built UI notes placeholder — preserved in index for tracked stub | — | — | 2026-09-13 | 1 | 2026-09-13 noted |
 
 ## Recent
+- 2026-09-19 — brain bundle `brain-Baze4qJm.js` (sprite cap 20k + density-shrunk nodes at max)
 
 - 2026-09-19 — rebuilt for mobile overflow fix: nav/strip/mission wrap at ≤960px (`brain-Cp9NW_L4.js`, `brain-C7_ZhIpV.css`)
 - 2026-09-19 — rebuilt for Hey whole-thread view: expanded portal overlay, UUID thread labels, id-first active-thread resolution (`brain-TSojUIpU.js`, `brain-BfR7LEEg.css`)
