@@ -1084,6 +1084,7 @@ header.topbar {
 @media (max-width: 760px) {
   .topbar { height: 60px; }
   .brand small, .topbar-status { display: none; }
+  .topbar-nav { display: none; }
   .brain-hero { padding-top: 3rem; }
   .brain-stage { height: 80vw; min-height: 320px; }
   .command-strip { grid-template-columns: 1fr; }
@@ -1094,7 +1095,6 @@ header.topbar {
   .ask-form { grid-template-columns: 1fr; }
   .primary-button { justify-self: start; }
   .stats { grid-template-columns: 1fr 1fr 1fr; }
-  .nav-links { display: none; }
 }
 @media (max-width: 640px) {
   .button-copy { display: none; }
@@ -1974,6 +1974,12 @@ header.topbar {
   }
   .command-rail { min-height: 18rem; }
   .floating-inspector { right: .5rem; width: calc(100vw - 1rem); }
+  /* Must live after the base .command-strip/.mission-* rules — equal
+   * specificity, later wins. */
+  .command-strip.chrome-strip { flex-wrap: wrap; border-radius: 1rem; }
+  .command-strip .search-control { flex: 1 1 10rem; }
+  .mission-control { flex-wrap: wrap; }
+  .mission-content { flex: 1 1 100%; }
 }
 
 /* ── Ontology board (#316) — 2D Flowsint-style workspace over the stage ─────── */
