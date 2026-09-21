@@ -163,6 +163,10 @@ type SynapseData = Link & {
 export type Region = 'left' | 'right' | 'stem';
 
 const MAX_NODES = 2500;
+// Sprite path renders the whole fetched set in one draw call — the mesh cap
+// exists for per-node geometry, not for points. At `max` the cortex should
+// show every memory, not a 2500-node slice.
+const SPRITE_NODE_CAP = 20_000;
 /** Top-N links by strength. Lowered from 3000 to cut edge geometry cost. */
 const MAX_EDGES = 1200;
 
@@ -257,6 +261,7 @@ export class BrainView {
   // low-degree somas, dense for hubs); per-node variety comes from scale.
   private coronaSparse: THREE.Texture;
   private coronaDense: THREE.Texture;
+  private dotTexture: THREE.Texture;
   private nodeObjects: THREE.Mesh[] = [];
   private nodeMap = new Map<string, THREE.Mesh>();
   private haloMap = new Map<string, THREE.Sprite>();
@@ -379,6 +384,7 @@ export class BrainView {
     this.haloTexture = this.makeHaloTexture();
     this.coronaSparse = coronaTexture(coronaParams(0)) || this.haloTexture;
     this.coronaDense = coronaTexture(coronaParams(CORONA_DENSE_DEGREE)) || this.haloTexture;
+    this.dotTexture = this.makeDotTexture();
 
     try {
       this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -686,7 +692,7 @@ export class BrainView {
     });
 
     // Hybrid path selection (KTD3 / R4): > cutoff → sprite cloud, else meshes.
-    this.spriteMode = Math.min(atoms.length, MAX_NODES) > NODE_SPRITE_CUTOFF;
+    this.spriteMode = atoms.length > NODE_SPRITE_CUTOFF;
     // Release the previous cloud whenever we rebuild (mode switch or refresh).
     this.disposeSpriteHoverLabel();
     this.disposeNodeSpriteCloud();
@@ -709,10 +715,16 @@ export class BrainView {
     this.usedVerts = new Set();
     if (!this.verts.length) return;
 
-    const shown = atoms.slice(0, MAX_NODES);
+    const shown = atoms.slice(0, this.spriteMode ? SPRITE_NODE_CAP : MAX_NODES);
     this._shownIds = shown.map((a) => a.id);
     // Density-aware sizing: ~1.0 up to ~180 nodes, ~0.57 at 500, ~0.35 floor.
-    this.sizeScale = Math.min(1, Math.max(0.35, Math.pow(180 / Math.max(1, shown.length), 0.45)));
+    // Sprite mode lets the floor keep dropping — at `max` the full cortex
+    // needs smaller points or the core fuses into one white mass.
+    const sizeFloor = this.spriteMode ? 0.18 : 0.35;
+    this.sizeScale = Math.min(
+      1,
+      Math.max(sizeFloor, Math.pow(180 / Math.max(1, shown.length), 0.45)),
+    );
     this.magnifyT = 0;
     this.magnifyAppliedId = null;
     this.spikes?.setSizeScale(0.6 + 0.4 * this.sizeScale);
@@ -826,6 +838,10 @@ export class BrainView {
     const alphas = new Float32Array(count);
     const color = new THREE.Color();
 
+    // Density shrink: a soft-glow sprite reads fine at ~600 nodes but fuses
+    // to a blob at 3.5k — pull point size down hard as count climbs.
+    const densityShrink = Math.min(1, Math.pow(600 / count, 1.1));
+
     shown.forEach((atom, i) => {
       const region = regionOf.get(atom.id) || 'left';
       const radius = this.nodeRadius(atom);
@@ -835,7 +851,8 @@ export class BrainView {
       positions[i * 3 + 2] = pos.z;
       // Same degree formula as the soma radius, converted to the gl_PointSize
       // curve — plus headroom so the corona filaments survive rasterization.
-      sizes[i] = radius * NODE_SPRITE_SIZE_SCALE * (0.6 + 0.35 * this.sizeScale);
+      sizes[i] =
+        radius * NODE_SPRITE_SIZE_SCALE * (0.6 + 0.35 * this.sizeScale) * densityShrink;
       const c = this.showRegions ? this.regionColor(region) : this.palette.nodeBase;
       color.setHex(c);
       colors[i * 3] = color.r;
@@ -866,7 +883,7 @@ export class BrainView {
     const material = new THREE.ShaderMaterial({
       vertexShader: NODE_SPRITE_VERTEX,
       fragmentShader: NODE_SPRITE_FRAGMENT,
-      uniforms: { ...this.uniforms, uMap: { value: this.coronaDense } },
+      uniforms: { ...this.uniforms, uMap: { value: this.dotTexture } },
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -990,7 +1007,8 @@ export class BrainView {
         const shared =
           spriteMat.map === this.haloTexture ||
           spriteMat.map === this.coronaSparse ||
-          spriteMat.map === this.coronaDense;
+          spriteMat.map === this.coronaDense ||
+          spriteMat.map === this.dotTexture;
         if (spriteMat.map && !shared) spriteMat.map.dispose();
         spriteMat.dispose();
       }
@@ -1124,6 +1142,26 @@ export class BrainView {
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
     return texture;
+  }
+
+  /** Crisp point texture for the dense sprite cloud — solid core, tight
+   *  falloff. The corona texture is a wide soft glow, which is what fuses
+   *  thousands of overlapping additive sprites into a white mass. */
+  private makeDotTexture(): THREE.Texture {
+    const size = 32;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createRadialGradient(
+      size / 2, size / 2, 0, size / 2, size / 2, size / 2,
+    );
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.45, 'rgba(255,255,255,0.9)');
+    gradient.addColorStop(0.7, 'rgba(255,255,255,0.15)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    return new THREE.CanvasTexture(canvas);
   }
 
   /* ── Interactive control setters ───────────────────────────── */
@@ -2309,6 +2347,7 @@ export class BrainView {
     // Corona textures may alias haloTexture when canvas is unavailable — only
     // dispose textures that are actually theirs.
     if (this.coronaSparse !== this.haloTexture) this.coronaSparse.dispose();
+    this.dotTexture?.dispose();
     if (this.coronaDense !== this.haloTexture && this.coronaDense !== this.coronaSparse) {
       this.coronaDense.dispose();
     }

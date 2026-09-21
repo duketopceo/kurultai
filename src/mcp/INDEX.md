@@ -23,7 +23,7 @@ _None._
 | [`init.rs`](init.rs) | kurultai init --agent cursor/claude/codex/hermes | `src/config` · `src/error` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`interface.rs`](interface.rs) | AgentRead trait | `src/synthesize` · `src/types` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-07-23 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`mod.rs`](mod.rs) | MCP module: stdio server + init wiring | — | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`server.rs`](server.rs) | MCP tool dispatch (search, ask, ontology_*, hey_*) | `src/error` · `src/mcp` · `src/ontology` · `src/project` · `src/write_policy` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` | 2026-09-11 | 3 | 2026-09-11 `ontology_propose` (full surface) + `ontology_proposals` (read) (#118) · 2026-09-04 hey_* message board tools + clamp + readonly list update · 2026-08-16 indexed (v1 seed) |
+| [`server.rs`](server.rs) | MCP tool dispatch (search, ask, ontology_*, hey_*) | `src/error` · `src/mcp` · `src/ontology` · `src/project` · `src/write_policy` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` | 2026-09-18 | 4 | 2026-09-18 ask tool `web` param → ask_with_web · 2026-09-11 `ontology_propose` (full surface) + `ontology_proposals` (read) (#118) · 2026-09-04 hey_* message board tools + clamp + readonly list update · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 

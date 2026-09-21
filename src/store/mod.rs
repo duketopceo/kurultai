@@ -623,6 +623,14 @@ pub trait Store: Send + Sync {
         ))
     }
 
+    /// Look up a thread by its id.
+    async fn get_thread(&self, id: &str) -> Result<Option<Thread>> {
+        let _ = id;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
     /// Look up a thread by its human-readable name (e.g. `hey.md`).
     async fn get_thread_by_name(&self, name: &str) -> Result<Option<Thread>> {
         let _ = name;
@@ -2844,6 +2852,21 @@ impl Store for SqliteVecStore {
         })
     }
 
+    async fn get_thread(&self, id: &str) -> Result<Option<Thread>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, parent_thread_id, turn_cap, turns_used, created_at, updated_at \
+                 FROM threads WHERE id = ?1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("get_thread prepare: {e}")))?;
+        let row = stmt
+            .query_row(params![id], row_to_thread)
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("get_thread query: {e}")))?;
+        Ok(row)
+    }
+
     async fn get_thread_by_name(&self, name: &str) -> Result<Option<Thread>> {
         let conn = self.lock()?;
         let mut stmt = conn
@@ -4443,5 +4466,32 @@ mod tests {
             Some(v) => std::env::set_var("KURULTAI_FEATURE_HUB", v),
             None => std::env::remove_var("KURULTAI_FEATURE_HUB"),
         }
+    }
+
+    #[tokio::test]
+    async fn get_thread_prefers_id_over_colliding_name() {
+        let store = temp_store(4);
+        let real = store
+            .create_thread("hey.md", None, None)
+            .await
+            .expect("create hey.md");
+        // A second thread whose *name* is the first thread's id — the hosted
+        // collision that made path ids silently route to the wrong thread.
+        let decoy = store
+            .create_thread(&real.id, None, None)
+            .await
+            .expect("create decoy");
+        let by_id = store
+            .get_thread(&real.id)
+            .await
+            .expect("get_thread")
+            .expect("real thread by id");
+        assert_eq!(by_id.name, "hey.md");
+        let by_name = store
+            .get_thread_by_name(&real.id)
+            .await
+            .expect("get_thread_by_name")
+            .expect("decoy by name");
+        assert_eq!(by_name.id, decoy.id);
     }
 }

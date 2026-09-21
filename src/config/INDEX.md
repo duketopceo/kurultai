@@ -19,8 +19,8 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`file.rs`](file.rs) | config.toml serde structs | `src/art` | `src/app/context.rs` · `src/config/loader.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-09-15 | 2 | 2026-09-15 `FileTiersConfig`/`FileTierRule` — `[tiers]` section (#325) |
-| [`loader.rs`](loader.rs) | Load/merge config from file + env | `src/art` · `src/config` · `src/environment` · `src/error` · `src/types` | `src/app/context.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-09-15 | 3 | 2026-09-15 `tiers_to_policy` — strict cap/trust_lane validation (#325) |
+| [`file.rs`](file.rs) | config.toml serde structs | `src/art` | `src/app/context.rs` · `src/config/loader.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-09-18 | 2 | 2026-09-18 `FileJudgeConfig` `[judge] enabled/model` · 2026-09-15 `FileTiersConfig`/`FileTierRule` — `[tiers]` section (#325) |
+| [`loader.rs`](loader.rs) | Load/merge config from file + env | `src/art` · `src/config` · `src/environment` · `src/error` · `src/types` | `src/app/context.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-09-18 | 3 | 2026-09-18 [judge] → Config + tests · 2026-09-15 `tiers_to_policy` — strict cap/trust_lane validation (#325) |
 | [`mod.rs`](mod.rs) | Config module exports | `src/error` · `src/types` | `src/app/context.rs` · `src/config/loader.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent

@@ -63,7 +63,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-09-12 | 1 | 2026-09-12 created — issue #122 |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`argus-reviewer.config.ts`](argus-reviewer.config.ts) | Argus reviewer config — code-review-only (`run: 'false'`), OpenRouter BYOK, Jev secrets adjudication on | `.github/workflows/argus-reviewer.yml` · `package.json` | — | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
-| [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-01 | 2 | 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
+| [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-18 | 3 | 2026-09-18 [judge] section docs · 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
 | [`docker-compose.hub.yml`](docker-compose.hub.yml) | Local pgvector + hub daemon proof of Railway recipe | `Dockerfile` · `docs/deploy/railway-hub.md` | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 compose proof |
 | [`hey.md`](hey.md) | Informal notes / scratch | — | — | 2026-08-08 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`package.json`](package.json) | npm shim — anchors `argus-reviewer-e2e` (git-pinned) so the Argus action's `npm ci`/`npx` resolve; not a JS app | `.github/workflows/argus-reviewer.yml` | `package-lock.json` · `.gitignore` | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
@@ -72,7 +72,11 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
-- 2026-09-18 — Argus reviewer PR wiring on `feat/argus-pr-review`: `.github/workflows/argus-reviewer.yml` (pinned action, `run: 'false'` review-only), root `package.json`/`package-lock.json` npm shim (git-pinned `argus-reviewer-e2e`), `argus-reviewer.config.ts`, `.gitignore` root `node_modules/`; needs `OPENROUTER_API_KEY` repo secret
+- 2026-09-19 — mobile overflow fix (`styles.css`): dead `.nav-links` selector → `.topbar-nav`; wrap rules moved after base rules (cascade order bug, found by E2E scrollWidth probe at 390px)
+- 2026-09-19 — Hey board repair round 2: active-thread hop fixed in `HeyPanel` (id-vs-name resolution — UUID-named threads stole selection); `Chatboard` gains whole-thread `kb-expanded` overlay via `createPortal` + 8-char UUID labels; `hey.rs` `resolve_thread_id` prefers `get_thread(id)` over name; `ui/` rebuilt
+- 2026-09-18 — Hey rail spacing repair (`website/src/styles.css` + rebuilt `ui/`): `.panel-head` rule added (Hey/Proposals headers unstyled), kanban stacks vertically in rail, threads chip row, ellipsis fix
+- 2026-09-18 — Jev first-class: `[judge]` config (enabled/model), `/api/ask` + MCP `ask` `web` flag → `ask_with_web`, `status` judge line, `judge_from_config` in `brain_from_app`.
+- 2026-09-18 — Argus reviewer PR wiring on `feat/argus-pr-review`: `.github/workflows/argus-reviewer.yml` (pinned action, `run: 'false'` review-only), root `package.json`/`package-lock.json` npm shim (git-pinned `argus-reviewer-e2e`), `argus-reviewer.config.ts`, `.gitignore` root `node_modules/`; `OPENROUTER_API_KEY` repo secret added 2026-09-21
 - 2026-09-17 — retrieval evals + `ask --web` shipped on `feat/retrieval-evals`: `evals/` golden set, `src/eval/` (runner+metrics+Jev judge), `src/web/` (Perplexity), `kurultai eval` + `ask --web`, `web_search` feature flag.
 - 2026-09-17 — `docs/plans/2026-09-17-001` retrieval evals + `ask --web` plan: frozen golden set, `kurultai eval` HTTP runner (Recall@k/P@k/MRR/nDCG, noise exclusion), Jev judge via OpenRouter decisions API (env-gated, pinned `typesafe/jev-1.13`), opt-in ephemeral `ask --web` Perplexity REST augmentation.
 - 2026-09-17 — UI polish + E2E pass: Brain density attenuation (sprite/edge/corona/soma scale with `sizeScale` — dense tiers no longer fuse white), thin dark scrollbars, floating inspector clears command rail, Hey solo write path (`require_writer` → `luke`/local when zero auth configured); `ui/` rebuilt.
