@@ -1,0 +1,8 @@
+{
+  "name": "kurultai-argus-tooling",
+  "private": true,
+  "description": "npm anchor for the Argus reviewer GitHub Action (npm ci + npx --no-install argus-reviewer). Not a package boundary for the Rust workspace — the product builds via Cargo.",
+  "devDependencies": {
+    "argus-reviewer-e2e": "0.2.0"
+  }
+}
