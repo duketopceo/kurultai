@@ -66,12 +66,13 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-18 | 3 | 2026-09-18 [judge] section docs · 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
 | [`docker-compose.hub.yml`](docker-compose.hub.yml) | Local pgvector + hub daemon proof of Railway recipe | `Dockerfile` · `docs/deploy/railway-hub.md` | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 compose proof |
 | [`hey.md`](hey.md) | Informal notes / scratch | — | — | 2026-08-08 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`package.json`](package.json) | npm shim — anchors `argus-reviewer-e2e` (git-pinned) so the Argus action's `npm ci`/`npx` resolve; not a JS app | `.github/workflows/argus-reviewer.yml` | `package-lock.json` · `.gitignore` | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
-| [`package-lock.json`](package-lock.json) | Lockfile for the Argus tooling shim — pins `github:duketopceo/Argus#ca2e0ae` | `package.json` | — | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
+| [`package.json`](package.json) | npm shim — anchors `argus-reviewer-e2e@0.2.0` (npm release) so the Argus action's `npm ci`/`npx` resolve; not a JS app | `.github/workflows/argus-reviewer.yml` | `package-lock.json` · `.gitignore` | 2026-09-21 | 2 | 2026-09-21 re-pinned git SHA → npm 0.2.0 (Jev-bearing release) · 2026-09-18 Argus PR review wiring |
+| [`package-lock.json`](package-lock.json) | Lockfile for the Argus tooling shim — resolves `argus-reviewer-e2e@0.2.0` from npm | `package.json` | — | 2026-09-21 | 2 | 2026-09-21 re-pinned git SHA → npm 0.2.0 · 2026-09-18 Argus PR review wiring |
 | [`rust-toolchain.toml`](rust-toolchain.toml) | Rust toolchain pin | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-21 — Argus shim re-pin on `feat/argus-pr-review`: `package.json`/`package-lock.json` git SHA → npm `argus-reviewer-e2e@0.2.0`, action `uses:` → `duketopceo/Argus/action@v0.2.0`; picks up the Jev stack (triage/secrets adjudication) the config already enables
 - 2026-09-19 — mobile overflow fix (`styles.css`): dead `.nav-links` selector → `.topbar-nav`; wrap rules moved after base rules (cascade order bug, found by E2E scrollWidth probe at 390px)
 - 2026-09-19 — Hey board repair round 2: active-thread hop fixed in `HeyPanel` (id-vs-name resolution — UUID-named threads stole selection); `Chatboard` gains whole-thread `kb-expanded` overlay via `createPortal` + 8-char UUID labels; `hey.rs` `resolve_thread_id` prefers `get_thread(id)` over name; `ui/` rebuilt
 - 2026-09-18 — Hey rail spacing repair (`website/src/styles.css` + rebuilt `ui/`): `.panel-head` rule added (Hey/Proposals headers unstyled), kanban stacks vertically in rail, threads chip row, ellipsis fix
