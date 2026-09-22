@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHand
 import { BrainView } from '../brain/BrainView';
 import { OntologyBoard } from './OntologyBoard';
 import { selectIntentionalLinks } from '../brain/linkSelect';
+import { reportFps } from '../perf';
 import type { Atom, LayoutMode, OntologyResponse } from '../types';
 
 const dbg = (...args: unknown[]) => console.debug('[kurultai:brain]', ...args);
@@ -186,7 +187,10 @@ function BrainHud({ getBrain }: { getBrain: () => BrainView | null }) {
   useEffect(() => {
     const id = window.setInterval(() => {
       const m = getBrain()?.metrics();
-      if (m && m.nodes > 0) setStats({ fps: m.fps, nodes: m.nodes, synapses: m.renderedEdges });
+      if (m && m.nodes > 0) {
+        setStats({ fps: m.fps, nodes: m.nodes, synapses: m.renderedEdges });
+        reportFps(m.fps);
+      }
     }, 1000);
     return () => window.clearInterval(id);
   }, [getBrain]);

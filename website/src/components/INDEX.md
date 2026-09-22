@@ -40,6 +40,7 @@ version: 10
 
 ## Recent
 
+- 2026-09-20 — `BrainStage` BrainHud feeds FPS samples to `perf.ts` reporter (#102 client telemetry)
 - 2026-09-15 — `OntologyBoard`: edge context menu (Delete link), node Delete entity w/ inline confirm, Escape closes overlays (#320)
 - 2026-09-14 — `OntologyBoard.tsx`: Flowsint-style 2D `@xyflow/react` board replaces the 3D ontology layout (context menus, relate dialog, add entity, persisted drag) (#316)
 - 2026-09-13 — v2 chrome layout: `CommandRail.tsx`, `MissionControl.tsx`, `LogsPanel.tsx`, `SettingsPanel.tsx`; `CommandStrip.tsx` packed into top pill; `ui/` rebuilt

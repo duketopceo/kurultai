@@ -29,11 +29,12 @@ _None._
 | [`hub_listen.rs`](hub_listen.rs) | Pure bind × auth start-fail (HUB-3) | `src/http/auth.rs` · `src/error` | `src/http/mod.rs` · `src/main.rs` | 2026-09-15 | 2 | 2026-09-15 `resolve_listen_socket_flag` + `resolve_tailscale_ip` for `--bind` (#329) |
 | [`ingest.rs`](ingest.rs) | Opt-in POST /ingest dump | `src/embed` · `src/hashutil` · `src/ingest` · `src/quality` · `src/store` | `src/daemon/mod.rs` · `src/connectors/inbox.rs` · `src/connectors/json.rs` · `src/connectors/markdown.rs` · `src/query/hybrid.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`mcp.rs`](mcp.rs) | MCP HTTP/SSE transport | `src/mcp` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`mod.rs`](mod.rs) | Axum daemon: /api/*, /ui/, /auth/*, /connect, optional /mcp SSE | `src/brain` · `src/daemon` · `src/error` · `src/mcp` · `src/metrics` · `src/http/hub_listen.rs` · `src/http/device_auth.rs` · `src/http/device.rs` | `src/daemon/mod.rs` | 2026-09-18 | 3 | 2026-09-18 `/api/ask` `web` flag → ask_with_web (GET+POST) · 2026-09-16 merge `device::routes` (`/api/device/*`, `/connect`) · 2026-09-15 `ServeOptions.bind` plumbed to flag resolver (#329) |
+| [`mod.rs`](mod.rs) | Axum daemon: /api/*, /ui/, /auth/*, /connect, optional /mcp SSE | `src/brain` · `src/daemon` · `src/error` · `src/mcp` · `src/metrics` · `src/http/hub_listen.rs` · `src/http/device_auth.rs` · `src/http/device.rs` | `src/daemon/mod.rs` | 2026-09-20 | 4 | 2026-09-20 `POST /api/metrics/client` — browser perf samples → client metric family (#102) · 2026-09-18 `/api/ask` `web` flag → ask_with_web (GET+POST) · 2026-09-16 merge `device::routes` (`/api/device/*`, `/connect`) · 2026-09-15 `ServeOptions.bind` plumbed to flag resolver (#329) |
 | [`ui.rs`](ui.rs) | Embedded ui/ static + /ui/ slash redirect | — | `src/daemon/mod.rs` | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-20 — `POST /api/metrics/client` (mod.rs): Brain UI perf samples (nav/tier-load/fps/long-tasks/heap) validated into the client metric family; numbers + enum labels only (#102)
 - 2026-09-19 — `hey.rs` `resolve_thread_id` prefers `get_thread(id)` — fixes messages routing to the wrong thread when a thread is named with another thread's UUID
 - 2026-09-16 — `device.rs`: `kurultai connect` device-authorization endpoints + `/connect` approval page; `auth.rs` exempts those paths + 401 `run kurultai connect` hint; `device_auth.rs` `create_device_flow` gains `instance_id`
 - 2026-09-15 — `hub_listen.rs`: `--bind` flag path + tailnet IP resolution (#329)
