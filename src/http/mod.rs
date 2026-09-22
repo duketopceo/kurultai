@@ -197,6 +197,7 @@ fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/api/status", get(api_status))
         .route("/api/metrics", get(api_metrics))
+        .route("/api/metrics/client", post(api_metrics_client))
         .route("/api/atoms", get(api_atoms))
         .route("/api/db/{table}", get(api_db_table))
         .route("/api/graph", get(api_graph))
@@ -303,6 +304,25 @@ async fn api_metrics(State(state): State<AppState>) -> impl IntoResponse {
             HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
         )],
         body,
+    )
+}
+
+/// Browser-reported Brain perf samples (#102 client half). Numbers + enum
+/// labels only — no queries, ids, or URLs cross this boundary.
+async fn api_metrics_client(
+    State(state): State<AppState>,
+    Json(report): Json<crate::metrics::ClientReport>,
+) -> impl IntoResponse {
+    const MAX_SAMPLES: usize = 500;
+    let accepted = report
+        .samples
+        .iter()
+        .take(MAX_SAMPLES)
+        .filter(|s| state.metrics.observe_client(s))
+        .count();
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({ "accepted": accepted })),
     )
 }
 

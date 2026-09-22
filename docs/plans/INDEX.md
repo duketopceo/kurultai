@@ -20,6 +20,7 @@ _None._
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`2026-09-14-001-feat-ontology-flowsint-board-plan.md`](2026-09-14-001-feat-ontology-flowsint-board-plan.md) | Flowsint-style 2D board (`@xyflow/react`) replaces 3D ontology layout; human write lane for entity/link | #316 · O1 shipped | website/src · src/http | 2026-09-14 | 1 | session decisions → implementation-ready plan |
+| [`2026-09-20-001-feat-wave-h-serve-path-plan.md`](2026-09-20-001-feat-wave-h-serve-path-plan.md) | Wave H phase plan: watcher floor + client perf telemetry first, then #325/#324/#323/#326 sequencing | #102 · #323–#326 | src/metrics · src/daemon · src/http · website/src | 2026-09-20 | 1 | instrument-before-optimize ordering |
 | [`2026-09-16-001-feat-hey-admin-kanban-plan.md`](2026-09-16-001-feat-hey-admin-kanban-plan.md) | Hey admin lane (CF Access email + PATCH/DELETE), kanban view, lower-UI spacing, hosted redeploy (#331) | #331 | src/http · src/store · website/src · deploy | 2026-09-16 | 1 | knowledge.shippedit.dev rebuild slice |
 | [`2026-09-17-001-feat-retrieval-evals-harness-plan.md`](2026-09-17-001-feat-retrieval-evals-harness-plan.md) | Retrieval evals: golden set + `kurultai eval` HTTP runner, Jev judge (OpenRouter decisions), opt-in `ask --web` Perplexity augmentation | — | evals · src/eval · src/web · src/mcp · tests | 2026-09-17 | 1 | next phase: retrieval quality |
 | [`2026-09-15-002-feat-declarative-tier-policy-plan.md`](2026-09-15-002-feat-declarative-tier-policy-plan.md) | Declarative `[tiers]` rules: TierRule + classify_atom + config wiring (#325) | #325 | src/memory · src/config · src/mcp | 2026-09-15 | 1 | Wave H serve-path (CobbleDB-inspired) |
@@ -98,6 +99,7 @@ _None._
 
 ## Recent
 
+- 2026-09-20 — `2026-09-20-001` Wave H phase plan: instrument-first ordering (watcher floor + client perf telemetry → #325 tier policy → #324 prepared payload → #323/#326)
 - 2026-09-17 — `2026-09-17-001` retrieval evals + `ask --web` plan (golden set, `kurultai eval`, Jev judge, Perplexity REST)
 - 2026-09-16 — `2026-09-16-001` Hey admin lane + kanban + lower-UI pass plan (#331)
 - 2026-09-15 — `2026-09-15-002` declarative tier policy plan (#325, Wave H)

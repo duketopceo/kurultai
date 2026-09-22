@@ -17,6 +17,10 @@ use tokio::task::JoinHandle;
 
 /// Debounce window before a notify burst triggers one incremental index.
 pub const WATCH_DEBOUNCE: Duration = Duration::from_millis(300);
+/// Minimum spacing between watch-triggered index cycles. Debounce collapses
+/// bursts, but a sustained event stream (sync loop, log writer) otherwise
+/// re-indexes back-to-back forever — observed ~2,000 cycles/46min at 800%+ CPU.
+pub const WATCH_MIN_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Delay before re-arming notify after the watch task ends unexpectedly.
 const WATCH_REARM_DELAY: Duration = Duration::from_secs(2);
@@ -483,6 +487,7 @@ async fn watch_session(
     // Keep watcher alive for the duration of this session.
     let _watcher = watcher;
 
+    let mut last_cycle = Instant::now() - WATCH_MIN_INTERVAL;
     loop {
         match rx.recv().await {
             Some(Ok(_event)) => {}
@@ -508,6 +513,13 @@ async fn watch_session(
                 Err(_) => break,
             }
         }
+
+        // Rate-limit: events arriving during the wait stay buffered and all
+        // collapse into this one cycle.
+        let wait = WATCH_MIN_INTERVAL.saturating_sub(last_cycle.elapsed());
+        if !wait.is_zero() {
+            tokio::time::sleep(wait).await;
+        }
         while rx.try_recv().is_ok() {}
 
         run_poll_cycle(
@@ -519,6 +531,7 @@ async fn watch_session(
             false,
         )
         .await;
+        last_cycle = Instant::now();
     }
 }
 

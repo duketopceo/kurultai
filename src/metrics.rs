@@ -12,6 +12,9 @@ const LATENCY_BOUNDS_MS: &[u64] = &[
     1, 2, 5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000,
 ];
 
+/// Bucket bounds for client-reported FPS samples (+Inf implicit).
+const FPS_BOUNDS: &[u64] = &[5, 10, 15, 20, 30, 45, 60, 75, 90, 120, 144, 165, 240];
+
 /// Named HTTP/MCP query operations we track in this thin slice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetricOp {
@@ -34,19 +37,31 @@ impl MetricOp {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct OpMetrics {
     requests: AtomicU64,
     errors: AtomicU64,
     /// Sum of result counts (hits / nodes / entries) across successful calls.
     results_sum: AtomicU64,
-    /// Latency sum in milliseconds.
+    /// Sum of observed values (ms / fps / count).
     latency_sum_ms: AtomicU64,
     /// Per-bucket counts (inclusive upper bound); last slot is +Inf.
-    buckets: [AtomicU64; 14],
+    bounds: &'static [u64],
+    buckets: Vec<AtomicU64>,
 }
 
 impl OpMetrics {
+    fn new(bounds: &'static [u64]) -> Self {
+        Self {
+            requests: AtomicU64::new(0),
+            errors: AtomicU64::new(0),
+            results_sum: AtomicU64::new(0),
+            latency_sum_ms: AtomicU64::new(0),
+            bounds,
+            buckets: (0..=bounds.len()).map(|_| AtomicU64::new(0)).collect(),
+        }
+    }
+
     fn observe(&self, duration_ms: u64, result_count: u64, ok: bool) {
         self.requests.fetch_add(1, Ordering::Relaxed);
         if !ok {
@@ -56,35 +71,39 @@ impl OpMetrics {
         }
         self.latency_sum_ms
             .fetch_add(duration_ms, Ordering::Relaxed);
-        let idx = LATENCY_BOUNDS_MS
+        let idx = self
+            .bounds
             .iter()
             .position(|&b| duration_ms <= b)
-            .unwrap_or(LATENCY_BOUNDS_MS.len());
+            .unwrap_or(self.bounds.len());
         self.buckets[idx].fetch_add(1, Ordering::Relaxed);
     }
 
     fn snapshot(&self) -> OpSnapshot {
-        let mut buckets = [0u64; 14];
-        for (i, b) in self.buckets.iter().enumerate() {
-            buckets[i] = b.load(Ordering::Relaxed);
-        }
+        let buckets: Vec<u64> = self
+            .buckets
+            .iter()
+            .map(|b| b.load(Ordering::Relaxed))
+            .collect();
         OpSnapshot {
             requests: self.requests.load(Ordering::Relaxed),
             errors: self.errors.load(Ordering::Relaxed),
             results_sum: self.results_sum.load(Ordering::Relaxed),
             latency_sum_ms: self.latency_sum_ms.load(Ordering::Relaxed),
+            bounds: self.bounds,
             buckets,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct OpSnapshot {
     requests: u64,
     errors: u64,
     results_sum: u64,
     latency_sum_ms: u64,
-    buckets: [u64; 14],
+    bounds: &'static [u64],
+    buckets: Vec<u64>,
 }
 
 impl OpSnapshot {
@@ -97,30 +116,125 @@ impl OpSnapshot {
         for (i, &count) in self.buckets.iter().enumerate() {
             cum = cum.saturating_add(count);
             if cum >= target {
-                return Some(if i < LATENCY_BOUNDS_MS.len() {
-                    LATENCY_BOUNDS_MS[i]
+                return Some(if i < self.bounds.len() {
+                    self.bounds[i]
                 } else {
-                    LATENCY_BOUNDS_MS[LATENCY_BOUNDS_MS.len() - 1].saturating_mul(2)
+                    self.bounds[self.bounds.len() - 1].saturating_mul(2)
                 });
             }
         }
-        Some(LATENCY_BOUNDS_MS[LATENCY_BOUNDS_MS.len() - 1].saturating_mul(2))
+        Some(self.bounds[self.bounds.len() - 1].saturating_mul(2))
+    }
+
+    fn summary_json(&self) -> serde_json::Value {
+        let avg = if self.requests == 0 {
+            0.0
+        } else {
+            self.latency_sum_ms as f64 / self.requests as f64
+        };
+        serde_json::json!({
+            "requests": self.requests,
+            "errors": self.errors,
+            "results_sum": self.results_sum,
+            "latency_sum_ms": self.latency_sum_ms,
+            "latency_avg_ms": avg,
+            "latency_p50_ms": self.quantile_ms(0.50),
+            "latency_p90_ms": self.quantile_ms(0.90),
+            "latency_p99_ms": self.quantile_ms(0.99),
+        })
+    }
+
+    fn render_prometheus(&self, out: &mut String, family: &str, label: &str) {
+        out.push_str(&format!(
+            "kurultai_{family}_requests_total{{op=\"{label}\"}} {}\n",
+            self.requests
+        ));
+        out.push_str(&format!(
+            "kurultai_{family}_errors_total{{op=\"{label}\"}} {}\n",
+            self.errors
+        ));
+        out.push_str(&format!(
+            "kurultai_{family}_results_total{{op=\"{label}\"}} {}\n",
+            self.results_sum
+        ));
+        let mut cumulative = 0u64;
+        for (i, &bound) in self.bounds.iter().enumerate() {
+            cumulative = cumulative.saturating_add(self.buckets[i]);
+            out.push_str(&format!(
+                "kurultai_{family}_latency_ms_bucket{{op=\"{label}\",le=\"{bound}\"}} {cumulative}\n"
+            ));
+        }
+        cumulative = cumulative.saturating_add(self.buckets[self.bounds.len()]);
+        out.push_str(&format!(
+            "kurultai_{family}_latency_ms_bucket{{op=\"{label}\",le=\"+Inf\"}} {cumulative}\n"
+        ));
+        out.push_str(&format!(
+            "kurultai_{family}_latency_ms_sum{{op=\"{label}\"}} {}\n",
+            self.latency_sum_ms
+        ));
+        out.push_str(&format!(
+            "kurultai_{family}_latency_ms_count{{op=\"{label}\"}} {}\n",
+            self.requests
+        ));
     }
 }
 
+/// Metrics the Brain web client may report (`POST /api/metrics/client`).
+/// Values are unitless — bounds are chosen per metric name.
+const CLIENT_METRICS: &[(&str, &[u64])] = &[
+    ("nav_ms", LATENCY_BOUNDS_MS),
+    ("tier_load_ms", LATENCY_BOUNDS_MS),
+    ("api_ms", LATENCY_BOUNDS_MS),
+    ("fps", FPS_BOUNDS),
+    ("long_tasks", LATENCY_BOUNDS_MS),
+    ("heap_mb", LATENCY_BOUNDS_MS),
+];
+
+const CLIENT_TIERS: &[&str] = &["low", "mid", "high", "max", "none"];
+
+/// One browser-reported perf sample.
+#[derive(Debug, serde::Deserialize)]
+pub struct ClientSample {
+    pub metric: String,
+    #[serde(default)]
+    pub tier: Option<String>,
+    pub value: f64,
+}
+
+/// `POST /api/metrics/client` body.
+#[derive(Debug, serde::Deserialize)]
+pub struct ClientReport {
+    pub samples: Vec<ClientSample>,
+}
+
 /// Process-wide (per daemon) metrics registry.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct MetricsRegistry {
     search: OpMetrics,
     ask: OpMetrics,
     graph: OpMetrics,
     cite: OpMetrics,
     who_knows: OpMetrics,
+    /// Browser-reported samples keyed `"{metric}|{tier}"`.
+    client: std::sync::Mutex<std::collections::HashMap<String, OpMetrics>>,
+}
+
+impl Default for MetricsRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MetricsRegistry {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            search: OpMetrics::new(LATENCY_BOUNDS_MS),
+            ask: OpMetrics::new(LATENCY_BOUNDS_MS),
+            graph: OpMetrics::new(LATENCY_BOUNDS_MS),
+            cite: OpMetrics::new(LATENCY_BOUNDS_MS),
+            who_knows: OpMetrics::new(LATENCY_BOUNDS_MS),
+            client: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
     }
 
     pub fn shared() -> Arc<Self> {
@@ -142,6 +256,29 @@ impl MetricsRegistry {
         self.op(op).observe(duration_ms, result_count, ok);
     }
 
+    /// Record one browser-reported sample. Returns false for unknown
+    /// metric/tier names or non-finite values (caller counts rejects).
+    pub fn observe_client(&self, sample: &ClientSample) -> bool {
+        let Some((_, bounds)) = CLIENT_METRICS
+            .iter()
+            .find(|(name, _)| *name == sample.metric)
+        else {
+            return false;
+        };
+        let tier = sample.tier.as_deref().unwrap_or("none");
+        let tier = if tier.is_empty() { "none" } else { tier };
+        if !CLIENT_TIERS.contains(&tier) || !sample.value.is_finite() || sample.value < 0.0 {
+            return false;
+        }
+        let value = sample.value.min(u64::MAX as f64) as u64;
+        let key = format!("{}|{tier}", sample.metric);
+        let mut map = self.client.lock().unwrap_or_else(|e| e.into_inner());
+        map.entry(key)
+            .or_insert_with(|| OpMetrics::new(bounds))
+            .observe(value, 0, true);
+        true
+    }
+
     /// JSON summary (p50/p90/p99 approx from buckets) for `/api/status` and CLI.
     pub fn summary_json(&self) -> serde_json::Value {
         let ops = [
@@ -153,32 +290,25 @@ impl MetricsRegistry {
         ];
         let mut map = serde_json::Map::new();
         for op in ops {
-            let s = self.op(op).snapshot();
-            let avg = if s.requests == 0 {
-                0.0
-            } else {
-                s.latency_sum_ms as f64 / s.requests as f64
-            };
             map.insert(
                 op.as_str().to_string(),
-                serde_json::json!({
-                    "requests": s.requests,
-                    "errors": s.errors,
-                    "results_sum": s.results_sum,
-                    "latency_sum_ms": s.latency_sum_ms,
-                    "latency_avg_ms": avg,
-                    "latency_p50_ms": s.quantile_ms(0.50),
-                    "latency_p90_ms": s.quantile_ms(0.90),
-                    "latency_p99_ms": s.quantile_ms(0.99),
-                }),
+                self.op(op).snapshot().summary_json(),
             );
         }
+        let client = self
+            .client
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .map(|(k, m)| (k.clone(), m.snapshot().summary_json()))
+            .collect::<serde_json::Map<String, serde_json::Value>>();
+        map.insert("client".to_string(), serde_json::Value::Object(client));
         serde_json::Value::Object(map)
     }
 
     /// Prometheus text exposition for `GET /api/metrics`.
     pub fn render_prometheus(&self) -> String {
-        let mut out = String::with_capacity(2048);
+        let mut out = String::with_capacity(4096);
         out.push_str("# HELP kurultai_query_requests_total Total query operations.\n");
         out.push_str("# TYPE kurultai_query_requests_total counter\n");
         out.push_str("# HELP kurultai_query_errors_total Failed query operations.\n");
@@ -187,6 +317,16 @@ impl MetricsRegistry {
         out.push_str("# TYPE kurultai_query_results_total counter\n");
         out.push_str("# HELP kurultai_query_latency_ms Query latency in milliseconds.\n");
         out.push_str("# TYPE kurultai_query_latency_ms histogram\n");
+        out.push_str("# HELP kurultai_client_requests_total Browser-reported perf samples.\n");
+        out.push_str("# TYPE kurultai_client_requests_total counter\n");
+        out.push_str(
+            "# HELP kurultai_client_errors_total Client samples flagged invalid (unused).\n",
+        );
+        out.push_str("# TYPE kurultai_client_errors_total counter\n");
+        out.push_str("# HELP kurultai_client_results_total Unused for client family.\n");
+        out.push_str("# TYPE kurultai_client_results_total counter\n");
+        out.push_str("# HELP kurultai_client_latency_ms Client sample value histogram (ms/fps/count per metric name).\n");
+        out.push_str("# TYPE kurultai_client_latency_ms histogram\n");
 
         for op in [
             MetricOp::Search,
@@ -195,40 +335,18 @@ impl MetricsRegistry {
             MetricOp::Cite,
             MetricOp::WhoKnows,
         ] {
-            let s = self.op(op).snapshot();
-            let label = op.as_str();
-            out.push_str(&format!(
-                "kurultai_query_requests_total{{op=\"{label}\"}} {}\n",
-                s.requests
-            ));
-            out.push_str(&format!(
-                "kurultai_query_errors_total{{op=\"{label}\"}} {}\n",
-                s.errors
-            ));
-            out.push_str(&format!(
-                "kurultai_query_results_total{{op=\"{label}\"}} {}\n",
-                s.results_sum
-            ));
+            self.op(op)
+                .snapshot()
+                .render_prometheus(&mut out, "query", op.as_str());
+        }
 
-            let mut cumulative = 0u64;
-            for (i, &bound) in LATENCY_BOUNDS_MS.iter().enumerate() {
-                cumulative = cumulative.saturating_add(s.buckets[i]);
-                out.push_str(&format!(
-                    "kurultai_query_latency_ms_bucket{{op=\"{label}\",le=\"{bound}\"}} {cumulative}\n"
-                ));
-            }
-            cumulative = cumulative.saturating_add(s.buckets[LATENCY_BOUNDS_MS.len()]);
-            out.push_str(&format!(
-                "kurultai_query_latency_ms_bucket{{op=\"{label}\",le=\"+Inf\"}} {cumulative}\n"
-            ));
-            out.push_str(&format!(
-                "kurultai_query_latency_ms_sum{{op=\"{label}\"}} {}\n",
-                s.latency_sum_ms
-            ));
-            out.push_str(&format!(
-                "kurultai_query_latency_ms_count{{op=\"{label}\"}} {}\n",
-                s.requests
-            ));
+        let map = self.client.lock().unwrap_or_else(|e| e.into_inner());
+        let mut keys: Vec<&String> = map.keys().collect();
+        keys.sort();
+        for key in keys {
+            map[key]
+                .snapshot()
+                .render_prometheus(&mut out, "client", key);
         }
         out
     }
@@ -322,5 +440,35 @@ mod tests {
         }
         assert_eq!(m.summary_json()["graph"]["requests"], 1);
         assert_eq!(m.summary_json()["graph"]["results_sum"], 7);
+    }
+
+    #[test]
+    fn client_samples_validate_and_render() {
+        let m = MetricsRegistry::new();
+        let ok = |metric: &str, tier: Option<&str>, value: f64| {
+            m.observe_client(&ClientSample {
+                metric: metric.into(),
+                tier: tier.map(str::to_string),
+                value,
+            })
+        };
+        assert!(ok("nav_ms", None, 420.0));
+        assert!(ok("tier_load_ms", Some("max"), 3800.0));
+        assert!(ok("fps", Some("max"), 11.4));
+        assert!(!ok("evil_metric", None, 1.0));
+        assert!(!ok("fps", Some("bogus"), 60.0));
+        assert!(!ok("fps", None, f64::NAN));
+        assert!(!ok("fps", None, -5.0));
+
+        let json = m.summary_json();
+        assert_eq!(json["client"]["nav_ms|none"]["requests"], 1);
+        assert_eq!(json["client"]["tier_load_ms|max"]["requests"], 1);
+        assert_eq!(json["client"]["fps|max"]["latency_p50_ms"], 15);
+
+        let text = m.render_prometheus();
+        assert!(text.contains("kurultai_client_requests_total{op=\"fps|max\"} 1"));
+        assert!(text.contains("le=\"15\""));
+        // Query series unchanged alongside the client family.
+        assert!(text.contains("kurultai_query_requests_total{op=\"search\"}"));
     }
 }

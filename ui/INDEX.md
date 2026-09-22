@@ -21,6 +21,7 @@ version: 2
 | `README.md` | Built UI notes placeholder — preserved in index for tracked stub | — | — | 2026-09-13 | 1 | 2026-09-13 noted |
 
 ## Recent
+- 2026-09-20 — rebuilt for client perf telemetry (`brain-0yts8ztU.js`): nav/tier-load/fps/long-task/heap samples → `POST /api/metrics/client`
 - 2026-09-19 — brain bundle `brain-Baze4qJm.js` (sprite cap 20k + density-shrunk nodes at max)
 
 - 2026-09-19 — rebuilt for mobile overflow fix: nav/strip/mission wrap at ≤960px (`brain-Cp9NW_L4.js`, `brain-C7_ZhIpV.css`)

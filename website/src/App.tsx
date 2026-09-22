@@ -17,6 +17,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { LogsPanel } from './components/LogsPanel';
 import type { Atom, LayoutMode, LoadTier, OntologyResponse } from './types';
 import { LOAD_TIER_CAPS } from './types';
+import { initPerf, reportPerf, setPerfTier } from './perf';
 
 const dbg = (...args: unknown[]) => console.debug('[kurultai:app]', ...args);
 
@@ -79,8 +80,9 @@ export function App() {
       if (!ac.signal.aborted) setOntology(onto);
       setCodeRepos(countCodeRepos(repoAtoms));
       const atoms = brainAtoms.slice(0, cap);
-      const elapsed = (performance.now() - t0).toFixed(0);
-      dbg(`fetchGraph done: ${atoms.length} cortex + ${repoAtoms.length} repos in ${elapsed}ms (tier: ${tier})`);
+      const elapsed = performance.now() - t0;
+      dbg(`fetchGraph done: ${atoms.length} cortex + ${repoAtoms.length} repos in ${elapsed.toFixed(0)}ms (tier: ${tier})`);
+      reportPerf('tier_load_ms', elapsed, tier);
       setLoadMsg(`${atoms.length} memories · ${tier}`);
       dispatch({ type: 'SET_ATOMS', atoms, total: brainAtoms.length });
     } catch (e) {
@@ -113,7 +115,8 @@ export function App() {
     };
   }, []);
 
-  useEffect(() => { loadAtoms(loadTier); }, [loadTier]);
+  useEffect(() => { initPerf(); }, []);
+  useEffect(() => { setPerfTier(loadTier); loadAtoms(loadTier); }, [loadTier]);
 
   const handleLayoutChange = (mode: LayoutMode) => {
     setLayout(mode);

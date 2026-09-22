@@ -53,7 +53,7 @@ version: 7
 | [`connect.rs`](connect.rs) | `kurultai connect` device-authorization CLI — code → poll → omaseal/key-file → `wire_agent`; persistent seat-id + seat-scoped credential names | `src/error` · `src/mcp` · `src/security` · `src/webui` · `reqwest` | — | 2026-09-19 | 2 | 2026-09-19 seat file `<config>/seat-id` (`{hostname}-{rand}`) + `{lane}-{codename}-{seat}-agent-token` cred names · 2026-09-16 added |
 | [`login.rs`](login.rs) | `kurultai login` device-code flow for hosted agent tokens | `src/error` · `reqwest` · `dirs` | — | 2026-09-06 | 1 | 2026-09-06 added |
 | [`main.rs`](main.rs) |  CLI entry: init, index, search, ask [--web], eval, daemon, mcp, connect, login, export  | — | — | 2026-09-18 | 12 | 2026-09-18 judge_from_config in brain_from_app + `status` judge line · 2026-09-18 `review` cmd — pre-merge Jev commit gate, exit 1 on hard flags · 2026-09-18 print judge-disabled reason in eval output · 2026-09-17 `eval` cmd + `ask --web` + brain_from_app web/judge wiring · 2026-09-16 `connect` cmd + `agent revoke` · 2026-09-15 `webui` cmd + init key prompt + `daemon --bind` (#329) |
-| [`metrics.rs`](metrics.rs) | Prometheus text for GET /api/metrics | — | `src/http/mod.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`metrics.rs`](metrics.rs) | Prometheus text for GET /api/metrics + client-perf sample store | — | `src/http/mod.rs` | 2026-09-20 | 2 | 2026-09-20 client family: per-metric bounds (fps vs ms), `observe_client` + `ClientReport` for POST /api/metrics/client (#102) · 2026-08-16 indexed (v1 seed) |
 | [`project.rs`](project.rs) | project_id namespacing for shared-store sessions (#184) | — | `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope, OntologyProposal | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` · `src/ontology/mod.rs` | 2026-09-18 | 3 | 2026-09-18 `Config.judge_enabled`/`judge_model` ([judge]) · 2026-09-15 `Config.tier_policy` runtime field (#325) |
 | [`webui.rs`](webui.rs) | `kurultai webui` — probe/spawn daemon, print URL, open browser | `src/error` | `src/main.rs` · `src/connect.rs` | 2026-09-16 | 2 | 2026-09-16 `open_browser` pub(crate) for `connect` · 2026-09-15 added (#329) |
@@ -61,6 +61,7 @@ version: 7
 
 ## Recent
 
+- 2026-09-20 — `metrics.rs` gains the client family (browser-reported nav/tier-load/fps/long-task/heap samples → `kurultai_client_*` series + `metrics.client` in `/api/status`); `daemon/mod.rs` gains `WATCH_MIN_INTERVAL` (30s floor between watch-triggered index cycles — sustained inotify streams could no longer hot-loop)
 - 2026-09-18 — `eval/review.rs` + `Commands::Review`: pre-merge Jev commit gate (secrets/security/mismatch → exit 1)
 - 2026-09-18 — `eval/mod.rs` judge circuit breaker (dead key / insufficient credits → labels-only, flagged); `main.rs` prints disable reason
 - 2026-09-17 — `eval/` (runner + metrics + Jev judge), `web/` (Perplexity searcher), `brain.rs` `ask_with_web` + sufficiency gate, `main.rs` `eval` cmd + `ask --web`, `features.rs` `web_search` flag
