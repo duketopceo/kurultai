@@ -487,7 +487,11 @@ async fn watch_session(
     // Keep watcher alive for the duration of this session.
     let _watcher = watcher;
 
-    let mut last_cycle = Instant::now() - WATCH_MIN_INTERVAL;
+    // checked_sub: Instant's epoch may be boot-time — subtracting the floor
+    // panics when uptime < WATCH_MIN_INTERVAL (early-boot daemon).
+    let mut last_cycle = Instant::now()
+        .checked_sub(WATCH_MIN_INTERVAL)
+        .unwrap_or_else(Instant::now);
     loop {
         match rx.recv().await {
             Some(Ok(_event)) => {}

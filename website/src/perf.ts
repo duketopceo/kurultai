@@ -20,7 +20,7 @@ let started = false;
 
 export function reportPerf(metric: string, value: number, tier?: PerfTier): void {
   if (!Number.isFinite(value) || value < 0) return;
-  queue.push({ metric, value, tier });
+  queue.push({ metric, value, tier: tier ?? currentTier });
   if (queue.length >= MAX_QUEUE) void flush();
 }
 
@@ -52,6 +52,8 @@ async function flush(): Promise<void> {
   if (heap) {
     samples.push({ metric: 'heap_mb', tier: currentTier, value: heap.usedJSHeapSize / 1e6 });
   }
+  // Reschedule before awaiting so an idle tick or a hung POST can't kill the cadence.
+  schedule();
   if (!samples.length) return;
   try {
     await fetch('/api/metrics/client', {
@@ -59,11 +61,11 @@ async function flush(): Promise<void> {
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ samples }),
       keepalive: true,
+      signal: AbortSignal.timeout(15_000),
     });
   } catch {
     // Telemetry must never break the app — drop the batch.
   }
-  schedule();
 }
 
 function schedule(): void {

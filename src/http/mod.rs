@@ -314,15 +314,23 @@ async fn api_metrics_client(
     Json(report): Json<crate::metrics::ClientReport>,
 ) -> impl IntoResponse {
     const MAX_SAMPLES: usize = 500;
-    let accepted = report
-        .samples
-        .iter()
-        .take(MAX_SAMPLES)
-        .filter(|s| state.metrics.observe_client(s))
-        .count();
+    let mut accepted = 0usize;
+    let mut rejected = 0usize;
+    for s in report.samples.iter().take(MAX_SAMPLES) {
+        if state.metrics.observe_client(s) {
+            accepted += 1;
+        } else {
+            rejected += 1;
+        }
+    }
+    let truncated = report.samples.len().saturating_sub(MAX_SAMPLES);
     (
         StatusCode::ACCEPTED,
-        Json(serde_json::json!({ "accepted": accepted })),
+        Json(serde_json::json!({
+            "accepted": accepted,
+            "rejected": rejected,
+            "truncated": truncated,
+        })),
     )
 }
 

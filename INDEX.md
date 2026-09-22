@@ -72,9 +72,9 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
-- 2026-09-20 — Wave H kickoff (`docs/plans/2026-09-20-001`): client perf telemetry (#102 — `POST /api/metrics/client` + `website/src/perf.ts` reporter: nav/tier-load/fps/long-tasks/heap per tier) + `WATCH_MIN_INTERVAL` 30s floor on watch-triggered index cycles (sustained inotify streams hot-looped at ~824% CPU)
 - 2026-09-21 — Argus action re-pin `@v0.2.0` → full SHA `75492b8a` on `fix/argus-sha-pin` (mutable tag held `OPENROUTER_API_KEY` + write scopes; flagged by live dogfood review)
 - 2026-09-21 — Argus shim re-pin on `feat/argus-pr-review`: `package.json`/`package-lock.json` git SHA → npm `argus-reviewer-e2e@0.2.0`, action `uses:` → `duketopceo/Argus/action@v0.2.0`; picks up the Jev stack (triage/secrets adjudication) the config already enables
+- 2026-09-20 — Wave H kickoff (`docs/plans/2026-09-20-001`): client perf telemetry (#102 — `POST /api/metrics/client` + `website/src/perf.ts` reporter: nav/tier-load/fps/long-tasks/heap per tier) + `WATCH_MIN_INTERVAL` 30s floor on watch-triggered index cycles (sustained inotify streams hot-looped at ~824% CPU)
 - 2026-09-19 — mobile overflow fix (`styles.css`): dead `.nav-links` selector → `.topbar-nav`; wrap rules moved after base rules (cascade order bug, found by E2E scrollWidth probe at 390px)
 - 2026-09-19 — Hey board repair round 2: active-thread hop fixed in `HeyPanel` (id-vs-name resolution — UUID-named threads stole selection); `Chatboard` gains whole-thread `kb-expanded` overlay via `createPortal` + 8-char UUID labels; `hey.rs` `resolve_thread_id` prefers `get_thread(id)` over name; `ui/` rebuilt
 - 2026-09-18 — Hey rail spacing repair (`website/src/styles.css` + rebuilt `ui/`): `.panel-head` rule added (Hey/Proposals headers unstyled), kanban stacks vertically in rail, threads chip row, ellipsis fix
