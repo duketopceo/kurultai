@@ -1278,8 +1278,9 @@ mod tests {
 
     fn test_brain() -> BrainService {
         let dir = std::env::temp_dir().join(format!(
-            "kurultai-http-{}",
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            "kurultai-http-{}-{}",
+            std::process::id(),
+            HTTP_FIXTURE_SEQ.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let store = Arc::new(SqliteVecStore::open(dir.join("store.db"), 4).unwrap());
