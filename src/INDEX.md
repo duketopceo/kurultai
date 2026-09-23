@@ -61,6 +61,7 @@ version: 7
 
 ## Recent
 
+- 2026-09-23 — prepared `/api/graph` payload (#324): `Store::atom_epoch` mutation counter + `http::graph_cache` serve param-keyed snapshots byte-for-byte; Postgres hub (untrackable epoch) assembles live
 - 2026-09-20 — `metrics.rs` gains the client family (browser-reported nav/tier-load/fps/long-task/heap samples → `kurultai_client_*` series + `metrics.client` in `/api/status`); `daemon/mod.rs` gains `WATCH_MIN_INTERVAL` (30s floor between watch-triggered index cycles — sustained inotify streams could no longer hot-loop)
 - 2026-09-18 — `eval/review.rs` + `Commands::Review`: pre-merge Jev commit gate (secrets/security/mismatch → exit 1)
 - 2026-09-18 — `eval/mod.rs` judge circuit breaker (dead key / insufficient credits → labels-only, flagged); `main.rs` prints disable reason

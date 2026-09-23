@@ -57,9 +57,34 @@ pub(crate) struct AppState {
     status: Arc<DaemonStatus>,
     metrics: Arc<MetricsRegistry>,
     hub: HubGate,
+    /// Prepared `/api/graph` payloads keyed by request params, invalidated by
+    /// `Store::atom_epoch`. Byte-for-byte serving for hot Brain loads (#324).
+    graph_cache: Arc<std::sync::Mutex<std::collections::HashMap<GraphKey, Arc<PreparedGraph>>>>,
     #[cfg(feature = "postgres")]
     hub_activity: Option<Arc<crate::hub::HubActivityStore>>,
 }
+
+/// Request-param key for a prepared graph payload.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct GraphKey {
+    tier: Option<crate::memory::MemoryTier>,
+    limit: usize,
+    include_quarantine: bool,
+    source: Option<String>,
+    exclude_source: Option<String>,
+}
+
+/// Serialized `nodes` array published at a store epoch; spliced into the
+/// per-request response skeleton so `request_id` still varies per call.
+struct PreparedGraph {
+    epoch: u64,
+    count: usize,
+    nodes_json: String,
+}
+
+/// Distinct param-shapes we keep prepared at once; overflow drops stale-epoch
+/// entries first, then clears. Keys are cheap — payloads are the memory.
+const GRAPH_CACHE_MAX_KEYS: usize = 32;
 
 /// Options for the localhost HTTP daemon.
 #[derive(Debug, Clone, Default)]
@@ -275,6 +300,7 @@ fn app_state(
         status,
         metrics,
         hub,
+        graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         #[cfg(feature = "postgres")]
         hub_activity: None,
     }
@@ -614,7 +640,7 @@ async fn api_ontology_promote(
 async fn api_graph(
     State(state): State<AppState>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("api_graph", request_id=%request_id);
     state.status.touch_client_activity();
@@ -644,6 +670,30 @@ async fn api_graph(
         .get("exclude_source")
         .map(|s| s.trim())
         .filter(|s| !s.is_empty());
+    let key = GraphKey {
+        tier,
+        limit,
+        include_quarantine,
+        source: source.map(String::from),
+        exclude_source: exclude_source.map(String::from),
+    };
+    // Publish-on-mutation (#324): when the store can observe its own writes
+    // (SQLite solo — the indexer + API + MCP all funnel through it), serve a
+    // prepared snapshot built at the current `atom_epoch` byte-for-byte. The
+    // Postgres hub returns `u64::MAX` — other processes write there — so it
+    // always assembles live. Ordering-only writes (`touch_access`) don't bump:
+    // prepared ordering may lag until the next content mutation.
+    let epoch = state.brain.store().atom_epoch();
+    if epoch != u64::MAX {
+        if let Ok(cache) = state.graph_cache.lock() {
+            if let Some(p) = cache.get(&key) {
+                if p.epoch == epoch {
+                    timer.success(p.count as u64);
+                    return Ok(graph_json_response(&request_id, &key, p));
+                }
+            }
+        }
+    }
     match state
         .brain
         .list_graph_nodes(tier, limit, include_quarantine, source, exclude_source)
@@ -651,16 +701,24 @@ async fn api_graph(
     {
         Ok(nodes) => {
             let count = nodes.len();
+            let prepared = Arc::new(PreparedGraph {
+                epoch,
+                count,
+                nodes_json: serde_json::to_string(&nodes).unwrap_or_else(|_| "[]".to_string()),
+            });
+            if epoch != u64::MAX {
+                if let Ok(mut cache) = state.graph_cache.lock() {
+                    if cache.len() >= GRAPH_CACHE_MAX_KEYS {
+                        cache.retain(|_, p| p.epoch == epoch);
+                        if cache.len() >= GRAPH_CACHE_MAX_KEYS {
+                            cache.clear();
+                        }
+                    }
+                    cache.insert(key.clone(), Arc::clone(&prepared));
+                }
+            }
             timer.success(count as u64);
-            Ok(Json(serde_json::json!({
-                "ok": true,
-                "request_id": &request_id,
-                "tier": tier.map(|t| t.as_str()),
-                "source": source,
-                "exclude_source": exclude_source,
-                "count": count,
-                "nodes": nodes,
-            })))
+            Ok(graph_json_response(&request_id, &key, &prepared))
         }
         Err(e) => {
             timer.failure();
@@ -671,6 +729,34 @@ async fn api_graph(
             ))
         }
     }
+}
+
+/// Render the `/api/graph` response body with the prepared `nodes` array
+/// spliced in verbatim — zero per-node assembly on a snapshot hit.
+fn graph_json_response(request_id: &str, key: &GraphKey, p: &PreparedGraph) -> Response {
+    let opt_str = |v: Option<&str>| match v {
+        Some(s) => serde_json::to_string(s).unwrap_or_else(|_| "null".into()),
+        None => "null".into(),
+    };
+    let body = format!(
+        "{{\"ok\":true,\"request_id\":{rid},\"tier\":{tier},\"source\":{src},\
+         \"exclude_source\":{excl},\"count\":{count},\"graph_epoch\":{epoch},\"nodes\":{nodes}}}",
+        rid = serde_json::to_string(request_id).unwrap_or_else(|_| "null".into()),
+        tier = opt_str(key.tier.map(|t| t.as_str())),
+        src = opt_str(key.source.as_deref()),
+        excl = opt_str(key.exclude_source.as_deref()),
+        count = p.count,
+        epoch = p.epoch,
+        nodes = p.nodes_json,
+    );
+    (
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        )],
+        body,
+    )
+        .into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -1192,8 +1278,9 @@ mod tests {
 
     fn test_brain() -> BrainService {
         let dir = std::env::temp_dir().join(format!(
-            "kurultai-http-{}",
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            "kurultai-http-{}-{}",
+            std::process::id(),
+            HTTP_FIXTURE_SEQ.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let store = Arc::new(SqliteVecStore::open(dir.join("store.db"), 4).unwrap());
@@ -1210,6 +1297,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1232,6 +1320,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1283,6 +1372,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         })
     }
@@ -1485,6 +1575,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1533,6 +1624,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1565,6 +1657,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1628,6 +1721,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         (app, db_dir)
@@ -1921,6 +2015,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -2197,6 +2292,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -2249,6 +2345,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -2290,6 +2387,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
 
@@ -2413,6 +2511,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
 
@@ -2552,6 +2651,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -2572,6 +2672,45 @@ mod tests {
         assert!(!rid.is_empty(), "request_id must be present and non-empty");
     }
 
+    /// #324: the second identical `/api/graph` call serves the prepared
+    /// snapshot (same `graph_epoch`, byte-identical `nodes`); an atom mutation
+    /// bumps the epoch and republishes.
+    #[tokio::test]
+    async fn api_graph_serves_prepared_until_mutation() {
+        let brain = Arc::new(test_brain());
+        let app = proposal_app(Arc::clone(&brain));
+
+        async fn graph(app: &Router, uri: &str) -> serde_json::Value {
+            let resp = app
+                .clone()
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+                .await
+                .unwrap();
+            serde_json::from_slice(&bytes).unwrap()
+        }
+
+        let first = graph(&app, "/api/graph?tier=hot&limit=100").await;
+        let second = graph(&app, "/api/graph?tier=hot&limit=100").await;
+        assert_eq!(first["graph_epoch"], second["graph_epoch"]);
+        assert_eq!(first["nodes"], second["nodes"]);
+        assert_ne!(first["request_id"], second["request_id"]);
+
+        seed_atom(&brain, "graph-p1").await;
+        let third = graph(&app, "/api/graph?tier=hot&limit=100").await;
+        assert_ne!(third["graph_epoch"], second["graph_epoch"]);
+        let ids: Vec<&str> = third["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|n| n["id"].as_str())
+            .collect();
+        assert!(ids.contains(&"graph-p1"), "nodes={ids:?}");
+    }
+
     #[tokio::test]
     async fn api_metrics_prometheus_after_search() {
         let metrics = MetricsRegistry::shared();
@@ -2581,6 +2720,7 @@ mod tests {
             metrics: Arc::clone(&metrics),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let _ = app
@@ -2629,6 +2769,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -2724,6 +2865,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         };
         router(state).merge(mcp::routes(mcp::McpHttpState::new(
@@ -2864,6 +3006,7 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "postgres")]
             hub_activity: None,
             hub: HubGate {
@@ -2917,6 +3060,7 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "postgres")]
             hub_activity: None,
             hub: HubGate {
@@ -2946,6 +3090,7 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "postgres")]
             hub_activity: None,
             hub: HubGate {
