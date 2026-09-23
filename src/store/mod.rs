@@ -416,6 +416,18 @@ pub trait Store: Send + Sync {
         policy: TierPolicy,
     ) -> Result<Vec<GraphNode>>;
 
+    /// Monotonic epoch bumped by every `knowledge_atoms` content mutation
+    /// (upsert / batch / delete / lane change / auto-merge). Ordering-only
+    /// writes (`touch_access`) do not bump — prepared graph payloads are
+    /// allowed bounded ordering staleness but must reflect add/remove/promote.
+    ///
+    /// `u64::MAX` (default) means "this store cannot observe mutations" —
+    /// callers must always assemble live (e.g. the Postgres hub, where other
+    /// processes write behind our back).
+    fn atom_epoch(&self) -> u64 {
+        u64::MAX
+    }
+
     // ── Ingestion staging ────────────────────────────────────────────────────
 
     /// Record the start of an ingestion job; returns the new job `id`.
@@ -844,6 +856,7 @@ pub struct SqliteVecStore {
     conn: Mutex<Connection>,
     path: PathBuf,
     embed_dim: usize,
+    atom_epoch: std::sync::atomic::AtomicU64,
 }
 
 impl SqliteVecStore {
@@ -871,7 +884,16 @@ impl SqliteVecStore {
             conn: Mutex::new(conn),
             path,
             embed_dim,
+            atom_epoch: std::sync::atomic::AtomicU64::new(0),
         })
+    }
+
+    /// Bump the atom-content epoch — invalidates prepared `/api/graph`
+    /// payloads served by the HTTP layer. Ordering-only writes
+    /// (`touch_access`) intentionally do not bump.
+    fn bump_atom_epoch(&self) {
+        self.atom_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Read an integer pragma off this connection (e.g. `busy_timeout`).
@@ -1415,6 +1437,7 @@ impl Store for SqliteVecStore {
     async fn upsert(&self, atom: &KnowledgeAtom) -> Result<()> {
         let conn = self.lock()?;
         Self::upsert_sync(&conn, atom, self.embed_dim)?;
+        self.bump_atom_epoch();
         Ok(())
     }
 
@@ -1432,6 +1455,7 @@ impl Store for SqliteVecStore {
             Ok(()) => {
                 conn.execute_batch("COMMIT;")
                     .map_err(|e| KurultaiError::Store(format!("commit batch: {e}")))?;
+                self.bump_atom_epoch();
                 Ok(())
             }
             Err(e) => {
@@ -1654,6 +1678,7 @@ impl Store for SqliteVecStore {
             Ok(()) => {
                 conn.execute_batch("COMMIT;")
                     .map_err(|e| KurultaiError::Store(format!("commit delete_source: {e}")))?;
+                self.bump_atom_epoch();
                 tracing::debug!(source, "deleted atoms for source");
                 Ok(())
             }
@@ -1802,6 +1827,7 @@ impl Store for SqliteVecStore {
             Ok(()) => {
                 conn.execute_batch("COMMIT;")
                     .map_err(|e| KurultaiError::Store(format!("commit delete_atom: {e}")))?;
+                self.bump_atom_epoch();
                 Ok(())
             }
             Err(e) => {
@@ -1854,6 +1880,7 @@ impl Store for SqliteVecStore {
             Ok(()) => {
                 conn.execute_batch("COMMIT;")
                     .map_err(|e| KurultaiError::Store(format!("commit apply_auto_merge: {e}")))?;
+                self.bump_atom_epoch();
                 Ok(())
             }
             Err(e) => {
@@ -1904,6 +1931,7 @@ impl Store for SqliteVecStore {
                 "set_trust_lane: atom not found: {id}"
             )));
         }
+        self.bump_atom_epoch();
         Ok(())
     }
 
@@ -2093,6 +2121,10 @@ impl Store for SqliteVecStore {
             }
         }
         Ok(out)
+    }
+
+    fn atom_epoch(&self) -> u64 {
+        self.atom_epoch.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     // ── Ingestion staging ────────────────────────────────────────────────

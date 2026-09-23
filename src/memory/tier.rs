@@ -70,7 +70,7 @@ impl TierRule {
 
 /// Memory temperature for graph / retrieval foveation.
 /// Declared cold-last so `Ord` ranks Hot < Warm < Cold.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryTier {
     Hot,
