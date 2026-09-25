@@ -1033,9 +1033,9 @@ checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 
 [[package]]
 name = "fastembed"
-version = "6.0.3"
+version = "7.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cba9e2163602348eff03af6e9a7b24c63edc1529de4239fde99a5178621d2fbe"
+checksum = "5c88b42d8347afbf09e3d2fac61fcc22b698b7b2f35a27a6e988bcdad5784b07"
 dependencies = [
  "hf-hub",
  "image",
@@ -3769,7 +3769,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
