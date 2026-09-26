@@ -17,7 +17,7 @@ Three findings from auditing `website/src/` — more specific than "wrong direct
 
 | Token | Definition |
 |---|---|
-| **Canvas** | Near-black everywhere. `#050508` family — the Brain's existing `--bg`. No light theme in v1 of the rebuild; the theme toggle dies (see §10). |
+| **Canvas** | Near-black everywhere. `#050508` family — the Brain's existing `--bg`. No light theme in v1 of the rebuild; the theme toggle dies (§7). |
 | **One accent** | Electric purple only — `--electric`/`--electric-strong`/`--electric-dim` family (`#a855f7`/`#c084fc`/`#7c3aed`). The teal `--chrome-*` family is deleted, not remapped. Functional states keep semantic colors (ok green, danger red, warn amber) at muted saturation. |
 | **Typography** | Two faces: a display face for brand/hero numerals (Orbitron stays — it matches the neural-instrument feel) and JetBrains Mono for data/chrome text. Body UI text in mono is allowed at small sizes only; longer prose (Hey messages, answers) gets a readable sans fallback in the same stack. |
 | **Surfaces** | Glass-over-black: `rgba(10,8,20,.6–.8)` panels, `1px` hairline borders at `rgba(168,85,247,.14)`, stronger on hover/focus (`.40`). Border radius: `6px` panels, `pill` for chips/toggles only. |
@@ -32,7 +32,7 @@ The page is one instrument, top to bottom:
 ```
 TopBar          brand · nav (Brain / Repos β / Store β) · daemon status · access
 CommandStrip    search (⌘K) · tier (low/mid/high/max) · layout (brain/ontology)
-                — and nothing else; timeline + random move out (see §4)
+                — and nothing else; timeline + random move out (§7)
 BrainStage      the cortex hero — untouched visually
 Inspector       floating, on node select — kept, restyled
 WorkSurface     the below-brain area: tabs → Hey / Pulse / Ontology / Ask / Store
@@ -53,7 +53,7 @@ Two levels, not five: the Brain is the instrument; everything else is its consol
 ### 3.2 CommandStrip — rebuild (slim)
 - **Purpose:** the three controls the Brain actually needs: search, memory tier, layout.
 - **Must:** ⌘K search w/ dropdown + **clear control** (existing rule); tier segmented control showing `loaded/total` when partial; brain/ontology toggle.
-- **Dies:** the timeline "memory horizon" scrubber (a live-play gimmick that re-filters the graph invisibly — move to a future "time" feature if ever wanted, not a top-strip control), the `random` button (move into an inspector/overflow affordance or cut).
+- **Dies:** the timeline "memory horizon" scrubber (a live-play gimmick that re-filters the graph invisibly — move to a future "time" feature if ever wanted, not a top-strip control), the `random` button (cut — low-signal novelty control).
 - **Visual:** single slim bar attached under TopBar, not a floating pill.
 
 ### 3.3 BrainStage — keep visuals, replace chrome
@@ -91,7 +91,7 @@ Replaces both MissionControl and CommandRail. One tabbed console:
 
 ### 3.8 Logs / Settings — redistribute
 - **Logs:** the fake `SEED` panel dies entirely. A real logs surface returns only when backed by `/api` data — **do not ship a stub**. (Settings' "Show structured logs" checkbox dies with it.)
-- **Settings:** theme toggle dies (single dark theme). "Agent sources" hardcoded list dies — replaced by real presence data or removed. Layout/tier controls already live in CommandStrip — Settings becomes: access/human-login management + daemon info + (real) preferences as they exist.
+- **Settings:** theme toggle dies (single dark theme). "Agent sources" hardcoded list dies — replaced by real presence data (`fetchHeyPresence`, already wired in HeyPanel). Layout/tier controls already live in CommandStrip — Settings becomes: access/human-login management + daemon info + (real) preferences as they exist.
 
 ### 3.9 Secondary routes — keep, restyle
 - `#/repos` (RepoBrain), `#/db` (DbView), HumanAccess gate — all survive with the new tokens; no behavior change.
@@ -116,7 +116,7 @@ Replaces both MissionControl and CommandRail. One tabbed console:
 - Tab roles/`aria-selected` on all tab systems (existing pattern holds).
 - Focus-visible rings in purple, never removed.
 - `prefers-reduced-motion` → no shimmer/lift.
-- Contrast: text ≥4.5:1 on panels; mono micro-labels ≥3:1.
+- Contrast: all informative text ≥4.5:1 on panels, mono micro-labels included (they carry state, not decoration); ≥3:1 only for non-text affordance borders/glows.
 
 ## 7. What dies (explicit)
 
@@ -127,7 +127,7 @@ Replaces both MissionControl and CommandRail. One tabbed console:
 | `LogsPanel` fake SEED data | deleted (returns only if API-backed) |
 | `SettingsPanel` hardcoded agent list | deleted (real presence or nothing) |
 | Timeline "memory horizon" scrubber + play | removed from strip |
-| `random` button | removed from strip (optional inspector overflow) |
+| `random` button | cut entirely |
 | `CommandRail` as a layout element | dissolved into WorkSurface |
 | Mission Control 'ask' tab mislabel | fixed (ProposalsPanel moves to Ontology tab) |
 | `BRAIN` subtitle in brand | dropped |

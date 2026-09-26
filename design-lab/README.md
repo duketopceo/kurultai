@@ -9,7 +9,7 @@ Scratch space for the UI/UX rebuild (`docs/plans/2026-09-25-001`, unit U3).
 
 ```bash
 OPENROUTER_API_KEY=... node scripts/ui-batch.mjs --model moonshotai/kimi-k2 --n 3
-OPENROUTER_API_KEY=... node scripts/ui-batch.mjs --model openai/gpt-5 --n 3 --only tokens,strip
+OPENROUTER_API_KEY=... node scripts/ui-batch.mjs --model openai/gpt-5 --n 3 --only tokens,chrome
 ```
 
 `--model` is any OpenRouter model id (Kimi or GPT per the plan — no Fable). `--n` = variants per surface. `--only` limits to comma-separated prompt basenames.

@@ -45,9 +45,9 @@ execution: code
 | # | Decision | Rationale |
 |---|----------|-----------|
 | D1 | Build replacement as a **parallel app** (`website/` gets a second entry — e.g. `ui-next.html` + `src/next/` tree), not in-place rewrites | User previews locally first; old UI stays intact until cutover; satisfies "no data loss / easy rollback" and the version-tag rule |
-| D2 | Batch models generate **per-surface design variants + tokens**, checked into a scratch dir (`design-lab/` gitignored, or a sibling worktree) | Keeps generated slop out of the shipping tree; stitching is deliberate |
+| D2 | Batch models generate **per-surface design variants + tokens** into `design-lab/`: `prompts/` are committed (the spec contract), generated outputs land in `design-lab/out/` which **is** gitignored | Keeps generated slop out of the shipping tree; stitching is deliberate |
 | D3 | Reuse `website/src/api.ts` + `perf.ts` verbatim in ui-next | API contracts frozen; telemetry must survive; zero backend work |
-| D4 | Component primitive layer: adopt a tokens-first approach (CSS custom properties in a `tokens.css`), derived from bolt.new DESIGN.md spec (near-black canvas, azure/purple accent voltages, Inter/Inter Display, 12px/pill radii) remapped to Kurultai's white/purple palette | Bolt's spec is machine-readable and close to our aesthetic; avoids bespoke slop |
+| D4 | Component primitive layer: tokens-first (`tokens.css` custom properties), derived from bolt.new's DESIGN.md spec but **fully remapped** — azure voltages → electric purple family, 12px → **6px** panel radius (pill only for chips), Inter Display → Orbitron + JetBrains Mono per `docs/design/ui-definitions.md` §1. Bolt supplies token *shape*, not token *values* | Bolt's spec is machine-readable and close in structure; our palette/type/radius decisions live in ui-definitions.md |
 | D5 | Research before build: ThreeUI (recent: Cortexa, Orrery, Cadence, Meridian — dark editorial point-cloud/chrome), VoltAgent VoltOps console (MIT, agent-ops observability UI — nearest product analog), bolt.new repo styles | User named these; each answers a different question (visual language / layout patterns for agent ops / token system) |
 
 ### Definitions doc (the "what we want" artifact)
