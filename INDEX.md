@@ -24,6 +24,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 - [`.github/`](.github/INDEX.md) — CI, templates, CODEOWNERS
 - [`.compound-engineering/`](.compound-engineering/INDEX.md) — Compound Engineering per-checkout local configuration
 - [`.devcontainer/`](.devcontainer/INDEX.md) — Local dev-container dogfood definitions (Debian + Ubuntu)
+- [`design-lab/`](design-lab/INDEX.md) — UI batch-design scratch: committed prompts, gitignored generated variants
 - [`docs/`](docs/INDEX.md) — Product + agent docs
 - [`evals/`](evals/INDEX.md) — Retrieval eval golden set + labeling guide
 - [`plans/`](plans/INDEX.md) — Legacy root-level plans (prefer docs/plans/)
@@ -43,7 +44,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`.coderabbit.yaml`](.coderabbit.yaml) | CodeRabbit: auto-review off | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`.dockerignore`](.dockerignore) | Docker build context excludes for the hub image | — | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 hub image context |
 | [`.env.example`](.env.example) | Example env vars (API keys, hub bind, eval/web) | — | — | 2026-09-17 | 3 | 2026-09-17 eval/web block (`PERPLEXITY_API_KEY`, `KURULTAI_FEATURE_WEB_SEARCH`) · 2026-08-29 hub env block (HUB-3) · 2026-08-16 indexed (v1 seed) |
-| [`.gitignore`](.gitignore) | Ignored build, env, agent workspace, eval report paths | — | — | 2026-09-18 | 6 | 2026-09-18 root `node_modules/` (Argus tooling shim) · 2026-09-17 `evals/reports/` · 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
+| [`.gitignore`](.gitignore) | Ignored build, env, agent workspace, eval report, design-lab output paths | — | — | 2026-09-26 | 7 | 2026-09-26 `design-lab/out/` (batch variants are scratch) · 2026-09-18 root `node_modules/` (Argus tooling shim) · 2026-09-17 `evals/reports/` · 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-05 | 3 | 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
@@ -72,6 +73,8 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-26 — UI rebuild units U1–U3 scaffold: `docs/design/` (teardown definitions — 3-palette clash + fake-data findings; research bases) + `design-lab/` (4 surface prompts) + `scripts/ui-batch.mjs` OpenRouter runner; batch generation + stitching remain
+- 2026-09-25 — UI/UX teardown + rebuild plan (`docs/plans/2026-09-25-001`): teardown inventory → definitions doc → ThreeUI/VoltOps/bolt.new research → batch Kimi/GPT design gen → stitched `ui-next` → local preview gate → tagged ~v0.6.5 cutover; Brain concept kept, frontend-only
 - 2026-09-23 — `/api/graph` prepared payload (#324): publish-on-mutation via `Store::atom_epoch`, param-keyed `graph_cache` serves nodes byte-for-byte; hub stores (epoch `u64::MAX`) stay live
 - 2026-09-21 — Argus action re-pin `@v0.2.0` → full SHA `75492b8a` on `fix/argus-sha-pin` (mutable tag held `OPENROUTER_API_KEY` + write scopes; flagged by live dogfood review)
 - 2026-09-21 — Argus shim re-pin on `feat/argus-pr-review`: `package.json`/`package-lock.json` git SHA → npm `argus-reviewer-e2e@0.2.0`, action `uses:` → `duketopceo/Argus/action@v0.2.0`; picks up the Jev stack (triage/secrets adjudication) the config already enables
