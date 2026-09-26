@@ -9,11 +9,11 @@ import { join, basename } from 'node:path';
 const args = process.argv.slice(2);
 const get = (flag, dflt) => {
   const i = args.indexOf(flag);
-  return i >= 0 ? args[i + 1] : dflt;
+  return i >= 0 ? (args[i + 1] ?? dflt) : dflt;
 };
 const MODEL = get('--model', 'moonshotai/kimi-k2');
 const N = Number(get('--n', '3'));
-const ONLY = get('--only', '')?.split(',').filter(Boolean);
+const ONLY = get('--only', '').split(',').filter(Boolean);
 const KEY = process.env.OPENROUTER_API_KEY;
 if (!KEY) { console.error('OPENROUTER_API_KEY required'); process.exit(1); }
 
