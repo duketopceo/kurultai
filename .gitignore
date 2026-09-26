@@ -63,3 +63,6 @@ __pycache__/
 evals/reports/
 .codebase-memory/
 node_modules/
+
+# Design-lab generated variants (U3 outputs are scratch)
+design-lab/out/
