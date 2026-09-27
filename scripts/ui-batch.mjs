@@ -3,7 +3,7 @@
 // Usage: OPENROUTER_API_KEY=... node scripts/ui-batch.mjs --model <id> [--n 3] [--only tokens,chrome]
 // Writes design-lab/out/<surface>/<model>-<i>.md (gitignored).
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, basename } from 'node:path';
 
@@ -23,7 +23,7 @@ const promptsDir = fileURLToPath(new URL('../design-lab/prompts/', import.meta.u
 const outRoot = fileURLToPath(new URL('../design-lab/out/', import.meta.url));
 let prompts;
 try {
-  prompts = readdirSync(promptsDir).filter((f) => f.endsWith('.md'));
+  prompts = readdirSync(promptsDir).filter((f) => f.endsWith('.md') && f !== 'INDEX.md' && f !== 'README.md');
 } catch {
   console.error(`no prompts dir at ${promptsDir} — expected design-lab/prompts/*.md`);
   process.exit(1);
@@ -43,6 +43,12 @@ for (const file of picked) {
   const prompt = readFileSync(join(promptsDir, file), 'utf8');
   mkdirSync(join(outRoot, surface), { recursive: true });
   for (let i = 1; i <= N; i++) {
+    const safe = MODEL.replaceAll('/', '-');
+    const dest = join(outRoot, surface, `${safe}-${i}.md`);
+    if (existsSync(dest) && statSync(dest).size > 0) {
+      console.log(`${surface} #${i} <- ${MODEL} (cached)`);
+      continue;
+    }
     const t0 = Date.now();
     let ok = false;
     for (let attempt = 0; attempt < 3 && !ok; attempt++) {
@@ -50,7 +56,7 @@ for (const file of picked) {
         const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(120_000),
+          signal: AbortSignal.timeout(300_000),
           body: JSON.stringify({
             model: MODEL,
             messages: [
@@ -71,8 +77,11 @@ for (const file of picked) {
         }
         const json = await res.json();
         const text = json.choices?.[0]?.message?.content ?? '';
-        const safe = MODEL.replaceAll('/', '-');
-        writeFileSync(join(outRoot, surface, `${safe}-${i}.md`), text);
+        if (!text.trim()) {
+          console.error(`${surface} #${i}: empty completion (HTTP 200)`);
+          break;
+        }
+        writeFileSync(dest, text);
         console.log(`${surface} #${i} <- ${MODEL} (${((Date.now() - t0) / 1000).toFixed(1)}s, ${text.length} chars)`);
         ok = true;
       } catch (err) {
