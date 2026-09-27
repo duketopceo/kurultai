@@ -83,6 +83,9 @@ body {
 .next-hero .brain-stage,
 .next-hero #brain-canvas { width: 100%; height: 100%; }
 .next-hero .brain-stage { position: absolute; inset: 0; }
+/* Canvas CSS must track CSS pixels — renderer.setSize(w,h,false) only sizes
+   the drawing buffer (device px); unconstrained it overflows 2x on retina. */
+.next-hero .brain-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 /* Keep legacy HUD inside the hero but restyle to the new language. */
 .next-hero .brain-hud,
 .next-hero .brain-caption,
