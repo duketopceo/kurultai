@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../api';
+import { useAuthMode } from '../auth';
 import { describeProposal } from '../proposals';
 import { BrainStage, type BrainStageHandle } from '../components/BrainStage';
 import { laneBody, laneOf, withLane } from '../components/hey-kanban/kanbanMapping';
@@ -61,6 +62,7 @@ const STATUS_TO_LANE: Record<TaskStatus, string> = {
 const CLASS_IDS = ['entity', 'source', 'event', 'concept', 'project', 'person'] as const;
 
 export function NextApp() {
+  const authMode = useAuthMode();
   // ── daemon + graph state ──────────────────────────────────────────
   const [daemon, setDaemon] = useState<{ status: 'online' | 'connecting' | 'offline'; apiVersion?: string | null }>({ status: 'connecting' });
   const [nav, setNav] = useState<NavKey>('brain');
@@ -68,6 +70,7 @@ export function NextApp() {
   const [tier, setTier] = useState<LoadTier>('low');
   const [atoms, setAtoms] = useState<Atom[]>([]);
   const [atomTotal, setAtomTotal] = useState(0);
+  const [graphLoaded, setGraphLoaded] = useState(false);
   const [ontology, setOntology] = useState<OntologyResponse>({ ok: true, entities: [], links: [] });
   const [selected, setSelected] = useState<Atom | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -118,6 +121,7 @@ export function NextApp() {
       setAtoms(graphAtoms.slice(0, cap));
       setAtomTotal(graphAtoms.length);
       setOntology(onto);
+      setGraphLoaded(true);
     } catch { /* abort or offline — status poll reports it */ }
   }, []);
 
@@ -399,7 +403,7 @@ export function NextApp() {
             layout={layout === 'ontology' ? 'ontology' : 'force'}
             fps={null}
             synapses={null}
-            empty={atomTotal === 0 && atoms.length === 0}
+            empty={graphLoaded && atomTotal === 0 && atoms.length === 0}
           >
             <BrainStage
               ref={brainRef}
@@ -461,7 +465,7 @@ export function NextApp() {
             <SettingsPanel
               daemon={{ online: daemon.status === 'online', version: daemon.apiVersion ?? null }}
               presence={null}
-              mode={(document.querySelector('meta[name="cf-access"]') ? 'cloudflare' : 'token') as AccessMode}
+              mode={(authMode === 'locked' ? 'token' : 'open') as AccessMode}
               onLogin={async () => setSettingsOpen(false)}
             />
           </div>
