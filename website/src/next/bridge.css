@@ -98,3 +98,9 @@ body {
   z-index: 400;
 }
 .skip-link:focus { left: 8px; }
+
+/* Narrow viewports: generated .ws-tabs is max-content/510px — let it scroll. */
+@media (max-width: 560px) {
+  .ws-tabs { width: auto; min-width: 0; max-width: 100%; overflow-x: auto; }
+  .next-inspector { left: 16px; right: 16px; }
+}

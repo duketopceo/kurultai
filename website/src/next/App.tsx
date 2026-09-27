@@ -458,6 +458,9 @@ export function NextApp() {
         <div
           role="dialog"
           aria-modal="true"
+          onKeyDown={(e) => { if (e.key === 'Escape') setSettingsOpen(false); }}
+          ref={(el) => el?.focus()}
+          tabIndex={-1}
           style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'var(--scrim)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setSettingsOpen(false); }}
         >
