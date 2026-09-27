@@ -15,6 +15,7 @@ version: 6
 
 - [`agent-zero/`](agent-zero/INDEX.md) — v1 Agent Zero issue pack (historical)
 - [`brainstorms/`](brainstorms/INDEX.md) — Requirements / research notes
+- [`design/`](design/INDEX.md) — UI/UX rebuild definitions + research bases (plan 2026-09-25-001)
 - [`deploy/`](deploy/INDEX.md) — Hub / Railway operator recipes
 - [`eval/`](eval/INDEX.md) — Eval notes
 - [`ideas/`](ideas/INDEX.md) — Parked ideas
