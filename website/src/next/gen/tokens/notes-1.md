@@ -1,0 +1,21 @@
+# tokens.md: Kurultai token scale
+
+- **Canvas** `--canvas-0…3`: one near-black family (#050508 → #13101d); 0 is the page, 1 is recessed wells, 2–3 are solid fallbacks where glass/blur isn't available.
+- **Accent** `--accent / -strong / -dim / -rgb / -contrast`: the only accent is electric purple. #a855f7 is the base fill, #c084fc is accent text on dark, #7c3aed is pressed/deep, and `-contrast` is for text on a solid purple fill.
+- **Glow** `--glow-1…4`: purple alpha ramp .14 / .22 / .32 / .42 covering hover wash, selected, focus halo, and hero glow.
+- **State** `--ok / --warn / --danger (+ -bg, -border)`, `--neutral-state`: muted mint, amber and rose, each with a 10% background and ~28% border. These are never purple. Use neutral for idle/unknown/not-loaded, and don't fake a status.
+- **Text** `--text-1…4`, `--text-accent`: primary values, then prose, then HUD labels/metadata, then disabled.
+- **Surfaces** `--surface-glass-1…4`, `--surface-blur`, `--surface-inset`, `--scrim`: glass rgba(10,8,20) at .60 / .72 / .84 / .92 for ambient card, panel, toolbar, and popover/dialog.
+- **Borders** `--border`, `--border-hover`, `--border-strong`, `--border-subtle`: 1px purple at .14 resting, .40 on hover/focus, .55 selected, plus a white 5% divider.
+- **Radius** `--radius-xs / -panel / -pill`: 6px for panels, cards, inputs and buttons. Pill is reserved for chips and segmented controls only.
+- **Font families** `--font-display / -mono / -prose`: Orbitron for hero numerals and brand only, JetBrains Mono for all chrome and HUD, and a sans stack for prose blocks.
+- **Type scale** `--fs-hud…--fs-hero`: 10 / 11 / 12 / 13 (chrome base) / 15 (prose) / 16 / 20 / 24 / clamp(32–48) hero, with the matching `--lh-*`.
+- **Type details** `--fw-*`, `--tracking-*`, `--numeric`: HUD labels are uppercase at 0.14em tracking, and metrics use tabular slashed-zero numerals.
+- **Spacing** `--space-0…10`: 4px grid (0, 2, 4, 8, 12, 16, 20, 24, 32, 48, 64). `--panel-pad` is 16px, and `--control-h-*` is 24 / 30 / 36.
+- **Elevation** `--shadow-1…3`, `--glow-shadow(-hero)`: depth comes from black shadows plus a hairline inset highlight, with purple glow reserved for emphasis.
+- **Focus** `--focus-ring-*`, `--focus-halo`: a 2px #c084fc outline at 2px offset plus a 4px glow-3 halo, shown on keyboard `:focus-visible` only.
+- **Motion** `--ease-out`, `--dur-fast/base/slow`, `--transition-*`: 120 / 160 / 220ms on cubic-bezier(.22,1,.36,1). Durations collapse to 0 under `prefers-reduced-motion`.
+- **Scrollbar** `--scrollbar-*`: an 8px thin pill thumb in purple at .18, rising to .40 on hover, over a transparent track (Firefox and WebKit).
+- **Selection** `--selection-bg / -text`: purple at .32 with near-white text.
+- **Layers** `--z-*`: base 0, sticky 10, dropdown 100, overlay 200, modal 300, toast 400, tooltip 500.
+- **Utilities** [U1] `::selection`, [U2] `:focus-visible`, [U3] scrollbars, [U4] reduced motion: these are the only non-`:root` selectors in the file.

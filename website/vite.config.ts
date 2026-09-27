@@ -13,7 +13,10 @@ export default defineConfig({
     outDir: path.resolve(__dirname, '../ui'),
     emptyOutDir: false,
     rollupOptions: {
-      input: path.resolve(__dirname, 'brain.html'),
+      input: {
+        brain: path.resolve(__dirname, 'brain.html'),
+        'ui-next': path.resolve(__dirname, 'ui-next.html'),
+      },
       output: {
         entryFileNames: 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
