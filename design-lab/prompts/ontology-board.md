@@ -20,4 +20,4 @@ Six fixed classes (e.g. Note, Person, Project, Task, Entity, Source). Each class
 - Mobile: columns stack vertically; link mode disabled under 768px (declare it, don't half-support it).
 
 ## Output contract
-`ontology-board.tsx` + `ontology-board.css`. Typed props: `{ classes, instances, edges, onOpen, onLink, onDelete, onAdd }`. @xyflow/react is ALLOWED if it makes the board genuinely better — otherwise plain CSS grid/absolute is preferred (fewer deps).
+`ontology-board.tsx` + `ontology-board.css`. Typed props: `{ classes, instances, edges, onOpen, onLink, onDelete, onAdd }`. Self-contained React+CSS only — no external deps.

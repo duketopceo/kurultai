@@ -16,6 +16,7 @@ const MODEL = get('--model', 'moonshotai/kimi-k2');
 const N = Number(get('--n', '3'));
 if (!Number.isInteger(N) || N < 1) { console.error(`--n must be a positive integer (got ${get('--n', '3')})`); process.exit(1); }
 const ONLY = get('--only', '').split(',').filter(Boolean);
+const FORCE = process.argv.includes('--force');
 const KEY = process.env.OPENROUTER_API_KEY;
 if (!KEY) { console.error('OPENROUTER_API_KEY required'); process.exit(1); }
 
@@ -45,7 +46,7 @@ for (const file of picked) {
   for (let i = 1; i <= N; i++) {
     const safe = MODEL.replaceAll('/', '-');
     const dest = join(outRoot, surface, `${safe}-${i}.md`);
-    if (existsSync(dest) && statSync(dest).size > 0) {
+    if (!FORCE && existsSync(dest) && statSync(dest).size > 0) {
       console.log(`${surface} #${i} <- ${MODEL} (cached)`);
       continue;
     }
@@ -78,7 +79,8 @@ for (const file of picked) {
         const json = await res.json();
         const text = json.choices?.[0]?.message?.content ?? '';
         if (!text.trim()) {
-          console.error(`${surface} #${i}: empty completion (HTTP 200)`);
+          console.error(`${surface} #${i}: empty completion (HTTP 200, attempt ${attempt + 1}/3)`);
+          if (attempt < 2) { await sleep(2000 * (attempt + 1)); continue; }
           break;
         }
         writeFileSync(dest, text);
