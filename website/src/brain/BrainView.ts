@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import brainUrl from '../assets/brain.glb?url';
 import type { Atom, Link, Theme, LayoutMode, OntologyResponse, OntologyEntity } from '../types';
 import { hashId } from '../state';
@@ -131,13 +135,13 @@ interface Palette {
 }
 
 const DARK_PALETTE: Palette = {
-  nodeBase: 0xd6d1ee,
+  nodeBase: 0xdcd7f2,
   nodeHot: 0xffffff,
   nodeUnfocus: 0x37324a,
-  edgeRest: 0x7c6fd4,
+  edgeRest: 0x7c5ce8,
   edgeActive: 0xffffff,
-  edgeDim: 0x221c38,
-  particles: [0xffffff, 0xc9c4ea, 0xffffff, 0x8f83dc, 0xffffff],
+  edgeDim: 0x1d1832,
+  particles: [0xffffff, 0xd4cfff, 0xf6f2ff, 0x9a7ff0, 0xffffff],
 };
 
 const LIGHT_PALETTE: Palette = {
@@ -232,6 +236,13 @@ export class BrainView {
   private palette: Palette;
 
   private renderer!: THREE.WebGLRenderer;
+  // Bloom composer — the single biggest fidelity lever for the electric look.
+  // Ratchet governor: once fpsEma sustains < BLOOM_MIN_FPS the pass is
+  // dropped for the session rather than flapping on/off.
+  private composer: EffectComposer | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
+  private bloomDropped = false;
+  private bloomLowFrames = 0;
   private scene = new THREE.Scene();
   private camera!: THREE.PerspectiveCamera;
   private brainGroup = new THREE.Group();
@@ -402,6 +413,20 @@ export class BrainView {
     container.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.05, 60);
+
+    // Post chain: scene → bloom → output (tone map + sRGB). High threshold so
+    // only the white-hot cores/spikes bleed; the violet field stays clean.
+    try {
+      this.composer = new EffectComposer(this.renderer);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.7, 0.82);
+      this.composer.addPass(this.bloomPass);
+      this.composer.addPass(new OutputPass());
+      this.composer.setPixelRatio(this.renderer.getPixelRatio());
+    } catch {
+      this.composer = null;
+      this.bloomPass = null;
+    }
     // Points-picking threshold for the node sprite cloud (set once; no other
     // Points objects are raycast in this view, so a constant is safe).
     this.raycaster.params.Points.threshold = NODE_RAYCAST_THRESHOLD;
@@ -2202,6 +2227,8 @@ export class BrainView {
     this.camera.aspect = rect.width / rect.height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(rect.width, rect.height, false);
+    this.composer?.setSize(rect.width, rect.height);
+    this.bloomPass?.resolution.set(rect.width, rect.height);
   }
 
   private loop = () => {
@@ -2274,7 +2301,19 @@ export class BrainView {
       this.refreshLabelPlan();
     }
 
-    this.renderer.render(this.scene, this.camera);
+    // Adaptive quality: sustained low fps drops the bloom pass for good.
+    if (this.composer && !this.bloomDropped && this.fpsEma > 0 && this.fpsEma < 40) {
+      this.bloomLowFrames += 1;
+      if (this.bloomLowFrames > 90) {
+        this.bloomDropped = true;
+        this.bloomPass!.enabled = false;
+      }
+    } else {
+      this.bloomLowFrames = 0;
+    }
+
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.loop);
   };
 
@@ -2380,6 +2419,8 @@ export class BrainView {
         spriteMat.dispose();
       }
     });
+    this.bloomPass?.dispose();
+    this.composer?.dispose();
     this.renderer?.dispose();
     this.renderer?.domElement.remove();
   }
