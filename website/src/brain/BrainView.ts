@@ -98,32 +98,53 @@ const NODE_SPRITE_VERTEX = /* glsl */ `
 attribute float aSize;
 attribute vec3 aColor;
 attribute float aAlpha;
+attribute float aSeed;
 uniform vec3 uPointer;
 uniform float uHover;
 uniform float uIntro;
+uniform float uTime;
 varying vec3 vColor;
 varying float vAlpha;
+varying float vSeed;
 
 void main() {
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mvPosition;
   float d = distance(uPointer, position);
   float c = smoothstep(0.22, 0.04, d);
-  float scale = (aSize + c * 2.5 * uHover) * uIntro;
+  // Slow per-node pulse (±4%) — somas breathe on their own phase, not in sync.
+  float breathe = 1.0 + 0.04 * sin(uTime * 0.7 + aSeed * 6.2831);
+  float scale = (aSize + c * 2.5 * uHover) * uIntro * breathe;
   gl_PointSize = scale * (500.0 / -mvPosition.z);
   vColor = mix(aColor, vec3(1.0), c * uHover * 0.25);
   vAlpha = aAlpha * (0.85 + 0.1 * c * uHover);
+  vSeed = aSeed;
 }
 `;
 
+/* Procedural soma (v3): replaces the sampled dot texture. The silhouette is a
+ * seed-wobbled disc (two sine harmonics on the polar angle) so every neuron is
+ * a slightly different cell body — no specular, no billiard orbs. A small hot
+ * core sits inside a wide, dim dendrite halo; alpha stays low so overlapping
+ * somas in the dense core shade the interior instead of blowing out. */
 const NODE_SPRITE_FRAGMENT = /* glsl */ `
-uniform sampler2D uMap;
 varying vec3 vColor;
 varying float vAlpha;
+varying float vSeed;
 void main() {
-  vec4 tex = texture2D(uMap, gl_PointCoord);
-  if (tex.a < 0.01) discard;
-  gl_FragColor = vec4(vColor, vAlpha * tex.a);
+  vec2 uv = gl_PointCoord - vec2(0.5);
+  float r = length(uv);
+  float ang = atan(uv.y, uv.x);
+  // Irregular cell-body edge: base radius ~0.34 wobbled by two harmonics.
+  float wob = 0.34
+    + 0.045 * sin(ang * 3.0 + vSeed * 6.2831)
+    + 0.03 * sin(ang * 7.0 - vSeed * 12.566);
+  float core = 1.0 - smoothstep(wob * 0.5, wob, r);
+  float halo = 1.0 - smoothstep(wob, 0.5, r);
+  float a = clamp(core * 0.9 + halo * 0.3, 0.0, 1.0);
+  if (a < 0.02) discard;
+  vec3 col = mix(vColor, vec3(1.0), core * 0.5);
+  gl_FragColor = vec4(col, vAlpha * a);
 }
 `;
 
@@ -183,7 +204,7 @@ const MAX_EDGES = 1200;
 const NODE_SPRITE_CUTOFF = 500;
 // Converts the sphere radius (world units) to the cortex gl_PointSize curve.
 // Tuned so the sprite visual size matches the sphere at the 500-node crossover.
-const NODE_SPRITE_SIZE_SCALE = 5;
+const NODE_SPRITE_SIZE_SCALE = 4.2;
 // Raycaster threshold (world units) for picking individual node sprites.
 const NODE_RAYCAST_THRESHOLD = 0.02;
 // U1: degree at/below which a soma wears the sparse corona texture; above it
@@ -613,8 +634,12 @@ export class BrainView {
     const normal = new THREE.Vector3(this.norms[i], this.norms[i + 1], this.norms[i + 2]);
     const jitter = (((h >> 8) % 100) / 100 - 0.5) * 0.02;
     const jitter2 = (((h >> 16) % 100) / 100 - 0.5) * 0.02;
-    // Slight inward bias so spawn starts inside/on the cortex (hard FDG
-    // project keeps them there). Prior +0.018 outward offset seeded exterior.
+    // Cortical-mantle band: pull spawn to 0.70–0.96 of hull radius (seeded per
+    // node) so the constellation fills the cortical shell where sulci/gyri
+    // live — the brain silhouette reads hard instead of relaxing into a
+    // center-weighted blob. FDG repulsion + hull containment keep them there.
+    const band = 0.7 + (((h >> 4) % 100) / 100) * 0.26;
+    pos.multiplyScalar(band);
     return pos.add(normal.multiplyScalar(-0.012 + jitter)).addScalar(jitter2 * 0.01);
   }
 
@@ -720,8 +745,11 @@ export class BrainView {
       this.heatById.set(atom.id, heatOf(atom, nowMs, this.degrees.get(atom.id) || 0));
     });
 
-    // Hybrid path selection (KTD3 / R4): > cutoff → sprite cloud, else meshes.
-    this.spriteMode = atoms.length > NODE_SPRITE_CUTOFF;
+    // Hybrid path selection (v3): brain layout is always the soma sprite
+    // cloud — sphere meshes read as billiard orbs and blow out under bloom
+    // at density. Ontology keeps the hybrid (labels/scaffold need meshes).
+    this.spriteMode =
+      this.layoutMode === 'brain' ? true : atoms.length > NODE_SPRITE_CUTOFF;
     // Release the previous cloud whenever we rebuild (mode switch or refresh).
     this.disposeSpriteHoverLabel();
     this.disposeNodeSpriteCloud();
@@ -787,6 +815,14 @@ export class BrainView {
     // would just redo the same attribute pass.
     this.applyFilters();
     if (!this.spriteMode) this.applyRegionColors();
+
+    // Bloom backs off at density — additive soma sprites already carry their
+    // own halo; at 1k+ nodes full-strength bloom fuses into glare.
+    if (this.bloomPass) {
+      const dense = shown.length > 800;
+      this.bloomPass.strength = dense ? 0.3 : 0.55;
+      this.bloomPass.threshold = dense ? 0.86 : 0.82;
+    }
 
     if (!this.applyingOntology) this.startWorkerLayout(shown);
     // Morph cue: shell ripple announcing the graph changed (skipped under
@@ -874,11 +910,12 @@ export class BrainView {
     const sizes = new Float32Array(count);
     const colors = new Float32Array(count * 3);
     const alphas = new Float32Array(count);
+    const seeds = new Float32Array(count);
     const color = new THREE.Color();
 
     // Density shrink: a soft-glow sprite reads fine at ~600 nodes but fuses
     // to a blob at 3.5k — pull point size down hard as count climbs.
-    const densityShrink = Math.min(1, Math.pow(600 / count, 1.1));
+    const densityShrink = Math.min(1, Math.pow(700 / count, 1.05));
 
     shown.forEach((atom, i) => {
       const region = regionOf.get(atom.id) || 'left';
@@ -900,7 +937,8 @@ export class BrainView {
       // path's coronaRestOpacity() — additive sprites at alpha≈1 fuse into a
       // blown-out white mass above a few hundred nodes. Steeper exponent than
       // the mesh path: sprite overlap compounds quadratically in dense cores.
-      alphas[i] = 0.02 + 0.7 * Math.pow(this.sizeScale, 4.0);
+      alphas[i] = 0.02 + 0.55 * Math.pow(this.sizeScale, 4.0);
+      seeds[i] = (hashId(atom.id) % 1000) / 1000;
 
       this.atomPositions.set(atom.id, pos);
       // Separate instance: atomPositions is mutated by layout animations.
@@ -917,11 +955,12 @@ export class BrainView {
     geometry.setAttribute('aColor', this.spriteColorAttr);
     this.spriteAlphaAttr = new THREE.BufferAttribute(alphas, 1);
     geometry.setAttribute('aAlpha', this.spriteAlphaAttr);
+    geometry.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
 
     const material = new THREE.ShaderMaterial({
       vertexShader: NODE_SPRITE_VERTEX,
       fragmentShader: NODE_SPRITE_FRAGMENT,
-      uniforms: { ...this.uniforms, uMap: { value: this.dotTexture } },
+      uniforms: { ...this.uniforms },
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
