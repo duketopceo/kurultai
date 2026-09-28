@@ -351,6 +351,9 @@ export class BrainView {
   // the hovered mesh soma+corona (sprite mode magnifies in-shader via
   // uPointer/uHover).
   private sizeScale = 1;
+  // V4 wire-light: per-node rest alpha for the soma sprite cloud, applied by
+  // applySpriteBaseColors/applySpriteHoverColors (which overwrite aAlpha).
+  private spriteRestAlpha = 0.1;
   private magnifyT = 0;
   private magnifyAppliedId: string | null = null;
   private hoverConnected = new Set<string>();
@@ -785,6 +788,7 @@ export class BrainView {
     this.magnifyT = 0;
     this.magnifyAppliedId = null;
     this.spikes?.setSizeScale(0.6 + 0.4 * this.sizeScale);
+    this.spriteRestAlpha = 0.015 + 0.09 * Math.pow(this.sizeScale, 2.5);
 
     // Sort by connection count descending to assign brain regions.
     // Top 10% (hubs) → stem, next 40% (more connected) → right, bottom 50% → left.
@@ -937,7 +941,10 @@ export class BrainView {
       // path's coronaRestOpacity() — additive sprites at alpha≈1 fuse into a
       // blown-out white mass above a few hundred nodes. Steeper exponent than
       // the mesh path: sprite overlap compounds quadratically in dense cores.
-      alphas[i] = 0.02 + 0.55 * Math.pow(this.sizeScale, 4.0);
+      // V4 "wire-light" mode: somas recede to faint pinpricks — presence
+      // markers only (still raycastable for hover/inspect). The readable
+      // signal lives on the axons: rest threads + traveling spikes.
+      alphas[i] = this.spriteRestAlpha;
       seeds[i] = (hashId(atom.id) % 1000) / 1000;
 
       this.atomPositions.set(atom.id, pos);
@@ -1162,7 +1169,7 @@ export class BrainView {
     const color = new THREE.Color();
     this._shownIds.forEach((id, i) => {
       const visible = this.isAtomVisible(id);
-      alphaAttr.setX(i, visible ? 1 : 0);
+      alphaAttr.setX(i, visible ? this.spriteRestAlpha : 0);
       const c = this.showRegions ? this.regionColor(this.spriteRegionOf.get(id) ?? 'left') : this.palette.nodeBase;
       color.setHex(c);
       colorAttr.setXYZ(i, color.r, color.g, color.b);
@@ -1186,13 +1193,13 @@ export class BrainView {
         // A hidden hovered node (only reachable via the randomConnection
         // all-hidden fallback) stays hidden — mirrors mesh mode where
         // node.visible=false hides the hovered mesh.
-        alpha = visible ? 1 : 0;
+        alpha = visible ? Math.min(1, this.spriteRestAlpha * 8) : 0;
       } else if (connected.has(id)) {
         c = this.showRegions ? this.regionColor(this.spriteRegionOf.get(id) ?? 'left') : this.palette.nodeBase;
-        alpha = visible ? 0.9 : 0;
+        alpha = visible ? Math.min(1, this.spriteRestAlpha * 5) : 0;
       } else {
         c = this.palette.nodeUnfocus;
-        alpha = visible ? 0.3 : 0;
+        alpha = visible ? this.spriteRestAlpha * 0.6 : 0;
       }
       color.setHex(c);
       colorAttr.setXYZ(i, color.r, color.g, color.b);
