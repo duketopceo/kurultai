@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
@@ -162,6 +165,7 @@ type SynapseData = Link & {
   phase?: number;
   curve?: THREE.CatmullRomCurve3;
   emissionAcc?: number;
+  flowSpeed?: number;
 };
 
 export type Region = 'left' | 'right' | 'stem';
@@ -796,11 +800,13 @@ export class BrainView {
     }
   }
 
-  /** Shared node radius (degree- and score-scaled) used by both node builders. */
+  /** Shared node radius (degree- and score-scaled) used by both node builders.
+   *  V2 constellation tuning: ~0.6× the old sizes — small luminous somas so the
+   *  cortex silhouette reads as a brain-shaped constellation, not a white mass. */
   private nodeRadius(atom: Atom): number {
     const degree = this.degrees.get(atom.id) || 0;
     const base =
-      (0.0075 + Math.min(degree, 20) * 0.0014 + Math.min(atom.score, 1) * 0.004) *
+      (0.0048 + Math.min(degree, 20) * 0.0009 + Math.min(atom.score, 1) * 0.0028) *
       this.sizeScale;
     return atom.source === 'code' ? base * 0.55 : base;
   }
@@ -812,7 +818,14 @@ export class BrainView {
       const region = regionOf.get(atom.id) || 'left';
       const radius = this.nodeRadius(atom);
       const mesh = new THREE.Mesh(this.somaGeo, this.nodeMaterial(false));
-      mesh.scale.setScalar(radius);
+      // Lumpy soma: per-node anisotropic scale (seeded by id) so neurons read
+      // as organic bodies, not identical billiard orbs.
+      const seed = hashId(atom.id);
+      const lx = radius * (0.82 + ((seed >>> 3) % 19) / 50);
+      const ly = radius * (0.82 + ((seed >>> 9) % 19) / 50);
+      const lz = radius * (0.82 + ((seed >>> 15) % 19) / 50);
+      mesh.scale.set(lx, ly, lz);
+      mesh.userData.lumpy = [lx, ly, lz];
       mesh.position.copy(this.vertexForRegion(atom, region));
       mesh.userData.atomId = atom.id;
       mesh.userData.region = region;
@@ -950,27 +963,45 @@ export class BrainView {
         points.push(b.clone());
 
         const curve = new THREE.CatmullRomCurve3(points);
-        const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(28));
-        // Explicit synapses: additive glow, opacity scales with shared-tag
-        // count so multiply-tagged connections read as stronger links.
+        // Synapse-gap axons (v2): the drawn thread stops short of both somas —
+        // the traveling spike (SpikePool rides the FULL stored curve) visibly
+        // fires across the gap into the destination neuron. Line2 gives real
+        // screen-space thickness + dash flow instead of 1px wire hairlines.
+        const segCount = 26;
+        const positions: number[] = [];
+        for (let i = 0; i <= segCount; i++) {
+          const t = 0.06 + 0.88 * (i / segCount);
+          const p = curve.getPoint(t);
+          positions.push(p.x, p.y, p.z);
+        }
+        const axonGeo = new LineGeometry();
+        axonGeo.setPositions(positions);
         const baseOpacity = this.edgeRestOpacity(link.strength || 1);
-        const line = new THREE.Line(
-          geo,
-          new THREE.LineBasicMaterial({
-            color: this.palette.edgeRest,
-            transparent: true,
-            opacity: baseOpacity,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-          }),
-        );
+        const axonMat = new LineMaterial({
+          color: this.palette.edgeRest,
+          linewidth: 1.6,
+          transparent: true,
+          opacity: baseOpacity,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          dashed: true,
+          dashSize: 0.05,
+          gapSize: 0.035,
+          dashScale: 1,
+        });
+        const rect = this.container.getBoundingClientRect();
+        axonMat.resolution.set(rect.width || 1, rect.height || 1);
+        const line = new Line2(axonGeo, axonMat);
         line.userData = link;
-        // Electric shimmer: per-synapse phase so the web flickers like live
-        // wiring instead of a static mesh (tickSynapseShimmer in the loop).
+        // Electric shimmer + flow: per-synapse phase so the web flickers like
+        // live wiring; dashOffset advances in tickSynapseShimmer for charge
+        // visibly traveling along each axon.
         const ud = line.userData as SynapseData;
         ud.baseOpacity = baseOpacity;
         ud.phase = Math.random() * Math.PI * 2;
-        // U2: spikes re-sample this curve each tick — keep it on the line.
+        ud.flowSpeed = 0.10 + Math.random() * 0.08;
+        // U2: spikes re-sample this curve each tick — keep the FULL curve
+        // (untrimmed) on the line so spikes still land on the soma.
         ud.curve = curve;
         ud.emissionAcc = Math.random();
         this.edgeGroup.add(line);
@@ -1473,6 +1504,9 @@ export class BrainView {
       // traveling spike (tickSpikes), not a uniform edge flash.
       const noise = 0.78 + 0.22 * Math.sin(t * 2.3 + (ud.phase ?? 0));
       mat.opacity = Math.min(1, ud.baseOpacity * noise);
+      // V2 axon flow: charge visibly travels along the axon thread.
+      const lm = mat as unknown as LineMaterial;
+      if (lm.isLineMaterial) lm.dashOffset = -(t * (ud.flowSpeed ?? 0.12));
     }
   }
 
@@ -1554,8 +1588,12 @@ export class BrainView {
     const k = 1 + 0.4 * t;
     const mesh = this.nodeMap.get(id);
     if (mesh) {
-      if (mesh.userData.baseRadius === undefined) mesh.userData.baseRadius = mesh.scale.x;
-      mesh.scale.setScalar((mesh.userData.baseRadius as number) * k);
+      const lumpy = mesh.userData.lumpy as number[] | undefined;
+      if (lumpy) mesh.scale.set(lumpy[0] * k, lumpy[1] * k, lumpy[2] * k);
+      else {
+        if (mesh.userData.baseRadius === undefined) mesh.userData.baseRadius = mesh.scale.x;
+        mesh.scale.setScalar((mesh.userData.baseRadius as number) * k);
+      }
     }
     const halo = this.haloMap.get(id);
     if (halo) {
@@ -2229,6 +2267,11 @@ export class BrainView {
     this.renderer.setSize(rect.width, rect.height, false);
     this.composer?.setSize(rect.width, rect.height);
     this.bloomPass?.resolution.set(rect.width, rect.height);
+    // LineMaterial needs the viewport size or fat lines render degenerate.
+    for (const child of this.edgeGroup.children) {
+      const m = (child as Line2).material as LineMaterial | undefined;
+      m?.resolution?.set(rect.width, rect.height);
+    }
   }
 
   private loop = () => {
@@ -2255,6 +2298,9 @@ export class BrainView {
       this.tickSynapseShimmer();
       this.tickSpikes(dt);
       if (!this.dragging && !this.zoomAtomId) this.brainGroup.rotation.y += dt * 0.05;
+      // Breathing field: whole constellation expands/contracts ~1% at ~0.07Hz —
+      // alive, but never distracting.
+      this.brainGroup.scale.setScalar(1 + Math.sin(this.uniforms.uTime.value * 0.45) * 0.012);
       if (this.uniforms.uIntro.value < 1) {
         this.uniforms.uIntro.value = Math.min(1, this.uniforms.uIntro.value + dt * 0.8);
       }
