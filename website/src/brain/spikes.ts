@@ -45,7 +45,7 @@ export function emissionRate(heatA: number, heatB: number, hover: EdgeHover): nu
   if (hover === 'towardA' || hover === 'towardB') return 2.5;
   // V4: somas are near-invisible now, so the wires carry the life — higher
   // floor + stronger heat scaling keeps light visibly moving at rest.
-  return 0.09 + (heatA + heatB) * 0.5;
+  return 0.05 + (heatA + heatB) * 0.4;
 }
 
 /** Fractional accumulator emission — deterministic (no rng), so tests can

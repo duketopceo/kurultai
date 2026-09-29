@@ -197,14 +197,14 @@ const MAX_NODES = 2500;
 // show every memory, not a 2500-node slice.
 const SPRITE_NODE_CAP = 20_000;
 /** Top-N links by strength. Lowered from 3000 to cut edge geometry cost. */
-const MAX_EDGES = 1200;
+const MAX_EDGES = 2600;
 
 // Hybrid node rendering (KTD3 / R4): above this count nodes render as a single
 // THREE.Points draw call; at or below it the sphere+halo+label meshes render.
 const NODE_SPRITE_CUTOFF = 500;
 // Converts the sphere radius (world units) to the cortex gl_PointSize curve.
 // Tuned so the sprite visual size matches the sphere at the 500-node crossover.
-const NODE_SPRITE_SIZE_SCALE = 4.2;
+const NODE_SPRITE_SIZE_SCALE = 2.6;
 // Raycaster threshold (world units) for picking individual node sprites.
 const NODE_RAYCAST_THRESHOLD = 0.02;
 // U1: degree at/below which a soma wears the sparse corona texture; above it
@@ -788,7 +788,7 @@ export class BrainView {
     this.magnifyT = 0;
     this.magnifyAppliedId = null;
     this.spikes?.setSizeScale(0.6 + 0.4 * this.sizeScale);
-    this.spriteRestAlpha = 0.015 + 0.09 * Math.pow(this.sizeScale, 2.5);
+    this.spriteRestAlpha = 0.03 + 0.12 * Math.pow(this.sizeScale, 2.5);
 
     // Sort by connection count descending to assign brain regions.
     // Top 10% (hubs) → stem, next 40% (more connected) → right, bottom 50% → left.
@@ -1023,17 +1023,15 @@ export class BrainView {
         const axonGeo = new LineGeometry();
         axonGeo.setPositions(positions);
         const baseOpacity = this.edgeRestOpacity(link.strength || 1);
+        // V5: connectors carry no shape — a hairline of rest color, and the
+        // *color itself* travels (spikes). No dash marching, no thick tube.
         const axonMat = new LineMaterial({
           color: this.palette.edgeRest,
-          linewidth: 1.6,
+          linewidth: 1.0,
           transparent: true,
           opacity: baseOpacity,
           blending: THREE.AdditiveBlending,
           depthWrite: false,
-          dashed: true,
-          dashSize: 0.05,
-          gapSize: 0.035,
-          dashScale: 1,
         });
         const rect = this.container.getBoundingClientRect();
         axonMat.resolution.set(rect.width || 1, rect.height || 1);
@@ -1552,7 +1550,7 @@ export class BrainView {
       mat.opacity = Math.min(1, ud.baseOpacity * noise);
       // V2 axon flow: charge visibly travels along the axon thread.
       const lm = mat as unknown as LineMaterial;
-      if (lm.isLineMaterial) lm.dashOffset = -(t * (ud.flowSpeed ?? 0.12));
+      if (lm.isLineMaterial && lm.dashed) lm.dashOffset = -(t * (ud.flowSpeed ?? 0.12));
     }
   }
 
@@ -2346,7 +2344,7 @@ export class BrainView {
       if (!this.dragging && !this.zoomAtomId) this.brainGroup.rotation.y += dt * 0.05;
       // Breathing field: whole constellation expands/contracts ~1% at ~0.07Hz —
       // alive, but never distracting.
-      this.brainGroup.scale.setScalar(1 + Math.sin(this.uniforms.uTime.value * 0.45) * 0.012);
+      this.brainGroup.scale.setScalar(1 + Math.sin(this.uniforms.uTime.value * 0.45) * 0.005);
       if (this.uniforms.uIntro.value < 1) {
         this.uniforms.uIntro.value = Math.min(1, this.uniforms.uIntro.value + dt * 0.8);
       }
