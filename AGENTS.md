@@ -57,7 +57,7 @@ Kurultai is the knowledge brain. All autonomous agents (Cursor, Claude, Codex, H
 **For any cron that stores data, its data must flow upstream to Kurultai** (labeled as needed).
 - Downstream domain stores (Luke-Vault, NN data, Notion, SQLite databases) are allowed and expected.
 - However, all data must match the downstream store and ultimately land in Kurultai so it is globally searchable.
-- Build connectors in `src/connectors/` (e.g., `tech_tracker`, `json`) to bridge isolated stores into the brain.
+- Build connectors in `src/connectors/` (e.g., `dayflow`, `json`) to bridge isolated stores into the brain.
 
 ### 2. MCP Agent Wiring
 Agents discover and connect to the Kurultai knowledge graph using the Model Context Protocol (MCP). Kurultai provides 8 tools: `search`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, and `ontology_promote`.

@@ -5,7 +5,6 @@ pub mod brain;
 pub mod config;
 pub mod connectors;
 pub mod daemon;
-pub mod distill;
 pub mod doctor;
 pub mod embed;
 pub mod environment;

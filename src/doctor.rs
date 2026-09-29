@@ -83,7 +83,7 @@ pub async fn run(env_override: Option<&str>, config_override: Option<&Path>) -> 
     check_http_daemon(&mut results).await;
 
     // 7. Connectors
-    check_connectors(&mut results, &config, env_override).await;
+    check_connectors(&mut results, &config).await;
 
     print_table(&results);
 
@@ -120,11 +120,7 @@ fn check_config(
                     "env={} store={} hub={} sources={}",
                     cfg.environment,
                     cfg.storage_path,
-                    if cfg.embed_backend.as_deref() == Some("local") {
-                        "off"
-                    } else {
-                        "auto"
-                    },
+                    hub_status_label(crate::features::enabled("hub")),
                     cfg.sources.len()
                 ),
                 hint: None,
@@ -248,6 +244,36 @@ fn yes_no(b: bool) -> &'static str {
     }
 }
 
+fn hub_status_label(hub_on: bool) -> &'static str {
+    if hub_on {
+        "on"
+    } else {
+        "off"
+    }
+}
+
+fn parse_daemon_port(port_env: Option<&str>) -> u16 {
+    port_env.and_then(|s| s.parse().ok()).unwrap_or(DEFAULT_PORT)
+}
+
+fn daemon_port_from_env() -> u16 {
+    parse_daemon_port(std::env::var("PORT").ok().as_deref())
+}
+
+fn ontology_counts(store: &SqliteVecStore) -> Result<(i64, i64)> {
+    use rusqlite::Connection;
+    let conn = Connection::open(store.path()).map_err(|e| {
+        crate::error::KurultaiError::Store(format!("ontology count open: {e}"))
+    })?;
+    let entities: i64 = conn
+        .query_row("SELECT COUNT(*) FROM ontology_entities", [], |r| r.get(0))
+        .map_err(|e| crate::error::KurultaiError::Store(format!("ontology entity count: {e}")))?;
+    let links: i64 = conn
+        .query_row("SELECT COUNT(*) FROM ontology_links", [], |r| r.get(0))
+        .map_err(|e| crate::error::KurultaiError::Store(format!("ontology link count: {e}")))?;
+    Ok((entities, links))
+}
+
 /// Is the embedding model configured + can it generate a vector?
 async fn check_embeddings(
     results: &mut Vec<CheckResult>,
@@ -355,19 +381,16 @@ async fn check_ontology(results: &mut Vec<CheckResult>, store: Option<&SqliteVec
         return;
     };
 
-    let entities = store.list_ontology_entities(100_000).await;
-    let links = store.list_ontology_links(None).await;
-
-    match (entities, links) {
-        (Ok(e), Ok(l)) => {
+    match ontology_counts(store) {
+        Ok((entities, links)) => {
             results.push(CheckResult {
                 name: "ontology",
                 status: Status::Pass,
-                detail: format!("{} entities, {} links", e.len(), l.len()),
+                detail: format!("{entities} entities, {links} links"),
                 hint: None,
             });
         }
-        (Err(e), _) | (_, Err(e)) => {
+        Err(e) => {
             results.push(CheckResult {
                 name: "ontology",
                 status: Status::Fail,
@@ -447,17 +470,18 @@ async fn check_http_daemon(results: &mut Vec<CheckResult>) {
         .unwrap_or_else(|_| reqwest::Client::new());
 
     // /health first (cheap).
-    let health_url = format!("http://127.0.0.1:{DEFAULT_PORT}/health");
+    let port = daemon_port_from_env();
+    let health_url = format!("http://127.0.0.1:{port}/health");
     match client.get(&health_url).send().await {
         Ok(resp) if resp.status().is_success() => {
             // Now probe /api/graph.
-            let graph_url = format!("http://127.0.0.1:{DEFAULT_PORT}/api/graph?limit=1");
+            let graph_url = format!("http://127.0.0.1:{port}/api/graph?limit=1");
             match client.get(&graph_url).send().await {
                 Ok(g) if g.status().is_success() => {
                     results.push(CheckResult {
                         name: "http_daemon",
                         status: Status::Pass,
-                        detail: format!("running on :{DEFAULT_PORT} (/health + /api/graph OK)"),
+                        detail: format!("running on :{port} (/health + /api/graph OK)"),
                         hint: None,
                     });
                 }
@@ -484,31 +508,25 @@ async fn check_http_daemon(results: &mut Vec<CheckResult>) {
                 name: "http_daemon",
                 status: Status::Warn,
                 detail: format!(
-                    "port {DEFAULT_PORT} responded HTTP {} (not /health)",
+                    "port {port} responded HTTP {} (not /health)",
                     resp.status()
                 ),
-                hint: Some(format!(
-                    "Is `kurultai daemon --port {DEFAULT_PORT}` running?"
-                )),
+                hint: Some(format!("Is `kurultai daemon --port {port}` running?")),
             });
         }
         Err(_) => {
             results.push(CheckResult {
                 name: "http_daemon",
                 status: Status::Warn,
-                detail: format!("not running on :{DEFAULT_PORT}"),
-                hint: Some(format!("Start it: `kurultai daemon --port {DEFAULT_PORT}`")),
+                detail: format!("not running on :{port}"),
+                hint: Some(format!("Start it: `kurultai daemon --port {port}`")),
             });
         }
     }
 }
 
 /// Which connectors are registered? Any failing to init?
-async fn check_connectors(
-    results: &mut Vec<CheckResult>,
-    config: &Option<Config>,
-    env_override: Option<&str>,
-) {
+async fn check_connectors(results: &mut Vec<CheckResult>, config: &Option<Config>) {
     let Some(cfg) = config else {
         results.push(CheckResult {
             name: "connectors",
@@ -528,12 +546,6 @@ async fn check_connectors(
         });
         return;
     }
-
-    let environment = match Environment::resolve(env_override) {
-        Ok(e) => e,
-        Err(_) => cfg.environment,
-    };
-    let _ = environment;
 
     // Rebuild registry (init each connector — surfaces init failures).
     match crate::connectors::ConnectorRegistry::from_config(cfg).await {
@@ -614,5 +626,23 @@ fn print_table(results: &[CheckResult]) {
         if let Some(hint) = &r.hint {
             println!("{:<width$}  {:<6}  → {}", "", "", hint, width = name_w);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hub_status_label_on_off() {
+        assert_eq!(hub_status_label(true), "on");
+        assert_eq!(hub_status_label(false), "off");
+    }
+
+    #[test]
+    fn parse_daemon_port_reads_port_then_default() {
+        assert_eq!(parse_daemon_port(Some("9001")), 9001);
+        assert_eq!(parse_daemon_port(Some("nope")), DEFAULT_PORT);
+        assert_eq!(parse_daemon_port(None), DEFAULT_PORT);
     }
 }

@@ -1,4 +1,3 @@
-use crate::connectors::appflowy::AppFlowyConnector;
 use crate::connectors::dayflow::DayflowConnector;
 use crate::connectors::github::GitHubConnector;
 use crate::connectors::inbox::InboxConnector;
@@ -7,7 +6,7 @@ use crate::connectors::markdown::MarkdownConnector;
 use crate::connectors::pond::PondConnector;
 use crate::connectors::Connector;
 use crate::error::{KurultaiError, Result};
-use crate::types::{Config, SourceConfig, SourceKind};
+use crate::types::{Config, SourceKind};
 use std::collections::HashMap;
 
 /// Factory + registry for source connectors.
@@ -76,33 +75,17 @@ impl Default for ConnectorRegistry {
 
 fn build_connector(kind: &SourceKind) -> Result<Box<dyn Connector>> {
     let connector: Box<dyn Connector> = match kind {
-        SourceKind::AppFlowy => Box::new(AppFlowyConnector::new()),
         SourceKind::Markdown => Box::new(MarkdownConnector::new()),
         SourceKind::Dayflow => Box::new(DayflowConnector::new()),
         SourceKind::Pond => Box::new(PondConnector::new()),
         SourceKind::GitHub => Box::new(GitHubConnector::new()),
         SourceKind::Json => Box::new(JsonConnector::new()),
         SourceKind::Inbox => Box::new(InboxConnector::new()),
-        SourceKind::TechTracker => {
-            return Err(KurultaiError::connector(
-                format!("{kind:?}"),
-                "connector not implemented yet",
-            ));
-        }
         SourceKind::Custom(name) => {
             return Err(KurultaiError::connector(name, "unknown custom connector"));
         }
     };
     Ok(connector)
-}
-
-/// Resolve a source config by name from the top-level config.
-pub fn source_config<'a>(config: &'a Config, name: &str) -> Result<&'a SourceConfig> {
-    config
-        .sources
-        .iter()
-        .find(|s| s.name == name)
-        .ok_or_else(|| KurultaiError::config(format!("unknown source: {name}")))
 }
 
 #[cfg(test)]
@@ -181,14 +164,13 @@ mod tests {
         assert!(registry.get("code").is_some());
     }
 
-    #[tokio::test]
-    async fn from_config_rejects_unimplemented_kinds() {
-        let config = Config {
+    fn stub_config(kind: SourceKind, enabled: bool) -> Config {
+        Config {
             environment: Environment::Dev,
             sources: vec![SourceConfig {
-                name: "tt".into(),
-                kind: SourceKind::TechTracker,
-                enabled: true,
+                name: "stub".into(),
+                kind,
+                enabled,
                 poll_interval_secs: 60,
                 extra: HashMap::new(),
             }],
@@ -202,10 +184,34 @@ mod tests {
             inactivity_threshold_hours: None,
             mcp_http_secret: None,
             banner: crate::art::BannerMode::Auto,
-        };
-        match ConnectorRegistry::from_config(&config).await {
-            Ok(_) => panic!("expected unimplemented connector error"),
-            Err(err) => assert!(err.to_string().contains("not implemented")),
         }
+    }
+
+    #[tokio::test]
+    async fn from_config_rejects_unknown_kinds() {
+        for kind in [
+            SourceKind::Custom("appflowy".into()),
+            SourceKind::Custom("tech_tracker".into()),
+            SourceKind::Custom("techtracker".into()),
+        ] {
+            match ConnectorRegistry::from_config(&stub_config(kind.clone(), true)).await {
+                Ok(_) => panic!("expected unknown connector error for {kind:?}"),
+                Err(err) => assert!(
+                    err.to_string().contains("unknown custom connector"),
+                    "got {err}"
+                ),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn from_config_ignores_disabled_unknown_kinds() {
+        let registry = ConnectorRegistry::from_config(&stub_config(
+            SourceKind::Custom("appflowy".into()),
+            false,
+        ))
+        .await
+        .expect("disabled unknown kinds must not fail registry build");
+        assert!(registry.is_empty());
     }
 }

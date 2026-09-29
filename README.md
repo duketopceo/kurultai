@@ -94,7 +94,7 @@ Config templates: [`config.example.toml`](config.example.toml) · [`.env.example
 | Area | Details |
 |------|---------|
 | **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon`, `prune`, `doctor`, `admin key` |
-| **Connectors** | Markdown · JSON · inbox tray · Dayflow · Pond · GitHub (local checkout). AppFlowy is registered but not implemented ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
+| **Connectors** | Markdown · JSON · inbox tray · Dayflow · Pond · GitHub (local checkout). AppFlowy is not implemented ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
 | **Daemon API** | `/api/status`, `/api/atoms`, `/api/graph`, `/api/search`, `/api/ask`, `/api/recall`, `/api/ontology`, `/api/metrics`, … |
 | **MCP** | Stdio (full write tools). Daemon HTTP/SSE is read-only when `KURULTAI_MCP_HTTP_SECRET` is set |
 | **Trust** | Atoms in `trusted` or `quarantine` lanes; visibility scopes `personal` / `team` / `company` (HUB-1) |

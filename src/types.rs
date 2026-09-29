@@ -145,7 +145,7 @@ pub struct OntologyLink {
 pub struct KnowledgeAtom {
     /// Unique ID (hash of source + source_id + content)
     pub id: String,
-    /// Which source this came from (e.g. "markdown", "appflowy", "pond", "github")
+    /// Which source this came from (e.g. "markdown", "pond", "github")
     pub source: String,
     /// ID within the source (page ID, file path, message ID, etc.)
     pub source_id: String,
@@ -441,13 +441,11 @@ impl SourceConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SourceKind {
-    AppFlowy,
     /// Local `.md` directory (Obsidian vault, git wiki, any markdown tree).
     Markdown,
     Pond,
     /// Dayflow Mac activity journal (`chunks.sqlite` timeline cards).
     Dayflow,
-    TechTracker,
     GitHub,
     /// JSON / NDJSON file ingestion. Reads dump formats (`.json` / `.jsonl` / `.ndjson`,
     /// plus markdown and plain text for format parity) from a `root_path`.
