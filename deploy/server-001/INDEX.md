@@ -18,6 +18,7 @@ version: 3
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`.dockerignore`](.dockerignore) | Build-context exclusions for the `kurultai:solo` image build. | Docker build context | — | 2026-09-29 | 1 | 2026-09-29 port: keep secrets/target out of image build |
 | [`.env.example`](.env.example) | Required environment variables and secrets. | real `.env` on host | — | 2026-09-04 | 1 | 2026-09-04 private fork seed |
 | [`Dockerfile.solo`](Dockerfile.solo) | Solo SQLite Kurultai image (non-root, persistent /data). | Rust build deps | — | 2026-09-04 | 1 | 2026-09-04 private fork seed |
 | [`add-kurultai-tunnel.sh`](add-kurultai-tunnel.sh) | Add `knowledge`/`work` DNS + tunnel ingress. | `CLOUDFLARE_API_TOKEN` | — | 2026-09-04 | 1 | 2026-09-04 private fork seed |
