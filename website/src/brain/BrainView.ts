@@ -780,7 +780,7 @@ export class BrainView {
     // Density-aware sizing: ~1.0 up to ~180 nodes, ~0.57 at 500, ~0.35 floor.
     // Sprite mode lets the floor keep dropping — at `max` the full cortex
     // needs smaller points or the core fuses into one white mass.
-    const sizeFloor = this.spriteMode ? 0.18 : 0.35;
+    const sizeFloor = this.spriteMode ? 0.24 : 0.35;
     this.sizeScale = Math.min(
       1,
       Math.max(sizeFloor, Math.pow(180 / Math.max(1, shown.length), 0.45)),
@@ -788,7 +788,10 @@ export class BrainView {
     this.magnifyT = 0;
     this.magnifyAppliedId = null;
     this.spikes?.setSizeScale(0.6 + 0.4 * this.sizeScale);
-    this.spriteRestAlpha = 0.03 + 0.12 * Math.pow(this.sizeScale, 2.5);
+    // Rest alpha must keep a readable floor at high counts — at 3.5k nodes
+    // the sizeScale floor (0.24) would otherwise fade somas to ~0.03, i.e.
+    // invisible. Hover still scales off this (×8 hot / ×5 linked / ×0.6 dim).
+    this.spriteRestAlpha = 0.05 + 0.14 * Math.pow(this.sizeScale, 2);
 
     // Sort by connection count descending to assign brain regions.
     // Top 10% (hubs) → stem, next 40% (more connected) → right, bottom 50% → left.
