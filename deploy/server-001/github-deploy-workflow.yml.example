@@ -1,0 +1,47 @@
+# Deploy kurultai:solo to server-001 when public main advances, then reindex repos.
+# Secrets (repo or org): KURULTAI_DEPLOY_SSH_KEY, KURULTAI_DEPLOY_HOST
+name: Deploy knowledge.shippedit.dev
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  repository_dispatch:
+    types: [kurultai-reindex]
+
+concurrency:
+  group: kurultai-server-001-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Only when secrets are configured (private fork / Actions env).
+    if: ${{ secrets.KURULTAI_DEPLOY_SSH_KEY != '' && secrets.KURULTAI_DEPLOY_HOST != '' }}
+    steps:
+      - name: SSH deploy + reindex
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.KURULTAI_DEPLOY_HOST }}
+          username: ${{ secrets.KURULTAI_DEPLOY_USER || 'khan' }}
+          key: ${{ secrets.KURULTAI_DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /home/khan/kurultai
+            git fetch origin
+            git reset --hard origin/main
+            # deploy/ is private overlay — keep existing if public tree has none
+            if [[ ! -f deploy/server-001/redeploy.sh ]]; then
+              echo "ERROR: deploy/server-001 missing on host — rsync from private" >&2
+              exit 1
+            fi
+            if [[ "${{ github.event_name }}" == "repository_dispatch" && "${{ github.event.action }}" == "kurultai-reindex" ]]; then
+              chmod +x deploy/server-001/sync-and-reindex-repos.sh
+              deploy/server-001/sync-and-reindex-repos.sh
+            else
+              chmod +x deploy/server-001/redeploy.sh deploy/server-001/sync-and-reindex-repos.sh
+              deploy/server-001/redeploy.sh
+              deploy/server-001/sync-and-reindex-repos.sh
+            fi
+            docker exec kurultai-personal kurultai status | head -20
