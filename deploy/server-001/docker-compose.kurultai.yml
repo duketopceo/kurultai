@@ -1,0 +1,96 @@
+name: kurultai
+
+services:
+  kurultai-personal:
+    image: kurultai:solo
+    container_name: kurultai-personal
+    restart: unless-stopped
+    environment:
+      KURULTAI_ENV: prod
+      KURULTAI_FEATURE_HUB: "0"
+      KURULTAI_HUB_BIND: all
+      KURULTAI_HUB_AUTH: api_key
+      KURULTAI_HUB_API_KEYS: ${PERSONAL_API_KEYS}
+      KURULTAI_MCP_HTTP_SECRET: ${PERSONAL_MCP_SECRET}
+      KURULTAI_INGEST_SECRET: ${PERSONAL_INGEST_SECRET}
+      # Human login via Cloudflare Access (Google/OTP) — JWT verified against
+      # the team domain certs; AUD = "Kurultai Personal" Access app tag.
+      KURULTAI_CF_ACCESS_TEAM: duketopceo
+      KURULTAI_CF_ACCESS_AUDS: 681b516695b2a7ff73edfb09e824e394a92fbdca62246b6d23f505badd3e28ca
+      # Hey admin lane — verified CF Access emails get edit/delete + post-as-luke
+      KURULTAI_ADMIN_EMAILS: duketopceo@gmail.com
+      PORT: "8421"
+      HOME: /data
+      RUST_LOG: "kurultai=info,error"
+    volumes:
+      - kurultai-personal-data:/data
+      # Org checkouts for Brain Repos UI (lattice duketopceo/<repo>)
+      - /home/khan/kurultai-repos:/data/repos:ro
+    networks:
+      - kurultai
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8421/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  kurultai-work:
+    image: kurultai:solo
+    container_name: kurultai-work
+    restart: unless-stopped
+    environment:
+      KURULTAI_ENV: prod
+      KURULTAI_FEATURE_HUB: "0"
+      KURULTAI_HUB_BIND: all
+      KURULTAI_HUB_AUTH: api_key
+      KURULTAI_HUB_API_KEYS: ${WORK_API_KEYS}
+      KURULTAI_MCP_HTTP_SECRET: ${WORK_MCP_SECRET}
+      KURULTAI_INGEST_SECRET: ${WORK_INGEST_SECRET}
+      KURULTAI_CF_ACCESS_TEAM: duketopceo
+      KURULTAI_CF_ACCESS_AUDS: 4b8e471a751f46bdaa510b6662528279231d7d9cee00b8a75a93048b19444146
+      PORT: "8422"
+      HOME: /data
+      RUST_LOG: "kurultai=info,error"
+    volumes:
+      - kurultai-work-data:/data
+    networks:
+      - kurultai
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8422/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  landing:
+    image: nginx:1.28-alpine
+    container_name: landing
+    restart: unless-stopped
+    volumes:
+      - ./landing/index.html:/usr/share/nginx/html/index.html:ro
+    networks:
+      - kurultai
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.3.0
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - kurultai
+
+networks:
+  kurultai:
+    name: kurultai
+    driver: bridge
+
+volumes:
+  kurultai-personal-data:
+  kurultai-work-data:
