@@ -16,11 +16,21 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Only when secrets are configured (private fork / Actions env).
-    if: ${{ secrets.KURULTAI_DEPLOY_SSH_KEY != '' && secrets.KURULTAI_DEPLOY_HOST != '' }}
     steps:
+      - name: Require deploy secrets
+        env:
+          HOST: ${{ secrets.KURULTAI_DEPLOY_HOST }}
+          KEY: ${{ secrets.KURULTAI_DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$KEY" ]; then
+            echo "Missing KURULTAI_DEPLOY_HOST / KURULTAI_DEPLOY_SSH_KEY — skipping."
+            echo "skip=true" >> "$GITHUB_ENV"
+          else
+            echo "skip=false" >> "$GITHUB_ENV"
+          fi
       - name: SSH deploy + reindex
-        uses: appleboy/ssh-action@v1.2.0
+        if: env.skip != 'true'
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         with:
           host: ${{ secrets.KURULTAI_DEPLOY_HOST }}
           username: ${{ secrets.KURULTAI_DEPLOY_USER || 'khan' }}

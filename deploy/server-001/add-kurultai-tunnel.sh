@@ -11,8 +11,8 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
-ACCOUNT_ID="${CF_ACCOUNT_ID:-1661907b2d7e4a20800306e6a57844c5}"
-TUNNEL_ID="${CF_TUNNEL_ID:-16ff6454-f890-40ab-ae8d-3632ed23ee2d}"
+ACCOUNT_ID="${CF_ACCOUNT_ID:?Set CF_ACCOUNT_ID in deploy/server-001/.env}"
+TUNNEL_ID="${CF_TUNNEL_ID:?Set CF_TUNNEL_ID in deploy/server-001/.env}"
 ZONE_NAME="${CF_ZONE_NAME:-shippedit.dev}"
 
 if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
@@ -44,16 +44,16 @@ add_host() {
     return
   fi
   echo "==> Adding ingress rule for ${hostname} -> ${service}"
-  CURRENT=$(python3 <<PY
-import json
-cfg = json.loads('''${CURRENT}''')
+  CURRENT=$(CFG="$CURRENT" NEW_HOSTNAME="$hostname" NEW_SERVICE="$service" python3 <<'PY'
+import json, os
+cfg = json.loads(os.environ["CFG"])
 ingress = cfg.get("ingress", [])
 ingress = [r for r in ingress if r.get("service") != "http_status:404"]
 ingress.append({
-    "hostname": "${hostname}",
-    "service": "${service}",
+    "hostname": os.environ["NEW_HOSTNAME"],
+    "service": os.environ["NEW_SERVICE"],
     "originRequest": {
-        "httpHostHeader": "${hostname}",
+        "httpHostHeader": os.environ["NEW_HOSTNAME"],
         "noTLSVerify": True
     }
 })

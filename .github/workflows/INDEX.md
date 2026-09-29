@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: .github/workflows
 parent: .github/INDEX.md
-updated: 2026-09-18
-version: 4
+updated: 2026-09-29
+version: 5
 ---
 
 # `.github/workflows`
@@ -21,12 +21,14 @@ _None._
 |------|------|-------|---------|-------|-----|-----------|
 | [`argus-reviewer.yml`](argus-reviewer.yml) | Argus reviewer on PRs — code-review-only (`run: 'false'`), SHA-pinned `duketopceo/Argus/action@75492b8a` (v0.2.0) | `secrets.OPENROUTER_API_KEY` · `argus-reviewer.config.ts` · `package.json` | `argus-reviewer-report/` artifact · `argus-reviewer` commit status | 2026-09-21 | 2 | 2026-09-21 SHA pin + npm 0.2.0 · 2026-09-18 Argus PR review wiring |
 | [`ci.yml`](ci.yml) | CI: fmt/clippy/nextest, Brain UI, macOS smoke, cargo-audit, postgres, agent-index | `.github/workflows/ci.yml` | `scripts/audit-agent-index.py` · `website/package.json` | 2026-09-13 | 4 | 2026-09-13 run `npm ci` in `website/` before tests so `three` resolves · 2026-09-11 website unit tests step covers all src/**/*.test.ts · 2026-08-16 added Agent index job · 2026-08-16 indexed (v1 seed) |
+| [`deploy-server-001.yml`](deploy-server-001.yml) | Deploy knowledge.shippedit.dev + work.shippedit.dev on server-001: main push → SSH redeploy + reindex; `repository_dispatch` reindex-only | `secrets.KURULTAI_DEPLOY_HOST` · `secrets.KURULTAI_DEPLOY_SSH_KEY` · host `.env` in `deploy/server-001/` | `deploy/server-001/` scripts · server-001 containers | 2026-09-29 | 1 | 2026-09-29 ported from archived kurultai-private |
 | [`deploy.yml`](deploy.yml) | Deploy pipeline: staging branch → staging env, main → production env. | — | — | 2026-07-19 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`release.yml`](release.yml) | Build platform binaries and attach them to a GitHub Release. | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`self-hosted.yml`](self-hosted.yml) | Disabled until ARC runners exist (kurultai-runners scale set — #20). | — | — | 2026-08-07 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-29 — `deploy-server-001.yml` new: server-001 deploy ported from archived kurultai-private (action SHA-pinned, production environment)
 - 2026-09-21 — `argus-reviewer.yml` re-pinned `@v0.2.0` tag → full SHA `75492b8a` (mutable-tag-under-secrets finding from a live 0.2.0 dogfood review)
 - 2026-09-18 — `argus-reviewer.yml` new: Argus code-review-only lane on PRs (action pinned `@ca2e0ae`, `run: 'false'`, `sandbox: 'false'`); needs `OPENROUTER_API_KEY` repo secret
 - 2026-09-13 — `ci.yml`: run `npm ci` in `website/` before `npm test`, and `cd website` so `three` dependency resolves for brain tests
