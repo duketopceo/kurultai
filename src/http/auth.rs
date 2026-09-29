@@ -146,10 +146,19 @@ fn extract_bearer(headers: &HeaderMap) -> Option<String> {
     }
 }
 
+fn looks_like_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 pub fn token_accepted(token: &str, keys: &[String]) -> bool {
     let hashed = sha256_hex(token);
-    keys.iter()
-        .any(|k| secrets_equal(k, token) || secrets_equal(k, &hashed))
+    keys.iter().any(|k| {
+        if looks_like_sha256_hex(k) {
+            secrets_equal(k, &hashed)
+        } else {
+            secrets_equal(k, token)
+        }
+    })
 }
 
 /// Paths exempt from hub API-key authentication (`/health` and embedded `/ui`).
@@ -303,9 +312,21 @@ mod tests {
     fn token_matches_plaintext_or_sha256() {
         let plain = "secret-token";
         let hashed = sha256_hex(plain);
-        assert!(token_accepted(plain, &[plain.to_string()]));
-        assert!(token_accepted(plain, &[hashed]));
-        assert!(!token_accepted("wrong", &[plain.to_string()]));
+        assert!(token_accepted(
+            plain,
+            std::slice::from_ref(&plain.to_string())
+        ));
+        assert!(token_accepted(plain, std::slice::from_ref(&hashed)));
+        assert!(!token_accepted(
+            "wrong",
+            std::slice::from_ref(&plain.to_string())
+        ));
+        // 64-hex stored entry is not a bearer, including uppercase hex.
+        assert!(!token_accepted(&hashed, std::slice::from_ref(&hashed)));
+        let upper = hashed.to_ascii_uppercase();
+        assert!(!token_accepted(&upper, std::slice::from_ref(&upper)));
+        let mixed = [plain.to_string(), hashed.clone()];
+        assert!(!token_accepted(&hashed, &mixed));
     }
 
     #[test]

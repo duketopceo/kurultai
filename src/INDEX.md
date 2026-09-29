@@ -50,11 +50,13 @@ version: 2
 | [`main.rs`](main.rs) | CLI entry: init, index, search, ask, daemon, mcp, export | — | — | 2026-08-31 | 4 | 2026-08-31 `init --doctor` diagnostic toggle · 2026-08-31 `kurultai hub key` / `hub log` · 2026-08-29 daemon PORT · 2026-08-16 indexed |
 | [`metrics.rs`](metrics.rs) | Prometheus text for GET /api/metrics | — | `src/http/mod.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`project.rs`](project.rs) | project_id namespacing for shared-store sessions (#184) | — | `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`testutil.rs`](testutil.rs) | EnvGuard: mutexed process-env restore for tests | — | `src/features.rs` · `src/store/mod.rs` · `src/http` | 2026-09-01 | 1 | 2026-09-01 Drop-safe env isolation |
 | [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` | 2026-09-01 | 2 | 2026-09-01 HUB-5 SourceConfig default_visibility_scope helper · 2026-08-16 indexed (v1 seed) |
 | [`write_policy.rs`](write_policy.rs) | Write provenance + SharedClosed quarantine containment | — | `src/mcp/server.rs` · `src/quality/promote.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-01 — `testutil.rs` EnvGuard for parallel env tests
 - 2026-09-01 — dropped distill stub and AppFlowy connector
 - 2026-09-01 — `types.rs`: HUB-5 `SourceConfig::default_visibility_scope` helper (personal/team/company)
 - 2026-08-31 — `main.rs`: `init --doctor` diagnostic toggle reuses `doctor` spine

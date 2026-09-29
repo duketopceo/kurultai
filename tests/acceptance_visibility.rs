@@ -233,13 +233,9 @@ fn source_config_default_visibility_scope_unknown_fail_closed_to_personal() {
 #[tokio::test]
 async fn open_hub_store_refuses_without_feature_flag() {
     // Explicitly disable the hub flag — CI's Postgres job sets KURULTAI_FEATURE_HUB=1.
-    let prev = std::env::var("KURULTAI_FEATURE_HUB").ok();
-    std::env::set_var("KURULTAI_FEATURE_HUB", "0");
+    let _guard = kurultai::testutil::EnvGuard::set("KURULTAI_FEATURE_HUB", "0");
     let result = kurultai::store::open_hub_store("postgres://localhost/x", 4).await;
-    match prev {
-        Some(v) => std::env::set_var("KURULTAI_FEATURE_HUB", v),
-        None => std::env::remove_var("KURULTAI_FEATURE_HUB"),
-    }
+    drop(_guard);
     assert!(
         result.is_err(),
         "hub store must refuse without the feature flag"

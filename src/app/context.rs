@@ -236,30 +236,14 @@ mod tests {
 
     #[tokio::test]
     async fn hub_flag_without_database_url_is_config_error() {
-        let key = "KURULTAI_FEATURE_HUB";
-        let prev = std::env::var(key).ok();
-        let prev_db = std::env::var("DATABASE_URL").ok();
-        let prev_kdb = std::env::var("KURULTAI_DATABASE_URL").ok();
-        std::env::set_var(key, "1");
-        std::env::remove_var("DATABASE_URL");
-        std::env::remove_var("KURULTAI_DATABASE_URL");
+        let _hub = crate::testutil::EnvGuard::set("KURULTAI_FEATURE_HUB", "1");
+        let _db = crate::testutil::EnvGuard::remove("DATABASE_URL");
+        let _kdb = crate::testutil::EnvGuard::remove("KURULTAI_DATABASE_URL");
         let err = match App::from_config(sample_config(None)).await {
             Ok(_) => panic!("expected config error without DATABASE_URL"),
             Err(e) => e,
         };
         let msg = err.to_string();
         assert!(msg.contains("DATABASE_URL"), "{msg}");
-        match prev {
-            Some(v) => std::env::set_var(key, v),
-            None => std::env::remove_var(key),
-        }
-        match prev_db {
-            Some(v) => std::env::set_var("DATABASE_URL", v),
-            None => std::env::remove_var("DATABASE_URL"),
-        }
-        match prev_kdb {
-            Some(v) => std::env::set_var("KURULTAI_DATABASE_URL", v),
-            None => std::env::remove_var("KURULTAI_DATABASE_URL"),
-        }
     }
 }

@@ -151,7 +151,7 @@ pub fn hub_listen_decision(
             auth,
         },
         (_, HubAuth::ApiKey, false) => HubListenDecision::Refuse {
-            reason: "non-loopback bind with hub.auth=api_key requires at least one KURULTAI_HUB_API_KEYS entry"
+            reason: "non-loopback bind with hub.auth=api_key requires an issued hub key or a KURULTAI_HUB_API_KEYS entry"
                 .into(),
         },
         (_, HubAuth::None, _) => HubListenDecision::Refuse {
@@ -211,12 +211,17 @@ pub fn bind_request_from_env(bind_all: bool) -> BindRequest {
 }
 
 /// Decide listen address or return a start-fail config error.
-pub fn resolve_listen_socket(port: u16, bind_all: bool, hub: &HubGate) -> Result<SocketAddr> {
+pub fn resolve_listen_socket(
+    port: u16,
+    bind_all: bool,
+    hub: &HubGate,
+    issued_key_count: usize,
+) -> Result<SocketAddr> {
     let req = bind_request_from_env(bind_all);
     match hub_listen_decision(
         req,
         hub.auth,
-        hub.api_keys.len(),
+        hub.api_keys.len() + issued_key_count,
         allow_public_hub_from_env(),
         detect_public_hostname().as_deref(),
     ) {
@@ -377,7 +382,7 @@ mod tests {
             std::env::remove_var(k);
         }
         let hub = HubGate::default();
-        let addr = resolve_listen_socket(8421, false, &hub).unwrap();
+        let addr = resolve_listen_socket(8421, false, &hub, 0).unwrap();
         assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::LOCALHOST));
         assert_eq!(addr.port(), 8421);
         for (k, v) in prev {
@@ -398,9 +403,36 @@ mod tests {
             std::env::remove_var(k);
         }
         let hub = HubGate::default();
-        let err = resolve_listen_socket(8421, true, &hub).unwrap_err();
+        let err = resolve_listen_socket(8421, true, &hub, 0).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("none"), "{msg}");
+        for (k, v) in prev {
+            restore_var(k, v);
+        }
+    }
+
+    #[test]
+    fn resolve_listen_socket_counts_issued_keys_when_env_csv_empty() {
+        let keys = [
+            "ALLOW_PUBLIC_HUB",
+            "KURULTAI_PUBLIC_HOSTNAME",
+            "RAILWAY_PUBLIC_DOMAIN",
+            "RAILWAY_STATIC_URL",
+        ];
+        let prev: Vec<_> = keys.iter().map(|k| (*k, std::env::var(k).ok())).collect();
+        for k in keys {
+            std::env::remove_var(k);
+        }
+        let hub = HubGate {
+            auth: HubAuth::ApiKey,
+            api_keys: Vec::new(),
+            #[cfg(feature = "postgres")]
+            key_store: None,
+        };
+        let addr = resolve_listen_socket(8421, true, &hub, 1).expect("issued key should allow");
+        assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        let err = resolve_listen_socket(8421, true, &hub, 0).unwrap_err();
+        assert!(err.to_string().contains("issued hub key"), "{err}");
         for (k, v) in prev {
             restore_var(k, v);
         }

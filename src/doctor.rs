@@ -253,7 +253,9 @@ fn hub_status_label(hub_on: bool) -> &'static str {
 }
 
 fn parse_daemon_port(port_env: Option<&str>) -> u16 {
-    port_env.and_then(|s| s.parse().ok()).unwrap_or(DEFAULT_PORT)
+    port_env
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_PORT)
 }
 
 fn daemon_port_from_env() -> u16 {
@@ -262,9 +264,8 @@ fn daemon_port_from_env() -> u16 {
 
 fn ontology_counts(store: &SqliteVecStore) -> Result<(i64, i64)> {
     use rusqlite::Connection;
-    let conn = Connection::open(store.path()).map_err(|e| {
-        crate::error::KurultaiError::Store(format!("ontology count open: {e}"))
-    })?;
+    let conn = Connection::open(store.path())
+        .map_err(|e| crate::error::KurultaiError::Store(format!("ontology count open: {e}")))?;
     let entities: i64 = conn
         .query_row("SELECT COUNT(*) FROM ontology_entities", [], |r| r.get(0))
         .map_err(|e| crate::error::KurultaiError::Store(format!("ontology entity count: {e}")))?;
@@ -507,10 +508,7 @@ async fn check_http_daemon(results: &mut Vec<CheckResult>) {
             results.push(CheckResult {
                 name: "http_daemon",
                 status: Status::Warn,
-                detail: format!(
-                    "port {port} responded HTTP {} (not /health)",
-                    resp.status()
-                ),
+                detail: format!("port {port} responded HTTP {} (not /health)", resp.status()),
                 hint: Some(format!("Is `kurultai daemon --port {port}` running?")),
             });
         }

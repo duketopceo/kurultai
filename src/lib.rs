@@ -28,6 +28,7 @@ pub mod rerank;
 pub mod security;
 pub mod store;
 pub mod synthesize;
+pub mod testutil;
 pub mod types;
 pub mod write_policy;
 

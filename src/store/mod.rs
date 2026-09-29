@@ -2607,8 +2607,7 @@ mod tests {
 
     #[tokio::test]
     async fn open_hub_store_requires_hub_flag() {
-        let prev = std::env::var("KURULTAI_FEATURE_HUB").ok();
-        std::env::set_var("KURULTAI_FEATURE_HUB", "0");
+        let _guard = crate::testutil::EnvGuard::set("KURULTAI_FEATURE_HUB", "0");
         let err = match super::open_hub_store("postgres://localhost/kurultai", 4).await {
             Ok(_) => panic!("expected hub-flag error"),
             Err(e) => e,
@@ -2618,10 +2617,6 @@ mod tests {
             msg.contains("KURULTAI_FEATURE_HUB"),
             "unexpected error: {msg}"
         );
-        match prev {
-            Some(v) => std::env::set_var("KURULTAI_FEATURE_HUB", v),
-            None => std::env::remove_var("KURULTAI_FEATURE_HUB"),
-        }
     }
 
     #[tokio::test]
@@ -2629,8 +2624,7 @@ mod tests {
         if cfg!(feature = "postgres") {
             return;
         }
-        let prev = std::env::var("KURULTAI_FEATURE_HUB").ok();
-        std::env::set_var("KURULTAI_FEATURE_HUB", "1");
+        let _guard = crate::testutil::EnvGuard::set("KURULTAI_FEATURE_HUB", "1");
         let err = match super::open_hub_store("postgres://localhost/kurultai", 4).await {
             Ok(_) => panic!("expected --features postgres error"),
             Err(e) => e,
@@ -2640,9 +2634,5 @@ mod tests {
             msg.contains("--features postgres"),
             "unexpected error: {msg}"
         );
-        match prev {
-            Some(v) => std::env::set_var("KURULTAI_FEATURE_HUB", v),
-            None => std::env::remove_var("KURULTAI_FEATURE_HUB"),
-        }
     }
 }

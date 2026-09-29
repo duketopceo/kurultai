@@ -128,7 +128,8 @@ pub async fn serve_with(
         None
     };
     let bind_all = opts.bind_all || auth::resolve_bind_all_from_env();
-    let addr = hub_listen::resolve_listen_socket(opts.port, bind_all, &hub)?;
+    let issued = issued_key_count(&hub).await;
+    let addr = hub_listen::resolve_listen_socket(opts.port, bind_all, &hub, issued)?;
     let state = app_state(
         Arc::clone(&brain),
         status,
@@ -141,7 +142,7 @@ pub async fn serve_with(
         state.hub_activity = hub_activity;
         state
     };
-    let mut app = router(state);
+    let mut app = mount(state, crate::features::enabled("hub"));
     if let Some(secret) = mcp::resolve_mcp_http_secret(opts.mcp_http_secret.as_deref()) {
         tracing::info!("mcp HTTP/SSE enabled at POST /mcp and GET /mcp/sse (bearer auth)");
         app = app.merge(mcp::routes(mcp::McpHttpState::new(
@@ -182,8 +183,13 @@ pub async fn serve_with(
     Ok(())
 }
 
+#[cfg(test)]
 fn router(state: AppState) -> Router {
-    Router::new()
+    mount(state, false)
+}
+
+fn mount(state: AppState, hub_feature: bool) -> Router {
+    let mut routes = Router::new()
         .route("/health", get(health))
         .route("/api/status", get(api_status))
         .route("/api/metrics", get(api_metrics))
@@ -197,12 +203,15 @@ fn router(state: AppState) -> Router {
         .route("/api/search", get(search_get).post(search_post))
         .route("/api/recall", post(recall_post))
         .route("/api/ask", get(ask_get).post(ask_post))
-        .route("/api/open", get(api_open))
         .route("/search", get(search_get).post(search_post))
         .route("/ask", get(ask_get).post(ask_post))
         .route("/cite", post(cite_post))
         .route("/who_knows", post(who_knows_post))
-        .merge(ui::routes())
+        .merge(ui::routes());
+    if !hub_feature {
+        routes = routes.route("/api/open", get(api_open));
+    }
+    routes
         .layer(middleware::from_fn_with_state(
             state.hub.clone(),
             hub_api_auth,
@@ -237,12 +246,35 @@ pub fn build_ingest_app(
 ///
 /// Mirrors the routes mounted by [`serve_with`] without binding a socket.
 pub fn build_app(brain: BrainService, status: Arc<DaemonStatus>, hub: HubGate) -> Router {
-    router(app_state(
-        Arc::new(brain),
-        status,
-        MetricsRegistry::shared(),
-        hub,
-    ))
+    build_app_with_hub_feature(brain, status, hub, false)
+}
+
+pub fn build_app_with_hub_feature(
+    brain: BrainService,
+    status: Arc<DaemonStatus>,
+    hub: HubGate,
+    hub_feature: bool,
+) -> Router {
+    mount(
+        app_state(Arc::new(brain), status, MetricsRegistry::shared(), hub),
+        hub_feature,
+    )
+}
+
+async fn issued_key_count(hub: &HubGate) -> usize {
+    #[cfg(feature = "postgres")]
+    if let Some(store) = &hub.key_store {
+        return match store.has_active_keys().await {
+            Ok(true) => 1,
+            Ok(false) => 0,
+            Err(e) => {
+                tracing::warn!(error = %e, "issued key count failed; treating as zero");
+                0
+            }
+        };
+    }
+    let _ = hub;
+    0
 }
 
 fn app_state(
@@ -2420,5 +2452,81 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    fn open_app(hub: HubGate, hub_feature: bool) -> Router {
+        mount(
+            AppState {
+                brain: Arc::new(test_brain()),
+                status: Arc::new(crate::daemon::DaemonStatus::default()),
+                metrics: MetricsRegistry::shared(),
+                #[cfg(feature = "postgres")]
+                hub_activity: None,
+                hub,
+            },
+            hub_feature,
+        )
+    }
+
+    #[tokio::test]
+    async fn api_open_hub_off_is_ok() {
+        let app = open_app(HubGate::default(), false);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/open")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_open_hub_on_auth_none_is_not_found() {
+        let app = open_app(HubGate::default(), true);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/open")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn api_open_hub_on_api_key_requires_bearer_then_not_found() {
+        let hub = HubGate {
+            auth: HubAuth::ApiKey,
+            api_keys: vec!["hub-secret".into()],
+            #[cfg(feature = "postgres")]
+            key_store: None,
+        };
+        let denied = open_app(hub.clone(), true)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/open")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+
+        let missing = open_app(hub, true)
+            .oneshot(
+                Request::builder()
+                    .uri("/api/open")
+                    .header("authorization", "Bearer hub-secret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
     }
 }

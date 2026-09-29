@@ -136,12 +136,13 @@ mod tests {
 
     #[test]
     fn resolve_prefers_env() {
-        std::env::set_var("KURULTAI_MCP_HTTP_SECRET", "from-env");
+        let _guard = crate::testutil::EnvGuard::set("KURULTAI_MCP_HTTP_SECRET", "from-env");
         assert_eq!(
             resolve_mcp_http_secret(Some("from-config")).as_deref(),
             Some("from-env")
         );
-        std::env::remove_var("KURULTAI_MCP_HTTP_SECRET");
+        drop(_guard);
+        let _unset = crate::testutil::EnvGuard::remove("KURULTAI_MCP_HTTP_SECRET");
         assert_eq!(
             resolve_mcp_http_secret(Some("from-config")).as_deref(),
             Some("from-config")

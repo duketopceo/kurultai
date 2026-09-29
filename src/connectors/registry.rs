@@ -92,7 +92,7 @@ fn build_connector(kind: &SourceKind) -> Result<Box<dyn Connector>> {
 mod tests {
     use super::*;
     use crate::environment::Environment;
-    use crate::types::Config;
+    use crate::types::{Config, SourceConfig};
     use std::collections::HashMap;
 
     #[tokio::test]

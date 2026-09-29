@@ -371,9 +371,10 @@ mod tests {
 
     #[test]
     fn resolve_ingest_secret_reads_env() {
-        std::env::set_var("KURULTAI_INGEST_SECRET", "  abc  ");
+        let _guard = crate::testutil::EnvGuard::set("KURULTAI_INGEST_SECRET", "  abc  ");
         assert_eq!(resolve_ingest_secret().as_deref(), Some("abc"));
-        std::env::remove_var("KURULTAI_INGEST_SECRET");
+        drop(_guard);
+        let _unset = crate::testutil::EnvGuard::remove("KURULTAI_INGEST_SECRET");
         assert_eq!(resolve_ingest_secret(), None);
     }
 }

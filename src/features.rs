@@ -114,15 +114,10 @@ mod tests {
 
     #[test]
     fn env_override_flips_hub() {
-        let key = "KURULTAI_FEATURE_HUB";
-        let prev = std::env::var(key).ok();
-        std::env::set_var(key, "1");
+        let _on = crate::testutil::EnvGuard::set("KURULTAI_FEATURE_HUB", "1");
         assert!(enabled("hub"));
-        std::env::set_var(key, "0");
+        drop(_on);
+        let _off = crate::testutil::EnvGuard::set("KURULTAI_FEATURE_HUB", "0");
         assert!(!enabled("hub"));
-        match prev {
-            Some(v) => std::env::set_var(key, v),
-            None => std::env::remove_var(key),
-        }
     }
 }
