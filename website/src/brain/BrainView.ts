@@ -791,7 +791,7 @@ export class BrainView {
     // Rest alpha must keep a readable floor at high counts — at 3.5k nodes
     // the sizeScale floor (0.24) would otherwise fade somas to ~0.03, i.e.
     // invisible. Hover still scales off this (×8 hot / ×5 linked / ×0.6 dim).
-    this.spriteRestAlpha = 0.05 + 0.14 * Math.pow(this.sizeScale, 2);
+    this.spriteRestAlpha = 0.12 + 0.2 * Math.pow(this.sizeScale, 2);
 
     // Sort by connection count descending to assign brain regions.
     // Top 10% (hubs) → stem, next 40% (more connected) → right, bottom 50% → left.
@@ -1398,7 +1398,7 @@ export class BrainView {
   /** Synapse rest opacity attenuates with density — hundreds of additive
    *  edges at 0.3+ fuse the core into a white mass. */
   private edgeRestOpacity(strength: number) {
-    return Math.min(0.85, 0.3 + strength * 0.15) * (0.03 + 0.97 * Math.pow(this.sizeScale, 3.5));
+    return Math.min(0.7, 0.25 + strength * 0.12) * (0.03 + 0.97 * Math.pow(this.sizeScale, 3.5));
   }
 
   /** Corona rest opacity attenuates with density — additive coronas are the

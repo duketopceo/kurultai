@@ -89,7 +89,7 @@ export const SPIKE_POOL_CAPACITY = 260;
 const SPIKE_SIZE = 0.045;
 /** Traversal duration in seconds per unit of curve length — shorter edges
  *  conduct faster, like real axons. */
-const SPIKE_SPEED = 0.9;
+const SPIKE_SPEED = 0.55;
 
 /** Fixed-size pool of spikes riding edge curves. Free slots have aAlpha 0. */
 export class SpikePool {
