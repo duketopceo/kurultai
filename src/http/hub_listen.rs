@@ -118,6 +118,7 @@ pub fn hub_listen_decision(
     req: BindRequest,
     auth: HubAuth,
     key_count: usize,
+    cf_accessed: bool,
     allow_public_hub: bool,
     public_hostname: Option<&str>,
 ) -> HubListenDecision {
@@ -154,8 +155,12 @@ pub fn hub_listen_decision(
             reason: "non-loopback bind with hub.auth=api_key requires at least one KURULTAI_HUB_API_KEYS entry"
                 .into(),
         },
+        (_, HubAuth::None, _) if cf_accessed => HubListenDecision::Allow {
+            listen: req.listen,
+            auth,
+        },
         (_, HubAuth::None, _) => HubListenDecision::Refuse {
-            reason: "non-loopback bind with hub.auth=none is a hard start error (set KURULTAI_HUB_AUTH=api_key and keys, or KURULTAI_HUB_BIND=tailscale)"
+            reason: "non-loopback bind with hub.auth=none is a hard start error (set KURULTAI_HUB_AUTH=api_key and keys, KURULTAI_HUB_BIND=tailscale, or configure KURULTAI_CF_ACCESS_TEAM/AUDS for Cloudflare Access JWT auth)"
                 .into(),
         },
     }
@@ -243,6 +248,7 @@ fn resolve_listen_request(port: u16, req: BindRequest, hub: &HubGate) -> Result<
         req,
         hub.auth,
         hub.api_keys.len(),
+        hub.cf_access.is_some(),
         allow_public_hub_from_env(),
         detect_public_hostname().as_deref(),
     ) {
@@ -299,6 +305,7 @@ mod tests {
             HubAuth::None,
             0,
             false,
+            false,
             None,
         );
         match d {
@@ -310,11 +317,25 @@ mod tests {
     }
 
     #[test]
+    fn non_loopback_cf_access_allows() {
+        let d = hub_listen_decision(
+            req(BindKind::All, IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+            HubAuth::None,
+            0,
+            true,
+            false,
+            None,
+        );
+        assert!(matches!(d, HubListenDecision::Allow { .. }), "{d:?}");
+    }
+
+    #[test]
     fn bind_all_api_key_with_key_allows() {
         let d = hub_listen_decision(
             req(BindKind::All, IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
             HubAuth::ApiKey,
             1,
+            false,
             false,
             None,
         );
@@ -334,6 +355,7 @@ mod tests {
             HubAuth::None,
             0,
             false,
+            false,
             None,
         );
         assert!(matches!(d, HubListenDecision::Allow { .. }));
@@ -345,6 +367,7 @@ mod tests {
             req(BindKind::All, IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
             HubAuth::ApiKey,
             1,
+            false,
             false,
             Some("kurultai.up.railway.app"),
         );
@@ -362,6 +385,7 @@ mod tests {
             req(BindKind::All, IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
             HubAuth::ApiKey,
             1,
+            false,
             true,
             Some("kurultai.up.railway.app"),
         );
@@ -377,6 +401,7 @@ mod tests {
             ),
             HubAuth::None,
             0,
+            false,
             false,
             None,
         );
@@ -408,6 +433,7 @@ mod tests {
             req(BindKind::All, IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
             HubAuth::ApiKey,
             0,
+            false,
             false,
             None,
         );
