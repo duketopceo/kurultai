@@ -38,14 +38,14 @@ const TOOL_HEY_POST: &str = "hey_post";
 const TOOL_HEY_REACT: &str = "hey_react";
 const TOOL_HEY_POLL: &str = "hey_poll";
 
-enum StdinFrame {
+pub(crate) enum StdinFrame {
     Eof,
     Line(String),
     TooLarge,
 }
 
 /// Cap accumulation before newline so oversized frames never fully allocate.
-async fn read_stdin_frame<R: AsyncBufRead + Unpin>(
+pub(crate) async fn read_stdin_frame<R: AsyncBufRead + Unpin>(
     reader: &mut R,
     max: usize,
 ) -> Result<StdinFrame> {
@@ -112,7 +112,7 @@ async fn read_stdin_frame<R: AsyncBufRead + Unpin>(
     }
 }
 
-fn rpc_error(id: Value, code: i64, message: impl Into<String>) -> Value {
+pub(crate) fn rpc_error(id: Value, code: i64, message: impl Into<String>) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -120,7 +120,10 @@ fn rpc_error(id: Value, code: i64, message: impl Into<String>) -> Value {
     })
 }
 
-async fn write_response(stdout: &mut (impl AsyncWriteExt + Unpin), response: &Value) -> Result<()> {
+pub(crate) async fn write_response(
+    stdout: &mut (impl AsyncWriteExt + Unpin),
+    response: &Value,
+) -> Result<()> {
     let out = serde_json::to_string(response)
         .map_err(|e| KurultaiError::Other(anyhow::anyhow!("mcp encode: {e}")))?;
     stdout

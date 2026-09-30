@@ -102,6 +102,38 @@ pub fn write_agent_key_file(name: &str, key: &str) -> Result<std::path::PathBuf>
     Ok(path)
 }
 
+/// Read an agent credential back: `omaseal get kurultai <name>` first, then
+/// the 0600 `agent-keys/<name>.key` fallback written by `write_agent_key_file`.
+/// Never logs the value. Returns None when no store has it.
+pub fn read_agent_key(name: &str) -> Option<SecretString> {
+    use std::process::{Command, Stdio};
+    if Command::new("omaseal")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .is_ok()
+    {
+        let out = Command::new("omaseal")
+            .args(["get", "kurultai", name])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output();
+        if let Ok(out) = out {
+            if out.status.success() {
+                let key = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !key.is_empty() {
+                    return Some(SecretString::new(key));
+                }
+            }
+        }
+    }
+    let path = agent_key_file_path(name)?;
+    let raw = std::fs::read_to_string(path).ok()?;
+    let key = raw.trim();
+    (!key.is_empty()).then(|| SecretString::new(key.to_string()))
+}
+
 /// Persist a key to `key_file_path()` with 0600 perms. Never logs the value.
 pub fn write_key_file(key: &str) -> Result<std::path::PathBuf> {
     use std::io::Write;

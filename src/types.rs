@@ -525,6 +525,9 @@ pub struct Config {
     /// `[judge] model` — override the pinned Jev judge model.
     #[serde(default)]
     pub judge_model: Option<String>,
+    /// `[broker]` — device broker settings (`kurultai broker`).
+    #[serde(default)]
+    pub broker: crate::config::FileBrokerConfig,
 }
 
 fn default_true() -> bool {

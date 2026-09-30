@@ -140,6 +140,7 @@ mod tests {
             tier_policy: crate::memory::TierPolicy::default(),
             judge_enabled: true,
             judge_model: None,
+            broker: Default::default(),
         };
 
         let registry = ConnectorRegistry::from_config(&config).await.unwrap();
@@ -173,6 +174,7 @@ mod tests {
             tier_policy: crate::memory::TierPolicy::default(),
             judge_enabled: true,
             judge_model: None,
+            broker: Default::default(),
         };
         let registry = ConnectorRegistry::from_config(&config).await.unwrap();
         assert_eq!(registry.len(), 1);
@@ -203,6 +205,7 @@ mod tests {
             tier_policy: crate::memory::TierPolicy::default(),
             judge_enabled: true,
             judge_model: None,
+            broker: Default::default(),
         };
         match ConnectorRegistry::from_config(&config).await {
             Ok(_) => panic!("expected unimplemented connector error"),

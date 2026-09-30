@@ -8,7 +8,8 @@
 //! - `POST /mcp` — JSON-RPC request/response (primary remote path)
 //! - `GET /mcp/sse` — SSE bootstrap: `endpoint` event points at `POST /mcp`
 
-use crate::mcp::{handle_message, BrainService, ToolSurface};
+use crate::mcp::{handle_message_with, BrainService, ToolSurface};
+use crate::write_policy::{WriteContext, WriteTransport};
 use axum::extract::State;
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -63,10 +64,27 @@ fn extract_bearer(headers: &HeaderMap) -> Option<String> {
     }
 }
 
-fn authorize(headers: &HeaderMap, secret: &str) -> Result<(), StatusCode> {
+/// How the caller authenticated on `/mcp`.
+pub(crate) enum McpAuth {
+    /// Shared-secret auth (existing deployments) — read-only surface.
+    Secret,
+    /// Registered agent seat token — full surface; identity carries through
+    /// to stamped writes (broker path, plan 2026-09-28-001 U4).
+    Seat(String),
+}
+
+async fn authorize(headers: &HeaderMap, state: &McpHttpState) -> Result<McpAuth, StatusCode> {
     match extract_bearer(headers) {
-        Some(token) if secrets_equal(&token, secret) => Ok(()),
-        _ => Err(StatusCode::UNAUTHORIZED),
+        Some(token) if secrets_equal(&token, &state.secret) => Ok(McpAuth::Secret),
+        Some(token) => {
+            let hash = crate::hashutil::sha256_hex(&token);
+            match state.brain.store().resolve_agent_by_key_hash(&hash).await {
+                Ok(Some(agent)) => Ok(McpAuth::Seat(agent.codename)),
+                Ok(None) => Err(StatusCode::UNAUTHORIZED),
+                Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+            }
+        }
+        None => Err(StatusCode::UNAUTHORIZED),
     }
 }
 
@@ -75,9 +93,33 @@ async fn mcp_post(
     headers: HeaderMap,
     Json(msg): Json<Value>,
 ) -> Result<Response, StatusCode> {
-    authorize(&headers, &state.secret)?;
+    let auth = authorize(&headers, &state).await?;
     let id = msg.get("id").cloned().unwrap_or(Value::Null);
-    match handle_message(&state.brain, msg, ToolSurface::ReadOnly).await {
+    let (surface, ctx) = match auth {
+        McpAuth::Secret => (
+            ToolSurface::ReadOnly,
+            WriteContext::from_env(WriteTransport::Mcp),
+        ),
+        McpAuth::Seat(codename) => {
+            // X-Kurultai-* stamps from the broker override the seat defaults.
+            let h = |n: &str| {
+                headers
+                    .get(n)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_string)
+            };
+            let ctx = WriteContext {
+                agent_id: Some(h("x-kurultai-agent").unwrap_or(codename)),
+                namespace: h("x-kurultai-chat"),
+                transport: WriteTransport::Mcp,
+                mode: crate::write_policy::WriteMode::from_env(),
+            };
+            (ToolSurface::Full, ctx)
+        }
+    };
+    match handle_message_with(&state.brain, msg, surface, &ctx).await {
         Ok(Some(response)) => Ok(Json(response).into_response()),
         Ok(None) => Ok(StatusCode::ACCEPTED.into_response()),
         Err(e) => Ok(Json(serde_json::json!({
@@ -94,7 +136,7 @@ async fn mcp_sse(
     State(state): State<McpHttpState>,
     headers: HeaderMap,
 ) -> Result<Response, StatusCode> {
-    authorize(&headers, &state.secret)?;
+    authorize(&headers, &state).await?;
     // Keep-alive comment + endpoint event. Clients then POST JSON-RPC to /mcp.
     let body = "event: endpoint\ndata: /mcp\n\n: ping\n\n";
     let mut response = Response::new(body.to_string().into());
@@ -126,6 +168,109 @@ pub fn resolve_mcp_http_secret(config_secret: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::embed::NullEmbedder;
+    use crate::rerank::NullReranker;
+    use crate::store::{SqliteVecStore, Store};
+    use crate::synthesize::{ExtractiveSynthesizer, Synthesizer};
+    use axum::body::Body;
+    use axum::http::Request;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn test_app() -> (Router, Arc<SqliteVecStore>) {
+        static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "k-mcp-seat-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Arc::new(SqliteVecStore::open(dir.join("store.db"), 4).unwrap());
+        let brain = Arc::new(BrainService::new(
+            store.clone() as Arc<dyn Store>,
+            Arc::new(NullEmbedder::new(4)),
+            Arc::new(NullReranker::new()),
+            Arc::new(ExtractiveSynthesizer) as Arc<dyn Synthesizer>,
+        ));
+        (
+            routes(McpHttpState::new(brain, "test-secret".into())),
+            store,
+        )
+    }
+
+    fn tool_names(body: &Value) -> Vec<String> {
+        body["result"]["tools"]
+            .as_array()
+            .map(|t| {
+                t.iter()
+                    .filter_map(|t| t["name"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    async fn tools_list(app: &Router, bearer: &str) -> (StatusCode, Value) {
+        let res = app
+            .clone()
+            .oneshot(
+                Request::post("/mcp")
+                    .header("authorization", format!("Bearer {bearer}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = res.status();
+        let body = axum::body::to_bytes(res.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        (status, serde_json::from_slice(&body).unwrap_or(Value::Null))
+    }
+
+    #[tokio::test]
+    async fn secret_auth_gets_readonly_surface() {
+        let (app, _store) = test_app();
+        let (status, body) = tools_list(&app, "test-secret").await;
+        assert_eq!(status, StatusCode::OK);
+        let names = tool_names(&body);
+        assert!(names.iter().any(|n| n == "search"));
+        assert!(!names.iter().any(|n| n == "remember"));
+    }
+
+    #[tokio::test]
+    async fn seat_token_gets_full_surface_and_write_ctx() {
+        let (app, store) = test_app();
+        let (_agent, seat) = store
+            .issue_agent_seat_token("devin", "laptop", "test")
+            .await
+            .unwrap();
+        let (status, body) = tools_list(&app, &seat).await;
+        assert_eq!(status, StatusCode::OK);
+        let names = tool_names(&body);
+        assert!(names.iter().any(|n| n == "remember"));
+    }
+
+    #[tokio::test]
+    async fn unknown_token_is_401() {
+        let (app, _store) = test_app();
+        let (status, _) = tools_list(&app, "not-a-real-token").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn revoked_seat_is_401() {
+        let (app, store) = test_app();
+        let (_agent, seat) = store
+            .issue_agent_seat_token("devin", "revoked", "test")
+            .await
+            .unwrap();
+        store.revoke_agent("devin", Some("revoked")).await.unwrap();
+        let (status, _) = tools_list(&app, &seat).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
 
     #[test]
     fn secrets_equal_rejects_length_mismatch() {
