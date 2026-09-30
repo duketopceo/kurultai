@@ -1,0 +1,228 @@
+/* ==========================================================================
+   tokens.css: Kurultai design-token layer
+   Dark-instrument console. Single canvas family, single accent (purple).
+   Everything is a custom property on :root. The only selectors beyond :root
+   are the documented global utilities at the bottom:
+     [U1] ::selection        [U2] :focus-visible ring
+     [U3] dark scrollbars    [U4] prefers-reduced-motion
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- Canvas (single near-black family) -------------------------------- */
+  --canvas-0: #050508;              /* page background */
+  --canvas-1: #08070d;              /* recessed wells, code blocks */
+  --canvas-2: #0c0a14;              /* solid fallback when glass is unsupported */
+  --canvas-3: #13101d;              /* solid raised (menus without blur) */
+
+  /* ---- Accent: electric purple (the only accent) ------------------------ */
+  --accent:          #a855f7;       /* base: links, active marks, primary fill */
+  --accent-strong:   #c084fc;       /* text-on-dark accent, hover emphasis */
+  --accent-dim:      #7c3aed;       /* pressed, deep fills, gradient floor */
+  --accent-rgb:      168 85 247;    /* for composing alphas */
+  --accent-contrast: #0b0612;       /* text placed ON a solid accent fill */
+
+  --glow-1: rgba(168, 85, 247, 0.14); /* ambient wash, row hover */
+  --glow-2: rgba(168, 85, 247, 0.22); /* selected row, active tab bg */
+  --glow-3: rgba(168, 85, 247, 0.32); /* focus halo, live indicators */
+  --glow-4: rgba(168, 85, 247, 0.42); /* hero glow, primary button hover */
+
+  /* ---- Semantic state (muted; never purple) ----------------------------- */
+  --ok:        #7fd4a8;
+  --ok-bg:     rgba(127, 212, 168, 0.10);
+  --ok-border: rgba(127, 212, 168, 0.28);
+
+  --warn:        #f0b45a;
+  --warn-bg:     rgba(240, 180, 90, 0.10);
+  --warn-border: rgba(240, 180, 90, 0.28);
+
+  --danger:        #ff6b8a;
+  --danger-bg:     rgba(255, 107, 138, 0.10);
+  --danger-border: rgba(255, 107, 138, 0.30);
+
+  --neutral-state: #8a8699;         /* idle / unknown / not-yet-loaded */
+
+  /* ---- Text ------------------------------------------------------------- */
+  --text-1: #ece9f5;                /* primary: values, headings */
+  --text-2: #b4afc6;                /* secondary: prose, descriptions */
+  --text-3: #7e7892;                /* tertiary: HUD labels, metadata */
+  --text-4: #57526a;                /* disabled, placeholders */
+  --text-accent: var(--accent-strong);
+
+  /* ---- Surfaces (glass over black) -------------------------------------- */
+  --surface-glass-1: rgba(10, 8, 20, 0.60); /* ambient cards over canvas */
+  --surface-glass-2: rgba(10, 8, 20, 0.72); /* standard panel */
+  --surface-glass-3: rgba(10, 8, 20, 0.84); /* sticky headers, toolbars */
+  --surface-glass-4: rgba(10, 8, 20, 0.92); /* popovers, dialogs, menus */
+  --surface-blur:    blur(14px) saturate(120%);
+  --surface-inset:   rgba(0, 0, 0, 0.35);   /* inputs, wells inside panels */
+  --scrim:           rgba(3, 2, 6, 0.72);   /* modal backdrop */
+
+  /* ---- Borders ---------------------------------------------------------- */
+  --border-width:  1px;
+  --border:        rgba(168, 85, 247, 0.14); /* resting */
+  --border-hover:  rgba(168, 85, 247, 0.40); /* hover + focus-within */
+  --border-strong: rgba(168, 85, 247, 0.55); /* selected / active */
+  --border-subtle: rgba(255, 255, 255, 0.05); /* internal dividers */
+
+  /* ---- Radius ----------------------------------------------------------- */
+  --radius-0:     0;
+  --radius-xs:    3px;              /* tiny marks, kbd, inline code */
+  --radius-panel: 6px;              /* panels, cards, inputs, buttons */
+  --radius-pill:  999px;            /* chips + segmented controls ONLY */
+
+  /* ---- Typography: families --------------------------------------------- */
+  --font-display: "Orbitron", "JetBrains Mono", ui-monospace, monospace;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-prose:   "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* ---- Typography: scale (1.2 minor third, 13px chrome base) ------------ */
+  --fs-hud:   10px;                 /* HUD micro-labels (uppercase) */
+  --fs-xs:    11px;
+  --fs-sm:    12px;
+  --fs-base:  13px;                 /* chrome / table text */
+  --fs-prose: 15px;                 /* prose blocks */
+  --fs-lg:    16px;
+  --fs-xl:    20px;
+  --fs-2xl:   24px;
+  --fs-hero:  clamp(32px, 4vw, 48px); /* Orbitron hero numerals */
+
+  --lh-tight: 1.1;                  /* hero numerals */
+  --lh-chrome: 1.35;
+  --lh-prose: 1.6;
+
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-bold:    600;
+  --fw-display: 700;
+
+  --tracking-hud:     0.14em;       /* uppercase micro-labels */
+  --tracking-chrome:  0.02em;
+  --tracking-display: 0.06em;
+  --tracking-prose:   0;
+
+  --numeric: tabular-nums slashed-zero; /* font-variant-numeric for metrics */
+
+  /* ---- Spacing (4px base) ----------------------------------------------- */
+  --space-0:  0;
+  --space-1:  2px;
+  --space-2:  4px;
+  --space-3:  8px;
+  --space-4:  12px;
+  --space-5:  16px;
+  --space-6:  20px;
+  --space-7:  24px;
+  --space-8:  32px;
+  --space-9:  48px;
+  --space-10: 64px;
+
+  --panel-pad:  var(--space-5);
+  --control-h-sm: 24px;
+  --control-h:    30px;
+  --control-h-lg: 36px;
+
+  /* ---- Elevation (dark: glow + shadow, not light) ----------------------- */
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 4px 14px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 10px 30px rgba(0, 0, 0, 0.55);
+  --shadow-3: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 18px 50px rgba(0, 0, 0, 0.65),
+              0 0 0 1px var(--border);
+  --glow-shadow:      0 0 24px var(--glow-2);
+  --glow-shadow-hero: 0 0 40px var(--glow-4);
+
+  /* ---- Focus ------------------------------------------------------------ */
+  --focus-ring-color:  var(--accent-strong);
+  --focus-ring-width:  2px;
+  --focus-ring-offset: 2px;
+  --focus-halo:        0 0 0 4px var(--glow-3);
+
+  /* ---- Motion ----------------------------------------------------------- */
+  --ease-out:  cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast:  120ms;               /* hover, color, border */
+  --dur-base:  160ms;               /* toggles, chips, focus */
+  --dur-slow:  220ms;               /* panels, popovers, drawers */
+  --transition-color:  color var(--dur-fast) var(--ease-out),
+                       background-color var(--dur-fast) var(--ease-out),
+                       border-color var(--dur-fast) var(--ease-out);
+  --transition-shadow: box-shadow var(--dur-base) var(--ease-out);
+  --transition-motion: transform var(--dur-slow) var(--ease-out),
+                       opacity var(--dur-slow) var(--ease-out);
+
+  /* ---- Scrollbar -------------------------------------------------------- */
+  --scrollbar-size:        8px;
+  --scrollbar-track:       transparent;
+  --scrollbar-thumb:       rgba(168, 85, 247, 0.18);
+  --scrollbar-thumb-hover: rgba(168, 85, 247, 0.40);
+
+  /* ---- Selection -------------------------------------------------------- */
+  --selection-bg:   rgba(168, 85, 247, 0.32);
+  --selection-text: #f6f2ff;
+
+  /* ---- Layers ----------------------------------------------------------- */
+  --z-base:     0;
+  --z-sticky:   10;
+  --z-dropdown: 100;
+  --z-overlay:  200;
+  --z-modal:    300;
+  --z-toast:    400;
+  --z-tooltip:  500;
+}
+
+/* [U1] Selection: accent-tinted, high-contrast text */
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-text);
+}
+
+/* [U2] Focus-visible ring: keyboard only, never on mouse click */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-halo);
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* [U3] Dark scrollbars: Firefox + WebKit */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* [U4] Reduced motion: zero out durations and transitions globally */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

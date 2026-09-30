@@ -43,7 +43,9 @@ export type EdgeHover = 'none' | 'towardA' | 'towardB' | 'unrelated';
 export function emissionRate(heatA: number, heatB: number, hover: EdgeHover): number {
   if (hover === 'unrelated') return 0.02;
   if (hover === 'towardA' || hover === 'towardB') return 2.5;
-  return 0.05 + (heatA + heatB) * 0.5;
+  // V4: somas are near-invisible now, so the wires carry the life — higher
+  // floor + stronger heat scaling keeps light visibly moving at rest.
+  return 0.05 + (heatA + heatB) * 0.4;
 }
 
 /** Fractional accumulator emission — deterministic (no rng), so tests can
@@ -81,12 +83,13 @@ void main() {
 }
 `;
 
-export const SPIKE_POOL_CAPACITY = 150;
-/** World-ish size on the cortex gl_PointSize curve. */
-const SPIKE_SIZE = 0.09;
+export const SPIKE_POOL_CAPACITY = 260;
+/** World-ish size on the cortex gl_PointSize curve. Small enough to read as a
+ *  spark riding a wire — not a second bright ball per connection. */
+const SPIKE_SIZE = 0.045;
 /** Traversal duration in seconds per unit of curve length — shorter edges
  *  conduct faster, like real axons. */
-const SPIKE_SPEED = 0.9;
+const SPIKE_SPEED = 0.55;
 
 /** Fixed-size pool of spikes riding edge curves. Free slots have aAlpha 0. */
 export class SpikePool {

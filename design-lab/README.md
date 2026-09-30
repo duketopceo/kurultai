@@ -12,6 +12,6 @@ OPENROUTER_API_KEY=... node scripts/ui-batch.mjs --model moonshotai/kimi-k2 --n 
 OPENROUTER_API_KEY=... node scripts/ui-batch.mjs --model openai/gpt-5 --n 3 --only tokens,chrome
 ```
 
-`--model` is any OpenRouter model id (Kimi or GPT per the plan — no Fable). `--n` = variants per surface. `--only` limits to comma-separated prompt basenames.
+`--model` is any OpenRouter model id (Kimi or GPT per the plan — no Fable). `--n` = variants per surface. `--only` limits to comma-separated prompt basenames. `--force` regenerates even when a cached output file exists.
 
 Scoring rubric (from the definitions doc): single dark purple palette · hairline glass panels · mono micro-labels · honest empty/error states · no fake data · no extra Brain chrome · `prefers-reduced-motion` respected.
