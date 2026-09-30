@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: tests
 parent: INDEX.md
-updated: 2026-09-11
-version: 5
+updated: 2026-09-30
+version: 6
 ---
 
 # `tests`
@@ -27,6 +27,7 @@ version: 5
 | [`acceptance_search.rs`](acceptance_search.rs) | Acceptance tests — search surface (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`acceptance_visibility.rs`](acceptance_visibility.rs) | Acceptance tests — visibility / tiered access (KHAN-251). | — | — | 2026-09-01 | 2 | 2026-09-01 HUB-5 default_visibility_scope source + pipeline tests · 2026-08-16 indexed (v1 seed) |
 | [`acceptance_write_policy.rs`](acceptance_write_policy.rs) | Acceptance tests — shared-store write containment (Track A / A2). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`chaos.rs`](chaos.rs) | Chaos tests — SIGKILL mid-write WAL recovery, cold-start bound, disk pressure (ignored) — hermetic scratch DBs | spawned daemon subprocess | tmp dirs | 2026-09-30 | 1 | plan 2026-09-30-001 U4 |
 | [`cli_smoke.rs`](cli_smoke.rs) | Phase 1 CLI smoke (#5 / #23) — binary against fixture vault. | — | — | 2026-08-29 | 2 | 2026-08-29 unset ambient hub flag in bin() · 2026-08-16 indexed (v1 seed) |
 | [`inbox_adapter_test.rs`](inbox_adapter_test.rs) | Inbox tray + dump format parity + gate heuristics (AE1–AE7). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`install_script_test.rs`](install_script_test.rs) | Personal installer script smoke (#72) — bash syntax + dry-run / help. | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |

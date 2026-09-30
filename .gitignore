@@ -63,6 +63,8 @@ __pycache__/
 
 # eval run reports (local artifacts)
 evals/reports/
+# load/chaos harness reports
+artifacts/
 .codebase-memory/
 node_modules/
 
