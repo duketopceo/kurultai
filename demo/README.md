@@ -26,30 +26,29 @@ docker compose -f docker-compose.demo.yml up --build
 
 ## Public exposure — operator runbook
 
-Public DNS/Access is operator-verified: no CF API token in omaseal covers
-the zone (audit 2026-09-26), so these steps are manual in the dashboard.
+Hostname chosen: **`kurultai-demo.luke-the-duke.com`**. Access side is
+already provisioned via API (2026-09-30):
 
-1. **Hostname** — pick before creating DNS. Candidates:
-   `demo.kurultai.dev`, `kurultai-demo.luke-the-duke.com`. Do not reuse
-   `knowledge.shippedit.dev` — that's the real personal instance.
-2. **Tunnel** — Zero Trust → Networks → Tunnels → route the chosen
-   hostname to `http://localhost:8429` on the host running the demo
-   container. (Or a named-tunnel `ingress` entry if the host already runs
-   cloudflared — see `deploy/server-001/` in kurultai-private.)
-3. **Access application** — Zero Trust → Access → Applications →
-   self-hosted, same hostname. Policy: email OTP or the IdP already in
-   use; keep it 1Password-friendly per repo preference. Copy the app
-   `aud` tag.
-4. **Daemon verification** — set on the service environment:
-   `KURULTAI_CF_ACCESS_TEAM=<team>.cloudflareaccess.com` and
-   `KURULTAI_CF_ACCESS_AUDS=<aud-tag>` — `src/http/cf_access.rs` then
-   verifies `Cf-Access-Jwt-Assertion` so humans sign in via Access instead
-   of pasting a key.
-5. **Service token** (optional, for agent/agentic access) — Access →
-   Service auth → mint, store as omaseal `cloudflare/demo-access`.
-6. **Portfolio link** — set `demoUrl` on the kurultai entry in
-   `portfolio-hub/src/data/demos.ts` once the hostname is live; the card
-   already renders "Access-gated".
+- ✅ Access app `Kurultai Demo` (self-hosted, `kurultai-demo.luke-the-duke.com`,
+  aud `60a4ad4b5baea5dd1e85ae6ae48528c20fbfc908fc585a16d70944c152f15c78`)
+- ✅ Policies: `owner emails` (allow — Luke's emails), `agent service token`
+  (bypass — token `5e504c19`)
+- ✅ Service token minted → omaseal `cloudflare/demo-access` (secret) +
+  `cloudflare/demo-access-client-id`
+
+Remaining (manual, needs the target host):
+
+1. **Tunnel** — route `kurultai-demo.luke-the-duke.com` →
+   `http://localhost:8429` on whatever host runs the demo container
+   (named-tunnel ingress entry or dashboard → Networks → Tunnels; existing
+   tunnels live on this account, e.g. `shippedit-server`).
+2. **DNS** — creating the tunnel route creates the CNAME automatically.
+3. **Daemon env** — set on the service:
+   `KURULTAI_CF_ACCESS_TEAM=duketopceo.cloudflareaccess.com` and
+   `KURULTAI_CF_ACCESS_AUDS=60a4ad4b5baea5dd1e85ae6ae48528c20fbfc908fc585a16d70944c152f15c78`
+   — `src/http/cf_access.rs` then verifies `Cf-Access-Jwt-Assertion`.
+4. **Portfolio link** — `demoUrl` is set in portfolio-hub `demos.ts`;
+   flip the card to a live link once DNS resolves.
 
 ## Deferred
 
