@@ -66,8 +66,20 @@ fn fixture_config(tmp: &tempfile::TempDir) -> PathBuf {
 }
 
 fn spawn_daemon(cfg: &PathBuf, port: u16) -> Child {
-    std::process::Command::new(env!("CARGO_BIN_EXE_kurultai"))
-        .arg("--config")
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_kurultai"));
+    // The Postgres CI lane exports KURULTAI_FEATURE_HUB=1 plus hub DB env vars;
+    // the spawned daemon would inherit them and require a postgres store instead
+    // of the scratch sqlite fixture — these tests are intentionally store-local.
+    for var in [
+        "KURULTAI_FEATURE_HUB",
+        "KURULTAI_TEST_DATABASE_URL",
+        "KURULTAI_DATABASE_URL",
+        "DATABASE_URL",
+        "POSTGRES_URL",
+    ] {
+        cmd.env_remove(var);
+    }
+    cmd.arg("--config")
         .arg(cfg)
         .args(["daemon", "--port", &port.to_string()])
         .stdout(Stdio::null())
