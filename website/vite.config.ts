@@ -9,7 +9,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Build stamp for the topbar so screenshots identify which build is live.
 const UI_BUILD = (() => {
   try {
-    return execSync('git rev-parse --short HEAD', { cwd: __dirname }).toString().trim();
+    // Last commit touching website/ — stable across merge refs (CI builds
+    // refs/pull/*/merge where HEAD differs from the branch tip).
+    return execSync('git log -1 --format=%h -- .', { cwd: __dirname }).toString().trim();
   } catch {
     return new Date().toISOString().slice(0, 16);
   }
