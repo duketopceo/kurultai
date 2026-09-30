@@ -648,6 +648,7 @@ poll_interval_secs = 300
             tier_policy: crate::memory::TierPolicy::default(),
             judge_enabled: true,
             judge_model: None,
+            broker: Default::default(),
         };
 
         let pack = tmp.path().join("fb.kurultai");

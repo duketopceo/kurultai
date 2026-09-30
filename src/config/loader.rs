@@ -90,6 +90,7 @@ fn default_config(env: Environment) -> Result<Config> {
         tier_policy: crate::memory::TierPolicy::default(),
         judge_enabled: true,
         judge_model: None,
+        broker: crate::config::file::FileBrokerConfig::default(),
     })
 }
 
@@ -166,6 +167,7 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
         tier_policy: tiers_to_policy(file.tiers)?,
         judge_enabled: file.judge.enabled.unwrap_or(true),
         judge_model: file.judge.model,
+        broker: file.broker,
     })
 }
 

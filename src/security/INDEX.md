@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: src/security
 parent: src/INDEX.md
-updated: 2026-09-16
+updated: 2026-09-30
 version: 2
 ---
 
@@ -23,10 +23,11 @@ _None._
 | [`mod.rs`](mod.rs) | Security helpers | — | `src/connectors/dayflow.rs` · `src/connectors/github.rs` · `src/connectors/inbox.rs` · `src/connectors/json.rs` · `src/connectors/markdown.rs` · `src/connect.rs` | 2026-09-16 | 2 | 2026-09-16 re-export agent key file helpers · 2026-08-16 indexed (v1 seed) |
 | [`paths.rs`](paths.rs) | Path sandbox / O_NOFOLLOW | `src/error` | `src/connectors/dayflow.rs` · `src/connectors/github.rs` · `src/connectors/inbox.rs` · `src/connectors/json.rs` · `src/connectors/markdown.rs` | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`redact.rs`](redact.rs) | Secret redaction | — | `src/connectors/dayflow.rs` · `src/connectors/github.rs` · `src/connectors/inbox.rs` · `src/connectors/json.rs` · `src/connectors/markdown.rs` | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`secrets.rs`](secrets.rs) | Secret scanning + key-file storage | `src/error` | `src/connectors/dayflow.rs` · `src/connectors/github.rs` · `src/connectors/inbox.rs` · `src/connectors/json.rs` · `src/connectors/markdown.rs` · `src/connect.rs` | 2026-09-16 | 3 | 2026-09-16 `agent_key_file_path`/`write_agent_key_file` (`agent-keys/` 0600) for `connect` · 2026-09-15 key file fallback `openrouter.key` (0600) + `write_key_file` (#329) |
+| [`secrets.rs`](secrets.rs) | Secret scanning + key-file storage + `read_agent_key` | `src/error` | `src/connectors/dayflow.rs` · `src/connectors/github.rs` · `src/connectors/inbox.rs` · `src/connectors/json.rs` · `src/connectors/markdown.rs` · `src/connect.rs` · `src/broker/server.rs` | 2026-09-30 | 4 | 2026-09-30 `read_agent_key` — read-back for broker upstream token resolution · 2026-09-16 `agent_key_file_path`/`write_agent_key_file` (`agent-keys/` 0600) for `connect` · 2026-09-15 key file fallback `openrouter.key` (0600) + `write_key_file` (#329) |
 
 ## Recent
 
+- 2026-09-30 — `secrets.rs`: `read_agent_key` resolves omaseal → `agent-keys/*.key` for the broker's upstream seat token
 - 2026-09-16 — `secrets.rs`: `agent_key_file_path`/`write_agent_key_file` — 0600 `agent-keys/<lane>-<codename>-agent-token.key` fallback when `omaseal` is absent
 - 2026-09-15 — `secrets.rs`: `api_key_from_keyfile`/`write_key_file`/`key_file_path` (#329)
 - 2026-08-16 — indexed this folder (v1 seed)

@@ -207,6 +207,7 @@ mod tests {
             tier_policy: crate::memory::TierPolicy::default(),
             judge_enabled: true,
             judge_model: None,
+            broker: Default::default(),
         }
     }
 

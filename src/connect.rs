@@ -107,7 +107,7 @@ fn persistent_seat_id_at(path: &std::path::Path) -> Option<String> {
 }
 
 /// Sanitize a seat id for use inside a credential name (`devin@host` → `devin-host`).
-fn seat_slug(instance_id: &str) -> String {
+pub(crate) fn seat_slug(instance_id: &str) -> String {
     instance_id
         .chars()
         .map(|c| {
