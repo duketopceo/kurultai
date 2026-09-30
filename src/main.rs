@@ -879,10 +879,22 @@ async fn main() -> Result<()> {
         } => {
             let (demo_config, bind) = if demo {
                 let cfg = demo_config_path()?;
-                if bind.is_some() {
+                // Containerized demos (compose/k8s) need a non-loopback bind —
+                // inside a container, loopback is unreachable by the proxy.
+                // KURULTAI_DEMO_BIND_ALL=1 opts in explicitly; the host-run
+                // default stays loopback-only.
+                let bind_all_demo = std::env::var("KURULTAI_DEMO_BIND_ALL").as_deref() == Ok("1");
+                if bind.is_some() && !bind_all_demo {
                     eprintln!("warning: --demo ignores --bind (loopback only; expose via tunnel)");
                 }
-                (Some(cfg), None)
+                (
+                    Some(cfg),
+                    if bind_all_demo {
+                        bind.clone().or(Some("0.0.0.0".to_string()))
+                    } else {
+                        None
+                    },
+                )
             } else {
                 (None, bind.clone())
             };
