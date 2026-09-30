@@ -9,9 +9,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Build stamp for the topbar so screenshots identify which build is live.
 const UI_BUILD = (() => {
   try {
-    // Last commit touching website/ — stable across merge refs (CI builds
-    // refs/pull/*/merge where HEAD differs from the branch tip).
-    return execSync('git log -1 --format=%h -- .', { cwd: __dirname }).toString().trim();
+    // Content hash of website sources — stable across merge refs and
+    // shallow CI checkouts where git history is unavailable.
+    return execSync(
+      'git ls-files . | sort | xargs git hash-object | git hash-object --stdin | cut -c1-7',
+      { cwd: __dirname },
+    ).toString().trim();
   } catch {
     return new Date().toISOString().slice(0, 16);
   }
