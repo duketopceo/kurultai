@@ -115,7 +115,9 @@ void main() {
   // Slow per-node pulse (±4%) — somas breathe on their own phase, not in sync.
   float breathe = 1.0 + 0.04 * sin(uTime * 0.7 + aSeed * 6.2831);
   float scale = (aSize + c * 2.5 * uHover) * uIntro * breathe;
-  gl_PointSize = scale * (500.0 / -mvPosition.z);
+  // Cap device-pixel size: unclamped, close zoom turns somas into
+  // screen-filling blobs. ~26 device px ≈ 13 css px at DPR 2.
+  gl_PointSize = min(scale * (500.0 / -mvPosition.z), 26.0);
   vColor = mix(aColor, vec3(1.0), c * uHover * 0.25);
   vAlpha = aAlpha * (0.85 + 0.1 * c * uHover);
   vSeed = aSeed;
@@ -1137,6 +1139,8 @@ export class BrainView {
       }),
     );
     label.renderOrder = 10;
+    const img = label.material.map!.image as HTMLCanvasElement;
+    label.userData.aspect = img.width / img.height;
     label.scale.setScalar(0.12);
     label.position.copy(pos);
     label.position.y += 0.035;
@@ -2401,6 +2405,18 @@ export class BrainView {
         Math.cos(this.yaw) * this.distance,
       );
       this.camera.lookAt(0, 0, 0);
+    }
+
+    // Hover label holds a constant on-screen size: a fixed world-space
+    // sprite fills half the screen at close zoom. Scale with camera distance
+    // and preserve the canvas aspect so text doesn't smear.
+    if (this.spriteHoverLabel) {
+      const world = this.brainGroup.localToWorld(
+        this._zoomWorld.copy(this.spriteHoverLabel.position),
+      );
+      const d = this.camera.position.distanceTo(world);
+      const s = Math.max(0.02, d * 0.055);
+      this.spriteHoverLabel.scale.set(s * (this.spriteHoverLabel.userData.aspect as number), s, 1);
     }
 
     // U1: label LOD refresh on quantized camera zoom (hover/mode refresh directly).
