@@ -24,7 +24,7 @@ where
     Router::new()
         .route("/", get(|| async { Redirect::permanent("/ui/") }))
         .route("/ui", get(|| async { Redirect::permanent("/ui/") }))
-        .route("/ui/", get(|| async { serve_asset("brain.html") }))
+        .route("/ui/", get(|| async { serve_asset("ui-next.html") }))
         .route("/ui/{*path}", get(ui_path))
 }
 
@@ -42,7 +42,7 @@ async fn ui_path(Path(path): Path<String>) -> Response {
 fn serve_asset(path: &str) -> Response {
     let path = path.trim_start_matches('/');
     if path.is_empty() {
-        return serve_asset("brain.html");
+        return serve_asset("ui-next.html");
     }
     if path.contains("..") || path.starts_with('/') {
         return StatusCode::NOT_FOUND.into_response();
