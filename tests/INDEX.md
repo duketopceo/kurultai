@@ -41,6 +41,7 @@ version: 5
 
 ## Recent
 
+- 2026-09-30 — `cli_smoke.rs`: `daemon --demo` fails closed without config; `demo/config.toml` parses
 - 2026-09-18 — `evals_search.rs` `review_commits` flagging-judge test
 - 2026-09-18 — `evals_search.rs` FailingJudge circuit-breaker test
 - 2026-09-17 — `evals_search.rs` + `acceptance_ask_web.rs` + `fixtures/evals/golden.json`: offline eval harness + ask-web acceptance

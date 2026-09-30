@@ -27,6 +27,7 @@ version: 6
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`AGENT_CONNECTION_PROMPT.md`](AGENT_CONNECTION_PROMPT.md) | Copy-paste agent connect prompt — local MCP + hosted instance access | — | — | 2026-09-30 | 1 | 2026-09-30 indexed |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Copy-paste agent setup prompt | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`PROJECT_SCOPING.md`](PROJECT_SCOPING.md) | Project scoping notes | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`agent-index.md`](agent-index.md) | Agent INDEX.md schema, skip list, update ritual | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |

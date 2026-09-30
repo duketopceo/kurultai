@@ -73,6 +73,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-09-30 — `daemon --demo` (U4, portfolio-hub #43): isolated fixture-corpus mode — `demo/` (config + 6 tagged atoms + tunnel/Access runbook), `docker-compose.demo.yml`, `demo_config_path()` in `main.rs`; loopback-forced, `--bind` ignored
 - 2026-09-26 — UI rebuild units U1–U3 scaffold: `docs/design/` (teardown definitions — 3-palette clash + fake-data findings; research bases) + `design-lab/` (4 surface prompts) + `scripts/ui-batch.mjs` OpenRouter runner; batch generation + stitching remain
 - 2026-09-25 — UI/UX teardown + rebuild plan (`docs/plans/2026-09-25-001`): teardown inventory → definitions doc → ThreeUI/VoltOps/bolt.new research → batch Kimi/GPT design gen → stitched `ui-next` → local preview gate → tagged ~v0.6.5 cutover; Brain concept kept, frontend-only
 - 2026-09-23 — `/api/graph` prepared payload (#324): publish-on-mutation via `Store::atom_epoch`, param-keyed `graph_cache` serves nodes byte-for-byte; hub stores (epoch `u64::MAX`) stay live
