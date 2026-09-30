@@ -162,8 +162,14 @@ pub async fn serve_with(
         None
     };
     let bind_all = opts.bind_all || auth::resolve_bind_all_from_env();
-    let addr =
-        hub_listen::resolve_listen_socket_flag(opts.port, bind_all, opts.bind.as_deref(), &hub)?;
+    let issued = issued_key_count(&hub).await;
+    let addr = hub_listen::resolve_listen_socket_flag(
+        opts.port,
+        bind_all,
+        opts.bind.as_deref(),
+        &hub,
+        issued,
+    )?;
     let state = app_state(
         Arc::clone(&brain),
         status,
@@ -286,6 +292,22 @@ pub fn build_app(brain: BrainService, status: Arc<DaemonStatus>, hub: HubGate) -
         MetricsRegistry::shared(),
         hub,
     ))
+}
+
+async fn issued_key_count(hub: &HubGate) -> usize {
+    #[cfg(feature = "postgres")]
+    if let Some(store) = &hub.key_store {
+        return match store.has_active_keys().await {
+            Ok(true) => 1,
+            Ok(false) => 0,
+            Err(e) => {
+                tracing::warn!(error = %e, "issued key count failed; treating as zero");
+                0
+            }
+        };
+    }
+    let _ = hub;
+    0
 }
 
 fn app_state(

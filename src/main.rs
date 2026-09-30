@@ -678,7 +678,7 @@ async fn main() -> Result<()> {
                 let hub = kurultai::http::resolve_hub_gate_from_env();
                 let bind_all = kurultai::http::resolve_bind_all_from_env();
                 if let Ok(addr) =
-                    kurultai::http::resolve_listen_socket_flag(port, bind_all, None, &hub)
+                    kurultai::http::resolve_listen_socket_flag(port, bind_all, None, &hub, 0)
                 {
                     println!("  Daemon:  http://{addr}/ui/ (`kurultai webui`)");
                 }
@@ -837,10 +837,16 @@ async fn main() -> Result<()> {
             no_watch,
             ref bind,
         } => {
-            let hub = kurultai::http::resolve_hub_gate_from_env();
+            let mut hub = kurultai::http::resolve_hub_gate_from_env();
             let bind_all = kurultai::http::resolve_bind_all_from_env();
-            let addr =
-                kurultai::http::resolve_listen_socket_flag(port, bind_all, bind.as_deref(), &hub)?;
+            let issued = daemon_issued_key_count(&mut hub).await;
+            let addr = kurultai::http::resolve_listen_socket_flag(
+                port,
+                bind_all,
+                bind.as_deref(),
+                &hub,
+                issued,
+            )?;
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
             let interval = kurultai::daemon::normalize_poll_interval_secs(
@@ -1326,6 +1332,31 @@ fn argv_has_mcp_subcommand(args: &[String]) -> bool {
         return a == "mcp";
     }
     false
+}
+
+async fn daemon_issued_key_count(hub: &mut kurultai::http::HubGate) -> usize {
+    #[cfg(feature = "postgres")]
+    if kurultai::features::enabled("hub") {
+        if let Some(url) = kurultai::store::database_url_from_env() {
+            match kurultai::hub::HubKeyStore::connect(&url).await {
+                Ok(store) => {
+                    let count = match store.has_active_keys().await {
+                        Ok(true) => 1,
+                        Ok(false) => 0,
+                        Err(e) => {
+                            tracing::warn!(error = %e, "issued key count failed; treating as zero");
+                            0
+                        }
+                    };
+                    hub.key_store = Some(std::sync::Arc::new(store));
+                    return count;
+                }
+                Err(e) => tracing::warn!(error = %e, "hub key store unavailable"),
+            }
+        }
+    }
+    let _ = hub;
+    0
 }
 
 fn cheap_banner_mode(args: &[String]) -> BannerMode {

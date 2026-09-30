@@ -218,7 +218,7 @@ pub fn resolve_listen_socket(
     issued_key_count: usize,
 ) -> Result<SocketAddr> {
     let req = bind_request_from_env(bind_all);
-    resolve_listen_request(port, req, hub)
+    resolve_listen_request(port, req, hub, issued_key_count)
 }
 
 /// `daemon --bind <ADDR>` — flag wins over env. `tailscale` resolves the
@@ -229,6 +229,7 @@ pub fn resolve_listen_socket_flag(
     bind_all: bool,
     bind: Option<&str>,
     hub: &HubGate,
+    issued_key_count: usize,
 ) -> Result<SocketAddr> {
     let req = match bind.map(str::trim).filter(|s| !s.is_empty()) {
         None => bind_request_from_env(bind_all),
@@ -240,10 +241,15 @@ pub fn resolve_listen_socket_flag(
             req
         }
     };
-    resolve_listen_request(port, req, hub)
+    resolve_listen_request(port, req, hub, issued_key_count)
 }
 
-fn resolve_listen_request(port: u16, req: BindRequest, hub: &HubGate) -> Result<SocketAddr> {
+fn resolve_listen_request(
+    port: u16,
+    req: BindRequest,
+    hub: &HubGate,
+    issued_key_count: usize,
+) -> Result<SocketAddr> {
     match hub_listen_decision(
         req,
         hub.auth,
@@ -485,6 +491,8 @@ mod tests {
         let hub = HubGate {
             auth: HubAuth::ApiKey,
             api_keys: Vec::new(),
+            agent_store: None,
+            cf_access: None,
             #[cfg(feature = "postgres")]
             key_store: None,
         };
@@ -518,13 +526,13 @@ mod flag_tests {
 
     #[test]
     fn flag_loopback_allows() {
-        let a = resolve_listen_socket_flag(8421, false, Some("127.0.0.1"), &gate()).unwrap();
+        let a = resolve_listen_socket_flag(8421, false, Some("127.0.0.1"), &gate(), 0).unwrap();
         assert_eq!(a, SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8421));
     }
 
     #[test]
     fn flag_literal_ip_refuses_without_auth() {
-        let r = resolve_listen_socket_flag(8421, false, Some("192.168.1.5"), &gate());
+        let r = resolve_listen_socket_flag(8421, false, Some("192.168.1.5"), &gate(), 0);
         assert!(r.is_err());
     }
 
@@ -532,7 +540,7 @@ mod flag_tests {
     fn flag_wins_over_env() {
         std::env::set_var("KURULTAI_HUB_BIND", "0.0.0.0");
         // Loopback flag overrides a broad env bind.
-        let a = resolve_listen_socket_flag(8421, false, Some("127.0.0.1"), &gate()).unwrap();
+        let a = resolve_listen_socket_flag(8421, false, Some("127.0.0.1"), &gate(), 0).unwrap();
         std::env::remove_var("KURULTAI_HUB_BIND");
         assert!(a.ip().is_loopback());
     }
