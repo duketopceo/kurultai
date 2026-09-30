@@ -372,7 +372,7 @@ export function NextApp() {
     <div className="next-app">
       <a className="skip-link" href="#ws">Skip to workspace</a>
       <TopBar
-        version={UI_VERSION}
+        version={`${UI_VERSION}·${typeof __UI_BUILD__ !== 'undefined' ? __UI_BUILD__ : 'dev'}`}
         active={nav}
         onNavigate={setNav}
         daemon={daemon}
