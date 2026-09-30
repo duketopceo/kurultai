@@ -38,6 +38,7 @@ version: 6
 
 ## Recent
 
+- 2026-09-30 — plans/ added 2026-09-30-001 load + chaos harness plan (scripts/hammer.mjs + tests/chaos.rs); hosted write-hammer evidence: ~133 wps, zero errors
 - 2026-09-19 — `HANDOFF-omarchy-macbook-m1.md` migration handoff + `brainstorms/` connect-flow requirements doc
 - 2026-09-12 — plans/ added 2026-09-12-001 Brain neuron-motif visual language plan (first-principles derivation)
 - 2026-09-05 — plans/ added 002 Brain 0→100 showcase + A2A chatboard plan
