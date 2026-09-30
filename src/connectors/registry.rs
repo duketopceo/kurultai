@@ -1,4 +1,3 @@
-use crate::connectors::appflowy::AppFlowyConnector;
 use crate::connectors::dayflow::DayflowConnector;
 use crate::connectors::github::GitHubConnector;
 use crate::connectors::inbox::InboxConnector;
@@ -76,19 +75,12 @@ impl Default for ConnectorRegistry {
 
 fn build_connector(kind: &SourceKind) -> Result<Box<dyn Connector>> {
     let connector: Box<dyn Connector> = match kind {
-        SourceKind::AppFlowy => Box::new(AppFlowyConnector::new()),
         SourceKind::Markdown => Box::new(MarkdownConnector::new()),
         SourceKind::Dayflow => Box::new(DayflowConnector::new()),
         SourceKind::Pond => Box::new(PondConnector::new()),
         SourceKind::GitHub => Box::new(GitHubConnector::new()),
         SourceKind::Json => Box::new(JsonConnector::new()),
         SourceKind::Inbox => Box::new(InboxConnector::new()),
-        SourceKind::TechTracker => {
-            return Err(KurultaiError::connector(
-                format!("{kind:?}"),
-                "connector not implemented yet",
-            ));
-        }
         SourceKind::Custom(name) => {
             return Err(KurultaiError::connector(name, "unknown custom connector"));
         }
@@ -195,7 +187,7 @@ mod tests {
             environment: Environment::Dev,
             sources: vec![SourceConfig {
                 name: "tt".into(),
-                kind: SourceKind::TechTracker,
+                kind: SourceKind::Custom("tt".into()),
                 enabled: true,
                 poll_interval_secs: 60,
                 extra: HashMap::new(),
@@ -217,7 +209,7 @@ mod tests {
         };
         match ConnectorRegistry::from_config(&config).await {
             Ok(_) => panic!("expected unimplemented connector error"),
-            Err(err) => assert!(err.to_string().contains("not implemented")),
+            Err(err) => assert!(err.to_string().contains("unknown custom connector")),
         }
     }
 }

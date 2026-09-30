@@ -221,11 +221,9 @@ fn value_to_string(value: &toml::Value) -> String {
 
 fn parse_source_kind(kind: &str) -> SourceKind {
     match kind.to_ascii_lowercase().as_str() {
-        "appflowy" => SourceKind::AppFlowy,
         "markdown" | "filesystem" | "fs" => SourceKind::Markdown,
         "pond" => SourceKind::Pond,
         "dayflow" => SourceKind::Dayflow,
-        "tech_tracker" | "techtracker" => SourceKind::TechTracker,
         "github" => SourceKind::GitHub,
         "json" => SourceKind::Json,
         "inbox" => SourceKind::Inbox,

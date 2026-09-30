@@ -1,4 +1,3 @@
-pub mod appflowy;
 pub mod dayflow;
 pub mod github;
 pub mod inbox;

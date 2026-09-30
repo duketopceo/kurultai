@@ -1475,16 +1475,11 @@ mod tests {
             return;
         };
         let url = std::env::var("KURULTAI_TEST_DATABASE_URL").unwrap();
-        let prev = std::env::var("KURULTAI_FEATURE_HUB").ok();
-        std::env::set_var("KURULTAI_FEATURE_HUB", "1");
+        let _guard = crate::testutil::EnvGuard::set("KURULTAI_FEATURE_HUB", "1");
         let store = crate::store::open_hub_store(&url, 4)
             .await
             .expect("open hub");
         assert!(store.count().await.is_ok());
-        match prev {
-            Some(v) => std::env::set_var("KURULTAI_FEATURE_HUB", v),
-            None => std::env::remove_var("KURULTAI_FEATURE_HUB"),
-        }
     }
 
     #[tokio::test]

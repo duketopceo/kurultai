@@ -8,7 +8,7 @@ version: 3
 
 # `scripts`
 
-**Does:** Install, UI build, closeout, index audit
+**Does:** Install, UI build, index audit
 **Up:** [`INDEX.md`](../INDEX.md) · **Protocol:** [`docs/agent-index.md`](../docs/agent-index.md)
 
 ## Children
@@ -29,10 +29,6 @@ version: 3
 | [`ui-smoke.mjs`](ui-smoke.mjs) | Bounded headless UI smoke check (hard timeout, `--disable-gpu`, tab/aria probe) | daemon on :8421 | `ui/` | 2026-09-27 | 1 | 2026-09-27 added — replaces ad-hoc Playwright heredocs after a hung one orphaned a 700% CPU SwiftShader proc |
 | [`install.ps1`](install.ps1) | Windows installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`install.sh`](install.sh) | Unix installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`phase-1-closeout.sh`](phase-1-closeout.sh) | Phase 1 closeout helper | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`phase-2-closeout.sh`](phase-2-closeout.sh) | Phase 2 closeout helper | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`phase-4-closeout.sh`](phase-4-closeout.sh) | Phase 4 closeout helper | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`phase-5-closeout.sh`](phase-5-closeout.sh) | Phase 5 closeout helper | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
@@ -42,4 +38,5 @@ version: 3
 
 - 2026-09-04 — add `audit-ui.py`; update `build-ui.sh` to prune stale assets
 - 2026-08-16 — `audit-agent-index.py` coverage check for CI
+- 2026-09-01 — dropped one-shot phase closeout scripts
 - 2026-08-16 — indexed this folder (v1 seed)

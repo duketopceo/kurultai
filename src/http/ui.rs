@@ -1,6 +1,6 @@
 //! Brain UI assets served at `GET /ui` — single product surface.
 //!
-//! Source files live under `ui/` (HTML/CSS/JS/images). They are embedded at
+//! Source files live under `ui/` (HTML/CSS/JS). They are embedded at
 //! compile time so the binary does not depend on a Vite process or a filesystem
 //! layout next to the executable. Optional Vite preview lives under `website/`
 //! and is not a second product.
@@ -196,5 +196,35 @@ mod tests {
             cache.contains("immutable"),
             "hashed assets should be immutable, got {cache}"
         );
+    }
+
+    #[tokio::test]
+    async fn ui_redirects_legacy_landing_paths() {
+        for path in ["/ui/index.html", "/ui/index.js", "/ui/index.css"] {
+            let app = routes::<()>();
+            let resp = app
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert!(
+                resp.status().is_redirection(),
+                "{path} should redirect, got {}",
+                resp.status()
+            );
+            let loc = resp
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            assert_eq!(loc, "/ui/", "{path} location");
+        }
+    }
+
+    #[test]
+    fn ui_embed_omits_landing_files() {
+        for name in UiAssets::iter() {
+            assert_ne!(name.as_ref(), "index.html");
+            assert!(!name.ends_with(".jpg"), "unexpected jpg embed {name}");
+        }
     }
 }
