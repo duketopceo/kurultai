@@ -10,9 +10,9 @@ services:
       KURULTAI_FEATURE_HUB: "0"
       KURULTAI_HUB_BIND: all
       KURULTAI_HUB_AUTH: api_key
-      KURULTAI_HUB_API_KEYS: ${PERSONAL_API_KEYS}
-      KURULTAI_MCP_HTTP_SECRET: ${PERSONAL_MCP_SECRET}
-      KURULTAI_INGEST_SECRET: ${PERSONAL_INGEST_SECRET}
+      KURULTAI_HUB_API_KEYS: ${PERSONAL_API_KEYS:?missing PERSONAL_API_KEYS — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}
+      KURULTAI_MCP_HTTP_SECRET: ${PERSONAL_MCP_SECRET:?missing PERSONAL_MCP_SECRET — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}
+      KURULTAI_INGEST_SECRET: ${PERSONAL_INGEST_SECRET:?missing PERSONAL_INGEST_SECRET — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}
       # Human login via Cloudflare Access (Google/OTP) — JWT verified against
       # the team domain certs; AUD = "Kurultai Personal" Access app tag.
       KURULTAI_CF_ACCESS_TEAM: duketopceo
@@ -44,9 +44,9 @@ services:
       KURULTAI_FEATURE_HUB: "0"
       KURULTAI_HUB_BIND: all
       KURULTAI_HUB_AUTH: api_key
-      KURULTAI_HUB_API_KEYS: ${WORK_API_KEYS}
-      KURULTAI_MCP_HTTP_SECRET: ${WORK_MCP_SECRET}
-      KURULTAI_INGEST_SECRET: ${WORK_INGEST_SECRET}
+      KURULTAI_HUB_API_KEYS: ${WORK_API_KEYS:?missing WORK_API_KEYS — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}
+      KURULTAI_MCP_HTTP_SECRET: ${WORK_MCP_SECRET:?missing WORK_MCP_SECRET — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}
+      KURULTAI_INGEST_SECRET: ${WORK_INGEST_SECRET:?missing WORK_INGEST_SECRET — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}
       KURULTAI_CF_ACCESS_TEAM: duketopceo
       KURULTAI_CF_ACCESS_AUDS: 4b8e471a751f46bdaa510b6662528279231d7d9cee00b8a75a93048b19444146
       PORT: "8422"
@@ -78,13 +78,6 @@ services:
       retries: 3
       start_period: 5s
 
-  cloudflared:
-    image: cloudflare/cloudflared:2026.3.0
-    container_name: cloudflared
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
-    networks:
-      - kurultai
 
 networks:
   kurultai:
