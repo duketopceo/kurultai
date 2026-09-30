@@ -1,0 +1,18 @@
+# Demo instance config — isolated store + fixture corpus only.
+# Used by `kurultai daemon --demo`; never points at a real knowledge store.
+
+environment = "dev"
+
+[storage]
+# Isolated DB — demo atoms never mix with any personal/work store.
+path = "~/.local/share/kurultai/demo/store.db"
+
+# Fixture corpus: hand-curated, public-safe markdown atoms shipped in-repo.
+# root_path is resolved relative to the working directory — run `kurultai
+# daemon --demo` from the repo root (or set KURULTAI_DEMO_CONFIG to an
+# absolute path and keep root_path absolute too).
+[sources.demo_corpus]
+enabled = true
+kind = "markdown"
+root_path = "demo/corpus"
+poll_interval_secs = 30

@@ -19,6 +19,8 @@ target/
 
 # Config (user-specific)
 config.toml
+# except the checked-in demo fixture config
+!demo/config.toml
 .env
 
 # Internal framework files
@@ -61,6 +63,7 @@ __pycache__/
 
 # eval run reports (local artifacts)
 evals/reports/
+# load/chaos harness reports
 artifacts/
 .codebase-memory/
 node_modules/
