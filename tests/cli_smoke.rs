@@ -709,3 +709,23 @@ fn mcp_accepts_agent_identity_flags() {
         .assert()
         .success();
 }
+
+#[test]
+fn daemon_demo_flag_fails_closed_without_config() {
+    // --demo resolves KURULTAI_DEMO_CONFIG or ./demo/config.toml; with neither
+    // present it must error clearly instead of booting against a real store.
+    let tmp = tempfile::TempDir::new().unwrap();
+    bin()
+        .current_dir(tmp.path())
+        .env_remove("KURULTAI_DEMO_CONFIG")
+        .args(["daemon", "--demo", "--port", "0"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("demo config not found"));
+}
+
+#[test]
+fn demo_fixture_config_parses() {
+    let cfg = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("demo/config.toml");
+    kurultai::config::load_config_from(&cfg).expect("demo/config.toml parses");
+}

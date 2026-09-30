@@ -1,0 +1,24 @@
+# Demo instance — fixture corpus only, loopback-bound, meant to sit behind
+# a Cloudflare Tunnel + Access application. See demo/README.md for the
+# tunnel/Access runbook. Real data never reaches this container.
+services:
+  kurultai-demo:
+    build: .
+    command: ["daemon", "--demo", "--port", "8421"]
+    # Config + fixture corpus are read-only mounts; the isolated store is a
+    # named volume so it never touches host state.
+    volumes:
+      - ./demo:/app/demo:ro
+      - demo-store:/root/.local/share/kurultai/demo
+    environment:
+      KURULTAI_DEMO_CONFIG: /app/demo/config.toml
+      # Set these on the host to enable CF Access JWT verification:
+      # KURULTAI_CF_ACCESS_TEAM / KURULTAI_CF_ACCESS_AUDS
+      KURULTAI_CF_ACCESS_TEAM: ${KURULTAI_CF_ACCESS_TEAM:-}
+      KURULTAI_CF_ACCESS_AUDS: ${KURULTAI_CF_ACCESS_AUDS:-}
+    # Loopback only — publish through cloudflared, not a host port.
+    expose:
+      - "8421"
+
+volumes:
+  demo-store:

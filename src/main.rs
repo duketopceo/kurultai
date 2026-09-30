@@ -199,6 +199,12 @@ enum Commands {
         /// `tailscale` (resolves the local 100.x tailnet IPv4)
         #[arg(long, value_name = "ADDR")]
         bind: Option<String>,
+        /// Demo mode: boot against the in-repo fixture corpus
+        /// (`demo/config.toml`, override with KURULTAI_DEMO_CONFIG) on an
+        /// isolated store. Forces loopback bind — public exposure is
+        /// intended to go through Cloudflare Tunnel + Access only.
+        #[arg(long)]
+        demo: bool,
     },
     /// Run the per-device broker: one upstream seat session to a hosted
     /// instance; agents board over loopback with minted per-chat keys
@@ -869,12 +875,25 @@ async fn main() -> Result<()> {
             poll_interval,
             no_watch,
             ref bind,
+            demo,
         } => {
+            let (demo_config, bind) = if demo {
+                let cfg = demo_config_path()?;
+                if bind.is_some() {
+                    eprintln!("warning: --demo ignores --bind (loopback only; expose via tunnel)");
+                }
+                (Some(cfg), None)
+            } else {
+                (None, bind.clone())
+            };
             let hub = kurultai::http::resolve_hub_gate_from_env();
             let bind_all = kurultai::http::resolve_bind_all_from_env();
             let addr =
                 kurultai::http::resolve_listen_socket_flag(port, bind_all, bind.as_deref(), &hub)?;
-            let app = bootstrap_app(&cli).await?;
+            let app = match demo_config {
+                Some(ref cfg) => App::bootstrap_from(cfg, Some("dev")).await?,
+                None => bootstrap_app(&cli).await?,
+            };
             let brain = brain_from_app(&app);
             let interval = kurultai::daemon::normalize_poll_interval_secs(
                 poll_interval.unwrap_or(app.config.poll_interval_secs),
@@ -1351,6 +1370,21 @@ async fn bootstrap_app(cli: &Cli) -> Result<App> {
     } else {
         App::bootstrap(cli.env.as_deref()).await
     }
+}
+
+/// Resolve the demo-mode config: KURULTAI_DEMO_CONFIG wins, else the
+/// in-repo `demo/config.toml` (cwd-relative).
+fn demo_config_path() -> Result<PathBuf> {
+    let path = std::env::var_os("KURULTAI_DEMO_CONFIG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("demo/config.toml"));
+    if !path.exists() {
+        return Err(kurultai::KurultaiError::config(format!(
+            "demo config not found at {} — run from the repo root or set KURULTAI_DEMO_CONFIG",
+            path.display()
+        )));
+    }
+    Ok(path)
 }
 
 /// Best-effort help banner (KTD6): no store open; config only if cheaply readable.

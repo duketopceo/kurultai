@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: scripts
 parent: INDEX.md
-updated: 2026-09-04
-version: 2
+updated: 2026-09-30
+version: 3
 ---
 
 # `scripts`
@@ -22,6 +22,8 @@ version: 2
 | [`audit-agent-index.py`](audit-agent-index.py) | CI audit: INDEX.md coverage vs git ls-files | — | — | 2026-09-13 | 2 | 2026-09-13 skip `website/public/` — Vite public assets are cataloged in `website/INDEX.md` · 2026-08-16 indexed (v1 seed) |
 | [`audit-ui.py`](audit-ui.py) | Audit built `ui/` for stale/dead assets and outdated deps | — | `website/` · `ui/` | 2026-09-04 | 1 | 2026-09-04 add dead-code/old-version UI audit · 2026-08-16 indexed (v1 seed) |
 | [`recall-harness.py`](recall-harness.py) | Randomized recall/search load + correctness suite (volume, deep, same/mixed-path concurrency, failover, p50/95/99) | `/api/search` · `/api/recall` · `/api/atoms` | — | 2026-09-08 | 1 | 2026-09-08 added |
+| [`hammer.mjs`](hammer.mjs) | Load/chaos harness — read/adversarial/payload/write/race/turn-cap/consistency/soak suites w/ p50–p99 + RSS watch | `/api/*` HTTP surface | `artifacts/` | 2026-09-30 | 1 | plan 2026-09-30-001 U1–U3+U6 |
+| [`hammer-mcp.mjs`](hammer-mcp.mjs) | MCP stdio lane hammer — concurrent `tools/call` through real `kurultai mcp` subprocess | MCP JSON-RPC stdio | — | 2026-09-30 | 1 | plan 2026-09-30-001 U5 |
 | [`build-ui.sh`](build-ui.sh) | website/ → ui/ production copy for rust-embed | — | `website/` · `ui/` | 2026-09-04 | 2 | 2026-09-04 prune legacy files and stale hashed bundles before rebuild · 2026-08-16 indexed (v1 seed) |
 | [`ui-batch.mjs`](ui-batch.mjs) | Batch UI design generator — OpenRouter chat completions over `design-lab/prompts/` → gitignored `design-lab/out/` variants | OPENROUTER_API_KEY · `--model` (Kimi/GPT) | `design-lab/` | 2026-09-26 | 1 | plan 2026-09-25-001 U3 scaffold |
 | [`ui-smoke.mjs`](ui-smoke.mjs) | Bounded headless UI smoke check (hard timeout, `--disable-gpu`, tab/aria probe) | daemon on :8421 | `ui/` | 2026-09-27 | 1 | 2026-09-27 added — replaces ad-hoc Playwright heredocs after a hung one orphaned a 700% CPU SwiftShader proc |
