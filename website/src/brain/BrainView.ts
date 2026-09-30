@@ -1,5 +1,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import brainUrl from '../assets/brain.glb?url';
 import type { Atom, Link, Theme, LayoutMode, OntologyResponse, OntologyEntity } from '../types';
 import { hashId } from '../state';
@@ -91,32 +98,55 @@ const NODE_SPRITE_VERTEX = /* glsl */ `
 attribute float aSize;
 attribute vec3 aColor;
 attribute float aAlpha;
+attribute float aSeed;
 uniform vec3 uPointer;
 uniform float uHover;
 uniform float uIntro;
+uniform float uTime;
 varying vec3 vColor;
 varying float vAlpha;
+varying float vSeed;
 
 void main() {
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mvPosition;
   float d = distance(uPointer, position);
   float c = smoothstep(0.22, 0.04, d);
-  float scale = (aSize + c * 2.5 * uHover) * uIntro;
-  gl_PointSize = scale * (500.0 / -mvPosition.z);
+  // Slow per-node pulse (±4%) — somas breathe on their own phase, not in sync.
+  float breathe = 1.0 + 0.04 * sin(uTime * 0.7 + aSeed * 6.2831);
+  float scale = (aSize + c * 2.5 * uHover) * uIntro * breathe;
+  // Cap device-pixel size: unclamped, close zoom turns somas into
+  // screen-filling blobs. ~26 device px ≈ 13 css px at DPR 2.
+  gl_PointSize = min(scale * (500.0 / -mvPosition.z), 26.0);
   vColor = mix(aColor, vec3(1.0), c * uHover * 0.25);
   vAlpha = aAlpha * (0.85 + 0.1 * c * uHover);
+  vSeed = aSeed;
 }
 `;
 
+/* Procedural soma (v3): replaces the sampled dot texture. The silhouette is a
+ * seed-wobbled disc (two sine harmonics on the polar angle) so every neuron is
+ * a slightly different cell body — no specular, no billiard orbs. A small hot
+ * core sits inside a wide, dim dendrite halo; alpha stays low so overlapping
+ * somas in the dense core shade the interior instead of blowing out. */
 const NODE_SPRITE_FRAGMENT = /* glsl */ `
-uniform sampler2D uMap;
 varying vec3 vColor;
 varying float vAlpha;
+varying float vSeed;
 void main() {
-  vec4 tex = texture2D(uMap, gl_PointCoord);
-  if (tex.a < 0.01) discard;
-  gl_FragColor = vec4(vColor, vAlpha * tex.a);
+  vec2 uv = gl_PointCoord - vec2(0.5);
+  float r = length(uv);
+  float ang = atan(uv.y, uv.x);
+  // Irregular cell-body edge: base radius ~0.34 wobbled by two harmonics.
+  float wob = 0.34
+    + 0.045 * sin(ang * 3.0 + vSeed * 6.2831)
+    + 0.03 * sin(ang * 7.0 - vSeed * 12.566);
+  float core = 1.0 - smoothstep(wob * 0.5, wob, r);
+  float halo = 1.0 - smoothstep(wob, 0.5, r);
+  float a = clamp(core * 0.75 + halo * 0.22, 0.0, 1.0);
+  if (a < 0.02) discard;
+  vec3 col = mix(vColor, vec3(1.0), core * 0.3);
+  gl_FragColor = vec4(col, vAlpha * a);
 }
 `;
 
@@ -131,13 +161,13 @@ interface Palette {
 }
 
 const DARK_PALETTE: Palette = {
-  nodeBase: 0xd6d1ee,
+  nodeBase: 0xdcd7f2,
   nodeHot: 0xffffff,
   nodeUnfocus: 0x37324a,
-  edgeRest: 0x7c6fd4,
+  edgeRest: 0x7c5ce8,
   edgeActive: 0xffffff,
-  edgeDim: 0x221c38,
-  particles: [0xffffff, 0xc9c4ea, 0xffffff, 0x8f83dc, 0xffffff],
+  edgeDim: 0x1d1832,
+  particles: [0xffffff, 0xd4cfff, 0xf6f2ff, 0x9a7ff0, 0xffffff],
 };
 
 const LIGHT_PALETTE: Palette = {
@@ -158,6 +188,7 @@ type SynapseData = Link & {
   phase?: number;
   curve?: THREE.CatmullRomCurve3;
   emissionAcc?: number;
+  flowSpeed?: number;
 };
 
 export type Region = 'left' | 'right' | 'stem';
@@ -168,14 +199,14 @@ const MAX_NODES = 2500;
 // show every memory, not a 2500-node slice.
 const SPRITE_NODE_CAP = 20_000;
 /** Top-N links by strength. Lowered from 3000 to cut edge geometry cost. */
-const MAX_EDGES = 1200;
+const MAX_EDGES = 2600;
 
 // Hybrid node rendering (KTD3 / R4): above this count nodes render as a single
 // THREE.Points draw call; at or below it the sphere+halo+label meshes render.
 const NODE_SPRITE_CUTOFF = 500;
 // Converts the sphere radius (world units) to the cortex gl_PointSize curve.
 // Tuned so the sprite visual size matches the sphere at the 500-node crossover.
-const NODE_SPRITE_SIZE_SCALE = 5;
+const NODE_SPRITE_SIZE_SCALE = 2.6;
 // Raycaster threshold (world units) for picking individual node sprites.
 const NODE_RAYCAST_THRESHOLD = 0.02;
 // U1: degree at/below which a soma wears the sparse corona texture; above it
@@ -232,6 +263,13 @@ export class BrainView {
   private palette: Palette;
 
   private renderer!: THREE.WebGLRenderer;
+  // Bloom composer — the single biggest fidelity lever for the electric look.
+  // Ratchet governor: once fpsEma sustains < BLOOM_MIN_FPS the pass is
+  // dropped for the session rather than flapping on/off.
+  private composer: EffectComposer | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
+  private bloomDropped = false;
+  private bloomLowFrames = 0;
   private scene = new THREE.Scene();
   private camera!: THREE.PerspectiveCamera;
   private brainGroup = new THREE.Group();
@@ -315,6 +353,9 @@ export class BrainView {
   // the hovered mesh soma+corona (sprite mode magnifies in-shader via
   // uPointer/uHover).
   private sizeScale = 1;
+  // V4 wire-light: per-node rest alpha for the soma sprite cloud, applied by
+  // applySpriteBaseColors/applySpriteHoverColors (which overwrite aAlpha).
+  private spriteRestAlpha = 0.1;
   private magnifyT = 0;
   private magnifyAppliedId: string | null = null;
   private hoverConnected = new Set<string>();
@@ -402,6 +443,20 @@ export class BrainView {
     container.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.05, 60);
+
+    // Post chain: scene → bloom → output (tone map + sRGB). High threshold so
+    // only the white-hot cores/spikes bleed; the violet field stays clean.
+    try {
+      this.composer = new EffectComposer(this.renderer);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.7, 0.82);
+      this.composer.addPass(this.bloomPass);
+      this.composer.addPass(new OutputPass());
+      this.composer.setPixelRatio(this.renderer.getPixelRatio());
+    } catch {
+      this.composer = null;
+      this.bloomPass = null;
+    }
     // Points-picking threshold for the node sprite cloud (set once; no other
     // Points objects are raycast in this view, so a constant is safe).
     this.raycaster.params.Points.threshold = NODE_RAYCAST_THRESHOLD;
@@ -584,8 +639,12 @@ export class BrainView {
     const normal = new THREE.Vector3(this.norms[i], this.norms[i + 1], this.norms[i + 2]);
     const jitter = (((h >> 8) % 100) / 100 - 0.5) * 0.02;
     const jitter2 = (((h >> 16) % 100) / 100 - 0.5) * 0.02;
-    // Slight inward bias so spawn starts inside/on the cortex (hard FDG
-    // project keeps them there). Prior +0.018 outward offset seeded exterior.
+    // Cortical-mantle band: pull spawn to 0.70–0.96 of hull radius (seeded per
+    // node) so the constellation fills the cortical shell where sulci/gyri
+    // live — the brain silhouette reads hard instead of relaxing into a
+    // center-weighted blob. FDG repulsion + hull containment keep them there.
+    const band = 0.7 + (((h >> 4) % 100) / 100) * 0.26;
+    pos.multiplyScalar(band);
     return pos.add(normal.multiplyScalar(-0.012 + jitter)).addScalar(jitter2 * 0.01);
   }
 
@@ -691,8 +750,11 @@ export class BrainView {
       this.heatById.set(atom.id, heatOf(atom, nowMs, this.degrees.get(atom.id) || 0));
     });
 
-    // Hybrid path selection (KTD3 / R4): > cutoff → sprite cloud, else meshes.
-    this.spriteMode = atoms.length > NODE_SPRITE_CUTOFF;
+    // Hybrid path selection (v3): brain layout is always the soma sprite
+    // cloud — sphere meshes read as billiard orbs and blow out under bloom
+    // at density. Ontology keeps the hybrid (labels/scaffold need meshes).
+    this.spriteMode =
+      this.layoutMode === 'brain' ? true : atoms.length > NODE_SPRITE_CUTOFF;
     // Release the previous cloud whenever we rebuild (mode switch or refresh).
     this.disposeSpriteHoverLabel();
     this.disposeNodeSpriteCloud();
@@ -720,7 +782,7 @@ export class BrainView {
     // Density-aware sizing: ~1.0 up to ~180 nodes, ~0.57 at 500, ~0.35 floor.
     // Sprite mode lets the floor keep dropping — at `max` the full cortex
     // needs smaller points or the core fuses into one white mass.
-    const sizeFloor = this.spriteMode ? 0.18 : 0.35;
+    const sizeFloor = this.spriteMode ? 0.24 : 0.35;
     this.sizeScale = Math.min(
       1,
       Math.max(sizeFloor, Math.pow(180 / Math.max(1, shown.length), 0.45)),
@@ -728,6 +790,10 @@ export class BrainView {
     this.magnifyT = 0;
     this.magnifyAppliedId = null;
     this.spikes?.setSizeScale(0.6 + 0.4 * this.sizeScale);
+    // Rest alpha must keep a readable floor at high counts — at 3.5k nodes
+    // the sizeScale floor (0.24) would otherwise fade somas to ~0.03, i.e.
+    // invisible. Hover still scales off this (×8 hot / ×5 linked / ×0.6 dim).
+    this.spriteRestAlpha = 0.07 + 0.13 * Math.pow(this.sizeScale, 2);
 
     // Sort by connection count descending to assign brain regions.
     // Top 10% (hubs) → stem, next 40% (more connected) → right, bottom 50% → left.
@@ -759,6 +825,14 @@ export class BrainView {
     this.applyFilters();
     if (!this.spriteMode) this.applyRegionColors();
 
+    // Bloom backs off at density — additive soma sprites already carry their
+    // own halo; at 1k+ nodes full-strength bloom fuses into glare.
+    if (this.bloomPass) {
+      const dense = shown.length > 800;
+      this.bloomPass.strength = dense ? 0.3 : 0.55;
+      this.bloomPass.threshold = dense ? 0.86 : 0.82;
+    }
+
     if (!this.applyingOntology) this.startWorkerLayout(shown);
     // Morph cue: shell ripple announcing the graph changed (skipped under
     // reduced-motion, where uPulse stays 0).
@@ -771,11 +845,13 @@ export class BrainView {
     }
   }
 
-  /** Shared node radius (degree- and score-scaled) used by both node builders. */
+  /** Shared node radius (degree- and score-scaled) used by both node builders.
+   *  V2 constellation tuning: ~0.6× the old sizes — small luminous somas so the
+   *  cortex silhouette reads as a brain-shaped constellation, not a white mass. */
   private nodeRadius(atom: Atom): number {
     const degree = this.degrees.get(atom.id) || 0;
     const base =
-      (0.0075 + Math.min(degree, 20) * 0.0014 + Math.min(atom.score, 1) * 0.004) *
+      (0.0048 + Math.min(degree, 20) * 0.0009 + Math.min(atom.score, 1) * 0.0028) *
       this.sizeScale;
     return atom.source === 'code' ? base * 0.55 : base;
   }
@@ -787,7 +863,14 @@ export class BrainView {
       const region = regionOf.get(atom.id) || 'left';
       const radius = this.nodeRadius(atom);
       const mesh = new THREE.Mesh(this.somaGeo, this.nodeMaterial(false));
-      mesh.scale.setScalar(radius);
+      // Lumpy soma: per-node anisotropic scale (seeded by id) so neurons read
+      // as organic bodies, not identical billiard orbs.
+      const seed = hashId(atom.id);
+      const lx = radius * (0.82 + ((seed >>> 3) % 19) / 50);
+      const ly = radius * (0.82 + ((seed >>> 9) % 19) / 50);
+      const lz = radius * (0.82 + ((seed >>> 15) % 19) / 50);
+      mesh.scale.set(lx, ly, lz);
+      mesh.userData.lumpy = [lx, ly, lz];
       mesh.position.copy(this.vertexForRegion(atom, region));
       mesh.userData.atomId = atom.id;
       mesh.userData.region = region;
@@ -836,11 +919,12 @@ export class BrainView {
     const sizes = new Float32Array(count);
     const colors = new Float32Array(count * 3);
     const alphas = new Float32Array(count);
+    const seeds = new Float32Array(count);
     const color = new THREE.Color();
 
     // Density shrink: a soft-glow sprite reads fine at ~600 nodes but fuses
     // to a blob at 3.5k — pull point size down hard as count climbs.
-    const densityShrink = Math.min(1, Math.pow(600 / count, 1.1));
+    const densityShrink = Math.min(1, Math.pow(700 / count, 1.05));
 
     shown.forEach((atom, i) => {
       const region = regionOf.get(atom.id) || 'left';
@@ -862,7 +946,11 @@ export class BrainView {
       // path's coronaRestOpacity() — additive sprites at alpha≈1 fuse into a
       // blown-out white mass above a few hundred nodes. Steeper exponent than
       // the mesh path: sprite overlap compounds quadratically in dense cores.
-      alphas[i] = 0.02 + 0.7 * Math.pow(this.sizeScale, 4.0);
+      // V4 "wire-light" mode: somas recede to faint pinpricks — presence
+      // markers only (still raycastable for hover/inspect). The readable
+      // signal lives on the axons: rest threads + traveling spikes.
+      alphas[i] = this.spriteRestAlpha;
+      seeds[i] = (hashId(atom.id) % 1000) / 1000;
 
       this.atomPositions.set(atom.id, pos);
       // Separate instance: atomPositions is mutated by layout animations.
@@ -879,14 +967,17 @@ export class BrainView {
     geometry.setAttribute('aColor', this.spriteColorAttr);
     this.spriteAlphaAttr = new THREE.BufferAttribute(alphas, 1);
     geometry.setAttribute('aAlpha', this.spriteAlphaAttr);
+    geometry.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
 
     const material = new THREE.ShaderMaterial({
       vertexShader: NODE_SPRITE_VERTEX,
       fragmentShader: NODE_SPRITE_FRAGMENT,
-      uniforms: { ...this.uniforms, uMap: { value: this.dotTexture } },
+      uniforms: { ...this.uniforms },
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      // NormalBlending, not additive: overlapping somas in the dense core
+      // shade past each other instead of summing into a white mass.
+      blending: THREE.NormalBlending,
     });
 
     const cloud = new THREE.Points(geometry, material);
@@ -925,27 +1016,43 @@ export class BrainView {
         points.push(b.clone());
 
         const curve = new THREE.CatmullRomCurve3(points);
-        const geo = new THREE.BufferGeometry().setFromPoints(curve.getPoints(28));
-        // Explicit synapses: additive glow, opacity scales with shared-tag
-        // count so multiply-tagged connections read as stronger links.
+        // Synapse-gap axons (v2): the drawn thread stops short of both somas —
+        // the traveling spike (SpikePool rides the FULL stored curve) visibly
+        // fires across the gap into the destination neuron. Line2 gives real
+        // screen-space thickness + dash flow instead of 1px wire hairlines.
+        const segCount = 26;
+        const positions: number[] = [];
+        for (let i = 0; i <= segCount; i++) {
+          const t = 0.06 + 0.88 * (i / segCount);
+          const p = curve.getPoint(t);
+          positions.push(p.x, p.y, p.z);
+        }
+        const axonGeo = new LineGeometry();
+        axonGeo.setPositions(positions);
         const baseOpacity = this.edgeRestOpacity(link.strength || 1);
-        const line = new THREE.Line(
-          geo,
-          new THREE.LineBasicMaterial({
-            color: this.palette.edgeRest,
-            transparent: true,
-            opacity: baseOpacity,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-          }),
-        );
+        // V5: connectors carry no shape — a hairline of rest color, and the
+        // *color itself* travels (spikes). No dash marching, no thick tube.
+        const axonMat = new LineMaterial({
+          color: this.palette.edgeRest,
+          linewidth: 1.0,
+          transparent: true,
+          opacity: baseOpacity,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        const rect = this.container.getBoundingClientRect();
+        axonMat.resolution.set(rect.width || 1, rect.height || 1);
+        const line = new Line2(axonGeo, axonMat);
         line.userData = link;
-        // Electric shimmer: per-synapse phase so the web flickers like live
-        // wiring instead of a static mesh (tickSynapseShimmer in the loop).
+        // Electric shimmer + flow: per-synapse phase so the web flickers like
+        // live wiring; dashOffset advances in tickSynapseShimmer for charge
+        // visibly traveling along each axon.
         const ud = line.userData as SynapseData;
         ud.baseOpacity = baseOpacity;
         ud.phase = Math.random() * Math.PI * 2;
-        // U2: spikes re-sample this curve each tick — keep it on the line.
+        ud.flowSpeed = 0.10 + Math.random() * 0.08;
+        // U2: spikes re-sample this curve each tick — keep the FULL curve
+        // (untrimmed) on the line so spikes still land on the soma.
         ud.curve = curve;
         ud.emissionAcc = Math.random();
         this.edgeGroup.add(line);
@@ -1028,12 +1135,15 @@ export class BrainView {
         map: this.makeLabelTexture(atom.title),
         transparent: true,
         depthWrite: false,
-        depthTest: true,
+        depthTest: false,
       }),
     );
-    label.scale.setScalar(0.09);
+    label.renderOrder = 10;
+    const img = label.material.map!.image as HTMLCanvasElement;
+    label.userData.aspect = img.width / img.height;
+    label.scale.setScalar(0.12);
     label.position.copy(pos);
-    label.position.y += 0.02;
+    label.position.y += 0.035;
     label.raycast = () => undefined;
     this.brainGroup.add(label);
     this.spriteHoverLabel = label;
@@ -1067,7 +1177,7 @@ export class BrainView {
     const color = new THREE.Color();
     this._shownIds.forEach((id, i) => {
       const visible = this.isAtomVisible(id);
-      alphaAttr.setX(i, visible ? 1 : 0);
+      alphaAttr.setX(i, visible ? this.spriteRestAlpha : 0);
       const c = this.showRegions ? this.regionColor(this.spriteRegionOf.get(id) ?? 'left') : this.palette.nodeBase;
       color.setHex(c);
       colorAttr.setXYZ(i, color.r, color.g, color.b);
@@ -1091,13 +1201,13 @@ export class BrainView {
         // A hidden hovered node (only reachable via the randomConnection
         // all-hidden fallback) stays hidden — mirrors mesh mode where
         // node.visible=false hides the hovered mesh.
-        alpha = visible ? 1 : 0;
+        alpha = visible ? Math.min(1, this.spriteRestAlpha * 8) : 0;
       } else if (connected.has(id)) {
         c = this.showRegions ? this.regionColor(this.spriteRegionOf.get(id) ?? 'left') : this.palette.nodeBase;
-        alpha = visible ? 0.9 : 0;
+        alpha = visible ? Math.min(1, this.spriteRestAlpha * 5) : 0;
       } else {
         c = this.palette.nodeUnfocus;
-        alpha = visible ? 0.3 : 0;
+        alpha = visible ? this.spriteRestAlpha * 0.2 : 0;
       }
       color.setHex(c);
       colorAttr.setXYZ(i, color.r, color.g, color.b);
@@ -1134,11 +1244,22 @@ export class BrainView {
     const padding = 10;
     const metrics = ctx.measureText(text);
     canvas.width = Math.ceil(metrics.width + padding * 2);
-    canvas.height = fontSize + padding;
+    canvas.height = fontSize + padding * 1.6;
     ctx.font = font;
     ctx.textBaseline = 'top';
-    ctx.fillStyle = 'rgba(244, 240, 255, 0.92)';
-    ctx.fillText(text, padding, padding * 0.5);
+    // Dark pill behind the text — bare text over the wire web is unreadable.
+    const w = canvas.width;
+    const h = canvas.height;
+    const r = h / 2;
+    ctx.beginPath();
+    ctx.roundRect(0.5, 0.5, w - 1, h - 1, r);
+    ctx.fillStyle = 'rgba(6, 5, 14, 0.88)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(139, 92, 246, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(244, 240, 255, 0.95)';
+    ctx.fillText(text, padding, padding * 0.8);
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
     return texture;
@@ -1295,7 +1416,7 @@ export class BrainView {
   /** Synapse rest opacity attenuates with density — hundreds of additive
    *  edges at 0.3+ fuse the core into a white mass. */
   private edgeRestOpacity(strength: number) {
-    return Math.min(0.85, 0.3 + strength * 0.15) * (0.03 + 0.97 * Math.pow(this.sizeScale, 3.5));
+    return Math.min(0.7, 0.24 + strength * 0.1) * (0.04 + 0.96 * Math.pow(this.sizeScale, 3.5));
   }
 
   /** Corona rest opacity attenuates with density — additive coronas are the
@@ -1448,6 +1569,9 @@ export class BrainView {
       // traveling spike (tickSpikes), not a uniform edge flash.
       const noise = 0.78 + 0.22 * Math.sin(t * 2.3 + (ud.phase ?? 0));
       mat.opacity = Math.min(1, ud.baseOpacity * noise);
+      // V2 axon flow: charge visibly travels along the axon thread.
+      const lm = mat as unknown as LineMaterial;
+      if (lm.isLineMaterial && lm.dashed) lm.dashOffset = -(t * (ud.flowSpeed ?? 0.12));
     }
   }
 
@@ -1529,8 +1653,12 @@ export class BrainView {
     const k = 1 + 0.4 * t;
     const mesh = this.nodeMap.get(id);
     if (mesh) {
-      if (mesh.userData.baseRadius === undefined) mesh.userData.baseRadius = mesh.scale.x;
-      mesh.scale.setScalar((mesh.userData.baseRadius as number) * k);
+      const lumpy = mesh.userData.lumpy as number[] | undefined;
+      if (lumpy) mesh.scale.set(lumpy[0] * k, lumpy[1] * k, lumpy[2] * k);
+      else {
+        if (mesh.userData.baseRadius === undefined) mesh.userData.baseRadius = mesh.scale.x;
+        mesh.scale.setScalar((mesh.userData.baseRadius as number) * k);
+      }
     }
     const halo = this.haloMap.get(id);
     if (halo) {
@@ -2202,6 +2330,13 @@ export class BrainView {
     this.camera.aspect = rect.width / rect.height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(rect.width, rect.height, false);
+    this.composer?.setSize(rect.width, rect.height);
+    this.bloomPass?.resolution.set(rect.width, rect.height);
+    // LineMaterial needs the viewport size or fat lines render degenerate.
+    for (const child of this.edgeGroup.children) {
+      const m = (child as Line2).material as LineMaterial | undefined;
+      m?.resolution?.set(rect.width, rect.height);
+    }
   }
 
   private loop = () => {
@@ -2228,6 +2363,9 @@ export class BrainView {
       this.tickSynapseShimmer();
       this.tickSpikes(dt);
       if (!this.dragging && !this.zoomAtomId) this.brainGroup.rotation.y += dt * 0.05;
+      // Breathing field: whole constellation expands/contracts ~1% at ~0.07Hz —
+      // alive, but never distracting.
+      this.brainGroup.scale.setScalar(1 + Math.sin(this.uniforms.uTime.value * 0.45) * 0.005);
       if (this.uniforms.uIntro.value < 1) {
         this.uniforms.uIntro.value = Math.min(1, this.uniforms.uIntro.value + dt * 0.8);
       }
@@ -2269,12 +2407,36 @@ export class BrainView {
       this.camera.lookAt(0, 0, 0);
     }
 
+    // Hover label holds a constant on-screen size: a fixed world-space
+    // sprite fills half the screen at close zoom. Scale with camera distance
+    // and preserve the canvas aspect so text doesn't smear.
+    if (this.spriteHoverLabel) {
+      const world = this.brainGroup.localToWorld(
+        this._zoomWorld.copy(this.spriteHoverLabel.position),
+      );
+      const d = this.camera.position.distanceTo(world);
+      const s = Math.max(0.02, d * 0.055);
+      this.spriteHoverLabel.scale.set(s * (this.spriteHoverLabel.userData.aspect as number), s, 1);
+    }
+
     // U1: label LOD refresh on quantized camera zoom (hover/mode refresh directly).
     if (Math.abs(this.distance - this.lastLabelDistance) > 0.2) {
       this.refreshLabelPlan();
     }
 
-    this.renderer.render(this.scene, this.camera);
+    // Adaptive quality: sustained low fps drops the bloom pass for good.
+    if (this.composer && !this.bloomDropped && this.fpsEma > 0 && this.fpsEma < 40) {
+      this.bloomLowFrames += 1;
+      if (this.bloomLowFrames > 90) {
+        this.bloomDropped = true;
+        this.bloomPass!.enabled = false;
+      }
+    } else {
+      this.bloomLowFrames = 0;
+    }
+
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.loop);
   };
 
@@ -2380,6 +2542,8 @@ export class BrainView {
         spriteMat.dispose();
       }
     });
+    this.bloomPass?.dispose();
+    this.composer?.dispose();
     this.renderer?.dispose();
     this.renderer?.domElement.remove();
   }

@@ -56,10 +56,16 @@ execution: code
 
 ### Batch pipeline (U3)
 
-- Input: `ui-definitions.md` + teardown notes + token sheet → per-surface prompts.
-- Models: **Kimi or GPT batch** (user's pick at run time; not Fable).
-- Output contract per surface: self-contained React+CSS (or design spec + reference code), dark theme, no external fonts/CDN deps beyond what's already bundled.
+- Input: `ui-definitions.md` + teardown notes + token sheet → per-surface prompts (9 committed under `design-lab/prompts/`).
+- Output contract per surface: self-contained React+CSS, dark theme, no external fonts/CDN deps beyond what's already bundled.
 - Devin scores variants against the definitions doc, picks per-surface winners, stitches.
+
+**U3 outcome (2026-09-27, settled):** probe ran 3 models × all surfaces (n=1), then n=2 on the two winners; 42 variants under `design-lab/out/` (gitignored).
+
+- **Primary: `anthropic/claude-opus-5.5`** — best design judgment: namespaced `--kr-*` tokens with contrast annotations, documented layout rationale, tightest state modeling, null-safe contracts.
+- **Secondary: `openai/gpt-6-astra-pro`** — 9/9 coverage incl. the only worksurface outputs (opus timed out 6× on it). **Cost-capped by user: no further astra runs** ($10/$50 per MTok); existing outputs are the astra corpus.
+- **`moonshotai/kimi-k3`** — competent, shallower; probe only, dropped.
+- Per-surface winners for U4: tokens→opus-2, brain-hero→opus-1, chrome→opus-1, chatboard→opus-2, inspector→opus-2, ontology-board→opus-1, settings-access→opus-1, store-db→astra-1, worksurface→astra-1.
 
 ### Sequencing
 
@@ -103,8 +109,8 @@ execution: code
 
 ## Open questions
 
-- ~~Which batch model~~ → **Kimi or GPT** (user: "kimi or gpt 6 sol batch only", decides at U3 run time).
-- Design-lab output format preference (pure code vs spec+code) — defer to U3; default code-first.
+- ~~Which batch model~~ → **settled**: opus-5.5 primary, astra-pro corpus reuse only (cost-capped), kimi dropped. See U3 outcome.
+- ~~Design-lab output format~~ → settled code-first: self-contained TSX+CSS per surface.
 - Whether `web/` (Next.js/Clerk team app) inherits the new tokens later — deferred, out of scope.
 
 ## Out of scope

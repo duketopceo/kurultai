@@ -18,6 +18,11 @@ version: 1
 | [`chrome.md`](chrome.md) | TopBar + slim CommandStrip prompt | docs/design/ui-definitions.md §3.1–3.2 · docs/design/research-bases.md | — | 2026-09-26 | 1 | v1 seed |
 | [`worksurface.md`](worksurface.md) | Below-brain tabbed console prompt (Hey/Pulse/Ontology/Ask/Store) | docs/design/ui-definitions.md §3.5–3.8 · docs/design/research-bases.md §2 | — | 2026-09-26 | 1 | v1 seed |
 | [`inspector.md`](inspector.md) | Floating Inspector panel prompt | docs/design/ui-definitions.md §3.4 · docs/design/research-bases.md | — | 2026-09-26 | 1 | v1 seed |
+| [`brain-hero.md`](brain-hero.md) | Brain hero frame prompt — caption/stats-chip/empty chrome only; canvas untouched | docs/design/ui-definitions.md §3.3 · AGENTS.md Brain rules | — | 2026-09-26 | 1 | v1 seed |
+| [`ontology-board.md`](ontology-board.md) | Typed 2D board prompt — cards/edges/link-mode/delete-confirm | docs/design/ui-definitions.md §3.5 · plan D5 | — | 2026-09-26 | 1 | v1 seed |
+| [`chatboard.md`](chatboard.md) | Hey conversation pane prompt — threads/composer/reactions/expand | docs/design/ui-definitions.md §3.6 | — | 2026-09-26 | 1 | v1 seed |
+| [`settings-access.md`](settings-access.md) | Settings + password-manager-friendly access gate prompt | docs/design/ui-definitions.md §3.8–3.9 · AGENTS.md hosted rules | — | 2026-09-26 | 1 | v1 seed |
+| [`store-db.md`](store-db.md) | Dense Store/DB grid prompt — filters, sticky headers, pagination | docs/design/ui-definitions.md §3.9 | — | 2026-09-26 | 1 | v1 seed |
 
 ## Recent
 
