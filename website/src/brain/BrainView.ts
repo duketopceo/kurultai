@@ -1133,12 +1133,13 @@ export class BrainView {
         map: this.makeLabelTexture(atom.title),
         transparent: true,
         depthWrite: false,
-        depthTest: true,
+        depthTest: false,
       }),
     );
-    label.scale.setScalar(0.09);
+    label.renderOrder = 10;
+    label.scale.setScalar(0.12);
     label.position.copy(pos);
-    label.position.y += 0.02;
+    label.position.y += 0.035;
     label.raycast = () => undefined;
     this.brainGroup.add(label);
     this.spriteHoverLabel = label;
@@ -1202,7 +1203,7 @@ export class BrainView {
         alpha = visible ? Math.min(1, this.spriteRestAlpha * 5) : 0;
       } else {
         c = this.palette.nodeUnfocus;
-        alpha = visible ? this.spriteRestAlpha * 0.6 : 0;
+        alpha = visible ? this.spriteRestAlpha * 0.2 : 0;
       }
       color.setHex(c);
       colorAttr.setXYZ(i, color.r, color.g, color.b);
@@ -1239,11 +1240,22 @@ export class BrainView {
     const padding = 10;
     const metrics = ctx.measureText(text);
     canvas.width = Math.ceil(metrics.width + padding * 2);
-    canvas.height = fontSize + padding;
+    canvas.height = fontSize + padding * 1.6;
     ctx.font = font;
     ctx.textBaseline = 'top';
-    ctx.fillStyle = 'rgba(244, 240, 255, 0.92)';
-    ctx.fillText(text, padding, padding * 0.5);
+    // Dark pill behind the text — bare text over the wire web is unreadable.
+    const w = canvas.width;
+    const h = canvas.height;
+    const r = h / 2;
+    ctx.beginPath();
+    ctx.roundRect(0.5, 0.5, w - 1, h - 1, r);
+    ctx.fillStyle = 'rgba(6, 5, 14, 0.88)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(139, 92, 246, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(244, 240, 255, 0.95)';
+    ctx.fillText(text, padding, padding * 0.8);
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
     return texture;
