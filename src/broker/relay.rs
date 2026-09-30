@@ -51,7 +51,7 @@ async fn mcp_relay(
         .map_err(|e| RelayError::upstream(format!("upstream unreachable: {e}")))?;
 
     let status = res.status();
-    let body: Value = res.json().await.unwrap_or_else(|_| Value::Null);
+    let body: Value = res.json().await.unwrap_or(Value::Null);
     if body.is_null() {
         return Ok(status.into_response());
     }
