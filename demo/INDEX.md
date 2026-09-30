@@ -21,6 +21,7 @@ version: 1
 |------|------|-------|---------|-------|-----|-----------|
 | [`README.md`](README.md) | Demo overview + operator runbook for tunnel route, Access app, env wiring | — | — | 2026-09-30 | 1 | 2026-09-30 added |
 | [`config.toml`](config.toml) | Demo config — isolated `~/.local/share/kurultai/demo/store.db`, corpus source, 30s poll | `KURULTAI_DEMO_CONFIG` | `src/main.rs` `demo_config_path` | 2026-09-30 | 1 | 2026-09-30 added |
+| [`Dockerfile`](Dockerfile) | Slim solo-store image for the demo daemon — corpus baked at `/app/demo`, runs as `nobody` | `docker-compose.demo.yml` | — | 2026-09-30 | 1 | 2026-09-30 added |
 
 ## Recent
 
