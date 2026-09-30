@@ -2,6 +2,7 @@ pub mod activity;
 pub mod app;
 pub mod art;
 pub mod brain;
+pub mod broker;
 pub mod config;
 pub mod connect;
 pub mod connectors;

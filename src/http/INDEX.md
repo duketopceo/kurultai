@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: src/http
 parent: src/INDEX.md
-updated: 2026-09-16
+updated: 2026-09-30
 version: 8
 ---
 
@@ -28,12 +28,13 @@ _None._
 | [`ontology_write.rs`](ontology_write.rs) | Human-lane ontology board writes (`POST /api/ontology/entity`, `/link`) — agents refused | `src/http/hey.rs` · `src/http/auth.rs` · `src/ontology` | `src/http/mod.rs` | 2026-09-14 | 1 | 2026-09-14 added (#316) |
 | [`hub_listen.rs`](hub_listen.rs) | Pure bind × auth start-fail (HUB-3) | `src/http/auth.rs` · `src/error` | `src/http/mod.rs` · `src/main.rs` | 2026-09-15 | 2 | 2026-09-15 `resolve_listen_socket_flag` + `resolve_tailscale_ip` for `--bind` (#329) |
 | [`ingest.rs`](ingest.rs) | Opt-in POST /ingest dump | `src/embed` · `src/hashutil` · `src/ingest` · `src/quality` · `src/store` | `src/daemon/mod.rs` · `src/connectors/inbox.rs` · `src/connectors/json.rs` · `src/connectors/markdown.rs` · `src/query/hybrid.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`mcp.rs`](mcp.rs) | MCP HTTP/SSE transport | `src/mcp` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`mcp.rs`](mcp.rs) | MCP HTTP/SSE transport — shared secret → read-only; seat token → full surface + stamped WriteContext | `src/mcp` · `src/write_policy` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-09-30 | 2 | 2026-09-30 `McpAuth` seat-token auth via `resolve_agent_by_key_hash` + `X-Kurultai-*` stamp headers (plan 2026-09-28-001 U4) · 2026-08-16 indexed (v1 seed) |
 | [`mod.rs`](mod.rs) | Axum daemon: /api/*, /ui/, /auth/*, /connect, optional /mcp SSE | `src/brain` · `src/daemon` · `src/error` · `src/mcp` · `src/metrics` · `src/http/hub_listen.rs` · `src/http/device_auth.rs` · `src/http/device.rs` | `src/daemon/mod.rs` | 2026-09-23 | 5 | 2026-09-23 `/api/graph` prepared payload — `graph_cache` keyed by params, invalidated via `Store::atom_epoch`, nodes spliced byte-for-byte (#324) · 2026-09-20 `POST /api/metrics/client` — browser perf samples → client metric family (#102) · 2026-09-18 `/api/ask` `web` flag → ask_with_web (GET+POST) · 2026-09-16 merge `device::routes` (`/api/device/*`, `/connect`) · 2026-09-15 `ServeOptions.bind` plumbed to flag resolver (#329) |
 | [`ui.rs`](ui.rs) | Embedded ui/ static + /ui/ slash redirect | — | `src/daemon/mod.rs` | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-30 — `mcp.rs`: `/mcp` accepts registered agent seat tokens (full write surface, `X-Kurultai-{agent,chat}` stamps → WriteContext) alongside shared-secret read-only — the broker relay's upstream auth path
 - 2026-09-23 — `mod.rs`: `/api/graph` serves prepared per-request-shape snapshots — `graph_cache` keyed by (tier, limit, quarantine, source filters), validated against `Store::atom_epoch`, nodes array spliced byte-for-byte into the response; `graph_epoch` field added (#324)
 - 2026-09-20 — `POST /api/metrics/client` (mod.rs): Brain UI perf samples (nav/tier-load/fps/long-tasks/heap) validated into the client metric family; numbers + enum labels only (#102)
 - 2026-09-19 — `hey.rs` `resolve_thread_id` prefers `get_thread(id)` — fixes messages routing to the wrong thread when a thread is named with another thread's UUID

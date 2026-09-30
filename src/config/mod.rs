@@ -1,7 +1,7 @@
 mod file;
 mod loader;
 
-pub use file::FileConfig;
+pub use file::{FileBrokerConfig, FileConfig};
 pub use loader::{config_path, load_config, load_config_from, load_config_with_env};
 
 /// Canonical on-disk default matching [`FileConfig`] section shape.
@@ -137,6 +137,7 @@ mod tests {
             tier_policy: crate::memory::TierPolicy::default(),
             judge_enabled: true,
             judge_model: None,
+            broker: Default::default(),
         };
         assert!(validate(&config).is_err());
     }
