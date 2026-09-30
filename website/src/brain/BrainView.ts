@@ -1400,7 +1400,7 @@ export class BrainView {
   /** Synapse rest opacity attenuates with density — hundreds of additive
    *  edges at 0.3+ fuse the core into a white mass. */
   private edgeRestOpacity(strength: number) {
-    return Math.min(0.85, 0.34 + strength * 0.14) * (0.03 + 0.97 * Math.pow(this.sizeScale, 3.5));
+    return Math.min(0.7, 0.24 + strength * 0.1) * (0.04 + 0.96 * Math.pow(this.sizeScale, 3.5));
   }
 
   /** Corona rest opacity attenuates with density — additive coronas are the
