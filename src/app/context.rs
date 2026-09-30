@@ -242,9 +242,11 @@ mod tests {
 
     #[tokio::test]
     async fn hub_flag_without_database_url_is_config_error() {
-        let _hub = crate::testutil::EnvGuard::set("KURULTAI_FEATURE_HUB", "1");
-        let _db = crate::testutil::EnvGuard::remove("DATABASE_URL");
-        let _kdb = crate::testutil::EnvGuard::remove("KURULTAI_DATABASE_URL");
+        let _env = crate::testutil::EnvGuard::apply(&[
+            ("KURULTAI_FEATURE_HUB", Some("1")),
+            ("DATABASE_URL", None),
+            ("KURULTAI_DATABASE_URL", None),
+        ]);
         let err = match App::from_config(sample_config(None)).await {
             Ok(_) => panic!("expected config error without DATABASE_URL"),
             Err(e) => e,
