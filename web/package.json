@@ -12,7 +12,7 @@
     "@clerk/nextjs": "^7.9.4",
     "next": "^16.3.8",
     "react": "^19.3.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
