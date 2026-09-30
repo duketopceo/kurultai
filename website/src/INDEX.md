@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src
 parent: website/INDEX.md
-updated: 2026-09-18
-version: 9
+updated: 2026-09-27
+version: 10
 ---
 
 # `website/src`
@@ -16,6 +16,7 @@ version: 9
 - [`assets/`](assets/INDEX.md) — Static source assets (GLB etc.)
 - [`brain/`](brain/INDEX.md) — 3D view
 - [`components/`](components/INDEX.md) — Dashboard panels
+- [`next/`](next/INDEX.md) — ui-next stitched design-lab app (parallel surface, plan U4)
 
 ## Files
 

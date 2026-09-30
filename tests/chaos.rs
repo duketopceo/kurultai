@@ -127,6 +127,7 @@ fn kill_mid_write_recovers() {
             break;
         }
     }
+    let _ = daemon.wait();
 
     // Restart on the same store — WAL must recover, not corrupt.
     let mut daemon2 = spawn_daemon(&cfg, port);

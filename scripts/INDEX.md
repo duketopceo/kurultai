@@ -26,6 +26,7 @@ version: 3
 | [`hammer-mcp.mjs`](hammer-mcp.mjs) | MCP stdio lane hammer — concurrent `tools/call` through real `kurultai mcp` subprocess | MCP JSON-RPC stdio | — | 2026-09-30 | 1 | plan 2026-09-30-001 U5 |
 | [`build-ui.sh`](build-ui.sh) | website/ → ui/ production copy for rust-embed | — | `website/` · `ui/` | 2026-09-04 | 2 | 2026-09-04 prune legacy files and stale hashed bundles before rebuild · 2026-08-16 indexed (v1 seed) |
 | [`ui-batch.mjs`](ui-batch.mjs) | Batch UI design generator — OpenRouter chat completions over `design-lab/prompts/` → gitignored `design-lab/out/` variants | OPENROUTER_API_KEY · `--model` (Kimi/GPT) | `design-lab/` | 2026-09-26 | 1 | plan 2026-09-25-001 U3 scaffold |
+| [`ui-smoke.mjs`](ui-smoke.mjs) | Bounded headless UI smoke check (hard timeout, `--disable-gpu`, tab/aria probe) | daemon on :8421 | `ui/` | 2026-09-27 | 1 | 2026-09-27 added — replaces ad-hoc Playwright heredocs after a hung one orphaned a 700% CPU SwiftShader proc |
 | [`install.ps1`](install.ps1) | Windows installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`install.sh`](install.sh) | Unix installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-1-closeout.sh`](phase-1-closeout.sh) | Phase 1 closeout helper | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -35,6 +36,7 @@ version: 3
 
 ## Recent
 
+- 2026-09-27 — `ui-smoke.mjs`: bounded headless UI smoke check — 120s hard timeout, `--disable-gpu` (no SwiftShader burn), bounded waits; run via `timeout -k 5s 180s`
 - 2026-09-26 — `ui-batch.mjs`: OpenRouter batch UI design generator (plan 2026-09-25-001 U3) — reads `design-lab/prompts/*.md`, writes `--model`/`--n` variants to gitignored `design-lab/out/`
 - 2026-09-08 — `recall-harness.py`: randomized recall suite — shallow/deep queries from live corpus, volume, same-path + mixed-path concurrency, correctness probes, failover timing; console summary + `--json` report
 

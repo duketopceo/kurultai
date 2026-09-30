@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-09-12
-version: 6
+updated: 2026-09-30
+version: 8
 ---
 
 # `docs`
@@ -27,7 +27,7 @@ version: 6
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`AGENT_CONNECTION_PROMPT.md`](AGENT_CONNECTION_PROMPT.md) | Copy-paste agent connect prompt — local MCP + hosted instance access | — | — | 2026-09-30 | 1 | 2026-09-30 indexed |
+| [`AGENT_CONNECTION_PROMPT.md`](AGENT_CONNECTION_PROMPT.md) | Copy-paste agent prompt for reading/writing the Kurultai brain (local MCP + hosted instances) | — | — | 2026-09-29 | 1 | 2026-09-29 ported from archived kurultai-private |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Copy-paste agent setup prompt | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`PROJECT_SCOPING.md`](PROJECT_SCOPING.md) | Project scoping notes | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`agent-index.md`](agent-index.md) | Agent INDEX.md schema, skip list, update ritual | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -40,6 +40,7 @@ version: 6
 ## Recent
 
 - 2026-09-30 — plans/ added 2026-09-30-001 load + chaos harness plan (scripts/hammer.mjs + tests/chaos.rs); hosted write-hammer evidence: ~133 wps, zero errors
+- 2026-09-29 — `AGENT_CONNECTION_PROMPT.md` added: agent connect prompt ported from kurultai-private
 - 2026-09-19 — `HANDOFF-omarchy-macbook-m1.md` migration handoff + `brainstorms/` connect-flow requirements doc
 - 2026-09-12 — plans/ added 2026-09-12-001 Brain neuron-motif visual language plan (first-principles derivation)
 - 2026-09-05 — plans/ added 002 Brain 0→100 showcase + A2A chatboard plan

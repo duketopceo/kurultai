@@ -21,13 +21,16 @@ version: 9
 |------|------|-------|---------|-------|-----|-----------|
 | [`README.md`](README.md) | How to run Vite preview + build-ui.sh | — | — | 2026-09-04 | 2 | 2026-09-04 clarify source is website/src and scripts/build-ui.sh prunes stale assets · 2026-08-16 indexed (v1 seed) |
 | [`brain.html`](brain.html) | Brain page HTML entry + favicon/theme meta | — | `src/http/mod.rs` · `src/mcp/brain.rs` · `src/query/context.rs` · `src/query/hybrid.rs` | 2026-09-06 | 2 | 2026-09-06 favicon link, theme-color, hosted-neutral description, ui-version sync · 2026-08-16 indexed (v1 seed) |
+| [`ui-next.html`](ui-next.html) | ui-next page HTML entry (plan U4 parallel surface) | — | `src/next/main.tsx` | 2026-09-27 | 1 | 2026-09-27 added |
 | [`package-lock.json`](package-lock.json) | npm lockfile | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`package.json`](package.json) | Brain UI npm package (Vite) | — | — | 2026-09-14 | 3 | 2026-09-14 add `@xyflow/react` for the ontology board (#316) · 2026-09-11 version → 0.6.0 + test script covers all src/**/*.test.ts 2026-09-11 version → 0.6.0 + test script covers all src/**/*.test.ts · 2026-08-16 indexed (v1 seed) |
 | [`public/favicon.svg`](public/favicon.svg) | Brain tab icon — copied to `ui/favicon.svg` on build | `brain.html` | `ui/favicon.svg` | 2026-09-13 | 2 | 2026-09-13 re-added for v2 chrome build · 2026-09-06 added |
 | [`tsconfig.json`](tsconfig.json) | TS config | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`vite.config.ts`](vite.config.ts) | Vite config; copies build into ui/ | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`vite.config.ts`](vite.config.ts) | Vite config; multi-entry build (brain + ui-next) into ui/ | — | — | 2026-09-27 | 2 | 2026-09-27 multi-entry input for ui-next · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
+
+- 2026-09-27 — ui-next parallel surface: `ui-next.html` entry + `src/next/` app (design-lab stitch, plan U4)
 
 - 2026-09-15 — board v2 delete UX; `ui/` rebuilt (#320)
 - 2026-09-14 — ontology board: `@xyflow/react` dep; `src/components/OntologyBoard.tsx`; `src/brain/layout/ontoBoard.ts`; `ui/` rebuilt (#316)
