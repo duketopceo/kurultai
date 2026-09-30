@@ -19,6 +19,8 @@ target/
 
 # Config (user-specific)
 config.toml
+# except the checked-in demo fixture config
+!demo/config.toml
 .env
 
 # Internal framework files
