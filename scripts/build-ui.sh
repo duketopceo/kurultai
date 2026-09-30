@@ -18,6 +18,9 @@ rm -f \
   "$root/ui/neural_tech_banner.jpg"
 
 cd "$root/website"
+# Rolldown chunk output is nondeterministic under parallel codegen — hash-named
+# assets flip between runs, breaking the CI embedded-asset check. Single-thread.
+export RAYON_NUM_THREADS=1
 if [[ -f package-lock.json ]]; then
   npm ci
 else
