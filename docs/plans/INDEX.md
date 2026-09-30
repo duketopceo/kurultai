@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-09-15
+updated: 2026-09-30
 version: 8
 ---
 
@@ -97,9 +97,11 @@ _None._
 | [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md) | Phase 6 — Ontology / Atlas / connector gaps | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-09-15 | 7 | 2026-09-15 Wave H serve-path milestone (#323-#326) + board v2 shipped · 2026-09-14 Slice C renderer replaced: Flowsint 2D board (#316) · 2026-09-01 v0.5.0 released; next LFG v0.6.0+ |
 | [`phase-6-work-orders.md`](phase-6-work-orders.md) | Phase 6 — work orders (post–v0.4.0) | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`2026-09-28-001-feat-device-broker-agent-onboarding-plan.md`](2026-09-28-001-feat-device-broker-agent-onboarding-plan.md) | Device broker + per-chat minted agent keys (local broker holds upstream session; agents board over loopback) | — | `src/broker` · `src/http/mcp.rs` · `src/mcp` | 2026-09-30 | 1 | U1–U3 implemented 2026-09-30 (daemon + registry + relay + seat auth) |
 
 ## Recent
 
+- 2026-09-30 — `2026-09-28-001` device-broker plan U1–U3 landed: `src/broker/` daemon + `sess_*` registry + `/mcp` relay; upstream `/mcp` accepts seat tokens (full surface); `mcp --broker` stdio relay
 - 2026-09-25 — `2026-09-25-001` UI/UX teardown + rebuild plan: definitions-first, batch Kimi/GPT design variants, parallel `ui-next` app, local-preview gate before tagged cutover
 - 2026-09-20 — `2026-09-20-001` Wave H phase plan: instrument-first ordering (watcher floor + client perf telemetry → #325 tier policy → #324 prepared payload → #323/#326)
 - 2026-09-17 — `2026-09-17-001` retrieval evals + `ask --web` plan (golden set, `kurultai eval`, Jev judge, Perplexity REST)

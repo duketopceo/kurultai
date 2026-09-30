@@ -19,6 +19,7 @@
 //! | `ontology_promote` | write | Atom → instance entity + `instance_of` (does not change trust_lane) |
 
 pub mod brain;
+pub mod broker_stdio;
 pub mod init;
 pub mod interface;
 pub mod server;

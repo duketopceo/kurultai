@@ -167,6 +167,14 @@ enum Commands {
         /// Namespace (`project_id`) stamped on writes (env: KURULTAI_NAMESPACE).
         #[arg(long)]
         namespace: Option<String>,
+        /// Relay to the device broker instead of a local store (env:
+        /// KURULTAI_BROKER_URL, default http://127.0.0.1:8480).
+        #[arg(long)]
+        broker: bool,
+        /// Broker session key minted via `POST /board` (env:
+        /// KURULTAI_SESSION_KEY). Required with --broker.
+        #[arg(long)]
+        session_key: Option<String>,
     },
     /// Manage multi-agent message board codenames (solo)
     Agent {
@@ -191,6 +199,22 @@ enum Commands {
         /// `tailscale` (resolves the local 100.x tailnet IPv4)
         #[arg(long, value_name = "ADDR")]
         bind: Option<String>,
+    },
+    /// Run the per-device broker: one upstream seat session to a hosted
+    /// instance; agents board over loopback with minted per-chat keys
+    Broker {
+        /// Upstream instance base URL (default: `[broker].upstream_url` in config)
+        #[arg(long, value_name = "URL")]
+        upstream: Option<String>,
+        /// Loopback port (default: `[broker].port` or 8420)
+        #[arg(long)]
+        port: Option<u16>,
+        /// Optional unix socket path to also bind (e.g. ~/.local/share/kurultai/broker.sock)
+        #[arg(long, value_name = "PATH")]
+        socket: Option<PathBuf>,
+        /// Agent-key name for the upstream token (default: {lane}-broker-{hostname}-agent-token)
+        #[arg(long, value_name = "NAME")]
+        key_name: Option<String>,
     },
     /// Print (or open) the Brain UI URL — spawns a daemon if none is serving
     Webui {
@@ -450,7 +474,16 @@ async fn main() -> Result<()> {
         Commands::Mcp {
             ref agent_id,
             ref namespace,
+            broker,
+            ref session_key,
         } => {
+            if broker {
+                // Broker lane: stdio → device broker, no local store needed.
+                let url = std::env::var("KURULTAI_BROKER_URL")
+                    .unwrap_or_else(|_| "http://127.0.0.1:8480".to_string());
+                let key = kurultai::mcp::broker_stdio::resolve_session_key(session_key.as_deref())?;
+                return kurultai::mcp::broker_stdio::run_broker_stdio(&url, &key).await;
+            }
             // Never print art on MCP stdio — protocol must stay clean.
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
@@ -922,6 +955,40 @@ async fn main() -> Result<()> {
                     bind: bind.clone(),
                 },
             )
+            .await?;
+        }
+        Commands::Broker {
+            upstream,
+            port,
+            socket,
+            key_name,
+        } => {
+            let config = kurultai::config::load_config()?;
+            let upstream_url = upstream
+                .clone()
+                .or(config.broker.upstream_url.clone())
+                .ok_or_else(|| {
+                    kurultai::KurultaiError::config(
+                        "broker needs an upstream — pass --upstream or set \
+                         `[broker].upstream_url` in config.toml",
+                    )
+                })?;
+            let socket = socket.or_else(|| {
+                config
+                    .broker
+                    .socket
+                    .as_ref()
+                    .and_then(|s| kurultai::config::expand_path(s).ok())
+            });
+            let port = port.unwrap_or(config.broker.port);
+            kurultai::broker::run(kurultai::broker::BrokerOptions {
+                upstream_url,
+                port,
+                socket,
+                key_name: key_name.or(config.broker.key_name.clone()),
+                lane: env.as_str().to_string(),
+                db_path: kurultai::broker::default_db_path(&config.storage_path),
+            })
             .await?;
         }
         Commands::Webui {

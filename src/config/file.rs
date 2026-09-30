@@ -1,5 +1,5 @@
 use crate::art::BannerMode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// On-disk TOML shape. Kept separate from runtime `Config` so we can evolve
@@ -32,6 +32,10 @@ pub struct FileConfig {
     /// `[judge]` — Jev judge enable/model (evals, ask --web, review).
     #[serde(default)]
     pub judge: FileJudgeConfig,
+
+    /// `[broker]` — local device broker (`kurultai broker`).
+    #[serde(default)]
+    pub broker: FileBrokerConfig,
 }
 
 /// `[tiers]` — thresholds override the `TierPolicy` defaults; `[[tiers.rule]]`
@@ -53,6 +57,39 @@ pub struct FileTierRule {
     pub tag: Option<String>,
     pub trust_lane: Option<String>,
     pub cap: Option<String>,
+}
+
+/// `[broker]` — the per-device broker daemon that holds the single upstream
+/// seat session to a hosted instance; agents board it locally and never see
+/// upstream credentials.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileBrokerConfig {
+    /// Upstream base URL, e.g. https://knowledge.shippedit.dev
+    pub upstream_url: Option<String>,
+    /// Loopback port for the broker HTTP surface (agents board here).
+    #[serde(default = "default_broker_port")]
+    pub port: u16,
+    /// Optional unix socket path — `~` expanded; binds in addition to TCP.
+    pub socket: Option<String>,
+    /// Agent-key name to load for the upstream session
+    /// (default `{lane}-broker-{hostname-slug}-agent-token`); set after
+    /// `kurultai connect --codename broker`.
+    pub key_name: Option<String>,
+}
+
+impl Default for FileBrokerConfig {
+    fn default() -> Self {
+        Self {
+            upstream_url: None,
+            port: default_broker_port(),
+            socket: None,
+            key_name: None,
+        }
+    }
+}
+
+fn default_broker_port() -> u16 {
+    8420
 }
 
 /// `[cli]` presentation settings.

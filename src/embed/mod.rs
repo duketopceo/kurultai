@@ -259,6 +259,7 @@ mod tests {
             tier_policy: crate::memory::TierPolicy::default(),
             judge_enabled: true,
             judge_model: None,
+            broker: Default::default(),
         };
         assert!(crate::config::validate(&cfg).is_ok());
         cfg.embed_backend = Some("cloud".into());
