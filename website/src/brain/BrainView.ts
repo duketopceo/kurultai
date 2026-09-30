@@ -141,9 +141,9 @@ void main() {
     + 0.03 * sin(ang * 7.0 - vSeed * 12.566);
   float core = 1.0 - smoothstep(wob * 0.5, wob, r);
   float halo = 1.0 - smoothstep(wob, 0.5, r);
-  float a = clamp(core * 0.9 + halo * 0.3, 0.0, 1.0);
+  float a = clamp(core * 0.75 + halo * 0.22, 0.0, 1.0);
   if (a < 0.02) discard;
-  vec3 col = mix(vColor, vec3(1.0), core * 0.5);
+  vec3 col = mix(vColor, vec3(1.0), core * 0.3);
   gl_FragColor = vec4(col, vAlpha * a);
 }
 `;
@@ -791,7 +791,7 @@ export class BrainView {
     // Rest alpha must keep a readable floor at high counts — at 3.5k nodes
     // the sizeScale floor (0.24) would otherwise fade somas to ~0.03, i.e.
     // invisible. Hover still scales off this (×8 hot / ×5 linked / ×0.6 dim).
-    this.spriteRestAlpha = 0.12 + 0.2 * Math.pow(this.sizeScale, 2);
+    this.spriteRestAlpha = 0.07 + 0.13 * Math.pow(this.sizeScale, 2);
 
     // Sort by connection count descending to assign brain regions.
     // Top 10% (hubs) → stem, next 40% (more connected) → right, bottom 50% → left.
@@ -973,7 +973,9 @@ export class BrainView {
       uniforms: { ...this.uniforms },
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      // NormalBlending, not additive: overlapping somas in the dense core
+      // shade past each other instead of summing into a white mass.
+      blending: THREE.NormalBlending,
     });
 
     const cloud = new THREE.Points(geometry, material);
@@ -1398,7 +1400,7 @@ export class BrainView {
   /** Synapse rest opacity attenuates with density — hundreds of additive
    *  edges at 0.3+ fuse the core into a white mass. */
   private edgeRestOpacity(strength: number) {
-    return Math.min(0.7, 0.25 + strength * 0.12) * (0.03 + 0.97 * Math.pow(this.sizeScale, 3.5));
+    return Math.min(0.85, 0.34 + strength * 0.14) * (0.03 + 0.97 * Math.pow(this.sizeScale, 3.5));
   }
 
   /** Corona rest opacity attenuates with density — additive coronas are the
