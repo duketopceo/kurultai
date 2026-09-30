@@ -1,0 +1,54 @@
+name: Deploy knowledge.shippedit.dev
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  repository_dispatch:
+    types: [kurultai-reindex]
+
+concurrency:
+  group: kurultai-server-001-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Require deploy secrets
+        env:
+          HOST: ${{ secrets.KURULTAI_DEPLOY_HOST }}
+          KEY: ${{ secrets.KURULTAI_DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$KEY" ]; then
+            echo "Missing KURULTAI_DEPLOY_HOST / KURULTAI_DEPLOY_SSH_KEY — skipping."
+            echo "skip=true" >> "$GITHUB_ENV"
+          else
+            echo "skip=false" >> "$GITHUB_ENV"
+          fi
+      - name: SSH deploy + reindex
+        if: env.skip != 'true'
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        with:
+          host: ${{ secrets.KURULTAI_DEPLOY_HOST }}
+          username: ${{ secrets.KURULTAI_DEPLOY_USER || 'khan' }}
+          key: ${{ secrets.KURULTAI_DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /home/khan/kurultai
+            git fetch origin
+            git reset --hard origin/main
+            if [[ ! -f deploy/server-001/redeploy.sh ]]; then
+              echo "ERROR: deploy/server-001 missing on host" >&2
+              exit 1
+            fi
+            chmod +x deploy/server-001/redeploy.sh deploy/server-001/sync-and-reindex-repos.sh
+            if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+              deploy/server-001/sync-and-reindex-repos.sh
+            else
+              # Public product tree has no deploy/; keep host overlay, rebuild from public SHA
+              deploy/server-001/redeploy.sh
+              deploy/server-001/sync-and-reindex-repos.sh
+            fi

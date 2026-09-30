@@ -22,6 +22,7 @@ where
     S: Clone + Send + Sync + 'static,
 {
     Router::new()
+        .route("/", get(|| async { Redirect::permanent("/ui/") }))
         .route("/ui", get(|| async { Redirect::permanent("/ui/") }))
         .route("/ui/", get(|| async { serve_asset("brain.html") }))
         .route("/ui/{*path}", get(ui_path))
@@ -127,6 +128,22 @@ mod tests {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
         assert_eq!(loc, "/ui/");
+    }
+
+    #[tokio::test]
+    async fn root_redirects_to_ui() {
+        let app = routes::<()>();
+        let resp = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().is_redirection());
+        assert_eq!(
+            resp.headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("/ui/")
+        );
     }
 
     #[tokio::test]

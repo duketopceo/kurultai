@@ -22,6 +22,9 @@ use std::sync::Arc;
 
 static REMEMBER_SEQ: AtomicU64 = AtomicU64::new(1);
 
+/// Default connector names sequestered from unscoped hot retrieval (pond session noise).
+pub const DEFAULT_NOISY_SOURCES: &[&str] = &["pond"];
+
 /// MCP-facing brain bound to the app store + embedder.
 #[derive(Clone)]
 pub struct BrainService {
@@ -30,6 +33,14 @@ pub struct BrainService {
     reranker: Arc<dyn Reranker>,
     synthesizer: Arc<dyn Synthesizer>,
     activity: Arc<ActivityLog>,
+    /// Sources excluded from unscoped search/ask/who_knows/recall (pin `source=` bypasses).
+    noisy_sources: Arc<Vec<String>>,
+    /// Hot/warm/cold classification policy (thresholds + sequester rules, #325).
+    tier_policy: TierPolicy,
+    /// Ephemeral web augmentation for `ask --web` (default null — never persisted).
+    web_searcher: Arc<dyn crate::web::WebSearcher>,
+    /// Optional Jev judge for the `ask --web` local-sufficiency gate.
+    judge: Arc<dyn crate::eval::judge::Judge>,
 }
 
 /// Second-hop expansion: search shared tags from primary hits, merge unique atoms (#74).
@@ -114,6 +125,38 @@ async fn multi_hop_expand(
     Ok(merged)
 }
 
+/// Convert a [`crate::web::WebHit`] into an ephemeral pseudo-hit for the
+/// synthesizer context. `source=web`, `metadata.source_uri=url` so citations
+/// carry the URL; never upserted, never touched.
+fn web_hit_to_result(hit: &crate::web::WebHit) -> SearchResult {
+    let atom = KnowledgeAtom {
+        id: format!("web-{}", &crate::hashutil::sha256_hex(&hit.url)[..16]),
+        source: "web".into(),
+        source_id: hit.url.clone(),
+        title: hit.title.clone(),
+        summary: hit.snippet.chars().take(200).collect(),
+        content: hit.snippet.clone(),
+        tags: vec!["web".into()],
+        source_updated_at: Utc::now(),
+        indexed_at: Utc::now(),
+        metadata: {
+            let mut m = std::collections::HashMap::new();
+            m.insert("source_uri".to_string(), hit.url.clone());
+            if let Some(d) = &hit.date {
+                m.insert("published".to_string(), d.clone());
+            }
+            m
+        },
+        ..Default::default()
+    };
+    SearchResult {
+        atom,
+        score: 0.0,
+        rank: 0,
+        matched_by: vec!["web".into()],
+    }
+}
+
 impl BrainService {
     pub fn new(
         store: Arc<dyn Store>,
@@ -143,11 +186,75 @@ impl BrainService {
             reranker,
             synthesizer,
             activity,
+            noisy_sources: Arc::new(
+                DEFAULT_NOISY_SOURCES
+                    .iter()
+                    .map(|s| (*s).to_string())
+                    .collect(),
+            ),
+            tier_policy: TierPolicy::default(),
+            web_searcher: Arc::new(crate::web::NullWebSearcher),
+            judge: Arc::new(crate::eval::judge::NullJudge),
         }
+    }
+
+    /// Ephemeral web augmentation backend for `ask --web` (never persisted).
+    pub fn with_web_searcher(mut self, searcher: Arc<dyn crate::web::WebSearcher>) -> Self {
+        self.web_searcher = searcher;
+        self
+    }
+
+    /// Optional Jev judge for the ask-web sufficiency gate.
+    pub fn with_judge(mut self, judge: Arc<dyn crate::eval::judge::Judge>) -> Self {
+        self.judge = judge;
+        self
+    }
+
+    /// Configured tier policy (`[tiers]` + `[[tiers.rule]]`, #325).
+    pub fn with_tier_policy(mut self, policy: TierPolicy) -> Self {
+        self.tier_policy = policy;
+        self
+    }
+
+    /// Override noisy-source denylist (empty = sequester nothing).
+    pub fn with_noisy_sources(mut self, sources: Vec<String>) -> Self {
+        self.noisy_sources = Arc::new(sources);
+        self
     }
 
     pub fn activity(&self) -> Arc<ActivityLog> {
         Arc::clone(&self.activity)
+    }
+
+    fn is_noisy_source(&self, source: &str) -> bool {
+        self.noisy_sources.iter().any(|s| s == source)
+    }
+
+    /// Unscoped: drop noisy sources then diversify. Pinned `source=` keeps that source only.
+    fn apply_retrieval_policy(
+        &self,
+        mut results: Vec<SearchResult>,
+        limit: usize,
+        source: Option<&str>,
+    ) -> Vec<SearchResult> {
+        if let Some(src) = source {
+            results.retain(|r| r.atom.source == src);
+            results.truncate(limit);
+            return results;
+        }
+        results.retain(|r| !self.is_noisy_source(&r.atom.source));
+        results = diversify_by_source(results, limit);
+        results.truncate(limit);
+        results
+    }
+
+    async fn touch_non_noisy(&self, results: &[SearchResult]) {
+        let ids: Vec<String> = results
+            .iter()
+            .filter(|r| !self.is_noisy_source(&r.atom.source))
+            .map(|r| r.atom.id.clone())
+            .collect();
+        self.touch_access_many(&ids).await;
     }
 
     /// Hybrid search + markdown context expand (no activity record).
@@ -300,14 +407,9 @@ impl BrainService {
             (limit.max(1) * 4).min(40)
         };
         let mut results = self.hybrid_hits_filtered(query, fetch, filter).await?;
-        if let Some(src) = src {
-            results.retain(|r| r.atom.source == src);
-        } else {
-            results = diversify_by_source(results, limit);
-        }
-        results.truncate(limit);
+        results = self.apply_retrieval_policy(results, limit, src);
         let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
-        self.touch_access_many(&ids).await;
+        self.touch_non_noisy(&results).await;
         self.activity.record("search", query, ids, None);
         Ok(results)
     }
@@ -315,9 +417,11 @@ impl BrainService {
     pub async fn ask_with_team(&self, question: &str, hub_team_id: Option<&str>) -> Result<Answer> {
         let filter = SearchFilter::default().with_hub_team(hub_team_id);
         let primary = self
-            .hybrid_hits_filtered(question, 8, filter.clone())
+            .hybrid_hits_filtered(question, 16, filter.clone())
             .await?;
+        let primary = self.apply_retrieval_policy(primary, 8, None);
         let hits = multi_hop_expand(self, primary, 8).await?;
+        let hits = self.apply_retrieval_policy(hits, 8, None);
         let mut answer = self.synthesizer.synthesize(question, &hits).await?;
         if answer.graph_chain.is_empty() {
             answer.graph_chain = crate::synthesize::graph_chain_from_hits(&hits);
@@ -331,8 +435,112 @@ impl BrainService {
                 Some(t)
             }
         };
+        self.touch_non_noisy(&hits).await;
         self.activity.record("ask", question, ids, detail);
         Ok(answer)
+    }
+
+    /// `ask` with opt-in ephemeral web augmentation (`ask --web`).
+    ///
+    /// Local retrieval runs first. When the local context is judged thin —
+    /// Jev `noul` when a judge is configured, else a minimum-hit floor — one
+    /// Perplexity `/search` call appends `source=web` pseudo-hits to the
+    /// synthesizer context. Web hits are never written to the store and are
+    /// excluded from `touch_access`, activity ids, `graph_chain`, and quality
+    /// boosts; citations carry `source=web` + `url` via `metadata.source_uri`.
+    pub async fn ask_with_web(
+        &self,
+        question: &str,
+        hub_team_id: Option<&str>,
+        min_local_hits: usize,
+    ) -> Result<Answer> {
+        let filter = SearchFilter::default().with_hub_team(hub_team_id);
+        let primary = self
+            .hybrid_hits_filtered(question, 16, filter.clone())
+            .await?;
+        let primary = self.apply_retrieval_policy(primary, 8, None);
+        let hits = multi_hop_expand(self, primary, 8).await?;
+        let hits = self.apply_retrieval_policy(hits, 8, None);
+
+        let sufficient = self
+            .local_context_sufficient(question, &hits, min_local_hits)
+            .await;
+        let mut web_hits: Vec<crate::web::WebHit> = Vec::new();
+        if !sufficient && self.web_searcher.is_live() {
+            match self.web_searcher.search(question, 3).await {
+                Ok(h) => web_hits = h,
+                Err(e) => {
+                    tracing::warn!("web search failed: {e:#} — answering locally");
+                }
+            }
+        } else if !sufficient && !self.web_searcher.is_live() {
+            tracing::info!("local context thin but no PERPLEXITY_API_KEY — answering locally");
+        }
+
+        let mut merged = hits.clone();
+        merged.extend(web_hits.iter().map(web_hit_to_result));
+        let mut answer = self.synthesizer.synthesize(question, &merged).await?;
+        // Provenance is local-only: web pseudo-hits never enter graph_chain.
+        answer.graph_chain = crate::synthesize::graph_chain_from_hits(&hits);
+        let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
+        let detail: Option<String> = {
+            let t: String = answer.answer.chars().take(160).collect();
+            if t.is_empty() {
+                None
+            } else {
+                Some(format!("web={} {}", web_hits.len(), t))
+            }
+        };
+        self.touch_non_noisy(&hits).await;
+        self.activity.record("ask_web", question, ids, detail);
+        Ok(answer)
+    }
+
+    /// Is the local context enough to answer, or should we spend a web call?
+    /// Judge `noul` when live; otherwise a minimum-hit floor.
+    async fn local_context_sufficient(
+        &self,
+        question: &str,
+        hits: &[SearchResult],
+        min_local_hits: usize,
+    ) -> bool {
+        if hits.len() < min_local_hits {
+            return false;
+        }
+        if !self.judge.is_live() {
+            return true;
+        }
+        let state = serde_json::json!({
+            "question": question,
+            "excerpts": hits.iter().take(4).map(|r| {
+                serde_json::json!({
+                    "title": r.atom.title,
+                    "excerpt": r.atom.content.chars().take(300).collect::<String>(),
+                })
+            }).collect::<Vec<_>>(),
+        });
+        let questions = vec![(
+            "sufficient".to_string(),
+            crate::eval::judge::Question::Noul {
+                instructions:
+                    "Do the excerpts contain enough information to answer the question directly?"
+                        .into(),
+                on_true: "Sufficient — answer locally".into(),
+                on_false: "Insufficient — needs outside context".into(),
+            },
+        )];
+        match self.judge.decide(&state, &questions).await {
+            Ok(answers) => answers
+                .noul
+                .get("sufficient")
+                .and_then(serde_json::Value::as_f64)
+                .map(|p| p >= 0.5)
+                .unwrap_or(true),
+            Err(e) => {
+                tracing::warn!("sufficiency judge failed: {e:#} — answering locally");
+                true
+            }
+        }
     }
 
     pub async fn who_knows_with_team(
@@ -342,10 +550,13 @@ impl BrainService {
         hub_team_id: Option<&str>,
     ) -> Result<Vec<WhoKnowsEntry>> {
         let filter = SearchFilter::default().with_hub_team(hub_team_id);
-        let hits = self
-            .hybrid_hits_filtered(topic, limit.max(1), filter)
+        let limit = limit.max(1);
+        let mut hits = self
+            .hybrid_hits_filtered(topic, (limit * 4).min(40), filter)
             .await?;
+        hits = self.apply_retrieval_policy(hits, limit, None);
         let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
+        self.touch_non_noisy(&hits).await;
         self.activity.record("who_knows", topic, ids, None);
         Ok(who_knows_from_hits(&hits))
     }
@@ -374,9 +585,9 @@ impl BrainService {
             .await?;
         // Belt and braces: SQL already scoped, this catches any store impl that ignores it.
         results.retain(|r| r.atom.project_id() == project);
-        results.truncate(limit);
+        results = self.apply_retrieval_policy(results, limit, None);
         let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
-        self.touch_access_many(&ids).await;
+        self.touch_non_noisy(&results).await;
         self.activity
             .record("recall", query, ids, Some(format!("project={project}")));
         Ok(results
@@ -385,9 +596,9 @@ impl BrainService {
             .collect())
     }
 
-    /// Hot / warm / cold counts under default [`TierPolicy`].
+    /// Hot / warm / cold counts under the configured [`TierPolicy`].
     pub async fn tier_counts(&self) -> Result<(u64, u64, u64)> {
-        self.store.count_by_tier(TierPolicy::default()).await
+        self.store.count_by_tier(self.tier_policy.clone()).await
     }
 
     /// Graph stubs for the Brain UI (foveated whole-brain load).
@@ -396,13 +607,17 @@ impl BrainService {
         tier: Option<MemoryTier>,
         limit: usize,
         include_quarantine: bool,
+        source: Option<&str>,
+        exclude_source: Option<&str>,
     ) -> Result<Vec<GraphNode>> {
         self.store
             .list_graph_nodes(
                 tier,
                 limit,
-                SearchFilter::trusted(!include_quarantine),
-                TierPolicy::default(),
+                SearchFilter::trusted(!include_quarantine)
+                    .with_source(source)
+                    .with_exclude_source(exclude_source),
+                self.tier_policy.clone(),
             )
             .await
     }
@@ -481,30 +696,11 @@ impl AgentRead for BrainService {
     }
 
     async fn ask(&self, question: &str) -> Result<Answer> {
-        let primary = self.hybrid_hits(question, 8).await?;
-        let hits = multi_hop_expand(self, primary, 8).await?;
-        let mut answer = self.synthesizer.synthesize(question, &hits).await?;
-        if answer.graph_chain.is_empty() {
-            answer.graph_chain = crate::synthesize::graph_chain_from_hits(&hits);
-        }
-        let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
-        let detail: Option<String> = {
-            let t: String = answer.answer.chars().take(160).collect();
-            if t.is_empty() {
-                None
-            } else {
-                Some(t)
-            }
-        };
-        self.activity.record("ask", question, ids, detail);
-        Ok(answer)
+        self.ask_with_team(question, None).await
     }
 
     async fn who_knows(&self, topic: &str, limit: usize) -> Result<Vec<WhoKnowsEntry>> {
-        let hits = self.hybrid_hits(topic, limit.max(1)).await?;
-        let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
-        self.activity.record("who_knows", topic, ids, None);
-        Ok(who_knows_from_hits(&hits))
+        self.who_knows_with_team(topic, limit, None).await
     }
 }
 
@@ -794,5 +990,41 @@ mod tests {
         assert_eq!(notes_n, 1);
         assert_eq!(out.len(), 5);
         assert!(pond_n <= 4);
+    }
+
+    #[tokio::test]
+    async fn unscoped_search_excludes_default_noisy_pond() {
+        let brain = brain_with_fixture().await;
+        let mut pond = crate::types::KnowledgeAtom {
+            id: "pond-noise".into(),
+            source: "pond".into(),
+            source_id: "p1".into(),
+            title: "tool call noise LANENOISETOKEN".into(),
+            content: "LANENOISETOKEN external_agent_tool_call bash".into(),
+            summary: "noise".into(),
+            tags: vec!["pond".into()],
+            ..Default::default()
+        };
+        pond.trust_lane = crate::types::TrustLane::Trusted;
+        brain.store().upsert(&pond).await.unwrap();
+
+        let hits = brain
+            .search_scoped("LANENOISETOKEN", 10, false, None)
+            .await
+            .unwrap();
+        assert!(
+            hits.iter().all(|h| h.atom.source != "pond"),
+            "unscoped must sequester pond: {:?}",
+            hits.iter().map(|h| &h.atom.source).collect::<Vec<_>>()
+        );
+
+        let pinned = brain
+            .search_scoped("LANENOISETOKEN", 10, false, Some("pond"))
+            .await
+            .unwrap();
+        assert!(
+            pinned.iter().any(|h| h.atom.source == "pond"),
+            "source=pond pin must still return pond"
+        );
     }
 }

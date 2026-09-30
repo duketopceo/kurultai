@@ -7,8 +7,14 @@
 //! Brain UI: single surface at `GET /ui` (embedded `ui/` assets — see `ui` module).
 
 mod auth;
+pub mod cf_access;
+mod device;
+mod device_auth;
+mod hey;
 mod hub_listen;
 mod mcp;
+mod ontology_write;
+mod proposals;
 mod ui;
 
 #[cfg(feature = "postgres")]
@@ -18,7 +24,7 @@ pub use auth::{
     resolve_hub_gate_from_env, write_route_decision, HubAuth, HubGate, MaybeHubPrincipal,
     WriteRouteDecision, ENV_ADMIN_TOKEN,
 };
-pub use hub_listen::resolve_listen_socket;
+pub use hub_listen::{resolve_listen_socket, resolve_listen_socket_flag};
 mod ingest;
 
 pub use ingest::resolve_ingest_secret;
@@ -33,7 +39,7 @@ use crate::metrics::{MetricOp, MetricsRegistry, TimedObserve};
 use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
 use auth::hub_api_auth;
-use axum::extract::{Query, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -46,14 +52,39 @@ use tower_http::trace::TraceLayer;
 use uuid::Uuid;
 
 #[derive(Clone)]
-struct AppState {
+pub(crate) struct AppState {
     brain: Arc<BrainService>,
     status: Arc<DaemonStatus>,
     metrics: Arc<MetricsRegistry>,
     hub: HubGate,
+    /// Prepared `/api/graph` payloads keyed by request params, invalidated by
+    /// `Store::atom_epoch`. Byte-for-byte serving for hot Brain loads (#324).
+    graph_cache: Arc<std::sync::Mutex<std::collections::HashMap<GraphKey, Arc<PreparedGraph>>>>,
     #[cfg(feature = "postgres")]
     hub_activity: Option<Arc<crate::hub::HubActivityStore>>,
 }
+
+/// Request-param key for a prepared graph payload.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct GraphKey {
+    tier: Option<crate::memory::MemoryTier>,
+    limit: usize,
+    include_quarantine: bool,
+    source: Option<String>,
+    exclude_source: Option<String>,
+}
+
+/// Serialized `nodes` array published at a store epoch; spliced into the
+/// per-request response skeleton so `request_id` still varies per call.
+struct PreparedGraph {
+    epoch: u64,
+    count: usize,
+    nodes_json: String,
+}
+
+/// Distinct param-shapes we keep prepared at once; overflow drops stale-epoch
+/// entries first, then clears. Keys are cheap — payloads are the memory.
+const GRAPH_CACHE_MAX_KEYS: usize = 32;
 
 /// Options for the localhost HTTP daemon.
 #[derive(Debug, Clone, Default)]
@@ -63,6 +94,8 @@ pub struct ServeOptions {
     pub mcp_http_secret: Option<String>,
     /// Bind `0.0.0.0` instead of loopback (hub mode).
     pub bind_all: bool,
+    /// `daemon --bind` override — wins over env when set.
+    pub bind: Option<String>,
     pub hub: HubGate,
 }
 
@@ -90,6 +123,7 @@ pub async fn serve(brain: BrainService, status: Arc<DaemonStatus>, port: u16) ->
             port,
             mcp_http_secret: None,
             bind_all: false,
+            bind: None,
             hub: HubGate::default(),
         },
     )
@@ -128,8 +162,8 @@ pub async fn serve_with(
         None
     };
     let bind_all = opts.bind_all || auth::resolve_bind_all_from_env();
-    let issued = issued_key_count(&hub).await;
-    let addr = hub_listen::resolve_listen_socket(opts.port, bind_all, &hub, issued)?;
+    let addr =
+        hub_listen::resolve_listen_socket_flag(opts.port, bind_all, opts.bind.as_deref(), &hub)?;
     let state = app_state(
         Arc::clone(&brain),
         status,
@@ -142,7 +176,7 @@ pub async fn serve_with(
         state.hub_activity = hub_activity;
         state
     };
-    let mut app = mount(state, crate::features::enabled("hub"));
+    let mut app = router(state);
     if let Some(secret) = mcp::resolve_mcp_http_secret(opts.mcp_http_secret.as_deref()) {
         tracing::info!("mcp HTTP/SSE enabled at POST /mcp and GET /mcp/sse (bearer auth)");
         app = app.merge(mcp::routes(mcp::McpHttpState::new(
@@ -183,19 +217,17 @@ pub async fn serve_with(
     Ok(())
 }
 
-#[cfg(test)]
 fn router(state: AppState) -> Router {
-    mount(state, false)
-}
-
-fn mount(state: AppState, hub_feature: bool) -> Router {
-    let mut routes = Router::new()
+    Router::new()
         .route("/health", get(health))
         .route("/api/status", get(api_status))
         .route("/api/metrics", get(api_metrics))
+        .route("/api/metrics/client", post(api_metrics_client))
         .route("/api/atoms", get(api_atoms))
+        .route("/api/db/{table}", get(api_db_table))
         .route("/api/graph", get(api_graph))
         .route("/api/ontology", get(api_ontology))
+        .route("/api/ontology/promote", post(api_ontology_promote))
         .route("/api/touch", post(api_touch))
         .route("/api/activity", get(api_activity))
         .route("/api/hub/activity", get(api_hub_activity))
@@ -203,15 +235,17 @@ fn mount(state: AppState, hub_feature: bool) -> Router {
         .route("/api/search", get(search_get).post(search_post))
         .route("/api/recall", post(recall_post))
         .route("/api/ask", get(ask_get).post(ask_post))
+        .route("/api/open", get(api_open))
         .route("/search", get(search_get).post(search_post))
         .route("/ask", get(ask_get).post(ask_post))
         .route("/cite", post(cite_post))
         .route("/who_knows", post(who_knows_post))
-        .merge(ui::routes());
-    if !hub_feature {
-        routes = routes.route("/api/open", get(api_open));
-    }
-    routes
+        .merge(hey::routes())
+        .merge(proposals::routes())
+        .merge(ontology_write::routes())
+        .merge(ui::routes())
+        .merge(device_auth::routes(state.clone()))
+        .merge(device::routes(state.clone()))
         .layer(middleware::from_fn_with_state(
             state.hub.clone(),
             hub_api_auth,
@@ -246,48 +280,27 @@ pub fn build_ingest_app(
 ///
 /// Mirrors the routes mounted by [`serve_with`] without binding a socket.
 pub fn build_app(brain: BrainService, status: Arc<DaemonStatus>, hub: HubGate) -> Router {
-    build_app_with_hub_feature(brain, status, hub, false)
-}
-
-pub fn build_app_with_hub_feature(
-    brain: BrainService,
-    status: Arc<DaemonStatus>,
-    hub: HubGate,
-    hub_feature: bool,
-) -> Router {
-    mount(
-        app_state(Arc::new(brain), status, MetricsRegistry::shared(), hub),
-        hub_feature,
-    )
-}
-
-async fn issued_key_count(hub: &HubGate) -> usize {
-    #[cfg(feature = "postgres")]
-    if let Some(store) = &hub.key_store {
-        return match store.has_active_keys().await {
-            Ok(true) => 1,
-            Ok(false) => 0,
-            Err(e) => {
-                tracing::warn!(error = %e, "issued key count failed; treating as zero");
-                0
-            }
-        };
-    }
-    let _ = hub;
-    0
+    router(app_state(
+        Arc::new(brain),
+        status,
+        MetricsRegistry::shared(),
+        hub,
+    ))
 }
 
 fn app_state(
     brain: Arc<BrainService>,
     status: Arc<DaemonStatus>,
     metrics: Arc<MetricsRegistry>,
-    hub: HubGate,
+    mut hub: HubGate,
 ) -> AppState {
+    hub.agent_store = Some(brain.store());
     AppState {
         brain,
         status,
         metrics,
         hub,
+        graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         #[cfg(feature = "postgres")]
         hub_activity: None,
     }
@@ -317,6 +330,33 @@ async fn api_metrics(State(state): State<AppState>) -> impl IntoResponse {
             HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
         )],
         body,
+    )
+}
+
+/// Browser-reported Brain perf samples (#102 client half). Numbers + enum
+/// labels only — no queries, ids, or URLs cross this boundary.
+async fn api_metrics_client(
+    State(state): State<AppState>,
+    Json(report): Json<crate::metrics::ClientReport>,
+) -> impl IntoResponse {
+    const MAX_SAMPLES: usize = 500;
+    let mut accepted = 0usize;
+    let mut rejected = 0usize;
+    for s in report.samples.iter().take(MAX_SAMPLES) {
+        if state.metrics.observe_client(s) {
+            accepted += 1;
+        } else {
+            rejected += 1;
+        }
+    }
+    let truncated = report.samples.len().saturating_sub(MAX_SAMPLES);
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "accepted": accepted,
+            "rejected": rejected,
+            "truncated": truncated,
+        })),
     )
 }
 
@@ -441,6 +481,50 @@ async fn api_atoms(
         })
 }
 
+/// Read-only browse for the `/ui/db` table view — SELECT-only whitelist in
+/// `store.db_rows_sync`; there is no write path behind this endpoint.
+async fn api_db_table(
+    State(state): State<AppState>,
+    Path(table): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_db_table", request_id=%request_id, table=%table);
+    state.status.touch_client_activity();
+    let sort = params.get("sort").cloned().unwrap_or_default();
+    let desc = params.get("dir").map(|d| d == "desc").unwrap_or(false);
+    let browse = crate::store::DbBrowse {
+        table: table.clone(),
+        sort,
+        desc,
+        q: params.get("q").cloned(),
+        lane: params.get("lane").cloned(),
+        tier: params.get("tier").cloned(),
+        limit: params
+            .get("limit")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(100),
+        offset: params
+            .get("offset")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0),
+    };
+    match state.brain.store().db_rows(&browse).await {
+        Ok(rows) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "request_id": &request_id,
+            "table": table,
+            "count": rows.len(),
+            "rows": rows,
+        }))),
+        Err(e) => Err(json_error(
+            StatusCode::BAD_REQUEST,
+            e.to_string(),
+            &request_id,
+        )),
+    }
+}
+
 async fn api_ontology(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
@@ -476,10 +560,87 @@ async fn api_ontology(
     })))
 }
 
+#[derive(Debug, Deserialize)]
+struct OntologyPromoteBody {
+    atom_id: String,
+    class_id: String,
+}
+
+/// Atom → ontology instance + `instance_of` (does not change trust_lane).
+/// Distinct from [`api_promote`] (quarantine → trusted).
+async fn api_ontology_promote(
+    State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
+    Json(body): Json<OntologyPromoteBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let _span = tracing::info_span!("api_ontology_promote", request_id=%request_id);
+    state.status.touch_client_activity();
+    let atom_id = body.atom_id.trim();
+    let class_id = body.class_id.trim();
+    if atom_id.is_empty() || class_id.is_empty() {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "atom_id and class_id are required",
+            &request_id,
+        ));
+    }
+    let actor = http_actor(&principal);
+    match crate::ontology::promote_atom_to_entity(
+        state.brain.store().as_ref(),
+        atom_id,
+        class_id,
+        &actor,
+    )
+    .await
+    {
+        Ok(entity) => {
+            #[cfg(feature = "postgres")]
+            log_hub_write(
+                &state,
+                &principal,
+                "ontology_promote",
+                "http",
+                Some(class_id),
+                Some(atom_id),
+            )
+            .await;
+            Ok(Json(serde_json::json!({
+                "ok": true,
+                "request_id": &request_id,
+                "entity_id": entity.id,
+                "atom_id": entity.atom_id,
+                "class_id": class_id,
+                "actor": actor,
+            })))
+        }
+        Err(e) => {
+            let status = match &e {
+                KurultaiError::Store(msg)
+                    if msg.contains("ontology_promote")
+                        && msg.contains("atom")
+                        && msg.contains("not found") =>
+                {
+                    StatusCode::NOT_FOUND
+                }
+                KurultaiError::Store(msg)
+                    if msg.contains("ontology_promote")
+                        && msg.contains("class")
+                        && msg.contains("not found") =>
+                {
+                    StatusCode::BAD_REQUEST
+                }
+                _ => StatusCode::BAD_REQUEST,
+            };
+            Err(json_error(status, e.to_string(), &request_id))
+        }
+    }
+}
+
 async fn api_graph(
     State(state): State<AppState>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("api_graph", request_id=%request_id);
     state.status.touch_client_activity();
@@ -501,21 +662,63 @@ async fn api_graph(
         .get("include_quarantine")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
+    let source = params
+        .get("source")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let exclude_source = params
+        .get("exclude_source")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let key = GraphKey {
+        tier,
+        limit,
+        include_quarantine,
+        source: source.map(String::from),
+        exclude_source: exclude_source.map(String::from),
+    };
+    // Publish-on-mutation (#324): when the store can observe its own writes
+    // (SQLite solo — the indexer + API + MCP all funnel through it), serve a
+    // prepared snapshot built at the current `atom_epoch` byte-for-byte. The
+    // Postgres hub returns `u64::MAX` — other processes write there — so it
+    // always assembles live. Ordering-only writes (`touch_access`) don't bump:
+    // prepared ordering may lag until the next content mutation.
+    let epoch = state.brain.store().atom_epoch();
+    if epoch != u64::MAX {
+        if let Ok(cache) = state.graph_cache.lock() {
+            if let Some(p) = cache.get(&key) {
+                if p.epoch == epoch {
+                    timer.success(p.count as u64);
+                    return Ok(graph_json_response(&request_id, &key, p));
+                }
+            }
+        }
+    }
     match state
         .brain
-        .list_graph_nodes(tier, limit, include_quarantine)
+        .list_graph_nodes(tier, limit, include_quarantine, source, exclude_source)
         .await
     {
         Ok(nodes) => {
             let count = nodes.len();
+            let prepared = Arc::new(PreparedGraph {
+                epoch,
+                count,
+                nodes_json: serde_json::to_string(&nodes).unwrap_or_else(|_| "[]".to_string()),
+            });
+            if epoch != u64::MAX {
+                if let Ok(mut cache) = state.graph_cache.lock() {
+                    if cache.len() >= GRAPH_CACHE_MAX_KEYS {
+                        cache.retain(|_, p| p.epoch == epoch);
+                        if cache.len() >= GRAPH_CACHE_MAX_KEYS {
+                            cache.clear();
+                        }
+                    }
+                    cache.insert(key.clone(), Arc::clone(&prepared));
+                }
+            }
             timer.success(count as u64);
-            Ok(Json(serde_json::json!({
-                "ok": true,
-                "request_id": &request_id,
-                "tier": tier.map(|t| t.as_str()),
-                "count": count,
-                "nodes": nodes,
-            })))
+            Ok(graph_json_response(&request_id, &key, &prepared))
         }
         Err(e) => {
             timer.failure();
@@ -526,6 +729,34 @@ async fn api_graph(
             ))
         }
     }
+}
+
+/// Render the `/api/graph` response body with the prepared `nodes` array
+/// spliced in verbatim — zero per-node assembly on a snapshot hit.
+fn graph_json_response(request_id: &str, key: &GraphKey, p: &PreparedGraph) -> Response {
+    let opt_str = |v: Option<&str>| match v {
+        Some(s) => serde_json::to_string(s).unwrap_or_else(|_| "null".into()),
+        None => "null".into(),
+    };
+    let body = format!(
+        "{{\"ok\":true,\"request_id\":{rid},\"tier\":{tier},\"source\":{src},\
+         \"exclude_source\":{excl},\"count\":{count},\"graph_epoch\":{epoch},\"nodes\":{nodes}}}",
+        rid = serde_json::to_string(request_id).unwrap_or_else(|_| "null".into()),
+        tier = opt_str(key.tier.map(|t| t.as_str())),
+        src = opt_str(key.source.as_deref()),
+        excl = opt_str(key.exclude_source.as_deref()),
+        count = p.count,
+        epoch = p.epoch,
+        nodes = p.nodes_json,
+    );
+    (
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        )],
+        body,
+    )
+        .into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -743,6 +974,10 @@ struct SearchQuery {
 #[derive(Debug, Deserialize)]
 struct AskQuery {
     question: String,
+    /// `?web=true` — ephemeral Perplexity augmentation when local context is
+    /// thin (no-op unless the daemon has web search configured).
+    #[serde(default)]
+    web: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -867,6 +1102,10 @@ async fn search_get(
 #[derive(Debug, Deserialize)]
 struct AskBody {
     question: String,
+    /// `web: true` — ephemeral Perplexity augmentation when local context is
+    /// thin (no-op unless the daemon has web search configured).
+    #[serde(default)]
+    web: bool,
 }
 
 async fn ask_post(
@@ -878,11 +1117,18 @@ async fn ask_post(
     let _span = tracing::info_span!("ask_post", request_id=%request_id);
     state.status.touch_client_activity();
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Ask);
-    match state
-        .brain
-        .ask_with_team(&body.question, principal.team_id())
-        .await
-    {
+    let fut = if body.web {
+        state
+            .brain
+            .ask_with_web(&body.question, principal.team_id(), 2)
+            .await
+    } else {
+        state
+            .brain
+            .ask_with_team(&body.question, principal.team_id())
+            .await
+    };
+    match fut {
         Ok(answer) => {
             timer.success(answer.citations.len() as u64);
             Ok(Json(answer))
@@ -907,11 +1153,18 @@ async fn ask_get(
     let _span = tracing::info_span!("ask_get", request_id=%request_id);
     state.status.touch_client_activity();
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Ask);
-    match state
-        .brain
-        .ask_with_team(&query.question, principal.team_id())
-        .await
-    {
+    let res = if query.web {
+        state
+            .brain
+            .ask_with_web(&query.question, principal.team_id(), 2)
+            .await
+    } else {
+        state
+            .brain
+            .ask_with_team(&query.question, principal.team_id())
+            .await
+    };
+    match res {
         Ok(answer) => {
             timer.success(answer.citations.len() as u64);
             Ok(Json(answer))
@@ -1025,8 +1278,9 @@ mod tests {
 
     fn test_brain() -> BrainService {
         let dir = std::env::temp_dir().join(format!(
-            "kurultai-http-{}",
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            "kurultai-http-{}-{}",
+            std::process::id(),
+            HTTP_FIXTURE_SEQ.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let store = Arc::new(SqliteVecStore::open(dir.join("store.db"), 4).unwrap());
@@ -1043,6 +1297,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1065,6 +1320,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1091,6 +1347,225 @@ mod tests {
         assert!(links.len() >= 5);
     }
 
+    // ── O3 proposal queue HTTP tests (#118) ──────────────────────────────────
+
+    async fn seed_atom(brain: &BrainService, id: &str) {
+        let atom = crate::types::KnowledgeAtom {
+            id: id.into(),
+            source: "markdown".into(),
+            source_id: format!("/{id}.md"),
+            title: "Fixture".into(),
+            summary: "s".into(),
+            content: "c".into(),
+            tags: vec!["t".into()],
+            source_updated_at: chrono::Utc::now(),
+            indexed_at: chrono::Utc::now(),
+            ..Default::default()
+        };
+        brain.store().upsert(&atom).await.unwrap();
+    }
+
+    fn proposal_app(brain: Arc<BrainService>) -> Router {
+        router(AppState {
+            brain,
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            hub: HubGate::default(),
+        })
+    }
+
+    #[tokio::test]
+    async fn ontology_propose_requires_agent_bearer() {
+        let brain = Arc::new(test_brain());
+        let app = proposal_app(brain);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/ontology/proposals")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"kind":"promote_atom","payload":{"atom_id":"x","class_id":"class:note"}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn ontology_proposal_submit_decide_roundtrip() {
+        let brain = Arc::new(test_brain());
+        seed_atom(&brain, "http-atom").await;
+        let (_agent_id, key) = brain.store().register_agent("proposer").await.unwrap();
+        let app = proposal_app(Arc::clone(&brain));
+
+        // Agent submits a draft.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/ontology/proposals")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {key}"))
+                    .body(Body::from(
+                        r#"{"kind":"promote_atom","payload":{"atom_id":"http-atom","class_id":"class:note"},"reason":"looks like a note"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let pid = v["proposal"]["id"].as_str().unwrap().to_string();
+        assert_eq!(v["proposal"]["status"], "pending");
+        assert_eq!(v["proposal"]["proposed_by"], "proposer");
+        // Draft only — nothing mutated.
+        assert!(brain
+            .store()
+            .get_ontology_entity("ent:http-atom")
+            .await
+            .unwrap()
+            .is_none());
+
+        // Queue lists it as pending.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/ontology/proposals?status=pending")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let proposals = v["proposals"].as_array().unwrap();
+        assert!(proposals.iter().any(|p| p["id"] == pid));
+
+        // An agent bearer may NOT decide — humans only.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/ontology/proposals/{pid}/decide"))
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {key}"))
+                    .body(Body::from(r#"{"action":"approve"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        assert!(brain
+            .store()
+            .get_ontology_entity("ent:http-atom")
+            .await
+            .unwrap()
+            .is_none());
+
+        // Human (solo path, no agent key) approves — mutation applies.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/ontology/proposals/{pid}/decide"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"action":"approve"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let entity = brain
+            .store()
+            .get_ontology_entity("ent:http-atom")
+            .await
+            .unwrap()
+            .expect("approved proposal applied");
+        assert_eq!(entity.atom_id.as_deref(), Some("http-atom"));
+
+        // Double-decide → 409.
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/ontology/proposals/{pid}/decide"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"action":"reject"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn ontology_proposal_reject_mutates_nothing() {
+        let brain = Arc::new(test_brain());
+        seed_atom(&brain, "rej-atom").await;
+        let (_id, key) = brain.store().register_agent("proposer2").await.unwrap();
+        let app = proposal_app(Arc::clone(&brain));
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/ontology/proposals")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {key}"))
+                    .body(Body::from(
+                        r#"{"kind":"promote_atom","payload":{"atom_id":"rej-atom","class_id":"class:decision"}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let pid = v["proposal"]["id"].as_str().unwrap().to_string();
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/ontology/proposals/{pid}/decide"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"action":"reject"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["proposal"]["status"], "rejected");
+        assert!(brain
+            .store()
+            .get_ontology_entity("ent:rej-atom")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
     #[tokio::test]
     async fn api_activity_empty_then_after_search() {
         let brain = Arc::new(test_brain());
@@ -1100,6 +1575,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1148,6 +1624,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1168,6 +1645,38 @@ mod tests {
         let answer: Answer = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(answer.confidence, 0.0);
         assert!(answer.citations.is_empty());
+    }
+
+    /// `web: true` must degrade to a local answer when the daemon has no web
+    /// searcher configured — the flag is opt-in, never an error.
+    #[tokio::test]
+    async fn ask_web_flag_degrades_to_local_answer() {
+        let app = router(AppState {
+            brain: Arc::new(test_brain()),
+            status: Arc::new(crate::daemon::DaemonStatus::default()),
+            metrics: MetricsRegistry::shared(),
+            #[cfg(feature = "postgres")]
+            hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            hub: HubGate::default(),
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/ask")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"question":"anything?","web":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let answer: Answer = serde_json::from_slice(&bytes).unwrap();
+        assert!(answer.citations.iter().all(|c| c.source != "web"));
     }
 
     async fn fixture_brain_app() -> (Router, tempfile::TempDir) {
@@ -1212,6 +1721,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         (app, db_dir)
@@ -1327,6 +1837,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_db_table_browse_and_rejects_unknown() {
+        let (app, _db_dir) = fixture_brain_app().await;
+
+        // atoms: happy path — 200 + row shape
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/atoms?limit=5")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["table"], "atoms");
+        let rows = body["rows"].as_array().unwrap();
+        assert!(!rows.is_empty());
+        assert!(rows[0].get("id").is_some() && rows[0].get("title").is_some());
+
+        // atoms: filter + sort params are accepted
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/atoms?sort=title&dir=asc&q=test&limit=10")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // links: derived shared-tag view — 200
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/links?limit=5")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // unknown table → 400, no SQL error leakage shape
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/db/nope")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(body["error"].as_str().unwrap().contains("unknown db table"));
+    }
+
+    #[tokio::test]
     async fn api_atoms_lists_and_limits_atoms() {
         let (app, _db_dir) = fixture_brain_app().await;
 
@@ -1434,6 +2015,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1663,6 +2245,42 @@ mod tests {
         ) -> crate::Result<Vec<crate::types::OntologyLink>> {
             Ok(vec![])
         }
+        async fn delete_ontology_entity(&self, _id: &str) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn delete_ontology_link(&self, _id: &str) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn insert_ontology_proposal(
+            &self,
+            _p: &crate::types::OntologyProposal,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn get_ontology_proposal(
+            &self,
+            _id: &str,
+        ) -> crate::Result<Option<crate::types::OntologyProposal>> {
+            Ok(None)
+        }
+        async fn list_ontology_proposals(
+            &self,
+            _status: Option<&str>,
+            _limit: usize,
+        ) -> crate::Result<Vec<crate::types::OntologyProposal>> {
+            Ok(vec![])
+        }
+        async fn decide_ontology_proposal(
+            &self,
+            _id: &str,
+            _status: &str,
+            _decided_by: &str,
+            _decided_at: &str,
+        ) -> crate::Result<crate::types::OntologyProposal> {
+            Err(crate::error::KurultaiError::Store(
+                "proposal not found".into(),
+            ))
+        }
     }
 
     #[tokio::test]
@@ -1674,6 +2292,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1726,6 +2345,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -1767,6 +2387,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
 
@@ -1890,6 +2511,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
 
@@ -2029,6 +2651,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -2049,6 +2672,45 @@ mod tests {
         assert!(!rid.is_empty(), "request_id must be present and non-empty");
     }
 
+    /// #324: the second identical `/api/graph` call serves the prepared
+    /// snapshot (same `graph_epoch`, byte-identical `nodes`); an atom mutation
+    /// bumps the epoch and republishes.
+    #[tokio::test]
+    async fn api_graph_serves_prepared_until_mutation() {
+        let brain = Arc::new(test_brain());
+        let app = proposal_app(Arc::clone(&brain));
+
+        async fn graph(app: &Router, uri: &str) -> serde_json::Value {
+            let resp = app
+                .clone()
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+                .await
+                .unwrap();
+            serde_json::from_slice(&bytes).unwrap()
+        }
+
+        let first = graph(&app, "/api/graph?tier=hot&limit=100").await;
+        let second = graph(&app, "/api/graph?tier=hot&limit=100").await;
+        assert_eq!(first["graph_epoch"], second["graph_epoch"]);
+        assert_eq!(first["nodes"], second["nodes"]);
+        assert_ne!(first["request_id"], second["request_id"]);
+
+        seed_atom(&brain, "graph-p1").await;
+        let third = graph(&app, "/api/graph?tier=hot&limit=100").await;
+        assert_ne!(third["graph_epoch"], second["graph_epoch"]);
+        let ids: Vec<&str> = third["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|n| n["id"].as_str())
+            .collect();
+        assert!(ids.contains(&"graph-p1"), "nodes={ids:?}");
+    }
+
     #[tokio::test]
     async fn api_metrics_prometheus_after_search() {
         let metrics = MetricsRegistry::shared();
@@ -2058,6 +2720,7 @@ mod tests {
             metrics: Arc::clone(&metrics),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let _ = app
@@ -2106,6 +2769,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         });
         let resp = app
@@ -2201,6 +2865,7 @@ mod tests {
             metrics: MetricsRegistry::shared(),
             #[cfg(feature = "postgres")]
             hub_activity: None,
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             hub: HubGate::default(),
         };
         router(state).merge(mcp::routes(mcp::McpHttpState::new(
@@ -2341,11 +3006,14 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "postgres")]
             hub_activity: None,
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },
@@ -2392,11 +3060,14 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "postgres")]
             hub_activity: None,
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },
@@ -2419,11 +3090,14 @@ mod tests {
             brain: Arc::new(test_brain()),
             status: Arc::new(crate::daemon::DaemonStatus::default()),
             metrics: MetricsRegistry::shared(),
+            graph_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             #[cfg(feature = "postgres")]
             hub_activity: None,
             hub: HubGate {
                 auth: HubAuth::ApiKey,
                 api_keys: vec!["hub-secret".into()],
+                agent_store: None,
+                cf_access: None,
                 #[cfg(feature = "postgres")]
                 key_store: None,
             },
@@ -2452,81 +3126,5 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-    }
-
-    fn open_app(hub: HubGate, hub_feature: bool) -> Router {
-        mount(
-            AppState {
-                brain: Arc::new(test_brain()),
-                status: Arc::new(crate::daemon::DaemonStatus::default()),
-                metrics: MetricsRegistry::shared(),
-                #[cfg(feature = "postgres")]
-                hub_activity: None,
-                hub,
-            },
-            hub_feature,
-        )
-    }
-
-    #[tokio::test]
-    async fn api_open_hub_off_is_ok() {
-        let app = open_app(HubGate::default(), false);
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/open")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn api_open_hub_on_auth_none_is_not_found() {
-        let app = open_app(HubGate::default(), true);
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/open")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn api_open_hub_on_api_key_requires_bearer_then_not_found() {
-        let hub = HubGate {
-            auth: HubAuth::ApiKey,
-            api_keys: vec!["hub-secret".into()],
-            #[cfg(feature = "postgres")]
-            key_store: None,
-        };
-        let denied = open_app(hub.clone(), true)
-            .oneshot(
-                Request::builder()
-                    .uri("/api/open")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
-
-        let missing = open_app(hub, true)
-            .oneshot(
-                Request::builder()
-                    .uri("/api/open")
-                    .header("authorization", "Bearer hub-secret")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
     }
 }

@@ -1,0 +1,8 @@
+{
+  "target": "http://127.0.0.1:8421",
+  "suite": "soak",
+  "ts": "2026-09-30T07:20:20.448Z",
+  "results": [
+    "soak conc=10  reqs=2004 err=0 bad=0 rps=249.8 p50=22ms p95=144ms p99=220ms max=345ms  rss=?→?MB (?%)"
+  ]
+}

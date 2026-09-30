@@ -139,6 +139,11 @@ impl IndexPipeline {
         // Track in-batch content hashes so exact dupes in the same connector batch
         // quarantine even before commit.
         let mut batch_seen_hashes = std::collections::HashSet::new();
+        let force_quarantine = self
+            .sources
+            .get(source_name)
+            .and_then(|c| c.default_trust_lane())
+            == Some(crate::types::TrustLane::Quarantine);
         for atom in &mut enriched {
             let hash = sha256_hex(&atom.content);
             let outcome = if batch_seen_hashes.contains(&hash) {
@@ -150,6 +155,14 @@ impl IndexPipeline {
             };
             batch_seen_hashes.insert(hash);
             apply_gate(atom, outcome);
+            if force_quarantine {
+                atom.trust_lane = crate::types::TrustLane::Quarantine;
+                if atom.quarantine_reason.is_none() {
+                    atom.quarantine_reason =
+                        Some(format!("source_default_trust_lane:{source_name}"));
+                }
+                atom.embedding = None;
+            }
             if atom.trust_lane == crate::types::TrustLane::Quarantine {
                 atom.embedding = None;
             }

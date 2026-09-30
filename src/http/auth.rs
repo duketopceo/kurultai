@@ -1,11 +1,11 @@
 //! Hub REST auth (public-mode API keys). Solo/loopback default is no auth.
 
 use crate::hashutil::sha256_hex;
+use crate::store::Store;
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::{header, request::Parts, HeaderMap, StatusCode};
 use axum::middleware::Next;
-use axum::response::Response;
-#[cfg(feature = "postgres")]
+use axum::response::{IntoResponse, Response};
 use std::sync::Arc;
 
 #[cfg(feature = "postgres")]
@@ -69,6 +69,10 @@ pub enum HubAuth {
 pub struct HubGate {
     pub auth: HubAuth,
     pub api_keys: Vec<String>,
+    pub agent_store: Option<Arc<dyn Store>>,
+    /// When set, verified Cloudflare Access JWTs satisfy hub auth for
+    /// human browser sessions (see [`crate::http::cf_access`]).
+    pub cf_access: Option<Arc<crate::http::cf_access::CfAccess>>,
     #[cfg(feature = "postgres")]
     pub key_store: Option<Arc<crate::hub::HubKeyStore>>,
 }
@@ -77,7 +81,11 @@ impl std::fmt::Debug for HubGate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut dbg = f.debug_struct("HubGate");
         dbg.field("auth", &self.auth)
-            .field("api_keys_len", &self.api_keys.len());
+            .field("api_keys_len", &self.api_keys.len())
+            .field(
+                "agent_store",
+                &self.agent_store.as_ref().map(|_| "Some(Store)"),
+            );
         #[cfg(feature = "postgres")]
         dbg.field(
             "key_store",
@@ -114,6 +122,8 @@ pub fn resolve_hub_gate_from_env() -> HubGate {
     HubGate {
         auth: parse_hub_auth(std::env::var("KURULTAI_HUB_AUTH").ok().as_deref()),
         api_keys: keys_from_csv(std::env::var("KURULTAI_HUB_API_KEYS").ok().as_deref()),
+        agent_store: None,
+        cf_access: crate::http::cf_access::resolve_from_env(),
         #[cfg(feature = "postgres")]
         key_store: None,
     }
@@ -133,7 +143,7 @@ fn secrets_equal(a: &str, b: &str) -> bool {
         == 0
 }
 
-fn extract_bearer(headers: &HeaderMap) -> Option<String> {
+pub(crate) fn extract_bearer(headers: &HeaderMap) -> Option<String> {
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     if !value.to_ascii_lowercase().starts_with("bearer ") {
         return None;
@@ -161,7 +171,9 @@ pub fn token_accepted(token: &str, keys: &[String]) -> bool {
     })
 }
 
-/// Paths exempt from hub API-key authentication (`/health` and embedded `/ui`).
+/// Paths exempt from hub API-key authentication (`/health`, `/ui`, `/auth`,
+/// the `kurultai connect` device endpoints, and the `/connect` approval page —
+/// those routes do their own gating in `http::device`).
 pub fn path_requires_hub_auth(path: &str) -> bool {
     if path == "/health" || path.starts_with("/health/") {
         return false;
@@ -169,12 +181,34 @@ pub fn path_requires_hub_auth(path: &str) -> bool {
     if path == "/ui" || path.starts_with("/ui/") {
         return false;
     }
+    if path == "/auth" || path.starts_with("/auth/") {
+        return false;
+    }
+    if path.starts_with("/api/device/") {
+        return false;
+    }
+    if path == "/connect" {
+        return false;
+    }
     true
+}
+
+/// 401 body with a recovery hint for revoked/unknown agent keys.
+fn unauthorized_response(hint: &str) -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        axum::Json(serde_json::json!({
+            "ok": false,
+            "error": "unauthorized",
+            "hint": hint,
+        })),
+    )
+        .into_response()
 }
 
 pub async fn hub_api_auth(
     State(gate): State<HubGate>,
-    req: Request,
+    mut req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
     if gate.auth != HubAuth::ApiKey {
@@ -184,20 +218,44 @@ pub async fn hub_api_auth(
     if !path_requires_hub_auth(path) {
         return Ok(next.run(req).await);
     }
-    let Some(token) = extract_bearer(req.headers()) else {
-        return Err(StatusCode::UNAUTHORIZED);
-    };
+    if let Some(token) = extract_bearer(req.headers()) {
+        match authorize_bearer(&gate, &mut req, &token).await {
+            Ok(true) => return Ok(next.run(req).await),
+            Ok(false) => {}
+            Err(status) => return Err(status),
+        }
+    }
 
+    // No bearer (or an unrecognized one): a verified Cloudflare Access JWT
+    // satisfies auth for human browser sessions when configured.
+    if let Some(cf) = &gate.cf_access {
+        if cf.authorize(&mut req).await {
+            return Ok(next.run(req).await);
+        }
+    }
+
+    Ok(unauthorized_response(
+        "invalid or revoked credential — run `kurultai connect <instance-url>` to mint a fresh agent key",
+    ))
+}
+
+/// Check a bearer token against issued hub keys, static API keys, and
+/// registered agent keys. `Ok(true)` means authorized (principal inserted into
+/// request extensions); `Err` is reserved for store failures (500s).
+async fn authorize_bearer(
+    gate: &HubGate,
+    req: &mut Request,
+    token: &str,
+) -> Result<bool, StatusCode> {
     #[cfg(feature = "postgres")]
     if let Some(store) = &gate.key_store {
-        match store.resolve_token(&token).await {
+        match store.resolve_token(token).await {
             Ok(Some(principal)) => {
-                let mut req = req;
                 req.extensions_mut().insert(principal);
-                return Ok(next.run(req).await);
+                return Ok(true);
             }
             Ok(None) => match store.has_active_keys().await {
-                Ok(true) => return Err(StatusCode::UNAUTHORIZED),
+                Ok(true) => return Ok(false),
                 Ok(false) => {}
                 Err(e) => {
                     tracing::warn!(error = %e, "hub key store check failed");
@@ -211,11 +269,27 @@ pub async fn hub_api_auth(
         }
     }
 
-    if token_accepted(&token, &gate.api_keys) {
-        Ok(next.run(req).await)
-    } else {
-        Err(StatusCode::UNAUTHORIZED)
+    if token_accepted(token, &gate.api_keys) {
+        return Ok(true);
     }
+
+    // Allow registered agent keys as an alternative to hub/system API keys.
+    if let Some(store) = &gate.agent_store {
+        let hash = sha256_hex(token);
+        match store.resolve_agent_by_key_hash(&hash).await {
+            Ok(Some(agent)) => {
+                req.extensions_mut().insert(agent);
+                return Ok(true);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!(error = %e, "agent key lookup failed");
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 /// Env var holding the operator token required for daemon write routes under the
@@ -223,7 +297,26 @@ pub async fn hub_api_auth(
 pub const ENV_ADMIN_TOKEN: &str = "KURULTAI_ADMIN_TOKEN";
 
 /// POST routes that mutate durable state and must not be reachable unauthenticated.
-const WRITE_ROUTES: &[&str] = &["/api/promote", "/api/touch"];
+const WRITE_ROUTES: &[&str] = &[
+    "/api/promote",
+    "/api/ontology/entity",
+    "/api/ontology/link",
+    "/api/ontology/promote",
+    "/api/touch",
+];
+
+/// `/api/ontology/entity[/{id}]` and `/api/ontology/link[/{id}]` are the
+/// human-lane board writes (#316, #320) — dynamic `{id}` DELETE paths need a
+/// prefix predicate since `WRITE_ROUTES` is exact-match.
+fn is_ontology_write_route(path: &str) -> bool {
+    path.starts_with("/api/ontology/entity/") || path.starts_with("/api/ontology/link/")
+}
+
+/// `/api/ontology/proposals/{id}/decide` mutates ontology state on approve —
+/// guarded like the other write routes under `SharedClosed` (#118).
+fn is_decide_route(path: &str) -> bool {
+    path.starts_with("/api/ontology/proposals/") && path.ends_with("/decide")
+}
 
 pub fn resolve_admin_token() -> Option<String> {
     std::env::var(ENV_ADMIN_TOKEN)
@@ -284,7 +377,12 @@ pub fn write_route_decision(
     admin_token: Option<&str>,
     bearer: Option<&str>,
 ) -> WriteRouteDecision {
-    let is_write = method == axum::http::Method::POST && WRITE_ROUTES.contains(&path);
+    let mutating = matches!(
+        *method,
+        axum::http::Method::POST | axum::http::Method::DELETE | axum::http::Method::PATCH
+    );
+    let is_write = mutating
+        && (WRITE_ROUTES.contains(&path) || is_decide_route(path) || is_ontology_write_route(path));
     if !is_write || mode != crate::write_policy::WriteMode::SharedClosed {
         return WriteRouteDecision::Allow;
     }
@@ -337,6 +435,11 @@ mod tests {
         assert!(!path_requires_hub_auth("/ui/"));
         assert!(!path_requires_hub_auth("/ui/index.html"));
         assert!(!path_requires_hub_auth("/ui/assets/app.js"));
+
+        // `kurultai connect` endpoints self-gate (see http::device).
+        assert!(!path_requires_hub_auth("/api/device/code"));
+        assert!(!path_requires_hub_auth("/api/device/token"));
+        assert!(!path_requires_hub_auth("/connect"));
 
         assert!(path_requires_hub_auth("/api/status"));
         assert!(path_requires_hub_auth("/api/search"));

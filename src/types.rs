@@ -137,6 +137,31 @@ pub struct OntologyLink {
     pub actor: String,
 }
 
+/// O3: a proposed ontology mutation awaiting human review (#118).
+///
+/// Proposals are drafts — they never mutate entities/links until a human
+/// decides. `kind` selects the apply path in [`crate::ontology`]:
+/// `promote_atom` (`atom_id` + `class_id`), `new_link` (`from_id`, `to_id`,
+/// `rel`, optional `confidence`), `new_entity` (`id`, `kind`, `name`,
+/// optional `atom_id`/`attributes`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct OntologyProposal {
+    pub id: String,
+    /// `promote_atom` | `new_link` | `new_entity`.
+    pub kind: String,
+    /// Kind-specific parameters, validated at submit time.
+    pub payload: serde_json::Value,
+    /// `pending` | `approved` | `rejected`.
+    pub status: String,
+    /// Proposer identity — agent `codename`/`codename@instance` or MCP actor.
+    pub proposed_by: String,
+    /// Proposer's rationale; reused as reviewer note on decide.
+    pub reason: Option<String>,
+    pub created_at: String,
+    pub decided_by: Option<String>,
+    pub decided_at: Option<String>,
+}
+
 /// A single knowledge atom — the unit of indexed information.
 ///
 /// Stored in SQL for speed; agents receive [`crate::brain::AgentAtomView`] via MCP,
@@ -437,6 +462,14 @@ impl SourceConfig {
             .map(|s| VisibilityScope::parse(s.trim()))
             .unwrap_or(VisibilityScope::Personal)
     }
+
+    /// `extra.default_trust_lane` = `trusted` | `quarantine`.
+    /// Missing → None (connector/gate decide). Used to sequester noisy sources at ingest.
+    pub fn default_trust_lane(&self) -> Option<TrustLane> {
+        self.extra
+            .get("default_trust_lane")
+            .map(|s| TrustLane::parse(s.trim()))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -482,6 +515,20 @@ pub struct Config {
     /// CLI banner presentation (`[cli] banner`); default auto = TTY only.
     #[serde(default)]
     pub banner: crate::art::BannerMode,
+    /// Hot/warm/cold classification policy (`[tiers]` + `[[tiers.rule]]`, #325).
+    /// Runtime-only: populated by config loader; skipped on (de)serialize.
+    #[serde(skip)]
+    pub tier_policy: crate::memory::TierPolicy,
+    /// `[judge] enabled` — false forces `NullJudge` regardless of keys.
+    #[serde(default = "default_true")]
+    pub judge_enabled: bool,
+    /// `[judge] model` — override the pinned Jev judge model.
+    #[serde(default)]
+    pub judge_model: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[cfg(test)]

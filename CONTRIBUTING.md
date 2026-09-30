@@ -49,7 +49,7 @@ bash scripts/build-ui.sh   # Node 22 (see `.nvmrc`); writes ui/
 cargo build                # embed the new assets
 ```
 
-Layout math: `node --experimental-strip-types --test website/src/brain/layout/*.test.ts` (also `npm run test:layout` in `website/`).
+Website unit tests: `npm test` in `website/` (layout math, labels, chatboard mapping, repo lattice — `node --experimental-strip-types --test` over all `src/**/*.test.ts`).
 
 CI job **Brain UI build** fails if `ui/` is stale relative to `website/`. Do not edit hashed files under `ui/assets/` by hand.
 
@@ -77,6 +77,7 @@ See [`INDEX.md`](INDEX.md) and [`docs/agent-index.md`](docs/agent-index.md). Do 
 - Integration tests in `tests/`
 - Use fixtures in `tests/fixtures/` for consistent test data
 - Aim for increasing coverage as per #23
+- Acceptance coverage lives in [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md). The matrix is authoritative in `kurultai-private`: after each release tag, private merges public `main` and re-checks it — features sync downstream, data never does.
 
 ## Architecture Guidelines
 

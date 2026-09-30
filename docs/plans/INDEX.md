@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-09-01
-version: 3
+updated: 2026-09-15
+version: 8
 ---
 
 # `docs/plans`
@@ -19,6 +19,19 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`2026-09-30-001-feat-load-chaos-harness-plan.md`](2026-09-30-001-feat-load-chaos-harness-plan.md) | Repeatable load/chaos suite: `scripts/hammer.mjs` (read ramp, adversarial search, write races, soak) + Rust `tests/chaos.rs` (kill mid-write, disk pressure, cold start) + MCP stdio lane | — | scripts · tests | 2026-09-30 | 1 | hammer session → implementation-ready plan |
+| [`2026-09-28-001-feat-device-broker-agent-onboarding-plan.md`](2026-09-28-001-feat-device-broker-agent-onboarding-plan.md) | Device broker: local daemon holds one upstream session; agents board with per-chat minted keys; full MCP proxy via RemoteBrainService | `docs/brainstorms/2026-09-28` | src/broker · src/mcp · src/http · src/mcp/init | 2026-09-28 | 1 | ce-brainstorm → ce-plan, decisions D1–D6 |
+| [`2026-09-14-001-feat-ontology-flowsint-board-plan.md`](2026-09-14-001-feat-ontology-flowsint-board-plan.md) | Flowsint-style 2D board (`@xyflow/react`) replaces 3D ontology layout; human write lane for entity/link | #316 · O1 shipped | website/src · src/http | 2026-09-14 | 1 | session decisions → implementation-ready plan |
+| [`2026-09-20-001-feat-wave-h-serve-path-plan.md`](2026-09-20-001-feat-wave-h-serve-path-plan.md) | Wave H phase plan: watcher floor + client perf telemetry first, then #325/#324/#323/#326 sequencing | #102 · #323–#326 | src/metrics · src/daemon · src/http · website/src | 2026-09-20 | 1 | instrument-before-optimize ordering |
+| [`2026-09-25-001-feat-ui-ux-teardown-rebuild-plan.md`](2026-09-25-001-feat-ui-ux-teardown-rebuild-plan.md) | UI/UX teardown + rebuild: definitions doc → research (ThreeUI/VoltOps/bolt.new) → batch Kimi/GPT design gen → stitched `ui-next` parallel app → local preview → tagged cutover | user direction thread | website/src · docs/design · design-lab · ui | 2026-09-25 | 1 | Brain concept kept; frontend-only; no data/API loss |
+| [`2026-09-16-001-feat-hey-admin-kanban-plan.md`](2026-09-16-001-feat-hey-admin-kanban-plan.md) | Hey admin lane (CF Access email + PATCH/DELETE), kanban view, lower-UI spacing, hosted redeploy (#331) | #331 | src/http · src/store · website/src · deploy | 2026-09-16 | 1 | knowledge.shippedit.dev rebuild slice |
+| [`2026-09-17-001-feat-retrieval-evals-harness-plan.md`](2026-09-17-001-feat-retrieval-evals-harness-plan.md) | Retrieval evals: golden set + `kurultai eval` HTTP runner, Jev judge (OpenRouter decisions), opt-in `ask --web` Perplexity augmentation | — | evals · src/eval · src/web · src/mcp · tests | 2026-09-17 | 1 | next phase: retrieval quality |
+| [`2026-09-15-002-feat-declarative-tier-policy-plan.md`](2026-09-15-002-feat-declarative-tier-policy-plan.md) | Declarative `[tiers]` rules: TierRule + classify_atom + config wiring (#325) | #325 | src/memory · src/config · src/mcp | 2026-09-15 | 1 | Wave H serve-path (CobbleDB-inspired) |
+| [`2026-09-15-001-feat-ontology-board-delete-plan.md`](2026-09-15-001-feat-ontology-board-delete-plan.md) | Board v2: delete entities/links — store cascade, DELETE routes, edge/node menus | #320 | src/store · src/http · website/src | 2026-09-15 | 1 | follow-up slice to #316 |
+| [`2026-09-12-001-feat-brain-neuron-motif-plan.md`](2026-09-12-001-feat-brain-neuron-motif-plan.md) | Brain neuron-motif visual language — soma + dendrite corona + traveling spikes; first-principles derivation; visual-only scope | fix/brain-cortex-doctrine baseline | website/src/brain | 2026-09-12 | 1 | ce-plan implementation-ready |
+| [`2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md`](2026-09-04-001-feat-dogfood-retrieval-board-ui-plan.md) | Dogfood: pond sequester + hey board MCP/REST slice + non-Brain UI | — | — | 2026-09-04 | 1 | LFG implementation-ready |
+| [`2026-09-05-002-feat-brain-first-principles-astra-plan.md`](2026-09-05-002-feat-brain-first-principles-astra-plan.md) | Brain 0→100 showcase + A2A chatboard (Astra-executed); adjacent to 001 | 2026-09-05-001 | website/src | 2026-09-05 | 1 | ce-plan implementation-ready |
+| [`2026-09-03-001-feat-agent-message-board-plan.md`](2026-09-03-001-feat-agent-message-board-plan.md) | Agent message board requirements (hey.md) — full v1; slice in 2026-09-04 plan | — | — | 2026-09-03 | 1 | recovered on dogfood branch |
 | [`2026-07-21-001-feat-search-retrieval-rrf-plan.md`](2026-07-21-001-feat-search-retrieval-rrf-plan.md) | Search Retrieval RRF Diamond - Plan | — | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-07-21-002-feat-phase2-testing-gates-plan.md`](2026-07-21-002-feat-phase2-testing-gates-plan.md) | Phase 2 Testing Work Orders - Plan | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-07-23-001-chore-phase2-closeout-plan.md`](2026-07-23-001-chore-phase2-closeout-plan.md) | Phase 2 Closeout - Plan | — | — | 2026-07-24 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -67,7 +80,7 @@ _None._
 | [`2026-08-15-001-feat-hub3-railway-transport-plan.md`](2026-08-15-001-feat-hub3-railway-transport-plan.md) | feat: HUB-3 Railway transport — public/Tailscale bind + Postgres hub daemon | — | — | 2026-08-29 | 2 | 2026-08-29 LFG pin: ship U1–U4 only · 2026-08-16 indexed (v1 seed) |
 | [`2026-08-15-002-feat-hub4-agent-ids-write-log-plan.md`](2026-08-15-002-feat-hub4-agent-ids-write-log-plan.md) | feat: HUB-4 agent IDs + write log — issued keys, team_id filter, activity | — | — | 2026-08-15 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-09-01-001-chore-final-stretch-to-v050-team-plan.md`](2026-09-01-001-chore-final-stretch-to-v050-team-plan.md) | chore: Final stretch to v0.5.0 Team — release hardening, queue cleanup, tag `v0.5.0` | — | — | 2026-09-01 | 1 | 2026-09-01 LFG plan: HUB-5 merged, final stretch |
-| [`2026-09-01-002-chore-v050-debloat-gated-auto-plan.md`](2026-09-01-002-chore-v050-debloat-gated-auto-plan.md) | chore: v0.5.0 first-cut debloat + gated-auto auth nits | — | — | 2026-09-01 | 1 | 2026-09-01 plan: stubs/landing/closeout + hex keys/listen count/open/env |
+| [`2026-09-05-001-feat-brain-ux-ontology-dashboard-plan.md`](2026-09-05-001-feat-brain-ux-ontology-dashboard-plan.md) | feat: Brain UX — ontology cortex + dashboard rework | — | — | 2026-09-05 | 1 | 2026-09-05 ce-plan: 1A/2A/3B product layer on Aug 13 foundation |
 | [`2026-08-15-003-feat-desktop-brain-ui-wrap-plan.md`](2026-08-15-003-feat-desktop-brain-ui-wrap-plan.md) | feat: desktop Brain UI wrap — thin Tauri window over /ui/ | — | — | 2026-08-15 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-08-16-001-chore-agent-repo-index-plan.md`](2026-08-16-001-chore-agent-repo-index-plan.md) | chore: hierarchical agent INDEX.md tree | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`YEAR-1-MILESTONES.md`](YEAR-1-MILESTONES.md) | Kurultai Year 1 Milestones & Work Orders | — | — | 2026-09-01 | 2 | 2026-09-01 v0.5.0 shipped · 2026-08-16 indexed (v1 seed) |
@@ -84,12 +97,22 @@ _None._
 | [`phase-5-closeout.md`](phase-5-closeout.md) | Phase 5 closeout — tracker hygiene | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-5-complete.md`](phase-5-complete.md) | Phase 5 complete — wrap-up | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`phase-6-atlas-gaps.md`](phase-6-atlas-gaps.md) | Phase 6 — Ontology / Atlas / connector gaps | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-09-01 | 5 | 2026-09-01 v0.5.0 released; next LFG v0.6.0+ · 2026-09-01 HUB-5 ✅ (#250) · HUB-6 ✅ · 2026-08-29 HUB-3 row · 2026-08-16 indexed (v1 seed) |
+| [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-09-15 | 7 | 2026-09-15 Wave H serve-path milestone (#323-#326) + board v2 shipped · 2026-09-14 Slice C renderer replaced: Flowsint 2D board (#316) · 2026-09-01 v0.5.0 released; next LFG v0.6.0+ |
 | [`phase-6-work-orders.md`](phase-6-work-orders.md) | Phase 6 — work orders (post–v0.4.0) | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
-- 2026-09-01 — v0.5.0 first-cut debloat + gated-auto plan (`2026-09-01-002`)
+- 2026-09-25 — `2026-09-25-001` UI/UX teardown + rebuild plan: definitions-first, batch Kimi/GPT design variants, parallel `ui-next` app, local-preview gate before tagged cutover
+- 2026-09-20 — `2026-09-20-001` Wave H phase plan: instrument-first ordering (watcher floor + client perf telemetry → #325 tier policy → #324 prepared payload → #323/#326)
+- 2026-09-17 — `2026-09-17-001` retrieval evals + `ask --web` plan (golden set, `kurultai eval`, Jev judge, Perplexity REST)
+- 2026-09-16 — `2026-09-16-001` Hey admin lane + kanban + lower-UI pass plan (#331)
+- 2026-09-15 — `2026-09-15-002` declarative tier policy plan (#325, Wave H)
+- 2026-09-15 — `2026-09-15-001` board delete plan (#320) + queue entry; 09-14 board plan shipped in #319
+- 2026-09-14 — added 001 Flowsint-style ontology board plan (#316): 2D `@xyflow/react` board replaces 3D ontology layout; human write lane needed
+- 2026-09-12 — added 001 Brain neuron-motif visual language plan (first-principles derivation; soma + corona + spikes; visual-only scope)
+- 2026-09-05 — added 002 Brain 0→100 showcase + A2A chatboard plan (ce-plan, Astra execution contract)
+- 2026-09-05 — brain cortex + secondary chrome product plan (1A/2A/3B)
+- 2026-09-03 — `2026-09-03-001-feat-agent-message-board-plan.md` added (requirements-only brainstorm)
 - 2026-09-01 — final stretch to v0.5.0 plan + HUB-5 ✅ (#250) + HUB-6 ✅ on queue
 - 2026-08-29 — HUB-3 LFG pin + railway-hub.md pointer on the live queue
 - 2026-08-16 — `2026-08-16-001-chore-agent-repo-index-plan.md` (this map)

@@ -52,6 +52,12 @@ pub const ALL: &[FeatureSpec] = &[
         default_on: false,
         summary: "Shared team/company hub (HUB-3 transport; default off)",
     },
+    FeatureSpec {
+        id: "web_search",
+        since: "0.7.0",
+        default_on: false,
+        summary: "ask --web ephemeral Perplexity augmentation (needs PERPLEXITY_API_KEY)",
+    },
 ];
 
 /// Whether `id` is on after env overlay.

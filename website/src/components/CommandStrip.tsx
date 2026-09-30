@@ -61,7 +61,7 @@ export function CommandStrip({
   const timelineLabel = timelineValue >= 100 ? 'all time' : `${timelineValue}%`;
 
   return (
-    <section className="command-strip" aria-label="Brain controls">
+    <section className="command-strip chrome-strip" aria-label="Brain controls">
       <label className="search-control" htmlFor="brain-search">
         <span aria-hidden="true">⌕</span>
         <input

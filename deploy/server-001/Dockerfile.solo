@@ -1,0 +1,30 @@
+# Solo Kurultai image — SQLite, no Postgres, non-root user, persistent /data.
+FROM rust:bookworm AS builder
+WORKDIR /src
+COPY . .
+RUN cargo build --release --locked --bin kurultai
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r kurultai -g 1000 \
+    && useradd -r -u 1000 -g kurultai -d /data -m kurultai \
+    && mkdir -p /data \
+    && chown -R kurultai:kurultai /data
+
+COPY --from=builder /src/target/release/kurultai /usr/local/bin/kurultai
+
+ENV HOME=/data
+ENV KURULTAI_ENV=prod
+ENV KURULTAI_HUB_BIND=all
+ENV PORT=8421
+
+USER kurultai
+WORKDIR /data
+
+EXPOSE 8421
+
+ENTRYPOINT ["kurultai"]
+CMD ["daemon", "--no-poll", "--no-watch"]

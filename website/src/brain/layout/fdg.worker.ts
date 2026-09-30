@@ -18,6 +18,9 @@ self.onmessage = (event: MessageEvent<FdgWorkerIn>) => {
     case 'setLinks':
       links = msg.links;
       return;
+    case 'setSdf':
+      sdf = msg.sdf.byteLength > 0 ? unpackSdf(msg.sdf) : null;
+      return;
     case 'tick': {
       const steps = Math.max(0, msg.steps | 0);
       for (let s = 0; s < steps; s++) tickFdg(nodes, links, sdf, DEFAULT_FDG_PARAMS);

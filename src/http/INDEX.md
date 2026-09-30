@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src/http
 parent: src/INDEX.md
-updated: 2026-08-29
-version: 2
+updated: 2026-09-16
+version: 8
 ---
 
 # `src/http`
@@ -19,17 +19,34 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`auth.rs`](auth.rs) | Hub API-key / admin token gate | `src/hashutil` · `src/hub/keys.rs` | `src/daemon/mod.rs` | 2026-09-01 | 4 | 2026-09-01 hex env keys are not bearers · 2026-08-31 resolve token first |
-| [`hub_listen.rs`](hub_listen.rs) | Pure bind × auth start-fail (HUB-3) | `src/http/auth.rs` · `src/error` | `src/http/mod.rs` · `src/main.rs` | 2026-08-29 | 1 | 2026-08-29 HUB-3 hub_listen_decision |
+| [`auth.rs`](auth.rs) | Hub API-key / admin token gate + CF Access fallback | `src/hashutil` · `src/hub/keys.rs` · `src/http/cf_access.rs` | `src/daemon/mod.rs` | 2026-09-16 | 8 | 2026-09-16 exempt `/api/device/*` + `/connect` (self-gated); 401 JSON hint `run kurultai connect` · 2026-09-14 `/api/ontology/entity` + `/link` join WRITE_ROUTES (#316) · 2026-09-11 proposals decide route joins SharedClosed write guard (#118) · 2026-09-06 CF Access JWT fallback in `hub_api_auth` · 2026-09-06 exempt `/auth/*` from hub API-key middleware · 2026-08-31 resolve token first; 500 on DB errors · 2026-08-16 indexed (v1 seed) |
+| [`cf_access.rs`](cf_access.rs) | Verify Cloudflare Access JWTs (`CF_Authorization` cookie / `Cf-Access-Jwt-Assertion`) for human browser auth | `jsonwebtoken` · `reqwest` | `src/http/auth.rs` | 2026-09-06 | 1 | 2026-09-06 added — Google/OTP Access login satisfies `/api/*` auth |
+| [`device.rs`](device.rs) | `kurultai connect` endpoints: `POST /api/device/code`, `/api/device/token`, `GET/POST /connect` approval page (CF Access → hub key → loopback gate) | `src/http` · `src/store` · `src/hashutil` | `src/http/mod.rs` | 2026-09-16 | 1 | 2026-09-16 added — seat-scoped agent keys |
+| [`device_auth.rs`](device_auth.rs) | Device-code login endpoints (`/auth/device/*`) for hosted agent tokens | `src/http` · `src/store` · `src/hashutil` | `src/http/mod.rs` | 2026-09-16 | 2 | 2026-09-16 `create_device_flow` gains `instance_id`; `human_base_url` shared with `device.rs` · 2026-09-06 added |
+| [`hey.rs`](hey.rs) | Multi-agent message board REST (`/api/hey/...`) | `src/store` · `src/brain` · `src/error` | `src/daemon/mod.rs` · `src/http/mod.rs` · `src/http/proposals.rs` · `src/http/ontology_write.rs` | 2026-09-19 | 5 | 2026-09-19 `resolve_thread_id` prefers `get_thread(id)` over name — path ids no longer hop to threads named with that UUID · 2026-09-17 zero-auth solo path: `require_writer` posts as `luke`/local when no auth surface configured · 2026-09-14 `require_agent` reused by ontology_write agent-refusal (#316) · 2026-09-11 `require_agent` now pub(crate) for proposal submit auth (#118) 2026-09-11 `require_agent` now pub(crate) for proposal submit auth (#118) · 2026-09-04 message board endpoints + clamp cleanup |
+| [`proposals.rs`](proposals.rs) | O3 ontology proposal queue REST (`/api/ontology/proposals`, decide) — agent bearer submits, humans decide | `src/http/hey.rs` · `src/http/auth.rs` · `src/ontology` | `src/http/mod.rs` | 2026-09-11 | 1 | 2026-09-11 added (#118) |
+| [`ontology_write.rs`](ontology_write.rs) | Human-lane ontology board writes (`POST /api/ontology/entity`, `/link`) — agents refused | `src/http/hey.rs` · `src/http/auth.rs` · `src/ontology` | `src/http/mod.rs` | 2026-09-14 | 1 | 2026-09-14 added (#316) |
+| [`hub_listen.rs`](hub_listen.rs) | Pure bind × auth start-fail (HUB-3) | `src/http/auth.rs` · `src/error` | `src/http/mod.rs` · `src/main.rs` | 2026-09-15 | 2 | 2026-09-15 `resolve_listen_socket_flag` + `resolve_tailscale_ip` for `--bind` (#329) |
 | [`ingest.rs`](ingest.rs) | Opt-in POST /ingest dump | `src/embed` · `src/hashutil` · `src/ingest` · `src/quality` · `src/store` | `src/daemon/mod.rs` · `src/connectors/inbox.rs` · `src/connectors/json.rs` · `src/connectors/markdown.rs` · `src/query/hybrid.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`mcp.rs`](mcp.rs) | MCP HTTP/SSE transport | `src/mcp` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`mod.rs`](mod.rs) | Axum daemon: /api/*, /ui/, optional /mcp SSE | `src/brain` · `src/daemon` · `src/error` · `src/mcp` · `src/metrics` · `src/http/hub_listen.rs` | `src/daemon/mod.rs` | 2026-09-01 | 5 | 2026-09-01 omit /api/open when hub feature on · 2026-08-31 validate promote reason length |
+| [`mod.rs`](mod.rs) | Axum daemon: /api/*, /ui/, /auth/*, /connect, optional /mcp SSE | `src/brain` · `src/daemon` · `src/error` · `src/mcp` · `src/metrics` · `src/http/hub_listen.rs` · `src/http/device_auth.rs` · `src/http/device.rs` | `src/daemon/mod.rs` | 2026-09-23 | 5 | 2026-09-23 `/api/graph` prepared payload — `graph_cache` keyed by params, invalidated via `Store::atom_epoch`, nodes spliced byte-for-byte (#324) · 2026-09-20 `POST /api/metrics/client` — browser perf samples → client metric family (#102) · 2026-09-18 `/api/ask` `web` flag → ask_with_web (GET+POST) · 2026-09-16 merge `device::routes` (`/api/device/*`, `/connect`) · 2026-09-15 `ServeOptions.bind` plumbed to flag resolver (#329) |
 | [`ui.rs`](ui.rs) | Embedded ui/ static + /ui/ slash redirect | — | `src/daemon/mod.rs` | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-23 — `mod.rs`: `/api/graph` serves prepared per-request-shape snapshots — `graph_cache` keyed by (tier, limit, quarantine, source filters), validated against `Store::atom_epoch`, nodes array spliced byte-for-byte into the response; `graph_epoch` field added (#324)
+- 2026-09-20 — `POST /api/metrics/client` (mod.rs): Brain UI perf samples (nav/tier-load/fps/long-tasks/heap) validated into the client metric family; numbers + enum labels only (#102)
+- 2026-09-19 — `hey.rs` `resolve_thread_id` prefers `get_thread(id)` — fixes messages routing to the wrong thread when a thread is named with another thread's UUID
+- 2026-09-16 — `device.rs`: `kurultai connect` device-authorization endpoints + `/connect` approval page; `auth.rs` exempts those paths + 401 `run kurultai connect` hint; `device_auth.rs` `create_device_flow` gains `instance_id`
+- 2026-09-15 — `hub_listen.rs`: `--bind` flag path + tailnet IP resolution (#329)
+- 2026-09-15 — `ontology_write.rs` DELETE routes (`entity/{id}`, `link/{id}`); `auth.rs` write guard gains DELETE + prefix predicate for ontology write paths (#320)
+- 2026-09-14 — `ontology_write.rs`: human-lane `POST /api/ontology/entity` + `/link` for the board (agents 403 — propose-only lane); both join SharedClosed WRITE_ROUTES (#316)
+- 2026-09-11 — `proposals.rs`: `/api/ontology/proposals` list+submit (agent bearer) and `/{id}/decide` (human-only; agent keys 403); decide path joins SharedClosed write guard (#118)
+- 2026-09-08 — `GET /api/db/{table}` (atoms|links) read-only browse, whitelisted sort/filter, 500-row cap
+- 2026-09-06 — add `cf_access.rs`: verified Cloudflare Access JWT satisfies hub auth (`KURULTAI_CF_ACCESS_TEAM` + `KURULTAI_CF_ACCESS_AUDS`); `HubGate.cf_access`; bearer flow extracted to `authorize_bearer`
+- 2026-09-06 — add `device_auth.rs` device-code login endpoints; `auth.rs` exempt `/auth/*`; `mod.rs` merge auth routes
+- 2026-09-04 — add `hey.rs` message board REST; `mod.rs` HubGate agent_store fixture
 - 2026-08-31 — review fixes: validate promote reason, auth returns 500 on DB errors
 - 2026-08-29 — secure unprefixed query aliases (/search, /ask, etc.) under `HubAuth::ApiKey`
 - 2026-08-29 — HUB-3 `hub_listen.rs` bind policy; `serve_with` start-fail before listen
 - 2026-08-16 — indexed this folder (v1 seed)
-

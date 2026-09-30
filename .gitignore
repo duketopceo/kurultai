@@ -33,6 +33,9 @@ config.toml
 # Local embedding model cache (fastembed / ONNX)
 .fastembed_cache/
 
+# Root npm shim — Argus reviewer action anchor only, not a JS app
+node_modules/
+
 # Frontend Website (marketing)
 website/node_modules/
 website/dist/
@@ -55,3 +58,11 @@ web/.env.*.local
 # Python
 __pycache__/
 *.py[cod]
+
+# eval run reports (local artifacts)
+evals/reports/
+.codebase-memory/
+node_modules/
+
+# Design-lab generated variants (U3 outputs are scratch)
+design-lab/out/

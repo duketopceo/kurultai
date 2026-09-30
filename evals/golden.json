@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "_comment": "Frozen golden query set for `kurultai eval`. Matchers hit atom title / source_id / title_hash — never atom id (content-hash, unstable). Hand-label from real dogfood queries; keep deny_sources noise assertions. See evals/README.md.",
+  "queries": [
+    {
+      "id": "search-mcp-wiring",
+      "kind": "search",
+      "query": "wire an agent to kurultai via MCP",
+      "relevant": [{ "title_contains": "AGENTS" }, { "source_id_contains": "AGENTS.md" }],
+      "deny_sources": ["pond"]
+    },
+    {
+      "id": "search-trust-lane",
+      "kind": "search",
+      "query": "quarantine trust lane quality gate",
+      "relevant": [{ "title_contains": "trust" }, { "source_id_contains": "trust-lane" }],
+      "deny_sources": ["pond"]
+    },
+    {
+      "id": "search-tier-policy",
+      "kind": "search",
+      "query": "hot warm cold memory tier policy rules",
+      "relevant": [{ "title_contains": "tier" }, { "source_id_contains": "tier" }],
+      "deny_sources": ["pond"]
+    },
+    {
+      "id": "search-hey-board",
+      "kind": "search",
+      "query": "hey board agent coordination messages",
+      "relevant": [{ "title_contains": "hey" }, { "source_id_contains": "hey" }],
+      "deny_sources": ["pond"]
+    },
+    {
+      "id": "search-device-connect",
+      "kind": "search",
+      "query": "kurultai connect device authorization flow",
+      "relevant": [{ "title_contains": "connect" }, { "source_id_contains": "connect" }],
+      "deny_sources": ["pond"]
+    },
+    {
+      "id": "search-readme",
+      "kind": "search",
+      "query": "what is kurultai assemble what you know",
+      "relevant": [{ "title_contains": "README" }, { "source_id_contains": "README" }],
+      "deny_sources": ["pond"]
+    },
+    {
+      "id": "search-index-ritual",
+      "kind": "search",
+      "query": "INDEX.md folder map audit-agent-index",
+      "relevant": [{ "title_contains": "index" }, { "source_id_contains": "agent-index" }],
+      "deny_sources": ["pond"]
+    },
+    {
+      "id": "search-ontology-board",
+      "kind": "search",
+      "query": "ontology board flowsint entities links",
+      "relevant": [{ "title_contains": "ontology" }, { "source_id_contains": "ontology" }],
+      "deny_sources": ["pond"]
+    },
+    {
+      "id": "search-brain-visual",
+      "kind": "search",
+      "query": "brain cortex hull soma synapse visualization",
+      "relevant": [{ "title_contains": "brain" }, { "source_id_contains": "brain" }],
+      "deny_sources": ["pond"]
+    },
+    {
+      "id": "search-deploy-server",
+      "kind": "search",
+      "query": "server-001 docker deploy redeploy knowledge.shippedit.dev",
+      "relevant": [{ "title_contains": "deploy" }, { "source_id_contains": "deploy" }],
+      "deny_sources": ["pond"]
+    },
+    {
+      "id": "search-noise-negative",
+      "kind": "search",
+      "query": "casual chat transcript session log",
+      "relevant": [],
+      "deny_sources": ["pond"]
+    },
+    {
+      "id": "ask-mcp-setup",
+      "kind": "ask",
+      "query": "How do I wire cursor to kurultai?",
+      "relevant": [],
+      "judge_answer": true
+    },
+    {
+      "id": "ask-trust-lanes",
+      "kind": "ask",
+      "query": "What is the difference between trusted and quarantine atoms?",
+      "relevant": [],
+      "judge_answer": true
+    },
+    {
+      "id": "ask-connect",
+      "kind": "ask",
+      "query": "How does kurultai connect get an agent key?",
+      "relevant": [],
+      "judge_answer": true
+    }
+  ]
+}

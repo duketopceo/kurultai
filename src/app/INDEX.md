@@ -19,7 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`context.rs`](context.rs) | AppContext: config + store + embedder wiring | `src/config` · `src/connectors` · `src/embed` · `src/environment` · `src/error` · `src/store` | — | 2026-08-29 | 2 | 2026-08-29 hub flag opens PostgresStore · 2026-08-16 indexed (v1 seed) |
+| [`context.rs`](context.rs) | AppContext: config + store + embedder wiring | `src/config` · `src/connectors` · `src/embed` · `src/environment` · `src/error` · `src/store` | — | 2026-09-15 | 3 | 2026-09-15 embedder/reranker key falls back to `openrouter.key` file (#329) |
 | [`mod.rs`](mod.rs) | CLI App orchestration (index/search/ask/status) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent

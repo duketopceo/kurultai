@@ -17,6 +17,10 @@ use tokio::task::JoinHandle;
 
 /// Debounce window before a notify burst triggers one incremental index.
 pub const WATCH_DEBOUNCE: Duration = Duration::from_millis(300);
+/// Minimum spacing between watch-triggered index cycles. Debounce collapses
+/// bursts, but a sustained event stream (sync loop, log writer) otherwise
+/// re-indexes back-to-back forever — observed ~2,000 cycles/46min at 800%+ CPU.
+pub const WATCH_MIN_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Delay before re-arming notify after the watch task ends unexpectedly.
 const WATCH_REARM_DELAY: Duration = Duration::from_secs(2);
@@ -37,6 +41,8 @@ pub struct DaemonOptions {
     pub inactivity_threshold_hours: Option<u64>,
     /// Shared secret for MCP HTTP/SSE (`POST /mcp`). None disables.
     pub mcp_http_secret: Option<String>,
+    /// `--bind` override (e.g. `tailscale`, `0.0.0.0`, a literal IP). None = env/default.
+    pub bind: Option<String>,
 }
 
 /// Live daemon scheduler state for `/api/status` (#73).
@@ -301,6 +307,7 @@ pub async fn run(
             port: opts.port,
             mcp_http_secret: opts.mcp_http_secret,
             bind_all: http::resolve_bind_all_from_env(),
+            bind: opts.bind,
             hub: http::resolve_hub_gate_from_env(),
         },
     )
@@ -480,6 +487,11 @@ async fn watch_session(
     // Keep watcher alive for the duration of this session.
     let _watcher = watcher;
 
+    // checked_sub: Instant's epoch may be boot-time — subtracting the floor
+    // panics when uptime < WATCH_MIN_INTERVAL (early-boot daemon).
+    let mut last_cycle = Instant::now()
+        .checked_sub(WATCH_MIN_INTERVAL)
+        .unwrap_or_else(Instant::now);
     loop {
         match rx.recv().await {
             Some(Ok(_event)) => {}
@@ -505,6 +517,13 @@ async fn watch_session(
                 Err(_) => break,
             }
         }
+
+        // Rate-limit: events arriving during the wait stay buffered and all
+        // collapse into this one cycle.
+        let wait = WATCH_MIN_INTERVAL.saturating_sub(last_cycle.elapsed());
+        if !wait.is_zero() {
+            tokio::time::sleep(wait).await;
+        }
         while rx.try_recv().is_ok() {}
 
         run_poll_cycle(
@@ -516,6 +535,7 @@ async fn watch_session(
             false,
         )
         .await;
+        last_cycle = Instant::now();
     }
 }
 
@@ -668,6 +688,7 @@ mod tests {
             nightly_full_sync_hour: None,
             inactivity_threshold_hours: None,
             mcp_http_secret: None,
+            bind: None,
         }
     }
 

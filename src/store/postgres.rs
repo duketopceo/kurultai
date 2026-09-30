@@ -6,10 +6,10 @@ use super::{IngestionJob, SearchFilter, Store, DEFAULT_PROJECT, MIN_EMBEDDING_NO
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::hub::HubActivityStore;
-use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
+use crate::memory::{classify_atom, GraphNode, MemoryTier, TierPolicy};
 use crate::types::{
-    normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink, TrustLane,
-    VisibilityScope,
+    normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink,
+    OntologyProposal, TrustLane, VisibilityScope,
 };
 use chrono::{DateTime, Utc};
 use pgvector::Vector;
@@ -1052,7 +1052,7 @@ impl Store for PostgresStore {
         let mut cold = 0u64;
         for row in rows {
             let atom = Self::atom_from_row(&row)?;
-            match classify(atom.indexed_at, atom.last_accessed_at, now, policy) {
+            match classify_atom(&atom, now, &policy) {
                 MemoryTier::Hot => hot += 1,
                 MemoryTier::Warm => warm += 1,
                 MemoryTier::Cold => cold += 1,
@@ -1068,23 +1068,43 @@ impl Store for PostgresStore {
         filter: SearchFilter,
         policy: TierPolicy,
     ) -> Result<Vec<GraphNode>> {
-        let sql = if filter.trusted_only {
-            format!(
-                "SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE trust_lane = 'trusted'
-                 ORDER BY last_accessed_at DESC LIMIT $1"
-            )
+        let mut conditions: Vec<&str> = Vec::new();
+        if filter.trusted_only {
+            conditions.push("trust_lane = 'trusted'");
+        }
+        if filter.source.is_some() {
+            conditions.push("source = $2");
+        }
+        if filter.exclude_source.is_some() {
+            // $2 when no source match; $3 when both present — bind order below.
+            conditions.push(if filter.source.is_some() {
+                "source != $3"
+            } else {
+                "source != $2"
+            });
+        }
+        let where_sql = if conditions.is_empty() {
+            String::new()
         } else {
-            format!(
-                "SELECT {ATOM_SELECT} FROM knowledge_atoms ORDER BY last_accessed_at DESC LIMIT $1"
-            )
+            format!("WHERE {}", conditions.join(" AND "))
         };
+        let sql = format!(
+            "SELECT {ATOM_SELECT} FROM knowledge_atoms {where_sql}
+             ORDER BY last_accessed_at DESC LIMIT $1"
+        );
         let fetch_cap = if tier.is_some() {
             (limit.saturating_mul(8)).max(limit).min(50_000)
         } else {
             limit.min(50_000)
         };
-        let rows = sqlx::query(&sql)
-            .bind(fetch_cap as i64)
+        let mut q = sqlx::query(&sql).bind(fetch_cap as i64);
+        if let Some(ref s) = filter.source {
+            q = q.bind(s);
+        }
+        if let Some(ref s) = filter.exclude_source {
+            q = q.bind(s);
+        }
+        let rows = q
             .fetch_all(&self.pool)
             .await
             .map_err(|e| KurultaiError::Store(format!("list_graph_nodes: {e}")))?;
@@ -1092,7 +1112,7 @@ impl Store for PostgresStore {
         let mut out = Vec::new();
         for row in rows {
             let atom = Self::atom_from_row(&row)?;
-            let t = classify(atom.indexed_at, atom.last_accessed_at, now, policy);
+            let t = classify_atom(&atom, now, &policy);
             if let Some(want) = tier {
                 if t != want {
                     continue;
@@ -1191,6 +1211,40 @@ impl Store for PostgresStore {
     }
 
     async fn list_ontology_links(&self, _endpoint: Option<&str>) -> Result<Vec<OntologyLink>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn delete_ontology_entity(&self, _id: &str) -> Result<()> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn delete_ontology_link(&self, _id: &str) -> Result<()> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn insert_ontology_proposal(&self, _p: &OntologyProposal) -> Result<()> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn get_ontology_proposal(&self, _id: &str) -> Result<Option<OntologyProposal>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn list_ontology_proposals(
+        &self,
+        _status: Option<&str>,
+        _limit: usize,
+    ) -> Result<Vec<OntologyProposal>> {
+        Err(KurultaiError::Store("ontology not on hub store yet".into()))
+    }
+
+    async fn decide_ontology_proposal(
+        &self,
+        _id: &str,
+        _status: &str,
+        _decided_by: &str,
+        _decided_at: &str,
+    ) -> Result<OntologyProposal> {
         Err(KurultaiError::Store("ontology not on hub store yet".into()))
     }
 }

@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-09-01
-version: 5
+updated: 2026-09-18
+version: 17
 ---
 
 # `.`
@@ -24,7 +24,9 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 - [`.github/`](.github/INDEX.md) — CI, templates, CODEOWNERS
 - [`.compound-engineering/`](.compound-engineering/INDEX.md) — Compound Engineering per-checkout local configuration
 - [`.devcontainer/`](.devcontainer/INDEX.md) — Local dev-container dogfood definitions (Debian + Ubuntu)
+- [`design-lab/`](design-lab/INDEX.md) — UI batch-design scratch: committed prompts, gitignored generated variants
 - [`docs/`](docs/INDEX.md) — Product + agent docs
+- [`evals/`](evals/INDEX.md) — Retrieval eval golden set + labeling guide
 - [`plans/`](plans/INDEX.md) — Legacy root-level plans (prefer docs/plans/)
 - [`plugin/`](plugin/INDEX.md) — Agent Zero plugin (tools, daemon proxy, embedded Brain UI)
 - [`scripts/`](scripts/INDEX.md) — Install, UI build, closeout, index audit
@@ -41,32 +43,70 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 |------|------|-------|---------|-------|-----|-----------|
 | [`.coderabbit.yaml`](.coderabbit.yaml) | CodeRabbit: auto-review off | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`.dockerignore`](.dockerignore) | Docker build context excludes for the hub image | — | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 hub image context |
-| [`.env.example`](.env.example) | Example env vars (API keys, hub bind) | — | — | 2026-08-29 | 2 | 2026-08-29 hub env block (HUB-3) · 2026-08-16 indexed (v1 seed) |
-| [`.gitignore`](.gitignore) | Ignored build, env, and agent workspace paths | — | — | 2026-09-01 | 4 | 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
+| [`.env.example`](.env.example) | Example env vars (API keys, hub bind, eval/web) | — | — | 2026-09-17 | 3 | 2026-09-17 eval/web block (`PERPLEXITY_API_KEY`, `KURULTAI_FEATURE_WEB_SEARCH`) · 2026-08-29 hub env block (HUB-3) · 2026-08-16 indexed (v1 seed) |
+| [`.gitignore`](.gitignore) | Ignored build, env, agent workspace, eval report, design-lab output paths | — | — | 2026-09-26 | 7 | 2026-09-26 `design-lab/out/` (batch variants are scratch) · 2026-09-18 root `node_modules/` (Argus tooling shim) · 2026-09-17 `evals/reports/` · 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-08-16 | 2 | 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
+| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-05 | 3 | 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Prompt snippet for wiring agents to Kurultai | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-09-01 | 3 | 2026-09-01 v0.5.0 release notes · 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
+| [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-09-11 | 4 | 2026-09-11 v0.6.0 release notes · 2026-09-01 v0.5.0 release notes · 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor covenant | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`CONCEPTS.md`](CONCEPTS.md) | Shared domain vocabulary (atoms, hub, FTS-first, ontology) | — | — | 2026-08-29 | 2 | 2026-08-29 Hub paragraph points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup, tests, PR and architecture guidelines | `INDEX.md` · `docs/agent-index.md` | — | 2026-08-16 | 2 | 2026-08-16 agent-index subsection · 2026-08-16 indexed (v1 seed) |
+| [`CONCEPTS.md`](CONCEPTS.md) | Shared domain vocabulary (atoms, hub, FTS-first, ontology, golden set, judge, web augmentation) | — | — | 2026-09-17 | 3 | 2026-09-17 golden set / judge / web augmentation terms · 2026-08-29 Hub paragraph points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup, tests, PR and architecture guidelines | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-15 | 4 | 2026-09-15 FEATURE_MATRIX sync-contract note (#329) |
 | [`Cargo.lock`](Cargo.lock) | Locked Rust dependency graph for reproducible CI | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.5.0) and optional features | — | — | 2026-09-01 | 4 | 2026-09-01 bump to v0.5.0 · 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-16 indexed (v1 seed) |
+| [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.6.0) and optional features | — | — | 2026-09-11 | 5 | 2026-09-11 bump to v0.6.0 · 2026-09-01 bump to v0.5.0 · 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-16 indexed (v1 seed) |
 | [`Dockerfile`](Dockerfile) | Multi-stage hub image (`--features postgres`) | `docs/deploy/railway-hub.md` | `docker-compose.hub.yml` | 2026-08-29 | 1 | 2026-08-29 HUB-3 Railway/compose image |
-| [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | Kurultai Feature Matrix (KHAN-251) | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | Kurultai Feature Matrix (KHAN-251) | — | — | 2026-09-15 | 2 | 2026-09-15 ported from kurultai-private + sync-contract note (#329) |
 | [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-01 | 3 | 2026-09-01 v0.5.0 release stack facts · 2026-08-19 rewrite for v0.4.1 stack facts · 2026-08-16 indexed (v1 seed) |
+| [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-12 | 5 | 2026-09-12 link ROADMAP.md in Status · 2026-09-11 v0.6.0 release stack facts · 2026-09-01 v0.5.0 release stack facts |
+| [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-09-12 | 1 | 2026-09-12 created — issue #122 |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-01 | 2 | 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
+| [`argus-reviewer.config.ts`](argus-reviewer.config.ts) | Argus reviewer config — code-review-only (`run: 'false'`), OpenRouter BYOK, Jev secrets adjudication on | `.github/workflows/argus-reviewer.yml` · `package.json` | — | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
+| [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-18 | 3 | 2026-09-18 [judge] section docs · 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
 | [`docker-compose.hub.yml`](docker-compose.hub.yml) | Local pgvector + hub daemon proof of Railway recipe | `Dockerfile` · `docs/deploy/railway-hub.md` | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 compose proof |
 | [`hey.md`](hey.md) | Informal notes / scratch | — | — | 2026-08-08 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`package.json`](package.json) | npm shim — anchors `argus-reviewer-e2e@0.2.0` (npm release) so the Argus action's `npm ci`/`npx` resolve; not a JS app | `.github/workflows/argus-reviewer.yml` | `package-lock.json` · `.gitignore` | 2026-09-21 | 2 | 2026-09-21 re-pinned git SHA → npm 0.2.0 (Jev-bearing release) · 2026-09-18 Argus PR review wiring |
+| [`package-lock.json`](package-lock.json) | Lockfile for the Argus tooling shim — resolves `argus-reviewer-e2e@0.2.0` from npm | `package.json` | — | 2026-09-21 | 2 | 2026-09-21 re-pinned git SHA → npm 0.2.0 · 2026-09-18 Argus PR review wiring |
 | [`rust-toolchain.toml`](rust-toolchain.toml) | Rust toolchain pin | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-26 — UI rebuild units U1–U3 scaffold: `docs/design/` (teardown definitions — 3-palette clash + fake-data findings; research bases) + `design-lab/` (4 surface prompts) + `scripts/ui-batch.mjs` OpenRouter runner; batch generation + stitching remain
+- 2026-09-25 — UI/UX teardown + rebuild plan (`docs/plans/2026-09-25-001`): teardown inventory → definitions doc → ThreeUI/VoltOps/bolt.new research → batch Kimi/GPT design gen → stitched `ui-next` → local preview gate → tagged ~v0.6.5 cutover; Brain concept kept, frontend-only
+- 2026-09-23 — `/api/graph` prepared payload (#324): publish-on-mutation via `Store::atom_epoch`, param-keyed `graph_cache` serves nodes byte-for-byte; hub stores (epoch `u64::MAX`) stay live
+- 2026-09-21 — Argus action re-pin `@v0.2.0` → full SHA `75492b8a` on `fix/argus-sha-pin` (mutable tag held `OPENROUTER_API_KEY` + write scopes; flagged by live dogfood review)
+- 2026-09-21 — Argus shim re-pin on `feat/argus-pr-review`: `package.json`/`package-lock.json` git SHA → npm `argus-reviewer-e2e@0.2.0`, action `uses:` → `duketopceo/Argus/action@v0.2.0`; picks up the Jev stack (triage/secrets adjudication) the config already enables
+- 2026-09-20 — Wave H kickoff (`docs/plans/2026-09-20-001`): client perf telemetry (#102 — `POST /api/metrics/client` + `website/src/perf.ts` reporter: nav/tier-load/fps/long-tasks/heap per tier) + `WATCH_MIN_INTERVAL` 30s floor on watch-triggered index cycles (sustained inotify streams hot-looped at ~824% CPU)
+- 2026-09-19 — mobile overflow fix (`styles.css`): dead `.nav-links` selector → `.topbar-nav`; wrap rules moved after base rules (cascade order bug, found by E2E scrollWidth probe at 390px)
+- 2026-09-19 — Hey board repair round 2: active-thread hop fixed in `HeyPanel` (id-vs-name resolution — UUID-named threads stole selection); `Chatboard` gains whole-thread `kb-expanded` overlay via `createPortal` + 8-char UUID labels; `hey.rs` `resolve_thread_id` prefers `get_thread(id)` over name; `ui/` rebuilt
+- 2026-09-18 — Hey rail spacing repair (`website/src/styles.css` + rebuilt `ui/`): `.panel-head` rule added (Hey/Proposals headers unstyled), kanban stacks vertically in rail, threads chip row, ellipsis fix
+- 2026-09-18 — Jev first-class: `[judge]` config (enabled/model), `/api/ask` + MCP `ask` `web` flag → `ask_with_web`, `status` judge line, `judge_from_config` in `brain_from_app`.
+- 2026-09-18 — Argus reviewer PR wiring on `feat/argus-pr-review`: `.github/workflows/argus-reviewer.yml` (pinned action, `run: 'false'` review-only), root `package.json`/`package-lock.json` npm shim (git-pinned `argus-reviewer-e2e`), `argus-reviewer.config.ts`, `.gitignore` root `node_modules/`; `OPENROUTER_API_KEY` repo secret added 2026-09-21
+- 2026-09-17 — retrieval evals + `ask --web` shipped on `feat/retrieval-evals`: `evals/` golden set, `src/eval/` (runner+metrics+Jev judge), `src/web/` (Perplexity), `kurultai eval` + `ask --web`, `web_search` feature flag.
+- 2026-09-17 — `docs/plans/2026-09-17-001` retrieval evals + `ask --web` plan: frozen golden set, `kurultai eval` HTTP runner (Recall@k/P@k/MRR/nDCG, noise exclusion), Jev judge via OpenRouter decisions API (env-gated, pinned `typesafe/jev-1.13`), opt-in ephemeral `ask --web` Perplexity REST augmentation.
+- 2026-09-17 — UI polish + E2E pass: Brain density attenuation (sprite/edge/corona/soma scale with `sizeScale` — dense tiers no longer fuse white), thin dark scrollbars, floating inspector clears command rail, Hey solo write path (`require_writer` → `luke`/local when zero auth configured); `ui/` rebuilt.
+- 2026-09-16 — `feat/connect-device-flow`: `kurultai connect <url>` RFC 8628 device auth — `POST /api/device/code|token`, `/connect` approval page (CF Access → hub key → loopback), schema v16 `agent_seats` (codename+instance_id keys, no `codename-2`), omaseal/0600-key storage, `wire_agent` reuse, `agent revoke`, 401 `run kurultai connect` hint.
+- 2026-09-15 — zero-friction solo path (#329): `init --key/--key-file/--no-key` + key file fallback (0600), `kurultai webui` (spawn/poll/open/--print-url), `daemon --bind` incl. `tailscale` 100.x resolution + non-loopback warning, `FEATURE_MATRIX.md` ported from private.
+- 2026-09-15 — Wave H serve-path hardening milestone: issues #323-#326 (versioning, prepared payload, tier policy, reindex outbox) + `docs/plans/phase-6-next-work-orders.md` update.
+- 2026-09-15 — `feat/tier-policy-rules` (#325): `[tiers]`/`[[tiers.rule]]` config → `TierPolicy.rules` + `classify_atom`; BrainService wired via `brain_from_app`.
+- 2026-09-15 — ontology board v2 (#320): store deletes + `DELETE /api/ontology/entity|link/{id}` (human lane, DELETE added to write guard); board edge menu + delete-entity confirm + Escape; `ui/` rebuilt
+- 2026-09-14 — Flowsint-style ontology board shipped (#316): `website/` `@xyflow/react` board replaces 3D ontology layout; `src/http/ontology_write.rs` human-lane entity/link writes (agents refused); `src/ontology` create_entity/create_link; `ui/` rebuilt
+- 2026-09-14 — `docs/plans/2026-09-14-001` Flowsint-style ontology board plan (#316): ontology toggle → 2D `@xyflow/react` board; needs human entity/link write lane
+- 2026-09-13 — v2 Brain dashboard chrome: top-pill search + tier/horizon controls, right Command rail (Hey/Repos/Logs/Settings), bottom Mission Control (Pulse/Focus/Synthesize/Ask), floating inspector, Settings + Logs tabs; `ui/` rebuilt
+- 2026-09-12 — neuron motif implemented (plan 2026-09-12-001): `dendrite.ts` faceted soma + procedural corona, `spikes.ts` traveling activity-encoded spikes, hover stimulation; `ui/` rebuilt; 48 website tests green
+- 2026-09-12 — `docs/plans/2026-09-12-001` Brain neuron-motif visual language plan (soma + dendrite corona + traveling spikes; first-principles derivation; visual-only scope)
+- 2026-09-12 — Brain cortex doctrine rebalance (`website/src/brain/BrainView.ts` + `ui/` rebuild): pale-white nodes over deep black, tighter halos, per-synapse shimmer/zap
+- 2026-09-12 — `ROADMAP.md` created (issue #122): living solo → team → company audience roadmap; README Status links it
+- 2026-09-11 — O3 ontology proposal/approval queue (#118): schema v15 `ontology_proposals`, `submit_proposal`/`decide_proposal`, `/api/ontology/proposals*` REST (agents propose, humans decide), MCP `ontology_propose`/`ontology_proposals`, Brain UI review queue panel
+- 2026-09-11 — v0.6.0 release prep: crate/website versions → 0.6.0, CHANGELOG, README, ci.yml runs all website tests
+- 2026-09-11 — `kurultai init --config` fix merged (#310); public→private sync
+- 2026-09-06 — `src/http/cf_access.rs` new: verified Cloudflare Access JWT satisfies hub auth for human browser login (Google/OTP via Access, no API-key paste); `KURULTAI_CF_ACCESS_TEAM` + `KURULTAI_CF_ACCESS_AUDS`; `HubGate.cf_access` + `authorize_bearer` split in `auth.rs`
+- 2026-09-06 — docs/plans: added 002 Brain 0→100 showcase + A2A chatboard plan (ce-plan)
+- 2026-09-05 — AGENTS.md: hosted brain + ontology promote notes; index row bump
+- 2026-09-05 — website/ui: tiered graph fetch (api.ts GraphQuery + load-tier limits) and rebuild
+- 2026-09-03 — `docs/plans/2026-09-03-001-feat-agent-message-board-plan.md` added
 - 2026-09-01 — add `.devcontainer/` dogfood setup: Dockerfile + docker-compose + INDEX, unignore for sharing
 - 2026-09-01 — track `.compound-engineering/config.local.yaml`, add `.devcontainer/` to `.gitignore`
 - 2026-09-01 — v0.5.0 Team released: GitHub tag + release created; queue + Year-1 milestones marked shipped

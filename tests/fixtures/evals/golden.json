@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "_comment": "CI-safe golden subset for tests/fixtures/vault. Offline only \u2014 no judge, no external calls.",
+  "queries": [
+    {
+      "id": "fixture-golden-token",
+      "kind": "search",
+      "query": "KNOWN_PHRASE_KURULTAI_42",
+      "relevant": [
+        {
+          "source_id_contains": "ops/deploy.md"
+        }
+      ],
+      "deny_sources": [
+        "pond"
+      ]
+    },
+    {
+      "id": "fixture-deploy-migration",
+      "kind": "search",
+      "query": "database migration scripts before cutting traffic",
+      "relevant": [
+        {
+          "source_id_contains": "ops/deploy.md"
+        }
+      ],
+      "deny_sources": [
+        "pond"
+      ]
+    },
+    {
+      "id": "fixture-rollback",
+      "kind": "search",
+      "query": "rollback via previous release tag",
+      "relevant": [
+        {
+          "source_id_contains": "ops/deploy.md"
+        }
+      ],
+      "deny_sources": [
+        "pond"
+      ]
+    }
+  ]
+}

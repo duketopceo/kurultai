@@ -1,5 +1,8 @@
 import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { BrainView } from '../brain/BrainView';
+import { OntologyBoard } from './OntologyBoard';
+import { selectIntentionalLinks } from '../brain/linkSelect';
+import { reportFps } from '../perf';
 import type { Atom, LayoutMode, OntologyResponse } from '../types';
 
 const dbg = (...args: unknown[]) => console.debug('[kurultai:brain]', ...args);
@@ -24,10 +27,11 @@ interface Props {
   atomTotal: number;
   onSelect: (atom: Atom) => void;
   onHover: (atom: Atom | null) => void;
+  onOntologyChanged: (onto: OntologyResponse) => void;
   caption: string;
 }
 
-export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, caption }, ref) {
+export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, onOntologyChanged, caption }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const brainRef = useRef<BrainView | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -65,7 +69,14 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
       onError: (msg) => { dbg('BrainView error:', msg); console.error('[BrainView]', msg); },
     });
     brainRef.current = brain;
-    return () => { dbg('BrainView dispose'); brain.dispose(); brainRef.current = null; };
+    // Console handle for scene measurement — `__kurultaiBrain.metrics()`.
+    (window as unknown as { __kurultaiBrain?: BrainView }).__kurultaiBrain = brain;
+    return () => {
+      dbg('BrainView dispose');
+      delete (window as unknown as { __kurultaiBrain?: BrainView }).__kurultaiBrain;
+      brain.dispose();
+      brainRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -91,8 +102,9 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
 
   useEffect(() => {
     if (!brainRef.current || !ready) return;
+    // The 2D board owns ontology mode; BrainView keeps running brain layout underneath.
     dbg('setLayout:', layout);
-    brainRef.current.setLayout(layout);
+    brainRef.current.setLayout(layout === 'ontology' ? 'brain' : layout);
   }, [layout, ready]);
 
   return (
@@ -131,10 +143,24 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
         </div>
       )}
       <div id="brain-canvas" ref={hostRef} aria-label="3D memory graph" style={{ width: '100%', height: '100%' }} />
-      <div className="brain-overlay" aria-hidden="true">
-        <span>DRAG / ORBIT</span>
-        <span>SCROLL / ZOOM</span>
-      </div>
+      {layout === 'ontology' ? (
+        <div className="onto-board-host">
+          <OntologyBoard
+            ontology={ontology}
+            atoms={atoms}
+            onSelect={onSelect}
+            onOntologyChanged={onOntologyChanged}
+          />
+        </div>
+      ) : (
+        <>
+          <div className="brain-overlay" aria-hidden="true">
+            <span>DRAG / ORBIT</span>
+            <span>SCROLL / ZOOM</span>
+          </div>
+          <BrainHud getBrain={() => brainRef.current} />
+        </>
+      )}
       {tooltip && (
         <div
           id="node-tooltip"
@@ -155,6 +181,29 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
   );
 });
 
+/** Live scene readout — FPS · synapses · nodes, polled from BrainView.metrics(). */
+function BrainHud({ getBrain }: { getBrain: () => BrainView | null }) {
+  const [stats, setStats] = useState<{ fps: number; nodes: number; synapses: number } | null>(null);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const m = getBrain()?.metrics();
+      if (m && m.nodes > 0) {
+        setStats({ fps: m.fps, nodes: m.nodes, synapses: m.renderedEdges });
+        reportFps(m.fps);
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [getBrain]);
+  if (!stats) return null;
+  return (
+    <div className="brain-hud" aria-hidden="true">
+      <span>{Math.round(stats.fps)} FPS</span>
+      <span>{stats.nodes.toLocaleString()} NEURONS</span>
+      <span>{stats.synapses.toLocaleString()} SYNAPSES</span>
+    </div>
+  );
+}
+
 function buildLinks(atoms: Atom[]) {
   const tagIndex = new Map<string, string[]>();
   atoms.forEach((a) => {
@@ -164,17 +213,24 @@ function buildLinks(atoms: Atom[]) {
       tagIndex.set(t, list);
     });
   });
-  const seen = new Set<string>();
-  const links: { a: string; b: string; strength: number }[] = [];
+  const pairCount = new Map<string, number>();
   tagIndex.forEach((ids) => {
     // cap per-tag pairs to avoid O(n²) explosion on dense tags like "code" or "rs"
     const limit = Math.min(ids.length, MAX_LINKS_PER_TAG);
     for (let i = 0; i < limit; i++) {
       for (let j = i + 1; j < limit; j++) {
         const key = ids[i] < ids[j] ? `${ids[i]}:${ids[j]}` : `${ids[j]}:${ids[i]}`;
-        if (!seen.has(key)) { seen.add(key); links.push({ a: ids[i], b: ids[j], strength: 1 }); }
+        pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
       }
     }
   });
-  return links;
+  const links: { a: string; b: string; strength: number }[] = [];
+  for (const [key, count] of pairCount) {
+    const [a, b] = key.split(':');
+    links.push({ a, b, strength: count });
+  }
+  // Shared-tag derivation yields cliques; keep only load-bearing synapses
+  // (mutual top-K nominations + all links of low-degree bridge/leaf nodes)
+  // so the wiring reads as intentional paths, not a filled mesh.
+  return selectIntentionalLinks(links);
 }

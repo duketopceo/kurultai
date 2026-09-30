@@ -9,10 +9,11 @@ use kurultai::error::Result;
 use kurultai::export::{export_pack, import_pack, resolve_config_file, ImportMode};
 use kurultai::logging;
 use kurultai::mcp::{
-    ensure_default_config, init_walkthrough, provision_docs, wire_agent, AgentRead, AgentTarget,
-    BrainService,
+    ensure_default_config, ensure_default_config_at, init_walkthrough, provision_docs, wire_agent,
+    AgentRead, AgentTarget, BrainService,
 };
 use kurultai::write_policy::{WriteContext, WriteTransport};
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -21,7 +22,7 @@ use std::sync::Arc;
     name = "kurultai",
     version,
     about = "Assemble what you know, from wherever it lives.",
-    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>  ·  init --doctor\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        mcp  ·  daemon --port 8421    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
+    after_help = "Setup        kurultai init --docs  ·  init --agent <cursor|claude|codex|hermes|all|none>  ·  init --doctor\nAuth         kurultai connect <instance-url> [--codename <name>]  ·  login --base-url … --codename <name>\nKnowledge    index [--full]  ·  search  ·  ask  ·  who-knows  ·  status  ·  promote\nServe        webui  ·  mcp  ·  daemon [--port 8421 --bind tailscale]    Brain UI → http://127.0.0.1:8421/ui/\nPacks        export  ·  import\nMaintenance  prune --generated  ·  doctor"
 )]
 struct Cli {
     /// Log filter (overrides KURULTAI_LOG). Example: kurultai=trace,info
@@ -60,6 +61,15 @@ enum Commands {
         /// Run `doctor` diagnostics after setup
         #[arg(long)]
         doctor: bool,
+        /// OpenRouter API key for vector recall + LLM ask (non-interactive)
+        #[arg(long, value_name = "KEY", hide_env = true)]
+        key: Option<String>,
+        /// Read the OpenRouter key from a file instead of prompting
+        #[arg(long, value_name = "PATH")]
+        key_file: Option<PathBuf>,
+        /// Never prompt for a key (agents/CI; also implied by non-TTY stdin)
+        #[arg(long)]
+        no_key: bool,
     },
     /// Ingest configured sources into the brain
     Index {
@@ -79,6 +89,46 @@ enum Commands {
     Ask {
         /// The question to answer
         question: String,
+        /// Augment thin local context with a Perplexity web call (ephemeral;
+        /// needs PERPLEXITY_API_KEY and KURULTAI_FEATURE_WEB_SEARCH=1)
+        #[arg(long)]
+        web: bool,
+    },
+    /// Pre-merge commit review: judge each commit in a range for secrets,
+    /// security regressions, and message/diff mismatches (needs OPENROUTER_API_KEY)
+    Review {
+        /// Commit range, e.g. origin/main..HEAD
+        range: String,
+        /// Repo path (default: current directory)
+        #[arg(long)]
+        repo: Option<std::path::PathBuf>,
+        /// Judge model override (default: pinned typesafe/jev-1.13)
+        #[arg(long)]
+        judge_model: Option<String>,
+        /// Write the full JSON report to this path
+        #[arg(long)]
+        json: Option<std::path::PathBuf>,
+    },
+    /// Run the retrieval eval golden set against a live daemon
+    Eval {
+        /// Daemon base URL
+        #[arg(long, default_value = "http://127.0.0.1:8421")]
+        base_url: String,
+        /// Path to the golden query set
+        #[arg(long, default_value = "evals/golden.json")]
+        golden: PathBuf,
+        /// Top-k window for metrics
+        #[arg(long, default_value = "10")]
+        k: usize,
+        /// Grade hits and answers with the Jev judge (needs OPENROUTER_API_KEY)
+        #[arg(long)]
+        judge: bool,
+        /// Judge model override (default: pinned typesafe/jev-1.13)
+        #[arg(long)]
+        judge_model: Option<String>,
+        /// Also write the JSON report to this path
+        #[arg(long)]
+        json: Option<PathBuf>,
     },
     /// Which sources know about a topic
     #[command(name = "who-knows", visible_alias = "who_knows")]
@@ -118,6 +168,11 @@ enum Commands {
         #[arg(long)]
         namespace: Option<String>,
     },
+    /// Manage multi-agent message board codenames (solo)
+    Agent {
+        #[command(subcommand)]
+        command: AgentCommands,
+    },
     /// HTTP API + Brain UI (`http://127.0.0.1:8421/ui/`) + poll/watch
     Daemon {
         /// Port for the HTTP server (`PORT` env for Railway/containers)
@@ -132,6 +187,28 @@ enum Commands {
         /// Disable notify filesystem watch (markdown/github roots)
         #[arg(long)]
         no_watch: bool,
+        /// Bind address: 127.0.0.1 (default), 0.0.0.0, a literal IP, or
+        /// `tailscale` (resolves the local 100.x tailnet IPv4)
+        #[arg(long, value_name = "ADDR")]
+        bind: Option<String>,
+    },
+    /// Print (or open) the Brain UI URL — spawns a daemon if none is serving
+    Webui {
+        /// Daemon HTTP port
+        #[arg(long, default_value = "8421")]
+        port: u16,
+        /// Open the URL in a browser (default when stdout is a TTY)
+        #[arg(long)]
+        open: bool,
+        /// Do not open a browser even on a TTY
+        #[arg(long)]
+        no_open: bool,
+        /// Print the URL and exit (headless agents)
+        #[arg(long)]
+        print_url: bool,
+        /// Extra args forwarded to the spawned daemon (e.g. --bind tailscale)
+        #[arg(last = true, value_name = "DAEMON_ARGS")]
+        daemon_args: Vec<String>,
     },
     /// Export this setup to a `.kurultai` pack
     Export {
@@ -161,6 +238,40 @@ enum Commands {
     },
     /// Run diagnostic checks (DB, config, MCP, HTTP, embeddings, ontology, connectors)
     Doctor,
+    /// Connect this machine to a Kurultai instance — browser-approved device
+    /// authorization (RFC 8628) that mints + stores an agent key and wires MCP
+    Connect {
+        /// Instance URL, e.g. https://knowledge.shippedit.dev or http://127.0.0.1:8421
+        url: String,
+        /// Codename for this agent (product family, e.g. cursor, claude, devin)
+        #[arg(long, short = 'n')]
+        codename: Option<String>,
+        /// Seat id distinguishing this machine under the codename
+        /// (default: $KURULTAI_INSTANCE_ID → hostname)
+        #[arg(long)]
+        instance_id: Option<String>,
+        /// MCP clients to wire: cursor, claude, codex, hermes, all, or none
+        #[arg(long, default_value = "all")]
+        agent: AgentTarget,
+        /// Print the approval URL instead of opening a browser
+        #[arg(long)]
+        no_open: bool,
+    },
+    /// Sign in to a hosted Kurultai instance and store a long-lived agent token locally
+    Login {
+        /// Kurultai API base URL, e.g. https://api-knowledge.shippedit.dev
+        #[arg(long, short = 'u')]
+        base_url: String,
+        /// Codename this agent will use on the message board
+        #[arg(long, short = 'n')]
+        codename: String,
+        /// Do not try to open the approval page in a browser
+        #[arg(long)]
+        no_browser: bool,
+        /// Optional local account name for the keyring (default: <codename>-agent-token)
+        #[arg(long, short = 'a')]
+        account: Option<String>,
+    },
     /// Mint/revoke/list scoped access tokens for HTTP/MCP API consumers
     Admin {
         #[command(subcommand)]
@@ -171,6 +282,26 @@ enum Commands {
     Hub {
         #[command(subcommand)]
         command: HubCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum AgentCommands {
+    /// Register a new codename and print the one-time API key.
+    Add {
+        /// Unique agent codename (e.g. "claude", "cursor", "devin")
+        codename: String,
+    },
+    /// List registered codenames. Never shows keys.
+    List,
+    /// Revoke an agent's credentials — all seats and the primary key, or one
+    /// seat with `--instance-id`.
+    Revoke {
+        /// Agent codename to revoke
+        codename: String,
+        /// Revoke only this seat (other seats keep working)
+        #[arg(long)]
+        instance_id: Option<String>,
     },
 }
 
@@ -276,8 +407,14 @@ async fn main() -> Result<()> {
             ref docs,
             index,
             doctor,
+            ref key,
+            ref key_file,
+            no_key,
         } => {
-            let config_path = ensure_default_config()?;
+            let config_path = match cli.config.as_deref() {
+                Some(path) => ensure_default_config_at(path.to_path_buf())?,
+                None => ensure_default_config()?,
+            };
             let banner_mode = load_config_from(&config_path)
                 .map(|c| c.banner)
                 .unwrap_or(BannerMode::Auto);
@@ -292,6 +429,9 @@ async fn main() -> Result<()> {
                 "{}",
                 init_walkthrough(&config_path, provisioned.as_ref(), &mcp_paths, agent, index,)
             );
+            if let Some(msg) = init_key_setup(key.as_deref(), key_file.as_deref(), no_key)? {
+                println!("{msg}");
+            }
             if index {
                 let app = bootstrap_app(&cli).await?;
                 tracing::info!(full = true, "starting index");
@@ -349,16 +489,135 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Commands::Ask { ref question } => {
+        Commands::Ask { ref question, web } => {
             let app = bootstrap_app(&cli).await?;
-            tracing::info!(question = %question, "ask requested");
+            tracing::info!(question = %question, web, "ask requested");
             let brain = brain_from_app(&app);
-            let answer = brain.ask(question).await?;
+            let answer = if web {
+                brain.ask_with_web(question, None, 2).await?
+            } else {
+                brain.ask(question).await?
+            };
             println!("Q: {}", answer.question);
             println!("A: {}", answer.answer);
             println!("confidence: {:.2}", answer.confidence);
             for c in &answer.citations {
                 println!("  cite: {} / {} — {}", c.source, c.source_id, c.title);
+            }
+        }
+        Commands::Review {
+            ref range,
+            ref repo,
+            ref judge_model,
+            ref json,
+        } => {
+            let judge = kurultai::eval::judge::judge_from_env(judge_model.clone());
+            if !judge.is_live() {
+                println!("review: no OpenRouter key — skipping (set OPENROUTER_API_KEY)");
+                return Ok(());
+            }
+            let repo = repo
+                .clone()
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let commits = kurultai::eval::review::collect_commits(&repo, range)?;
+            if commits.is_empty() {
+                println!("review: no non-bot commits in {range}");
+                return Ok(());
+            }
+            let report = kurultai::eval::review::review_commits(range, &commits, &judge).await?;
+            println!(
+                "review: {} commits in {} — {} flagged (judge: {} {})",
+                report.reviewed,
+                report.range,
+                report.failed,
+                report.judge,
+                report.judge_model.as_deref().unwrap_or("")
+            );
+            for c in &report.commits {
+                let flags: Vec<String> = c
+                    .flags
+                    .iter()
+                    .map(|f| format!("{}={:.2}[{}]", f.check, f.probability, f.severity))
+                    .collect();
+                let mark = if c.flags.iter().any(|f| f.severity == "hard") {
+                    "FAIL"
+                } else if !c.flags.is_empty() {
+                    "warn"
+                } else {
+                    " ok "
+                };
+                println!(
+                    "  {} {} {:.60} {}",
+                    mark,
+                    &c.sha[..c.sha.len().min(8)],
+                    c.subject,
+                    flags.join(" ")
+                );
+            }
+            if let Some(cost) = report.judge_cost_usd {
+                println!("  judge cost ${:.5}", cost);
+            }
+            if let Some(path) = json {
+                let pretty = serde_json::to_string_pretty(&report)
+                    .map_err(|e| anyhow::anyhow!("serialize review report: {e}"))?;
+                std::fs::write(path, pretty)?;
+                println!("  report → {}", path.display());
+            }
+            if report.failed > 0 {
+                return Err(
+                    anyhow::anyhow!("{} commit(s) flagged by review", report.failed).into(),
+                );
+            }
+        }
+        Commands::Eval {
+            ref base_url,
+            ref golden,
+            k,
+            judge,
+            ref judge_model,
+            ref json,
+        } => {
+            let set = kurultai::eval::GoldenSet::load(golden)?;
+            let cfg = kurultai::eval::EvalConfig {
+                base_url: base_url.clone(),
+                k,
+                judge,
+                judge_model: judge_model.clone(),
+                judge_override: None,
+            };
+            let report = kurultai::eval::run_eval(&cfg, &set).await?;
+            let a = &report.aggregate;
+            println!(
+                "eval: {} queries against {} (k={})",
+                a.queries, report.base_url, report.k
+            );
+            println!(
+                "  recall@{} {:.3}  precision@{} {:.3}  mrr {:.3}",
+                report.k, a.mean_recall_at_k, report.k, a.mean_precision_at_k, a.mean_mrr
+            );
+            if let Some(n) = a.mean_ndcg_at_k {
+                println!(
+                    "  ndcg@{} {:.3}  (judge: {} {})",
+                    report.k,
+                    n,
+                    report.judge,
+                    report.judge_model.as_deref().unwrap_or("")
+                );
+            }
+            if let Some(g) = a.mean_groundedness {
+                println!("  groundedness {:.3}", g);
+            }
+            if let Some(reason) = &report.judge_disabled_reason {
+                println!("  judge disabled mid-run: {}", reason);
+            }
+            if a.noise_violations > 0 {
+                println!("  noise violations: {}", a.noise_violations);
+            }
+            if let Some(path) = json {
+                let pretty = serde_json::to_string_pretty(&report)
+                    .map_err(|e| anyhow::anyhow!("serialize eval report: {e}"))?;
+                std::fs::write(path, pretty)?;
+                println!("  report → {}", path.display());
             }
         }
         Commands::WhoKnows { ref topic, limit } => {
@@ -414,6 +673,16 @@ async fn main() -> Result<()> {
             println!("  Version: {}", env!("CARGO_PKG_VERSION"));
             println!("  Environment: {}", app.environment);
             println!("  Storage: {}", app.config.storage_path);
+            {
+                // Best-effort daemon bind surface (#: `webui`/`daemon --bind`).
+                let hub = kurultai::http::resolve_hub_gate_from_env();
+                let bind_all = kurultai::http::resolve_bind_all_from_env();
+                if let Ok(addr) =
+                    kurultai::http::resolve_listen_socket_flag(port, bind_all, None, &hub)
+                {
+                    println!("  Daemon:  http://{addr}/ui/ (`kurultai webui`)");
+                }
+            }
             println!("  Schema:  v{}", app.schema_version());
             if app.embedder.is_live() {
                 println!(
@@ -435,6 +704,23 @@ async fn main() -> Result<()> {
                 println!("  Synthesizer: {}", app.synthesizer.name());
             } else {
                 println!("  Synthesizer: extractive (set OPENROUTER_API_KEY for LLM ask)");
+            }
+            {
+                let judge = kurultai::eval::judge::judge_from_config(&app.config);
+                if judge.is_live() {
+                    println!(
+                        "  Judge: {} ({})",
+                        judge.name(),
+                        app.config
+                            .judge_model
+                            .as_deref()
+                            .unwrap_or(kurultai::eval::judge::DEFAULT_JUDGE_MODEL)
+                    );
+                } else if !app.config.judge_enabled {
+                    println!("  Judge: disabled ([judge] enabled = false)");
+                } else {
+                    println!("  Judge: none (set OPENROUTER_API_KEY for Jev grading)");
+                }
             }
             println!("  Atoms:   {}", atom_count);
             println!("  Trusted: {}", trusted);
@@ -503,16 +789,58 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Commands::Agent { command } => {
+            let config = load_config_with_env(cli.config.as_deref(), cli.env.as_deref())?;
+            let store = kurultai::store::open_store(&config).await?;
+            match command {
+                AgentCommands::Add { codename } => {
+                    let (id, key) = store.register_agent(&codename).await?;
+                    println!("Agent '{}' registered (id={}).", codename, id);
+                    println!();
+                    println!("  {key}");
+                    println!();
+                    println!("STORE THIS NOW — it is hashed at rest and cannot be shown again.");
+                }
+                AgentCommands::List => {
+                    let agents = store.list_agents().await?;
+                    if agents.is_empty() {
+                        println!("No agents registered.");
+                    } else {
+                        for a in agents {
+                            println!("  {} [{}] {}", a.codename, a.id, a.created_at);
+                        }
+                    }
+                }
+                AgentCommands::Revoke {
+                    codename,
+                    instance_id,
+                } => {
+                    let n = store
+                        .revoke_agent(&codename, instance_id.as_deref())
+                        .await?;
+                    match (n, &instance_id) {
+                        (0, _) => println!("No credentials found for '{codename}'."),
+                        (_, Some(seat)) => {
+                            println!("Revoked seat '{seat}' for '{codename}' ({n} credential).")
+                        }
+                        (_, None) => println!(
+                            "Revoked '{codename}' — primary key + all seats ({n} credential(s))."
+                        ),
+                    }
+                }
+            }
+        }
         Commands::Daemon {
             port,
             no_poll,
             poll_interval,
             no_watch,
+            ref bind,
         } => {
-            let mut hub = kurultai::http::resolve_hub_gate_from_env();
+            let hub = kurultai::http::resolve_hub_gate_from_env();
             let bind_all = kurultai::http::resolve_bind_all_from_env();
-            let issued = daemon_issued_key_count(&mut hub).await;
-            let addr = kurultai::http::resolve_listen_socket(port, bind_all, &hub, issued)?;
+            let addr =
+                kurultai::http::resolve_listen_socket_flag(port, bind_all, bind.as_deref(), &hub)?;
             let app = bootstrap_app(&cli).await?;
             let brain = brain_from_app(&app);
             let interval = kurultai::daemon::normalize_poll_interval_secs(
@@ -530,6 +858,13 @@ async fn main() -> Result<()> {
                 "daemon starting"
             );
             println!("Daemon listening on http://{addr}");
+            if !addr.ip().is_loopback() {
+                eprintln!(
+                    "warning: bound non-loopback {addr} — HTTP is unauthenticated unless \
+                     KURULTAI_MCP_HTTP_SECRET / KURULTAI_INGEST_SECRET are set \
+                     (see docs/deploy/railway-hub.md)"
+                );
+            }
             if kurultai::features::enabled("hub") {
                 println!("Store: hub Postgres (KURULTAI_FEATURE_HUB=1)");
             } else {
@@ -584,8 +919,24 @@ async fn main() -> Result<()> {
                     nightly_full_sync_hour: app.config.nightly_full_sync_hour,
                     inactivity_threshold_hours: app.config.inactivity_threshold_hours,
                     mcp_http_secret: mcp_secret,
+                    bind: bind.clone(),
                 },
             )
+            .await?;
+        }
+        Commands::Webui {
+            port,
+            open,
+            no_open,
+            print_url,
+            ref daemon_args,
+        } => {
+            kurultai::webui::run(kurultai::webui::WebuiOptions {
+                port,
+                open: open || (!no_open && std::io::stdout().is_terminal()),
+                print_url,
+                daemon_args: daemon_args.clone(),
+            })
             .await?;
         }
         Commands::Prune { generated } => {
@@ -619,6 +970,37 @@ async fn main() -> Result<()> {
                 }
                 println!("Deleted {deleted} / {total} atoms.");
             }
+        }
+        Commands::Connect {
+            ref url,
+            ref codename,
+            ref instance_id,
+            agent,
+            no_open,
+        } => {
+            kurultai::connect::run(kurultai::connect::ConnectOptions {
+                url: url.clone(),
+                codename: codename.clone(),
+                instance_id: instance_id.clone(),
+                agent,
+                no_open,
+                lane: env.as_str().to_string(),
+            })
+            .await?;
+        }
+        Commands::Login {
+            base_url,
+            codename,
+            no_browser,
+            account,
+        } => {
+            kurultai::login::run(kurultai::login::LoginOptions {
+                base_url,
+                codename,
+                no_browser,
+                account,
+            })
+            .await?;
         }
         Commands::Doctor => {
             kurultai::doctor::run(cli.env.as_deref(), cli.config.as_deref()).await?;
@@ -828,6 +1210,49 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// `init` optional OpenRouter key step: `--key`/`--key-file` store directly;
+/// interactive TTYs get a skippable prompt; non-TTY behaves as `--no-key`.
+/// Returns a one-line outcome message (never echoes the key).
+fn init_key_setup(
+    key: Option<&str>,
+    key_file: Option<&std::path::Path>,
+    no_key: bool,
+) -> Result<Option<String>> {
+    use kurultai::security::write_key_file;
+
+    let stored = |k: &str| -> Result<Option<String>> {
+        let path = write_key_file(k)?;
+        Ok(Some(format!(
+            "Key saved to {} (0600). Unlocked: vector recall, rerank, LLM `ask`. \
+             Works keyless: FTS search, who-knows, extractive ask.",
+            path.display()
+        )))
+    };
+
+    if let Some(k) = key {
+        return stored(k);
+    }
+    if let Some(path) = key_file {
+        let k = std::fs::read_to_string(path)
+            .map_err(|e| kurultai::KurultaiError::config(format!("--key-file {path:?}: {e}")))?;
+        return stored(&k);
+    }
+    if no_key || !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        return Ok(None);
+    }
+    eprint!("Add an OpenRouter key for vector recall + LLM ask? [paste / skip] ");
+    let mut line = String::new();
+    if std::io::stdin().read_line(&mut line).is_err() {
+        return Ok(None);
+    }
+    let line = line.trim();
+    if line.is_empty() || line.eq_ignore_ascii_case("skip") || line.eq_ignore_ascii_case("n") {
+        println!("Skipped — FTS search, who-knows, and extractive ask work keyless.");
+        return Ok(None);
+    }
+    stored(line)
+}
+
 /// Split a comma-separated CLI value into trimmed, non-empty parts.
 fn split_csv(raw: &str) -> Vec<String> {
     raw.split(',')
@@ -844,6 +1269,13 @@ fn brain_from_app(app: &App) -> BrainService {
         Arc::clone(&app.reranker),
         Arc::clone(&app.synthesizer),
     )
+    .with_tier_policy(app.config.tier_policy.clone())
+    .with_web_searcher(if kurultai::features::enabled("web_search") {
+        kurultai::web::web_searcher_from_env()
+    } else {
+        std::sync::Arc::new(kurultai::web::NullWebSearcher)
+    })
+    .with_judge(kurultai::eval::judge::judge_from_config(&app.config))
 }
 
 async fn bootstrap_app(cli: &Cli) -> Result<App> {
@@ -894,31 +1326,6 @@ fn argv_has_mcp_subcommand(args: &[String]) -> bool {
         return a == "mcp";
     }
     false
-}
-
-async fn daemon_issued_key_count(hub: &mut kurultai::http::HubGate) -> usize {
-    #[cfg(feature = "postgres")]
-    if kurultai::features::enabled("hub") {
-        if let Some(url) = kurultai::store::database_url_from_env() {
-            match kurultai::hub::HubKeyStore::connect(&url).await {
-                Ok(store) => {
-                    let count = match store.has_active_keys().await {
-                        Ok(true) => 1,
-                        Ok(false) => 0,
-                        Err(e) => {
-                            tracing::warn!(error = %e, "issued key count failed; treating as zero");
-                            0
-                        }
-                    };
-                    hub.key_store = Some(std::sync::Arc::new(store));
-                    return count;
-                }
-                Err(e) => tracing::warn!(error = %e, "hub key store unavailable"),
-            }
-        }
-    }
-    let _ = hub;
-    0
 }
 
 fn cheap_banner_mode(args: &[String]) -> BannerMode {

@@ -28,7 +28,7 @@ export function AskPanel() {
   };
 
   return (
-    <section className="panel ask-panel" aria-labelledby="ask-heading">
+    <section className="panel chrome-panel ask-panel" aria-labelledby="ask-heading">
       <div className="panel-heading">
         <p className="eyebrow">Synthesize</p>
         <h2 id="ask-heading">Ask the brain</h2>

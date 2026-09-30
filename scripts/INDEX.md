@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: scripts
 parent: INDEX.md
-updated: 2026-08-16
-version: 1
+updated: 2026-09-04
+version: 2
 ---
 
 # `scripts`
@@ -19,14 +19,22 @@ version: 1
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`audit-agent-index.py`](audit-agent-index.py) | CI audit: INDEX.md coverage vs git ls-files | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`build-ui.sh`](build-ui.sh) | website/ → ui/ production copy for rust-embed | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`audit-agent-index.py`](audit-agent-index.py) | CI audit: INDEX.md coverage vs git ls-files | — | — | 2026-09-13 | 2 | 2026-09-13 skip `website/public/` — Vite public assets are cataloged in `website/INDEX.md` · 2026-08-16 indexed (v1 seed) |
+| [`audit-ui.py`](audit-ui.py) | Audit built `ui/` for stale/dead assets and outdated deps | — | `website/` · `ui/` | 2026-09-04 | 1 | 2026-09-04 add dead-code/old-version UI audit · 2026-08-16 indexed (v1 seed) |
+| [`recall-harness.py`](recall-harness.py) | Randomized recall/search load + correctness suite (volume, deep, same/mixed-path concurrency, failover, p50/95/99) | `/api/search` · `/api/recall` · `/api/atoms` | — | 2026-09-08 | 1 | 2026-09-08 added |
+| [`build-ui.sh`](build-ui.sh) | website/ → ui/ production copy for rust-embed | — | `website/` · `ui/` | 2026-09-04 | 2 | 2026-09-04 prune legacy files and stale hashed bundles before rebuild · 2026-08-16 indexed (v1 seed) |
+| [`ui-batch.mjs`](ui-batch.mjs) | Batch UI design generator — OpenRouter chat completions over `design-lab/prompts/` → gitignored `design-lab/out/` variants | OPENROUTER_API_KEY · `--model` (Kimi/GPT) | `design-lab/` | 2026-09-26 | 1 | plan 2026-09-25-001 U3 scaffold |
+| [`ui-smoke.mjs`](ui-smoke.mjs) | Bounded headless UI smoke check (hard timeout, `--disable-gpu`, tab/aria probe) | daemon on :8421 | `ui/` | 2026-09-27 | 1 | 2026-09-27 added — replaces ad-hoc Playwright heredocs after a hung one orphaned a 700% CPU SwiftShader proc |
 | [`install.ps1`](install.ps1) | Windows installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`install.sh`](install.sh) | Unix installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-09-27 — `ui-smoke.mjs`: bounded headless UI smoke check — 120s hard timeout, `--disable-gpu` (no SwiftShader burn), bounded waits; run via `timeout -k 5s 180s`
+- 2026-09-26 — `ui-batch.mjs`: OpenRouter batch UI design generator (plan 2026-09-25-001 U3) — reads `design-lab/prompts/*.md`, writes `--model`/`--n` variants to gitignored `design-lab/out/`
+- 2026-09-08 — `recall-harness.py`: randomized recall suite — shallow/deep queries from live corpus, volume, same-path + mixed-path concurrency, correctness probes, failover timing; console summary + `--json` report
+
+- 2026-09-04 — add `audit-ui.py`; update `build-ui.sh` to prune stale assets
 - 2026-08-16 — `audit-agent-index.py` coverage check for CI
 - 2026-09-01 — dropped one-shot phase closeout scripts
 - 2026-08-16 — indexed this folder (v1 seed)
-

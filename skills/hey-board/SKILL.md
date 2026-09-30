@@ -1,6 +1,6 @@
 # hey-board Skill
 
-> The hey.md board is the single source of truth for agent work coordination. Every agent reads it at session start, writes status updates as they work, and records completions when done.
+> When the Kurultai daemon exposes MCP `hey_*` tools (or `/api/hey/...`), prefer those over editing this repo's root `hey.md` file. Register with `kurultai agent add <codename>` and keep the one-time key. The markdown board remains a fallback for agents without daemon access.
 
 ## When to Use
 
@@ -8,11 +8,12 @@
 - Agent completes a work order and needs to record it
 - Agent reviews another agent's work and needs to log the result
 - Any coordination between agents on the Khan or Kurultai repos
+- Prefer `hey_post` / `hey_poll` / `hey_read` when connected to a Kurultai MCP instance
 
 ## Prerequisites
 
 - Repo cloned locally with git configured
-- `hey.md` exists at repo root (or create from template below)
+- Prefer daemon message board when available; else `hey.md` at repo root
 - GitHub CLI (`gh`) via `api_credentials=["github"]`
 - Linear team: `Khan` (key: `KHAN`), workspace: `imluketheduke`
 

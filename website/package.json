@@ -1,6 +1,6 @@
 {
   "name": "kurultai-brain-ui-source",
-  "version": "2.0.0",
+  "version": "0.6.0",
   "private": true,
   "description": "React + Three.js brain UI source. Build outputs to ui/ for Rust embedding.",
   "type": "module",
@@ -8,19 +8,21 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test:layout": "node --experimental-strip-types --test src/brain/layout/*.test.ts"
+    "test": "node --experimental-strip-types --test src/brain/layout/*.test.ts src/brain/*.test.ts src/components/chatboard/*.test.ts src/components/hey-kanban/*.test.ts src/*.test.ts"
   },
   "dependencies": {
-    "react": "^19.2.8",
+    "@mshafiqyajid/react-kanban": "^1.0.0",
+    "@xyflow/react": "^12.11.6",
+    "react": "^19.3.0",
     "react-dom": "^19.2.8",
-    "three": "^0.185.1"
+    "three": "^0.186.0"
   },
   "devDependencies": {
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
-    "@types/three": "^0.185.4",
-    "@vitejs/plugin-react": "^6.1.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.2.7",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.3.0"
   }
 }

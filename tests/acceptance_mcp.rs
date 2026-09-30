@@ -514,12 +514,16 @@ async fn readonly_surface_exposes_only_read_tools() {
         vec![
             "ask",
             "cite",
+            "hey_poll",
+            "hey_read",
+            "hey_threads",
             "ontology_get",
+            "ontology_proposals",
             "recall",
             "search",
             "who_knows"
         ],
-        "read-only surface must exclude remember/promote/ontology_promote"
+        "read-only surface must exclude remember/promote/ontology_promote/ontology_propose"
     );
 }
 

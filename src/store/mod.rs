@@ -4,10 +4,10 @@ pub mod postgres;
 
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
-use crate::memory::{classify, GraphNode, MemoryTier, TierPolicy};
+use crate::memory::{classify_atom, GraphNode, MemoryTier, TierPolicy};
 use crate::types::{
     normalize_soft_labels, CorpusTier, KnowledgeAtom, OntologyEntity, OntologyLink,
-    OntologyLinkType, SoftLabel, TrustLane, VisibilityScope,
+    OntologyLinkType, OntologyProposal, SoftLabel, TrustLane, VisibilityScope,
 };
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -19,10 +19,136 @@ use zerocopy::AsBytes;
 /// Norm below this is treated as a zero / stub vector — never written to `atoms_vec`.
 pub(crate) const MIN_EMBEDDING_NORM: f32 = 1e-6;
 
+/// Persistent agent / codename identity for the multi-agent message board.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Agent {
+    pub id: String,
+    pub codename: String,
+    pub created_at: String,
+}
+
+/// A pending/exchanged device-authorization flow used by `kurultai login` /
+/// `kurultai connect`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DeviceFlow {
+    pub id: String,
+    pub device_code: String,
+    pub user_code: String,
+    pub codename: String,
+    /// Requested seat (`instance_id`) for `kurultai connect` flows.
+    #[serde(default)]
+    pub instance_id: String,
+    pub client_id: String,
+    pub status: String,
+    pub created_at: String,
+    pub expires_at: String,
+    pub approved_at: Option<String>,
+    pub approved_by: Option<String>,
+    pub agent_id: Option<String>,
+    pub token_hash: Option<String>,
+}
+
+/// Message board thread.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Thread {
+    pub id: String,
+    pub name: String,
+    pub parent_thread_id: Option<String>,
+    pub turn_cap: u32,
+    pub turns_used: u32,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Message or reaction on a board thread.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Message {
+    pub id: String,
+    pub thread_id: String,
+    pub agent_id: String,
+    /// Codename of the posting agent (joined on read; empty when unknown).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub agent_codename: String,
+    pub parent_id: Option<String>,
+    pub kind: MessageKind,
+    pub content: String,
+    pub request_reply: bool,
+    pub turns_consumed: u32,
+    pub created_at: String,
+    /// Optional repo claim (`owner/repo` or short name) for WIP presence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    /// Optional session/instance id so multiple `cursor` agents do not collide.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
+}
+
+/// Kind of a message-board post.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageKind {
+    #[default]
+    Message,
+    Reaction,
+}
+
+impl MessageKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Message => "message",
+            Self::Reaction => "reaction",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "reaction" => Self::Reaction,
+            _ => Self::Message,
+        }
+    }
+}
+
+/// Input for posting a message to a thread.
+#[derive(Debug, Clone)]
+pub struct PostMessageInput {
+    pub thread_id: String,
+    pub agent_id: String,
+    pub parent_id: Option<String>,
+    pub content: String,
+    pub request_reply: bool,
+    pub repo: Option<String>,
+    pub instance_id: Option<String>,
+}
+
+/// Input for adding a reaction to a message.
+#[derive(Debug, Clone)]
+pub struct AddReactionInput {
+    pub thread_id: String,
+    pub agent_id: String,
+    pub message_id: String,
+    pub emoji: String,
+}
+
 /// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
 const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, question, resolution, \
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
      last_accessed_at, visibility, corpus_tier, visibility_labels_json";
+
+/// Read-only browse query for the `/ui/db` table view (`GET /api/db/{table}`).
+/// `table` selects a whitelist arm; `sort` is whitelisted per arm; `q` is a
+/// parameterized text filter; `lane`/`tier` are whitelisted exact-match
+/// filters; `limit` is capped at 500.
+#[derive(Debug, Clone, Default)]
+pub struct DbBrowse {
+    pub table: String,
+    pub sort: String,
+    pub desc: bool,
+    pub q: Option<String>,
+    pub lane: Option<String>,
+    pub tier: Option<String>,
+    pub limit: usize,
+    pub offset: usize,
+}
 
 /// Retrieval filter — default skips quarantine and spans every project.
 ///
@@ -38,6 +164,10 @@ pub struct SearchFilter {
     pub project: Option<String>,
     /// Hub AE5: when set, only `company` atoms or `team` atoms matching this team_id.
     pub hub_team_id: Option<String>,
+    /// Exact `knowledge_atoms.source` match (graph / connector slices).
+    pub source: Option<String>,
+    /// Exact `knowledge_atoms.source` exclusion (e.g. keep `repos` off the cortex).
+    pub exclude_source: Option<String>,
 }
 
 impl Default for SearchFilter {
@@ -46,6 +176,8 @@ impl Default for SearchFilter {
             trusted_only: true,
             project: None,
             hub_team_id: None,
+            source: None,
+            exclude_source: None,
         }
     }
 }
@@ -64,7 +196,27 @@ impl SearchFilter {
             trusted_only,
             project: None,
             hub_team_id: None,
+            source: None,
+            exclude_source: None,
         }
+    }
+
+    /// Exact source match for graph/connector slices.
+    pub fn with_source(mut self, source: Option<&str>) -> Self {
+        self.source = source
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        self
+    }
+
+    /// Exclude one source from graph results (Brain cortex vs Repos strip).
+    pub fn with_exclude_source(mut self, source: Option<&str>) -> Self {
+        self.exclude_source = source
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        self
     }
 
     /// Scope to a project namespace. Empty / whitespace input clears the scope.
@@ -200,6 +352,15 @@ pub trait Store: Send + Sync {
     /// Return up to `limit` atoms ordered newest-first.
     async fn list_atoms(&self, limit: usize, filter: SearchFilter) -> Result<Vec<KnowledgeAtom>>;
 
+    /// Read-only browse rows for the `/ui/db` table view (atoms / derived
+    /// shared-tag links). Default: unsupported — only the SQLite store
+    /// implements it today.
+    async fn db_rows(&self, _browse: &DbBrowse) -> Result<Vec<serde_json::Value>> {
+        Err(KurultaiError::Store(
+            "db browse not supported on this store".into(),
+        ))
+    }
+
     /// Return atoms whose `source_id` matches any of the given SQL LIKE patterns.
     async fn find_atoms_by_source_id_patterns(
         &self,
@@ -255,6 +416,18 @@ pub trait Store: Send + Sync {
         policy: TierPolicy,
     ) -> Result<Vec<GraphNode>>;
 
+    /// Monotonic epoch bumped by every `knowledge_atoms` content mutation
+    /// (upsert / batch / delete / lane change / auto-merge). Ordering-only
+    /// writes (`touch_access`) do not bump — prepared graph payloads are
+    /// allowed bounded ordering staleness but must reflect add/remove/promote.
+    ///
+    /// `u64::MAX` (default) means "this store cannot observe mutations" —
+    /// callers must always assemble live (e.g. the Postgres hub, where other
+    /// processes write behind our back).
+    fn atom_epoch(&self) -> u64 {
+        u64::MAX
+    }
+
     // ── Ingestion staging ────────────────────────────────────────────────────
 
     /// Record the start of an ingestion job; returns the new job `id`.
@@ -291,6 +464,249 @@ pub trait Store: Send + Sync {
 
     /// All links, or those incident on an entity id / atom id.
     async fn list_ontology_links(&self, endpoint: Option<&str>) -> Result<Vec<OntologyLink>>;
+
+    /// Board v2 (#320): delete an entity plus every link touching it so no
+    /// dangling edges remain. Missing id is an error — a no-op is not a delete.
+    async fn delete_ontology_entity(&self, id: &str) -> Result<()>;
+
+    /// Board v2 (#320): delete a link by id. Missing id is an error.
+    async fn delete_ontology_link(&self, id: &str) -> Result<()>;
+
+    /// O3: queue an ontology mutation proposal for human review (#118).
+    async fn insert_ontology_proposal(&self, p: &OntologyProposal) -> Result<()>;
+
+    /// Fetch a proposal by id.
+    async fn get_ontology_proposal(&self, id: &str) -> Result<Option<OntologyProposal>>;
+
+    /// List proposals; `status` filters to `pending`/`approved`/`rejected`.
+    async fn list_ontology_proposals(
+        &self,
+        status: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<OntologyProposal>>;
+
+    /// Transition a `pending` proposal to `approved`/`rejected`. Errors when
+    /// the proposal is missing or already decided — a no-op is not a decision.
+    async fn decide_ontology_proposal(
+        &self,
+        id: &str,
+        status: &str,
+        decided_by: &str,
+        decided_at: &str,
+    ) -> Result<OntologyProposal>;
+
+    // ── Agent identity (multi-agent message board) ────────────────────────────
+
+    /// Register a new codename, generate and store a key hash, and return `(id, plaintext_key)`.
+    /// The caller must persist `plaintext_key` exactly once; it cannot be recovered.
+    async fn register_agent(&self, codename: &str) -> Result<(String, String)> {
+        let _ = codename;
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    /// Resolve an agent by the SHA-256 hash of its plaintext API key.
+    async fn resolve_agent_by_key_hash(&self, key_hash: &str) -> Result<Option<Agent>> {
+        let _ = key_hash;
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    /// List all registered agents (for admin/CLI review).
+    async fn list_agents(&self) -> Result<Vec<Agent>> {
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    /// Issue (or rotate) an agent token for `codename`, returning the agent row and plaintext token.
+    async fn issue_agent_token(&self, codename: &str) -> Result<(Agent, String)> {
+        let _ = codename;
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    /// Issue (or rotate) a seat-scoped agent token for `(codename, instance_id)`,
+    /// returning the shared agent row and plaintext token. Creates the codename
+    /// agent row on first use; never forks `codename` into `codename-2` — the
+    /// `instance_id` distinguishes concurrent seats (`agent_seats` table).
+    async fn issue_agent_seat_token(
+        &self,
+        codename: &str,
+        instance_id: &str,
+        approved_by: &str,
+    ) -> Result<(Agent, String)> {
+        let _ = (codename, instance_id, approved_by);
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    /// Revoke agent credentials. With `instance_id`, revokes just that seat;
+    /// without it, revokes every seat plus the codename's primary key.
+    /// Returns the number of credentials revoked.
+    async fn revoke_agent(&self, codename: &str, instance_id: Option<&str>) -> Result<u64> {
+        let _ = (codename, instance_id);
+        Err(KurultaiError::Store(
+            "agent identity not implemented for this store".into(),
+        ))
+    }
+
+    // ── Device authorization (local sign-in for agents) ─────────────────────────
+
+    /// Create a new device flow request and return it. `instance_id` is the
+    /// requested seat ("" for the legacy `kurultai login` flow).
+    async fn create_device_flow(
+        &self,
+        codename: &str,
+        client_id: &str,
+        instance_id: &str,
+        expires_in_seconds: u64,
+    ) -> Result<DeviceFlow> {
+        let _ = (codename, client_id, instance_id, expires_in_seconds);
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    /// Look up a device flow by its secret `device_code`.
+    async fn get_device_flow_by_device_code(
+        &self,
+        device_code: &str,
+    ) -> Result<Option<DeviceFlow>> {
+        let _ = device_code;
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    /// Look up a device flow by its short `user_code`.
+    async fn get_device_flow_by_user_code(&self, user_code: &str) -> Result<Option<DeviceFlow>> {
+        let _ = user_code;
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    /// Approve a pending device flow by `user_code`, recording who approved it.
+    async fn approve_device_flow(&self, user_code: &str, approved_by: &str) -> Result<()> {
+        let _ = (user_code, approved_by);
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    /// Deny a pending device flow by `user_code` (`/connect` deny button).
+    async fn deny_device_flow(&self, user_code: &str, denied_by: &str) -> Result<()> {
+        let _ = (user_code, denied_by);
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    /// Mark a device flow as exchanged and record the token hash.
+    async fn exchange_device_flow(
+        &self,
+        device_code: &str,
+        token_hash: &str,
+        agent_id: &str,
+    ) -> Result<()> {
+        let _ = (device_code, token_hash, agent_id);
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    // ── Message board (multi-agent `hey.md`) ──────────────────────────────────
+
+    /// Create a named thread. `parent_thread_id` may be `None` for a top-level board.
+    async fn create_thread(
+        &self,
+        name: &str,
+        parent_thread_id: Option<&str>,
+        turn_cap: Option<u32>,
+    ) -> Result<Thread> {
+        let _ = (name, parent_thread_id, turn_cap);
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Look up a thread by its id.
+    async fn get_thread(&self, id: &str) -> Result<Option<Thread>> {
+        let _ = id;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Look up a thread by its human-readable name (e.g. `hey.md`).
+    async fn get_thread_by_name(&self, name: &str) -> Result<Option<Thread>> {
+        let _ = name;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// List threads, newest first.
+    async fn list_threads(&self, limit: usize) -> Result<Vec<Thread>> {
+        let _ = limit;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Post a message (or reply) to a thread, enforcing the turn cap.
+    async fn post_message(&self, input: &PostMessageInput) -> Result<Message> {
+        let _ = input;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Add a lightweight reaction to an existing message. Reactions do not consume turns.
+    async fn add_reaction(&self, input: &AddReactionInput) -> Result<Message> {
+        let _ = input;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// List messages in a thread, newest first.
+    async fn list_messages(&self, thread_id: &str, limit: usize) -> Result<Vec<Message>> {
+        let _ = (thread_id, limit);
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Fetch a single message by id.
+    async fn get_message(&self, id: &str) -> Result<Option<Message>> {
+        let _ = id;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Update a message's content in place. Does not consume turns and does
+    /// not touch reactions or children.
+    async fn update_message_content(&self, id: &str, content: &str) -> Result<Message> {
+        let _ = (id, content);
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
+
+    /// Delete a message and its reactions. Returns true when a row was removed.
+    async fn delete_message(&self, id: &str) -> Result<bool> {
+        let _ = id;
+        Err(KurultaiError::Store(
+            "message board not implemented for this store".into(),
+        ))
+    }
 }
 
 /// SQLite + sqlite-vec storage implementation (#1).
@@ -440,6 +856,7 @@ pub struct SqliteVecStore {
     conn: Mutex<Connection>,
     path: PathBuf,
     embed_dim: usize,
+    atom_epoch: std::sync::atomic::AtomicU64,
 }
 
 impl SqliteVecStore {
@@ -467,7 +884,16 @@ impl SqliteVecStore {
             conn: Mutex::new(conn),
             path,
             embed_dim,
+            atom_epoch: std::sync::atomic::AtomicU64::new(0),
         })
+    }
+
+    /// Bump the atom-content epoch — invalidates prepared `/api/graph`
+    /// payloads served by the HTTP layer. Ordering-only writes
+    /// (`touch_access`) intentionally do not bump.
+    fn bump_atom_epoch(&self) {
+        self.atom_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Read an integer pragma off this connection (e.g. `busy_timeout`).
@@ -500,6 +926,203 @@ impl SqliteVecStore {
     pub fn get_by_id(&self, id: &str) -> Result<Option<KnowledgeAtom>> {
         let conn = self.lock()?;
         load_atom_by_id(&conn, id)
+    }
+
+    /// Read-only browse rows for the `/ui/db` table view. `table` selects a
+    /// fixed whitelist — SELECT only, sortable columns whitelisted, `q` always
+    /// parameterized, `limit` capped at 500. Unknown tables error.
+    pub fn db_rows_sync(&self, browse: &DbBrowse) -> Result<Vec<serde_json::Value>> {
+        let conn = self.lock()?;
+        let limit = browse.limit.clamp(1, 500) as i64;
+        let offset = browse.offset as i64;
+        let (table, sort, desc) = (browse.table.as_str(), browse.sort.as_str(), browse.desc);
+        let (q, lane, tier) = (
+            browse.q.as_deref(),
+            browse.lane.as_deref(),
+            browse.tier.as_deref(),
+        );
+        match table {
+            "atoms" => {
+                const SORTABLE: &[&str] = &[
+                    "id",
+                    "source",
+                    "title",
+                    "trust_lane",
+                    "corpus_tier",
+                    "indexed_at",
+                    "last_accessed_at",
+                ];
+                let sort = if SORTABLE.contains(&sort) {
+                    sort
+                } else {
+                    "indexed_at"
+                };
+                let dir = if desc { "DESC" } else { "ASC" };
+                let pat = q.map(|s| format!("%{}%", s.trim())).unwrap_or_default();
+                let row_map = |row: &rusqlite::Row<'_>| -> rusqlite::Result<serde_json::Value> {
+                    Ok(serde_json::json!({
+                        "id": row.get::<_, String>(0)?,
+                        "source": row.get::<_, String>(1)?,
+                        "title": row.get::<_, String>(2)?,
+                        "tags_json": row.get::<_, String>(3)?,
+                        "trust_lane": row.get::<_, String>(4)?,
+                        "corpus_tier": row.get::<_, Option<String>>(5)?,
+                        "indexed_at": row.get::<_, String>(6)?,
+                        "last_accessed_at": row.get::<_, Option<String>>(7)?,
+                        "quarantine_reason": row.get::<_, Option<String>>(8)?,
+                    }))
+                };
+                // Whitelisted exact-match filters (lane/tier) + parameterized
+                // text filter — anonymous `?` placeholders bind in order.
+                let mut wh: Vec<String> = Vec::new();
+                let mut binds: Vec<rusqlite::types::Value> = Vec::new();
+                if !pat.is_empty() {
+                    wh.push("(title LIKE ? OR source LIKE ? OR tags_json LIKE ?)".into());
+                    for _ in 0..3 {
+                        binds.push(pat.clone().into());
+                    }
+                }
+                if let Some(l) = lane.filter(|l| matches!(*l, "trusted" | "quarantine")) {
+                    wh.push("trust_lane = ?".into());
+                    binds.push(l.to_string().into());
+                }
+                if let Some(t) = tier.filter(|t| matches!(*t, "hot" | "warm" | "cold")) {
+                    wh.push("corpus_tier = ?".into());
+                    binds.push(t.to_string().into());
+                }
+                binds.push(limit.into());
+                binds.push(offset.into());
+                let where_sql = if wh.is_empty() {
+                    String::new()
+                } else {
+                    format!("WHERE {}", wh.join(" AND "))
+                };
+                let sql = format!(
+                    "SELECT id, source, title, tags_json, trust_lane, corpus_tier, \
+                     indexed_at, last_accessed_at, quarantine_reason \
+                     FROM knowledge_atoms {where_sql} ORDER BY {sort} {dir} LIMIT ? OFFSET ?"
+                );
+                let rows: Vec<serde_json::Value> = conn
+                    .prepare(&sql)
+                    .and_then(|mut st| {
+                        st.query_map(rusqlite::params_from_iter(binds.iter()), row_map)
+                            .and_then(|r| r.collect())
+                    })
+                    .map_err(|e| KurultaiError::Store(format!("db_rows atoms: {e}")))?;
+                Ok(rows)
+            }
+            // Synapse links are derived, not stored: same shared-tag pairing
+            // the Brain UI does (≤30 members per tag, strength = shared count).
+            "links" => {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT id, title, tags_json FROM knowledge_atoms \
+                         WHERE trust_lane = 'trusted'",
+                    )
+                    .map_err(|e| KurultaiError::Store(format!("db_rows links: {e}")))?;
+                let atoms: Vec<(String, String, Vec<String>)> = stmt
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
+                    })
+                    .map_err(|e| KurultaiError::Store(format!("db_rows links: {e}")))?
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(|e| KurultaiError::Store(format!("db_rows links: {e}")))?
+                    .into_iter()
+                    .map(|(id, title, tags_json)| {
+                        let tags: Vec<String> =
+                            serde_json::from_str(&tags_json).unwrap_or_default();
+                        (id, title, tags)
+                    })
+                    .collect();
+
+                let mut tag_index: HashMap<&str, Vec<usize>> = HashMap::new();
+                for (i, (_, _, tags)) in atoms.iter().enumerate() {
+                    for t in tags {
+                        tag_index.entry(t.as_str()).or_default().push(i);
+                    }
+                }
+                let mut pair: HashMap<(usize, usize), Vec<String>> = HashMap::new();
+                for (t, ids) in &tag_index {
+                    for i in 0..ids.len().min(30) {
+                        for j in (i + 1)..ids.len().min(30) {
+                            let (a, b) = if ids[i] < ids[j] {
+                                (ids[i], ids[j])
+                            } else {
+                                (ids[j], ids[i])
+                            };
+                            pair.entry((a, b)).or_default().push((*t).to_string());
+                        }
+                    }
+                }
+                let qlc = q.map(|s| s.trim().to_lowercase()).unwrap_or_default();
+                let mut rows: Vec<serde_json::Value> = pair
+                    .into_iter()
+                    .map(|((a, b), tags)| {
+                        serde_json::json!({
+                            "a": atoms[a].0,
+                            "a_title": atoms[a].1,
+                            "b": atoms[b].0,
+                            "b_title": atoms[b].1,
+                            "shared_tags": tags,
+                            "strength": tags.len(),
+                        })
+                    })
+                    .filter(|v| {
+                        qlc.is_empty()
+                            || v["a_title"]
+                                .as_str()
+                                .unwrap_or("")
+                                .to_lowercase()
+                                .contains(&qlc)
+                            || v["b_title"]
+                                .as_str()
+                                .unwrap_or("")
+                                .to_lowercase()
+                                .contains(&qlc)
+                            || v["shared_tags"]
+                                .as_array()
+                                .map(|t| {
+                                    t.iter().any(|x| {
+                                        x.as_str().unwrap_or("").to_lowercase().contains(&qlc)
+                                    })
+                                })
+                                .unwrap_or(false)
+                    })
+                    .collect();
+                match (sort, desc) {
+                    ("a", false) => {
+                        rows.sort_by(|x, y| x["a_title"].as_str().cmp(&y["a_title"].as_str()))
+                    }
+                    ("a", true) => {
+                        rows.sort_by(|x, y| y["a_title"].as_str().cmp(&x["a_title"].as_str()))
+                    }
+                    ("b", false) => {
+                        rows.sort_by(|x, y| x["b_title"].as_str().cmp(&y["b_title"].as_str()))
+                    }
+                    ("b", true) => {
+                        rows.sort_by(|x, y| y["b_title"].as_str().cmp(&x["b_title"].as_str()))
+                    }
+                    (_, false) => {
+                        rows.sort_by(|x, y| x["strength"].as_u64().cmp(&y["strength"].as_u64()))
+                    }
+                    (_, true) => {
+                        rows.sort_by(|x, y| y["strength"].as_u64().cmp(&x["strength"].as_u64()))
+                    }
+                }
+                Ok(rows
+                    .into_iter()
+                    .skip(offset as usize)
+                    .take(limit as usize)
+                    .collect())
+            }
+            _ => Err(KurultaiError::Store(format!(
+                "unknown db table '{table}' (allowed: atoms, links)"
+            ))),
+        }
     }
 
     /// Return up to `limit` atoms ordered by indexed_at DESC (newest first).
@@ -814,6 +1437,7 @@ impl Store for SqliteVecStore {
     async fn upsert(&self, atom: &KnowledgeAtom) -> Result<()> {
         let conn = self.lock()?;
         Self::upsert_sync(&conn, atom, self.embed_dim)?;
+        self.bump_atom_epoch();
         Ok(())
     }
 
@@ -831,6 +1455,7 @@ impl Store for SqliteVecStore {
             Ok(()) => {
                 conn.execute_batch("COMMIT;")
                     .map_err(|e| KurultaiError::Store(format!("commit batch: {e}")))?;
+                self.bump_atom_epoch();
                 Ok(())
             }
             Err(e) => {
@@ -1053,6 +1678,7 @@ impl Store for SqliteVecStore {
             Ok(()) => {
                 conn.execute_batch("COMMIT;")
                     .map_err(|e| KurultaiError::Store(format!("commit delete_source: {e}")))?;
+                self.bump_atom_epoch();
                 tracing::debug!(source, "deleted atoms for source");
                 Ok(())
             }
@@ -1121,6 +1747,10 @@ impl Store for SqliteVecStore {
             .optional()
             .map_err(|e| KurultaiError::Store(format!("has_fresh_embedding: {e}")))?;
         Ok(found.is_some())
+    }
+
+    async fn db_rows(&self, browse: &DbBrowse) -> Result<Vec<serde_json::Value>> {
+        self.db_rows_sync(browse)
     }
 
     async fn list_atoms(&self, limit: usize, filter: SearchFilter) -> Result<Vec<KnowledgeAtom>> {
@@ -1197,6 +1827,7 @@ impl Store for SqliteVecStore {
             Ok(()) => {
                 conn.execute_batch("COMMIT;")
                     .map_err(|e| KurultaiError::Store(format!("commit delete_atom: {e}")))?;
+                self.bump_atom_epoch();
                 Ok(())
             }
             Err(e) => {
@@ -1249,6 +1880,7 @@ impl Store for SqliteVecStore {
             Ok(()) => {
                 conn.execute_batch("COMMIT;")
                     .map_err(|e| KurultaiError::Store(format!("commit apply_auto_merge: {e}")))?;
+                self.bump_atom_epoch();
                 Ok(())
             }
             Err(e) => {
@@ -1299,6 +1931,7 @@ impl Store for SqliteVecStore {
                 "set_trust_lane: atom not found: {id}"
             )));
         }
+        self.bump_atom_epoch();
         Ok(())
     }
 
@@ -1412,7 +2045,7 @@ impl Store for SqliteVecStore {
         let mut cold = 0u64;
         for row in rows {
             let atom = row.map_err(|e| KurultaiError::Store(format!("count_by_tier row: {e}")))?;
-            match classify(atom.indexed_at, atom.last_accessed_at, now, policy) {
+            match classify_atom(&atom, now, &policy) {
                 MemoryTier::Hot => hot += 1,
                 MemoryTier::Warm => warm += 1,
                 MemoryTier::Cold => cold += 1,
@@ -1429,18 +2062,25 @@ impl Store for SqliteVecStore {
         policy: TierPolicy,
     ) -> Result<Vec<GraphNode>> {
         let conn = self.lock()?;
-        let sql = if filter.trusted_only {
-            format!(
-                "SELECT {} FROM knowledge_atoms WHERE trust_lane = 'trusted'
-                 ORDER BY last_accessed_at DESC LIMIT ?1",
-                ATOM_COLUMNS
-            )
+        let mut conditions: Vec<&str> = Vec::new();
+        if filter.trusted_only {
+            conditions.push("trust_lane = 'trusted'");
+        }
+        if filter.source.is_some() {
+            conditions.push("source = ?");
+        }
+        if filter.exclude_source.is_some() {
+            conditions.push("source != ?");
+        }
+        let where_sql = if conditions.is_empty() {
+            String::new()
         } else {
-            format!(
-                "SELECT {} FROM knowledge_atoms ORDER BY last_accessed_at DESC LIMIT ?1",
-                ATOM_COLUMNS
-            )
+            format!("WHERE {}", conditions.join(" AND "))
         };
+        let sql = format!(
+            "SELECT {ATOM_COLUMNS} FROM knowledge_atoms {where_sql}
+             ORDER BY last_accessed_at DESC LIMIT ?"
+        );
         // Over-fetch then filter by tier so hot/warm/cold slices stay accurate.
         let fetch_cap = if tier.is_some() {
             (limit.saturating_mul(8)).max(limit).min(50_000)
@@ -1450,15 +2090,25 @@ impl Store for SqliteVecStore {
         let mut stmt = conn
             .prepare(&sql)
             .map_err(|e| KurultaiError::Store(format!("list_graph_nodes prepare: {e}")))?;
+
+        let mut binds: Vec<rusqlite::types::Value> = Vec::new();
+        if let Some(ref s) = filter.source {
+            binds.push(rusqlite::types::Value::Text(s.clone()));
+        }
+        if let Some(ref s) = filter.exclude_source {
+            binds.push(rusqlite::types::Value::Text(s.clone()));
+        }
+        binds.push(rusqlite::types::Value::Integer(fetch_cap as i64));
+
         let rows = stmt
-            .query_map(params![fetch_cap as i64], row_to_atom)
+            .query_map(rusqlite::params_from_iter(binds), row_to_atom)
             .map_err(|e| KurultaiError::Store(format!("list_graph_nodes query: {e}")))?;
         let now = Utc::now();
         let mut out = Vec::with_capacity(limit.min(1024));
         for row in rows {
             let atom =
                 row.map_err(|e| KurultaiError::Store(format!("list_graph_nodes row: {e}")))?;
-            let t = classify(atom.indexed_at, atom.last_accessed_at, now, policy);
+            let t = classify_atom(&atom, now, &policy);
             if let Some(want) = tier {
                 if t != want {
                     continue;
@@ -1471,6 +2121,10 @@ impl Store for SqliteVecStore {
             }
         }
         Ok(out)
+    }
+
+    fn atom_epoch(&self) -> u64 {
+        self.atom_epoch.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     // ── Ingestion staging ────────────────────────────────────────────────
@@ -1628,6 +2282,864 @@ impl Store for SqliteVecStore {
         }
         Ok(out)
     }
+
+    async fn delete_ontology_entity(&self, id: &str) -> Result<()> {
+        let mut conn = self.lock()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| KurultaiError::Store(format!("delete_ontology_entity begin tx: {e}")))?;
+        let removed = tx
+            .execute("DELETE FROM ontology_entities WHERE id = ?1", params![id])
+            .map_err(|e| KurultaiError::Store(format!("delete_ontology_entity: {e}")))?;
+        if removed == 0 {
+            return Err(KurultaiError::Store(format!(
+                "delete_ontology_entity: entity {id} not found"
+            )));
+        }
+        tx.execute(
+            "DELETE FROM ontology_links WHERE from_id = ?1 OR to_id = ?1",
+            params![id],
+        )
+        .map_err(|e| KurultaiError::Store(format!("delete_ontology_entity links: {e}")))?;
+        tx.commit()
+            .map_err(|e| KurultaiError::Store(format!("delete_ontology_entity commit: {e}")))?;
+        Ok(())
+    }
+
+    async fn delete_ontology_link(&self, id: &str) -> Result<()> {
+        let conn = self.lock()?;
+        let removed = conn
+            .execute("DELETE FROM ontology_links WHERE id = ?1", params![id])
+            .map_err(|e| KurultaiError::Store(format!("delete_ontology_link: {e}")))?;
+        if removed == 0 {
+            return Err(KurultaiError::Store(format!(
+                "delete_ontology_link: link {id} not found"
+            )));
+        }
+        Ok(())
+    }
+
+    // ── O3: ontology proposals (#118) ─────────────────────────────────────────
+
+    async fn insert_ontology_proposal(&self, p: &OntologyProposal) -> Result<()> {
+        let conn = self.lock()?;
+        let payload_json = serde_json::to_string(&p.payload)
+            .map_err(|e| KurultaiError::Store(format!("proposal payload serialize: {e}")))?;
+        conn.execute(
+            "INSERT INTO ontology_proposals
+                (id, kind, payload_json, status, proposed_by, reason, created_at, decided_by, decided_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                p.id,
+                p.kind,
+                payload_json,
+                p.status,
+                p.proposed_by,
+                p.reason,
+                p.created_at,
+                p.decided_by,
+                p.decided_at,
+            ],
+        )
+        .map_err(|e| KurultaiError::Store(format!("insert_ontology_proposal: {e}")))?;
+        Ok(())
+    }
+
+    async fn get_ontology_proposal(&self, id: &str) -> Result<Option<OntologyProposal>> {
+        let conn = self.lock()?;
+        conn.query_row(
+            "SELECT id, kind, payload_json, status, proposed_by, reason,
+                    created_at, decided_by, decided_at
+             FROM ontology_proposals WHERE id = ?1",
+            [id],
+            row_to_ontology_proposal,
+        )
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("get_ontology_proposal: {e}")))
+    }
+
+    async fn list_ontology_proposals(
+        &self,
+        status: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<OntologyProposal>> {
+        let conn = self.lock()?;
+        let (sql, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match status {
+            Some(s) => (
+                "SELECT id, kind, payload_json, status, proposed_by, reason,
+                        created_at, decided_by, decided_at
+                 FROM ontology_proposals WHERE status = ?1
+                 ORDER BY created_at DESC LIMIT ?2"
+                    .to_string(),
+                vec![Box::new(s.to_string()), Box::new(limit as i64)],
+            ),
+            None => (
+                "SELECT id, kind, payload_json, status, proposed_by, reason,
+                        created_at, decided_by, decided_at
+                 FROM ontology_proposals
+                 ORDER BY created_at DESC LIMIT ?1"
+                    .to_string(),
+                vec![Box::new(limit as i64)],
+            ),
+        };
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_proposals prepare: {e}")))?;
+        let refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt
+            .query_map(refs.as_slice(), row_to_ontology_proposal)
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_proposals query: {e}")))?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| KurultaiError::Store(format!("list_ontology_proposals collect: {e}")))
+    }
+
+    async fn decide_ontology_proposal(
+        &self,
+        id: &str,
+        status: &str,
+        decided_by: &str,
+        decided_at: &str,
+    ) -> Result<OntologyProposal> {
+        let conn = self.lock()?;
+        let updated = conn
+            .execute(
+                "UPDATE ontology_proposals
+                 SET status = ?2, decided_by = ?3, decided_at = ?4
+                 WHERE id = ?1 AND status = 'pending'",
+                params![id, status, decided_by, decided_at],
+            )
+            .map_err(|e| KurultaiError::Store(format!("decide_ontology_proposal: {e}")))?;
+        if updated == 0 {
+            return match conn.query_row(
+                "SELECT status FROM ontology_proposals WHERE id = ?1",
+                [id],
+                |r| r.get::<_, String>(0),
+            ) {
+                Ok(existing) => Err(KurultaiError::Store(format!(
+                    "proposal {id} already decided ({existing})"
+                ))),
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    Err(KurultaiError::Store(format!("proposal {id} not found")))
+                }
+                Err(e) => Err(KurultaiError::Store(format!(
+                    "decide_ontology_proposal lookup: {e}"
+                ))),
+            };
+        }
+        conn.query_row(
+            "SELECT id, kind, payload_json, status, proposed_by, reason,
+                    created_at, decided_by, decided_at
+             FROM ontology_proposals WHERE id = ?1",
+            [id],
+            row_to_ontology_proposal,
+        )
+        .map_err(|e| KurultaiError::Store(format!("decide_ontology_proposal fetch: {e}")))
+    }
+
+    // ── Agent identity (multi-agent message board) ────────────────────────────
+
+    async fn register_agent(&self, codename: &str) -> Result<(String, String)> {
+        let conn = self.lock()?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let plaintext = uuid::Uuid::new_v4().to_string();
+        let key_hash = sha256_hex(&plaintext);
+
+        conn.execute(
+            "INSERT INTO agents (id, codename, key_hash) VALUES (?1, ?2, ?3)",
+            params![&id, &codename, &key_hash],
+        )
+        .map_err(|e| KurultaiError::Store(format!("register_agent insert: {e}")))?;
+
+        Ok((id, plaintext))
+    }
+
+    async fn resolve_agent_by_key_hash(&self, key_hash: &str) -> Result<Option<Agent>> {
+        let conn = self.lock()?;
+        // Primary codename key OR an active (unrevoked) seat key minted by
+        // `kurultai connect` — both resolve to the shared codename agent row.
+        let mut stmt = conn
+            .prepare(
+                "SELECT a.id, a.codename, a.created_at FROM agents a \
+                 LEFT JOIN agent_seats s ON s.agent_id = a.id \
+                 WHERE a.key_hash = ?1 \
+                    OR (s.key_hash = ?1 AND s.revoked_at IS NULL) \
+                 LIMIT 1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("resolve_agent_by_key_hash prepare: {e}")))?;
+        let row = stmt
+            .query_row(params![key_hash], |row| {
+                Ok(Agent {
+                    id: row.get(0)?,
+                    codename: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("resolve_agent_by_key_hash query: {e}")))?;
+        Ok(row)
+    }
+
+    async fn list_agents(&self) -> Result<Vec<Agent>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT id, codename, created_at FROM agents ORDER BY created_at DESC")
+            .map_err(|e| KurultaiError::Store(format!("list_agents prepare: {e}")))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(Agent {
+                    id: row.get(0)?,
+                    codename: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })
+            .map_err(|e| KurultaiError::Store(format!("list_agents query: {e}")))?;
+        let mut agents = Vec::new();
+        for row in rows {
+            agents.push(row.map_err(|e| KurultaiError::Store(format!("list_agents row: {e}")))?);
+        }
+        Ok(agents)
+    }
+
+    async fn issue_agent_token(&self, codename: &str) -> Result<(Agent, String)> {
+        let conn = self.lock()?;
+        let token = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().to_string().replace('-', ""),
+            uuid::Uuid::new_v4().to_string().replace('-', "")
+        );
+        let key_hash = sha256_hex(&token);
+        let mut id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+
+        // Update existing codename if present, otherwise insert — preserving agent id / messages.
+        let updated = conn.execute(
+            "UPDATE agents SET key_hash = ?1, created_at = ?2 WHERE codename = ?3 COLLATE NOCASE",
+            params![&key_hash, &now, &codename],
+        )
+        .map_err(|e| KurultaiError::Store(format!("issue_agent_token update: {e}")))?;
+
+        if updated == 0 {
+            conn.execute(
+                "INSERT INTO agents (id, codename, key_hash, created_at) VALUES (?1, ?2, ?3, ?4)",
+                params![&id, &codename, &key_hash, &now],
+            )
+            .map_err(|e| KurultaiError::Store(format!("issue_agent_token insert: {e}")))?;
+        } else {
+            let mut stmt = conn
+                .prepare("SELECT id FROM agents WHERE codename = ?1 COLLATE NOCASE")
+                .map_err(|e| {
+                    KurultaiError::Store(format!("issue_agent_token select prepare: {e}"))
+                })?;
+            id = stmt
+                .query_row(params![&codename], |row| row.get(0))
+                .map_err(|e| KurultaiError::Store(format!("issue_agent_token select: {e}")))?;
+        }
+
+        Ok((
+            Agent {
+                id,
+                codename: codename.to_string(),
+                created_at: now,
+            },
+            token,
+        ))
+    }
+
+    async fn issue_agent_seat_token(
+        &self,
+        codename: &str,
+        instance_id: &str,
+        approved_by: &str,
+    ) -> Result<(Agent, String)> {
+        let conn = self.lock()?;
+        let instance_id = if instance_id.trim().is_empty() {
+            "default"
+        } else {
+            instance_id.trim()
+        };
+        let now = Utc::now().to_rfc3339();
+
+        // One agents row per codename — find or create. Fresh rows get a random
+        // unissued key_hash placeholder; real credentials live per-seat.
+        let mut stmt = conn
+            .prepare("SELECT id, created_at FROM agents WHERE codename = ?1 COLLATE NOCASE")
+            .map_err(|e| {
+                KurultaiError::Store(format!("issue_agent_seat_token agent select: {e}"))
+            })?;
+        let existing = stmt
+            .query_row(params![codename], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .optional()
+            .map_err(|e| {
+                KurultaiError::Store(format!("issue_agent_seat_token agent query: {e}"))
+            })?;
+        let (agent_id, created_at) = match existing {
+            Some(pair) => pair,
+            None => {
+                let id = uuid::Uuid::new_v4().to_string();
+                let placeholder = sha256_hex(&uuid::Uuid::new_v4().to_string());
+                conn.execute(
+                    "INSERT INTO agents (id, codename, key_hash, created_at) VALUES (?1, ?2, ?3, ?4)",
+                    params![&id, &codename, &placeholder, &now],
+                )
+                .map_err(|e| {
+                    KurultaiError::Store(format!("issue_agent_seat_token agent insert: {e}"))
+                })?;
+                (id, now.clone())
+            }
+        };
+
+        let token = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().to_string().replace('-', ""),
+            uuid::Uuid::new_v4().to_string().replace('-', "")
+        );
+        let key_hash = sha256_hex(&token);
+        conn.execute(
+            "INSERT INTO agent_seats (id, agent_id, instance_id, key_hash, approved_by, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+             ON CONFLICT(agent_id, instance_id) DO UPDATE SET \
+                 key_hash = excluded.key_hash, \
+                 approved_by = excluded.approved_by, \
+                 created_at = excluded.created_at, \
+                 revoked_at = NULL",
+            params![
+                uuid::Uuid::new_v4().to_string(),
+                &agent_id,
+                &instance_id,
+                &key_hash,
+                &approved_by,
+                &now
+            ],
+        )
+        .map_err(|e| KurultaiError::Store(format!("issue_agent_seat_token seat upsert: {e}")))?;
+
+        Ok((
+            Agent {
+                id: agent_id,
+                codename: codename.to_string(),
+                created_at,
+            },
+            token,
+        ))
+    }
+
+    async fn revoke_agent(&self, codename: &str, instance_id: Option<&str>) -> Result<u64> {
+        let conn = self.lock()?;
+        let agent_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM agents WHERE codename = ?1 COLLATE NOCASE",
+                params![codename],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("revoke_agent lookup: {e}")))?;
+        let Some(agent_id) = agent_id else {
+            return Ok(0);
+        };
+        let now = Utc::now().to_rfc3339();
+        match instance_id {
+            Some(seat) => {
+                let n = conn
+                    .execute(
+                        "UPDATE agent_seats SET revoked_at = ?1 \
+                         WHERE agent_id = ?2 AND instance_id = ?3 AND revoked_at IS NULL",
+                        params![&now, &agent_id, seat],
+                    )
+                    .map_err(|e| KurultaiError::Store(format!("revoke_agent seat update: {e}")))?;
+                Ok(n as u64)
+            }
+            None => {
+                let seats = conn
+                    .execute(
+                        "UPDATE agent_seats SET revoked_at = ?1 \
+                         WHERE agent_id = ?2 AND revoked_at IS NULL",
+                        params![&now, &agent_id],
+                    )
+                    .map_err(|e| KurultaiError::Store(format!("revoke_agent seats update: {e}")))?;
+                // Scramble the codename's primary key so it stops resolving.
+                conn.execute(
+                    "UPDATE agents SET key_hash = 'revoked:' || id WHERE id = ?1",
+                    params![&agent_id],
+                )
+                .map_err(|e| KurultaiError::Store(format!("revoke_agent key update: {e}")))?;
+                Ok(seats as u64 + 1)
+            }
+        }
+    }
+
+    // ── Device authorization implementations ──────────────────────────────────
+
+    async fn create_device_flow(
+        &self,
+        codename: &str,
+        client_id: &str,
+        instance_id: &str,
+        expires_in_seconds: u64,
+    ) -> Result<DeviceFlow> {
+        let conn = self.lock()?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let device_code = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().to_string().replace('-', ""),
+            uuid::Uuid::new_v4().to_string().replace('-', "")
+        );
+        let user_code = uuid::Uuid::new_v4()
+            .to_string()
+            .replace('-', "")
+            .to_uppercase();
+        let user_code = user_code[..8].to_string();
+        let now = Utc::now();
+        let created_at = now.to_rfc3339();
+        let expires_at = (now + chrono::Duration::seconds(expires_in_seconds as i64)).to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO device_flows (id, device_code, user_code, codename, instance_id, client_id, status, created_at, expires_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', ?7, ?8)",
+            params![&id, &device_code, &user_code, &codename, &instance_id, &client_id, &created_at, &expires_at],
+        )
+        .map_err(|e| KurultaiError::Store(format!("create_device_flow insert: {e}")))?;
+
+        Ok(DeviceFlow {
+            id,
+            device_code,
+            user_code,
+            codename: codename.to_string(),
+            instance_id: instance_id.to_string(),
+            client_id: client_id.to_string(),
+            status: "pending".to_string(),
+            created_at,
+            expires_at,
+            approved_at: None,
+            approved_by: None,
+            agent_id: None,
+            token_hash: None,
+        })
+    }
+
+    async fn get_device_flow_by_device_code(
+        &self,
+        device_code: &str,
+    ) -> Result<Option<DeviceFlow>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, device_code, user_code, codename, instance_id, client_id, status, created_at, \
+                 expires_at, approved_at, approved_by, agent_id, token_hash \
+                 FROM device_flows WHERE device_code = ?1",
+            )
+            .map_err(|e| {
+                KurultaiError::Store(format!("get_device_flow_by_device_code prepare: {e}"))
+            })?;
+        let row = stmt
+            .query_row(params![device_code], |row| {
+                Ok(DeviceFlow {
+                    id: row.get(0)?,
+                    device_code: row.get(1)?,
+                    user_code: row.get(2)?,
+                    codename: row.get(3)?,
+                    instance_id: row.get(4)?,
+                    client_id: row.get(5)?,
+                    status: row.get(6)?,
+                    created_at: row.get(7)?,
+                    expires_at: row.get(8)?,
+                    approved_at: row.get(9)?,
+                    approved_by: row.get(10)?,
+                    agent_id: row.get(11)?,
+                    token_hash: row.get(12)?,
+                })
+            })
+            .optional()
+            .map_err(|e| {
+                KurultaiError::Store(format!("get_device_flow_by_device_code query: {e}"))
+            })?;
+        Ok(row)
+    }
+
+    async fn get_device_flow_by_user_code(&self, user_code: &str) -> Result<Option<DeviceFlow>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, device_code, user_code, codename, instance_id, client_id, status, created_at, \
+                 expires_at, approved_at, approved_by, agent_id, token_hash \
+                 FROM device_flows WHERE user_code = ?1",
+            )
+            .map_err(|e| {
+                KurultaiError::Store(format!("get_device_flow_by_user_code prepare: {e}"))
+            })?;
+        let row = stmt
+            .query_row(params![user_code], |row| {
+                Ok(DeviceFlow {
+                    id: row.get(0)?,
+                    device_code: row.get(1)?,
+                    user_code: row.get(2)?,
+                    codename: row.get(3)?,
+                    instance_id: row.get(4)?,
+                    client_id: row.get(5)?,
+                    status: row.get(6)?,
+                    created_at: row.get(7)?,
+                    expires_at: row.get(8)?,
+                    approved_at: row.get(9)?,
+                    approved_by: row.get(10)?,
+                    agent_id: row.get(11)?,
+                    token_hash: row.get(12)?,
+                })
+            })
+            .optional()
+            .map_err(|e| {
+                KurultaiError::Store(format!("get_device_flow_by_user_code query: {e}"))
+            })?;
+        Ok(row)
+    }
+
+    async fn approve_device_flow(&self, user_code: &str, approved_by: &str) -> Result<()> {
+        let conn = self.lock()?;
+        let now = Utc::now().to_rfc3339();
+        let updated = conn
+            .execute(
+                "UPDATE device_flows \
+             SET status = 'approved', approved_at = ?1, approved_by = ?2 \
+             WHERE user_code = ?3 AND status = 'pending' AND expires_at > datetime('now')",
+                params![&now, &approved_by, &user_code],
+            )
+            .map_err(|e| KurultaiError::Store(format!("approve_device_flow update: {e}")))?;
+        if updated == 0 {
+            return Err(KurultaiError::Store(
+                "device flow not found, already approved, or expired".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn deny_device_flow(&self, user_code: &str, denied_by: &str) -> Result<()> {
+        let conn = self.lock()?;
+        let now = Utc::now().to_rfc3339();
+        let updated = conn
+            .execute(
+                "UPDATE device_flows \
+             SET status = 'denied', approved_at = ?1, approved_by = ?2 \
+             WHERE user_code = ?3 AND status = 'pending' AND expires_at > datetime('now')",
+                params![&now, &denied_by, &user_code],
+            )
+            .map_err(|e| KurultaiError::Store(format!("deny_device_flow update: {e}")))?;
+        if updated == 0 {
+            return Err(KurultaiError::Store(
+                "device flow not found, already decided, or expired".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn exchange_device_flow(
+        &self,
+        device_code: &str,
+        token_hash: &str,
+        agent_id: &str,
+    ) -> Result<()> {
+        let conn = self.lock()?;
+        let updated = conn
+            .execute(
+                "UPDATE device_flows \
+             SET status = 'exchanged', token_hash = ?1, agent_id = ?2 \
+             WHERE device_code = ?3 AND status = 'approved' AND expires_at > datetime('now')",
+                params![&token_hash, &agent_id, &device_code],
+            )
+            .map_err(|e| KurultaiError::Store(format!("exchange_device_flow update: {e}")))?;
+        if updated == 0 {
+            return Err(KurultaiError::Store(
+                "device flow not approved, not found, or expired".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    // ── Message board implementations ─────────────────────────────────────────
+
+    async fn create_thread(
+        &self,
+        name: &str,
+        parent_thread_id: Option<&str>,
+        turn_cap: Option<u32>,
+    ) -> Result<Thread> {
+        let conn = self.lock()?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        let turn_cap = turn_cap.unwrap_or(5);
+        conn.execute(
+            "INSERT INTO threads (id, name, parent_thread_id, turn_cap, turns_used, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6)",
+            params![&id, &name, &parent_thread_id, &(turn_cap as i64), &now, &now],
+        )
+        .map_err(|e| KurultaiError::Store(format!("create_thread insert: {e}")))?;
+
+        Ok(Thread {
+            id,
+            name: name.to_string(),
+            parent_thread_id: parent_thread_id.map(str::to_string),
+            turn_cap,
+            turns_used: 0,
+            created_at: now.clone(),
+            updated_at: now,
+        })
+    }
+
+    async fn get_thread(&self, id: &str) -> Result<Option<Thread>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, parent_thread_id, turn_cap, turns_used, created_at, updated_at \
+                 FROM threads WHERE id = ?1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("get_thread prepare: {e}")))?;
+        let row = stmt
+            .query_row(params![id], row_to_thread)
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("get_thread query: {e}")))?;
+        Ok(row)
+    }
+
+    async fn get_thread_by_name(&self, name: &str) -> Result<Option<Thread>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, parent_thread_id, turn_cap, turns_used, created_at, updated_at \
+                 FROM threads WHERE name = ?1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("get_thread_by_name prepare: {e}")))?;
+        let row = stmt
+            .query_row(params![name], row_to_thread)
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("get_thread_by_name query: {e}")))?;
+        Ok(row)
+    }
+
+    async fn list_threads(&self, limit: usize) -> Result<Vec<Thread>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, parent_thread_id, turn_cap, turns_used, created_at, updated_at \
+                 FROM threads ORDER BY updated_at DESC LIMIT ?1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("list_threads prepare: {e}")))?;
+        let rows = stmt
+            .query_map([limit as i64], row_to_thread)
+            .map_err(|e| KurultaiError::Store(format!("list_threads query: {e}")))?;
+        let mut threads = Vec::new();
+        for row in rows {
+            threads.push(row.map_err(|e| KurultaiError::Store(format!("list_threads row: {e}")))?);
+        }
+        Ok(threads)
+    }
+
+    async fn post_message(&self, input: &PostMessageInput) -> Result<Message> {
+        let mut conn = self.lock()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| KurultaiError::Store(format!("post_message begin transaction: {e}")))?;
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        let mut turns_consumed: u32 = 0;
+
+        if let Some(parent_id) = &input.parent_id {
+            let parent_reply: i32 = tx
+                .query_row(
+                    "SELECT request_reply FROM messages WHERE id = ?1",
+                    [parent_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| KurultaiError::Store(format!("post_message parent lookup: {e}")))?;
+            if parent_reply == 1 {
+                let (used, cap): (i64, i64) = tx
+                    .query_row(
+                        "SELECT turns_used, turn_cap FROM threads WHERE id = ?1",
+                        [&input.thread_id],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .map_err(|e| {
+                        KurultaiError::Store(format!("post_message thread lookup: {e}"))
+                    })?;
+                if used >= cap {
+                    return Err(KurultaiError::Store("thread turn cap reached".into()));
+                }
+                turns_consumed = 1;
+                tx.execute(
+                    "UPDATE threads SET turns_used = turns_used + 1, updated_at = ?1 WHERE id = ?2",
+                    params![&now, &input.thread_id],
+                )
+                .map_err(|e| KurultaiError::Store(format!("post_message update turns: {e}")))?;
+            }
+        }
+
+        tx.execute(
+            "INSERT INTO messages (id, thread_id, agent_id, parent_id, kind, content, request_reply, turns_consumed, created_at, repo, instance_id) \
+             VALUES (?1, ?2, ?3, ?4, 'message', ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                &id,
+                &input.thread_id,
+                &input.agent_id,
+                &input.parent_id,
+                &input.content,
+                &(input.request_reply as i32),
+                &(turns_consumed as i64),
+                &now,
+                &input.repo,
+                &input.instance_id,
+            ],
+        )
+        .map_err(|e| KurultaiError::Store(format!("post_message insert: {e}")))?;
+
+        let agent_codename = tx
+            .query_row(
+                "SELECT codename FROM agents WHERE id = ?1",
+                [&input.agent_id],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap_or_default();
+
+        tx.commit()
+            .map_err(|e| KurultaiError::Store(format!("post_message commit: {e}")))?;
+
+        Ok(Message {
+            id,
+            thread_id: input.thread_id.clone(),
+            agent_id: input.agent_id.clone(),
+            agent_codename,
+            parent_id: input.parent_id.clone(),
+            kind: MessageKind::Message,
+            content: input.content.clone(),
+            request_reply: input.request_reply,
+            turns_consumed,
+            created_at: now,
+            repo: input.repo.clone(),
+            instance_id: input.instance_id.clone(),
+        })
+    }
+
+    async fn add_reaction(&self, input: &AddReactionInput) -> Result<Message> {
+        let conn = self.lock()?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO messages (id, thread_id, agent_id, parent_id, kind, content, request_reply, turns_consumed, created_at, repo, instance_id) \
+             VALUES (?1, ?2, ?3, ?4, 'reaction', ?5, 0, 0, ?6, NULL, NULL)",
+            params![
+                &id,
+                &input.thread_id,
+                &input.agent_id,
+                &input.message_id,
+                &input.emoji,
+                &now,
+            ],
+        )
+        .map_err(|e| KurultaiError::Store(format!("add_reaction insert: {e}")))?;
+        conn.execute(
+            "UPDATE threads SET updated_at = ?1 WHERE id = ?2",
+            params![&now, &input.thread_id],
+        )
+        .map_err(|e| KurultaiError::Store(format!("add_reaction update thread: {e}")))?;
+
+        let agent_codename = conn
+            .query_row(
+                "SELECT codename FROM agents WHERE id = ?1",
+                [&input.agent_id],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap_or_default();
+
+        Ok(Message {
+            id,
+            thread_id: input.thread_id.clone(),
+            agent_id: input.agent_id.clone(),
+            agent_codename,
+            parent_id: Some(input.message_id.clone()),
+            kind: MessageKind::Reaction,
+            content: input.emoji.clone(),
+            request_reply: false,
+            turns_consumed: 0,
+            created_at: now,
+            repo: None,
+            instance_id: None,
+        })
+    }
+
+    async fn list_messages(&self, thread_id: &str, limit: usize) -> Result<Vec<Message>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT m.id, m.thread_id, m.agent_id, m.parent_id, m.kind, m.content, m.request_reply, \
+                 m.turns_consumed, m.created_at, m.repo, m.instance_id, COALESCE(a.codename, '') \
+                 FROM messages m LEFT JOIN agents a ON a.id = m.agent_id \
+                 WHERE m.thread_id = ?1 \
+                 ORDER BY m.created_at DESC LIMIT ?2",
+            )
+            .map_err(|e| KurultaiError::Store(format!("list_messages prepare: {e}")))?;
+        let rows = stmt
+            .query_map(params![thread_id, limit as i64], row_to_message)
+            .map_err(|e| KurultaiError::Store(format!("list_messages query: {e}")))?;
+        let mut messages = Vec::new();
+        for row in rows {
+            messages
+                .push(row.map_err(|e| KurultaiError::Store(format!("list_messages row: {e}")))?);
+        }
+        Ok(messages)
+    }
+
+    async fn get_message(&self, id: &str) -> Result<Option<Message>> {
+        let conn = self.lock()?;
+        conn.query_row(
+            "SELECT m.id, m.thread_id, m.agent_id, m.parent_id, m.kind, m.content, m.request_reply, \
+             m.turns_consumed, m.created_at, m.repo, m.instance_id, COALESCE(a.codename, '') \
+             FROM messages m LEFT JOIN agents a ON a.id = m.agent_id \
+             WHERE m.id = ?1",
+            params![id],
+            row_to_message,
+        )
+        .optional()
+        .map_err(|e| KurultaiError::Store(format!("get_message query: {e}")))
+    }
+
+    async fn update_message_content(&self, id: &str, content: &str) -> Result<Message> {
+        let conn = self.lock()?;
+        let updated = conn
+            .execute(
+                "UPDATE messages SET content = ?2 WHERE id = ?1",
+                params![id, content],
+            )
+            .map_err(|e| KurultaiError::Store(format!("update_message_content: {e}")))?;
+        if updated == 0 {
+            return Err(KurultaiError::Store(format!("message {id} not found")));
+        }
+        conn.query_row(
+            "SELECT m.id, m.thread_id, m.agent_id, m.parent_id, m.kind, m.content, m.request_reply, \
+             m.turns_consumed, m.created_at, m.repo, m.instance_id, COALESCE(a.codename, '') \
+             FROM messages m LEFT JOIN agents a ON a.id = m.agent_id \
+             WHERE m.id = ?1",
+            params![id],
+            row_to_message,
+        )
+        .map_err(|e| KurultaiError::Store(format!("update_message_content fetch: {e}")))
+    }
+
+    async fn delete_message(&self, id: &str) -> Result<bool> {
+        let mut conn = self.lock()?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| KurultaiError::Store(format!("delete_message begin: {e}")))?;
+        // Reactions point at the message via parent_id — remove them too.
+        tx.execute(
+            "DELETE FROM messages WHERE parent_id = ?1 AND kind = 'reaction'",
+            params![id],
+        )
+        .map_err(|e| KurultaiError::Store(format!("delete_message reactions: {e}")))?;
+        let removed = tx
+            .execute("DELETE FROM messages WHERE id = ?1", params![id])
+            .map_err(|e| KurultaiError::Store(format!("delete_message: {e}")))?;
+        tx.commit()
+            .map_err(|e| KurultaiError::Store(format!("delete_message commit: {e}")))?;
+        Ok(removed > 0)
+    }
 }
 
 /// Hydrate ranked `(id, score)` pairs into atoms, skipping missing ids.
@@ -1687,6 +3199,22 @@ struct OntologyLinkRaw {
     confidence: f64,
     status: String,
     actor: String,
+}
+
+fn row_to_ontology_proposal(row: &rusqlite::Row<'_>) -> rusqlite::Result<OntologyProposal> {
+    let payload_raw: String = row.get(2)?;
+    let payload = serde_json::from_str(&payload_raw).unwrap_or_else(|_| serde_json::json!({}));
+    Ok(OntologyProposal {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        payload,
+        status: row.get(3)?,
+        proposed_by: row.get(4)?,
+        reason: row.get(5)?,
+        created_at: row.get(6)?,
+        decided_by: row.get(7)?,
+        decided_at: row.get(8)?,
+    })
 }
 
 fn row_to_ontology_link_raw(row: &rusqlite::Row<'_>) -> rusqlite::Result<OntologyLinkRaw> {
@@ -1924,6 +3452,41 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
     })
 }
 
+fn row_to_thread(row: &rusqlite::Row<'_>) -> rusqlite::Result<Thread> {
+    let parent: Option<String> = row.get(2)?;
+    Ok(Thread {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        parent_thread_id: parent.filter(|s| !s.is_empty()),
+        turn_cap: row.get::<_, i64>(3)? as u32,
+        turns_used: row.get::<_, i64>(4)? as u32,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
+    })
+}
+
+fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
+    let parent: Option<String> = row.get(3)?;
+    let kind_raw: String = row.get(4)?;
+    let request_reply: i32 = row.get(6)?;
+    let repo: Option<String> = row.get(9)?;
+    let instance_id: Option<String> = row.get(10)?;
+    Ok(Message {
+        id: row.get(0)?,
+        thread_id: row.get(1)?,
+        agent_id: row.get(2)?,
+        parent_id: parent.filter(|s| !s.is_empty()),
+        kind: MessageKind::parse(&kind_raw),
+        content: row.get(5)?,
+        request_reply: request_reply != 0,
+        turns_consumed: row.get::<_, i64>(7)? as u32,
+        created_at: row.get(8)?,
+        repo: repo.filter(|s| !s.is_empty()),
+        instance_id: instance_id.filter(|s| !s.is_empty()),
+        agent_codename: row.get::<_, String>(11).unwrap_or_default(),
+    })
+}
+
 fn parse_dt(s: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(s)
         .map(|d| d.with_timezone(&Utc))
@@ -2040,6 +3603,147 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         SqliteVecStore::open(dir.join("store.db"), dim).unwrap()
+    }
+
+    #[tokio::test]
+    async fn agent_seat_token_issue_resolve_revoke() {
+        let store = temp_store(4);
+
+        // Two seats under one codename — never a `devin-2` row.
+        let (a1, key1) = store
+            .issue_agent_seat_token("devin", "laptop-a", "luke@x")
+            .await
+            .unwrap();
+        let (a2, key2) = store
+            .issue_agent_seat_token("devin", "desktop-b", "luke@x")
+            .await
+            .unwrap();
+        assert_eq!(a1.id, a2.id, "seats share the codename agent row");
+        assert_eq!(a1.codename, "devin");
+        assert_eq!(store.list_agents().await.unwrap().len(), 1);
+
+        // Both seat keys resolve to the same agent.
+        let h1 = sha256_hex(&key1);
+        let h2 = sha256_hex(&key2);
+        assert_eq!(
+            store
+                .resolve_agent_by_key_hash(&h1)
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            a1.id
+        );
+        assert_eq!(
+            store
+                .resolve_agent_by_key_hash(&h2)
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            a1.id
+        );
+
+        // Revoking one seat leaves the other working.
+        let n = store.revoke_agent("devin", Some("laptop-a")).await.unwrap();
+        assert_eq!(n, 1);
+        assert!(store
+            .resolve_agent_by_key_hash(&h1)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(store
+            .resolve_agent_by_key_hash(&h2)
+            .await
+            .unwrap()
+            .is_some());
+
+        // Re-issue on the same seat revives it (rotation).
+        let (_a, key1b) = store
+            .issue_agent_seat_token("devin", "laptop-a", "luke@x")
+            .await
+            .unwrap();
+        assert!(store
+            .resolve_agent_by_key_hash(&sha256_hex(&key1b))
+            .await
+            .unwrap()
+            .is_some());
+
+        // Codename-wide revoke kills every seat + primary key.
+        let n = store.revoke_agent("devin", None).await.unwrap();
+        assert!(n >= 2);
+        assert!(store
+            .resolve_agent_by_key_hash(&sha256_hex(&key1b))
+            .await
+            .unwrap()
+            .is_none());
+        assert!(store
+            .resolve_agent_by_key_hash(&h2)
+            .await
+            .unwrap()
+            .is_none());
+        assert_eq!(store.revoke_agent("nobody", None).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn device_flow_pending_approve_deny_exchange() {
+        let store = temp_store(4);
+        let flow = store
+            .create_device_flow("cursor", "kurultai-cli", "seat-1", 600)
+            .await
+            .unwrap();
+        assert_eq!(flow.status, "pending");
+        assert_eq!(flow.instance_id, "seat-1");
+        assert_eq!(flow.user_code.len(), 8);
+
+        let fetched = store
+            .get_device_flow_by_device_code(&flow.device_code)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.instance_id, "seat-1");
+        assert_eq!(fetched.status, "pending");
+
+        store
+            .approve_device_flow(&flow.user_code, "luke@x")
+            .await
+            .unwrap();
+        let approved = store
+            .get_device_flow_by_user_code(&flow.user_code)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(approved.status, "approved");
+        assert_eq!(approved.approved_by.as_deref(), Some("luke@x"));
+
+        store
+            .exchange_device_flow(&flow.device_code, "hash", "agent-1")
+            .await
+            .unwrap();
+        // Deny on a decided flow errors.
+        assert!(store
+            .deny_device_flow(&flow.user_code, "luke@x")
+            .await
+            .is_err());
+
+        // Deny path on a fresh flow.
+        let flow2 = store
+            .create_device_flow("claude", "kurultai-cli", "", 600)
+            .await
+            .unwrap();
+        store
+            .deny_device_flow(&flow2.user_code, "luke@x")
+            .await
+            .unwrap();
+        assert_eq!(
+            store
+                .get_device_flow_by_user_code(&flow2.user_code)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            "denied"
+        );
     }
 
     #[tokio::test]
@@ -2500,6 +4204,156 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn graph_exclude_source_keeps_cortex_off_repos() {
+        let store = temp_store(4);
+        let now = Utc::now();
+        let mut note = sample_atom("n1", "Note", "body", None);
+        note.source = "notes".into();
+        note.last_accessed_at = now;
+        let mut repo = sample_atom("r1", "Repo file", "fn main", None);
+        repo.source = "repos".into();
+        repo.source_id = "duketopceo/kurultai/src/main.rs".into();
+        repo.last_accessed_at = now;
+        store.upsert(&note).await.unwrap();
+        store.upsert(&repo).await.unwrap();
+
+        let cortex = store
+            .list_graph_nodes(
+                None,
+                10,
+                SearchFilter::default().with_exclude_source(Some("repos")),
+                TierPolicy::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cortex.len(), 1);
+        assert_eq!(cortex[0].id, "n1");
+
+        let code = store
+            .list_graph_nodes(
+                None,
+                10,
+                SearchFilter::default().with_source(Some("repos")),
+                TierPolicy::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(code.len(), 1);
+        assert_eq!(code[0].id, "r1");
+    }
+
+    #[tokio::test]
+    async fn message_board_post_react_and_turn_cap() {
+        let store = temp_store(4);
+        let (agent_id, _key) = store.register_agent("cursor").await.unwrap();
+        let thread = store.create_thread("hey.md", None, Some(1)).await.unwrap();
+        let root = store
+            .post_message(&PostMessageInput {
+                thread_id: thread.id.clone(),
+                agent_id: agent_id.clone(),
+                parent_id: None,
+                content: "hello agents".into(),
+                request_reply: true,
+                repo: Some("duketopceo/kurultai".into()),
+                instance_id: Some("laptop-a".into()),
+            })
+            .await
+            .unwrap();
+        assert_eq!(root.repo.as_deref(), Some("duketopceo/kurultai"));
+        assert_eq!(root.instance_id.as_deref(), Some("laptop-a"));
+        assert_eq!(root.agent_codename, "cursor");
+        let reply = store
+            .post_message(&PostMessageInput {
+                thread_id: thread.id.clone(),
+                agent_id: agent_id.clone(),
+                parent_id: Some(root.id.clone()),
+                content: "acking".into(),
+                request_reply: false,
+                repo: None,
+                instance_id: Some("laptop-a".into()),
+            })
+            .await
+            .unwrap();
+        assert_eq!(reply.turns_consumed, 1);
+        let capped = store
+            .post_message(&PostMessageInput {
+                thread_id: thread.id.clone(),
+                agent_id: agent_id.clone(),
+                parent_id: Some(root.id.clone()),
+                content: "too many".into(),
+                request_reply: false,
+                repo: None,
+                instance_id: None,
+            })
+            .await;
+        assert!(capped.is_err(), "turn cap must reject further replies");
+        let reaction = store
+            .add_reaction(&AddReactionInput {
+                thread_id: thread.id.clone(),
+                agent_id,
+                message_id: root.id,
+                emoji: ":ok_hand:".into(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(reaction.kind, MessageKind::Reaction);
+        assert_eq!(reaction.turns_consumed, 0);
+        let listed = store.list_messages(&thread.id, 20).await.unwrap();
+        assert!(listed.len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn message_update_and_delete_round_trip() {
+        let store = temp_store(4);
+        let (agent_id, _key) = store.register_agent("tester").await.unwrap();
+        let thread = store.create_thread("hey.md", None, Some(10)).await.unwrap();
+        let msg = store
+            .post_message(&PostMessageInput {
+                thread_id: thread.id.clone(),
+                agent_id: agent_id.clone(),
+                parent_id: None,
+                content: "[todo] ship it".into(),
+                request_reply: false,
+                repo: None,
+                instance_id: None,
+            })
+            .await
+            .unwrap();
+        store
+            .add_reaction(&AddReactionInput {
+                thread_id: thread.id.clone(),
+                agent_id: agent_id.clone(),
+                message_id: msg.id.clone(),
+                emoji: ":eyes:".into(),
+            })
+            .await
+            .unwrap();
+
+        let updated = store
+            .update_message_content(&msg.id, "[doing] ship it")
+            .await
+            .unwrap();
+        assert_eq!(updated.content, "[doing] ship it");
+        assert_eq!(updated.agent_codename, "tester");
+        let fetched = store.get_message(&msg.id).await.unwrap().unwrap();
+        assert_eq!(fetched.content, "[doing] ship it");
+
+        // Delete cascades the reaction.
+        assert!(store.delete_message(&msg.id).await.unwrap());
+        assert!(store.get_message(&msg.id).await.unwrap().is_none());
+        let listed = store.list_messages(&thread.id, 20).await.unwrap();
+        assert!(
+            listed.iter().all(|m| m.id != msg.id),
+            "deleted message must not list"
+        );
+        assert!(
+            listed.iter().all(|m| m.kind != MessageKind::Reaction),
+            "reaction must be cascade-deleted"
+        );
+        assert!(!store.delete_message(&msg.id).await.unwrap());
+    }
+
+    #[tokio::test]
     async fn soft_labels_round_trip_and_preserve_when_empty() {
         use crate::types::SoftLabel;
         let store = temp_store(4);
@@ -2634,5 +4488,32 @@ mod tests {
             msg.contains("--features postgres"),
             "unexpected error: {msg}"
         );
+    }
+
+    #[tokio::test]
+    async fn get_thread_prefers_id_over_colliding_name() {
+        let store = temp_store(4);
+        let real = store
+            .create_thread("hey.md", None, None)
+            .await
+            .expect("create hey.md");
+        // A second thread whose *name* is the first thread's id — the hosted
+        // collision that made path ids silently route to the wrong thread.
+        let decoy = store
+            .create_thread(&real.id, None, None)
+            .await
+            .expect("create decoy");
+        let by_id = store
+            .get_thread(&real.id)
+            .await
+            .expect("get_thread")
+            .expect("real thread by id");
+        assert_eq!(by_id.name, "hey.md");
+        let by_name = store
+            .get_thread_by_name(&real.id)
+            .await
+            .expect("get_thread_by_name")
+            .expect("decoy by name");
+        assert_eq!(by_name.id, decoy.id);
     }
 }
