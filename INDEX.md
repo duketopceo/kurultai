@@ -73,6 +73,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-10-01 — competitive feature sweep plan (`docs/plans/2026-10-01-001`): pplx-embed backend, gap-aware ask, zero-LLM edge extraction, supersede chains, nightly sweep
 - 2026-09-30 — `daemon --demo` (U4, portfolio-hub #43): isolated fixture-corpus mode — `demo/` (config + 6 tagged atoms + tunnel/Access runbook), `docker-compose.demo.yml`, `demo_config_path()` in `main.rs`; loopback-forced, `--bind` ignored
 - 2026-09-30 — device broker U1–U3 (plan `docs/plans/2026-09-28-001`): `src/broker/` loopback daemon holds the upstream seat session and mints per-chat `sess_*` keys; `POST /mcp` relays upstream with `X-Kurultai-{agent,chat,session,device}` stamps; upstream `/mcp` now accepts registered seat tokens (full surface) alongside shared-secret read-only; `mcp --broker` is the agent stdio lane; `[broker]` config + `security::read_agent_key` added
 - 2026-09-26 — UI rebuild units U1–U3 scaffold: `docs/design/` (teardown definitions — 3-palette clash + fake-data findings; research bases) + `design-lab/` (4 surface prompts) + `scripts/ui-batch.mjs` OpenRouter runner; batch generation + stitching remain
