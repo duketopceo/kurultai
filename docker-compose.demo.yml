@@ -1,24 +1,36 @@
 # Demo instance — fixture corpus only, loopback-bound, meant to sit behind
 # a Cloudflare Tunnel + Access application. See demo/README.md for the
 # tunnel/Access runbook. Real data never reaches this container.
+#
+#   CLOUDFLARED_TOKEN=<tunnel token> docker compose -f docker-compose.demo.yml up -d --build
+#
+# The tunnel token comes from the `kurultai-demo` named tunnel
+# (cloudflared runs in-compose; only outbound 7844 is needed).
 services:
   kurultai-demo:
-    build: .
+    build:
+      context: .
+      dockerfile: demo/Dockerfile
     command: ["daemon", "--demo", "--port", "8421"]
-    # Config + fixture corpus are read-only mounts; the isolated store is a
-    # named volume so it never touches host state.
-    volumes:
-      - ./demo:/app/demo:ro
-      - demo-store:/root/.local/share/kurultai/demo
+    # Store is ephemeral (HOME=/tmp): fixture corpus re-indexes on boot in
+    # milliseconds, so persistence buys nothing and root-owned volumes
+    # break the nobody user. Corpus is baked into the image at /app/demo.
     environment:
       KURULTAI_DEMO_CONFIG: /app/demo/config.toml
       # Set these on the host to enable CF Access JWT verification:
       # KURULTAI_CF_ACCESS_TEAM / KURULTAI_CF_ACCESS_AUDS
       KURULTAI_CF_ACCESS_TEAM: ${KURULTAI_CF_ACCESS_TEAM:-}
       KURULTAI_CF_ACCESS_AUDS: ${KURULTAI_CF_ACCESS_AUDS:-}
-    # Loopback only — publish through cloudflared, not a host port.
+      # Container needs a non-loopback bind so cloudflared can reach it.
+      KURULTAI_DEMO_BIND_ALL: "1"
+    # No host port — reachable only on the compose network via cloudflared.
     expose:
       - "8421"
+    restart: unless-stopped
 
-volumes:
-  demo-store:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN:?set CLOUDFLARED_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      - kurultai-demo
