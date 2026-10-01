@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: demo
 parent: INDEX.md
-updated: 2026-09-30
-version: 1
+updated: 2026-10-01
+version: 2
 ---
 
 # `demo`
@@ -21,10 +21,13 @@ version: 1
 |------|------|-------|---------|-------|-----|-----------|
 | [`README.md`](README.md) | Demo overview + operator runbook for tunnel route, Access app, env wiring | — | — | 2026-09-30 | 1 | 2026-09-30 added |
 | [`config.toml`](config.toml) | Demo config — isolated `~/.local/share/kurultai/demo/store.db`, corpus source, 30s poll | `KURULTAI_DEMO_CONFIG` | `src/main.rs` `demo_config_path` | 2026-09-30 | 1 | 2026-09-30 added |
-| [`Dockerfile`](Dockerfile) | Slim solo-store image for the demo daemon — corpus baked at `/app/demo`, runs as `nobody` | `docker-compose.demo.yml` | — | 2026-09-30 | 1 | 2026-09-30 added |
+| [`Dockerfile`](Dockerfile) | Slim solo-store image for the demo daemon — corpus baked at `/app/demo`, runs as `nobody` | `docker-compose.demo.yml` | — | 2026-10-01 | 2 | 2026-10-01 curl added + seed entrypoint · 2026-09-30 added |
 | [`generate-corpus.py`](generate-corpus.py) | Seeded generator for `corpus/gen/` — ~200 cross-linked fixture atoms (6 clusters + sync-notes) | — | `demo/corpus/gen` | 2026-10-01 | 1 | 2026-10-01 added (6 atoms was too thin for graph/testing) |
+| [`entrypoint.sh`](entrypoint.sh) | Backgrounds `seed.sh`, then execs `kurultai` as PID 1 | `demo/seed.sh` | `demo/Dockerfile` ENTRYPOINT | 2026-10-01 | 1 | 2026-10-01 added |
+| [`seed.sh`](seed.sh) | Boot seed: 2 agents → Hey thread + posts, ontology entities/links, pending `promote_atom` proposal | `demo/config.toml` · daemon `/api/*` | — | 2026-10-01 | 1 | 2026-10-01 added |
 
 ## Recent
 
+- 2026-10-01 — `seed.sh`/`entrypoint.sh` boot seed (Hey thread, ontology, pending proposal)
 - 2026-10-01 — `generate-corpus.py` + `corpus/gen/` 202 atoms (6 curated was too thin for the brain graph)
 - 2026-09-30 — added: `daemon --demo` fixture-corpus skeleton (portfolio-hub phase-1 U4 / issue #43)

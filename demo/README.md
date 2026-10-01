@@ -8,8 +8,16 @@ visitors — a live knowledge brain without real data.
 - `config.toml` — isolated SQLite store
   (`~/.local/share/kurultai/demo/store.db`), one markdown source pointed at
   `demo/corpus/`, 30s poll.
-- `corpus/` — hand-curated, public-safe atoms. Every file needs YAML
+- `corpus/` — hand-curated, public-safe atoms. Six product explainers
+  plus nine "Project Meridian" atoms (fictional fleet-telemetry project)
+  so search/who-knows/graph have real material. Every file needs YAML
   frontmatter `tags:` or it lands in quarantine.
+- `seed.sh` / `entrypoint.sh` — container boot seed. After the daemon is
+  healthy it registers two throwaway agents (`scout`, `wright`), posts a
+  Hey thread, and writes ontology entities/links plus a pending
+  `promote_atom` proposal — so the Brain UI, Hey board, and Ontology tab
+  all show content. Best-effort and restart-safe (skips when already
+  seeded).
 - `--demo` forces loopback bind and ignores `--bind` — the only public
   path is a Cloudflare Tunnel.
 
@@ -52,5 +60,5 @@ Remaining (manual, needs the target host):
 
 ## Deferred
 
-Real corpus seeding beyond fixtures, unauthenticated public tier,
-auto-provisioning, `kurultai connect` device flow (kurultai#332).
+Unauthenticated public tier, auto-provisioning, `kurultai connect`
+device flow (kurultai#332).
