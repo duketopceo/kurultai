@@ -217,6 +217,35 @@ impl IndexPipeline {
                 .upsert_batch(&enriched)
                 .await
                 .map_err(|e| KurultaiError::Store(format!("upsert_batch failed: {e}")))?;
+
+            // Zero-LLM graph edges: [[wiki-links]], @mentions, frontmatter
+            // rels → references links (competitive-sweep U3). Extraction
+            // failure must not fail the index.
+            let mut edge_atoms = 0usize;
+            let mut edge_links = 0usize;
+            for atom in &enriched {
+                match crate::ontology::apply_extracted_edges(self.store.as_ref(), atom, source_name)
+                    .await
+                {
+                    Ok((_, l)) => {
+                        if l > 0 {
+                            edge_atoms += 1;
+                            edge_links += l;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(atom = %atom.id, error = %e, "edge extraction failed")
+                    }
+                }
+            }
+            if edge_links > 0 {
+                tracing::info!(
+                    source = %source_name,
+                    atoms = edge_atoms,
+                    links = edge_links,
+                    "extracted references edges"
+                );
+            }
         }
 
         // Inbox tray finalization (trusted → processed/, quarantine → failed/).

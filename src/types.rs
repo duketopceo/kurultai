@@ -82,6 +82,9 @@ pub enum OntologyLinkType {
     AssociatesWith,
     TriggeredBy,
     Contradicts,
+    /// Zero-LLM extraction edge: `[[wiki-link]]`, `@mention`, or frontmatter
+    /// `related:`/`depends_on:` found in atom content at index time.
+    References,
 }
 
 impl OntologyLinkType {
@@ -92,6 +95,7 @@ impl OntologyLinkType {
             Self::AssociatesWith => "associates_with",
             Self::TriggeredBy => "triggered_by",
             Self::Contradicts => "contradicts",
+            Self::References => "references",
         }
     }
 
@@ -103,6 +107,7 @@ impl OntologyLinkType {
             "associates_with" => Some(Self::AssociatesWith),
             "triggered_by" => Some(Self::TriggeredBy),
             "contradicts" => Some(Self::Contradicts),
+            "references" => Some(Self::References),
             _ => None,
         }
     }
