@@ -10,10 +10,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_BUILD = (() => {
   try {
     // Content hash of website sources — stable across merge refs and
-    // shallow CI checkouts where git history is unavailable.
+    // shallow CI checkouts where git history is unavailable. Index blob
+    // SHAs, not working-tree contents: an earlier CI step that touches a
+    // tracked file must not shift the stamp (and thus the chunk hashes).
     return execSync(
-      'git ls-files . | sort | xargs git hash-object | git hash-object --stdin | cut -c1-7',
-      { cwd: __dirname },
+      `git ls-files -s . | sort -k4 | awk '{print $2}' | git hash-object --stdin | cut -c1-7`,
+      { cwd: __dirname, shell: '/bin/bash' },
     ).toString().trim();
   } catch {
     return new Date().toISOString().slice(0, 16);
