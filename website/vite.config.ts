@@ -9,15 +9,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Build stamp for the topbar so screenshots identify which build is live.
 const UI_BUILD = (() => {
   try {
-    // Content hash of website sources — stable across merge refs and
-    // shallow CI checkouts where git history is unavailable. Commit-tree
-    // blob SHAs, not index or working-tree contents: nothing a CI step
-    // (or local edit) does to the worktree can shift the stamp, and the
-    // merge ref carries the same website/ blobs as the branch head.
-    return execSync(
-      `git ls-tree -r HEAD -- . | sort -k4 | awk '{print $3}' | git hash-object --stdin | cut -c1-7`,
-      { cwd: __dirname, shell: '/bin/bash' },
-    ).toString().trim();
+    // Build stamp = the website/ subtree SHA of HEAD. A single tree
+    // object hash: immune to worktree dirt, index state, sort locales,
+    // and merge refs (the merge carries the same website/ tree as the
+    // branch head). Shallow CI checkouts still carry tree objects.
+    return execSync('git rev-parse HEAD:./ | cut -c1-7', {
+      cwd: __dirname,
+    }).toString().trim();
   } catch {
     return new Date().toISOString().slice(0, 16);
   }
