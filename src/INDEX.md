@@ -63,6 +63,7 @@ version: 8
 
 ## Recent
 
+- 2026-10-02 — U3 zero-LLM edge extraction: `ontology/extract.rs` (`[[links]]`/`@mentions`/frontmatter rels → `references` edges + entity stubs post-upsert); `types.rs`: `OntologyLinkType::References`
 - 2026-10-02 — `types.rs`: `Answer.gaps` (serde skip-if-empty, no wire break); `main.rs`: ask prints gaps
 
 - 2026-09-30 — `main.rs`: `daemon --demo` flag + `demo_config_path()` (KURULTAI_DEMO_CONFIG or ./demo/config.toml); demo forces loopback bind, ignores `--bind`

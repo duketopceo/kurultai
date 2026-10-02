@@ -73,6 +73,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-10-02 — zero-LLM edge extraction (sweep U3): `src/ontology/extract.rs` turns `[[wiki-links]]`/`@mentions`/frontmatter `related:` into `references` edges + entity stubs at index time; new `OntologyLinkType::References`
 - 2026-10-02 — gap-aware ask (sweep U2): `Answer.gaps` + `src/query/gaps.rs` deterministic analyzer (zero/thin/quarantine-only coverage, unmatched salient terms); wired into both ask paths + CLI
 
 - 2026-10-02 — `embed.backend = "perplexity"`: new PerplexityEmbedder (src/embed/perplexity.rs) decodes the API's int8-base64 vectors; verified live on the 208-atom demo corpus at dim 1024

@@ -8,6 +8,9 @@ use crate::error::{KurultaiError, Result};
 use crate::store::Store;
 use crate::types::{OntologyEntity, OntologyLink, OntologyLinkType, OntologyProposal};
 
+pub mod extract;
+pub use extract::{apply_extracted_edges, extract_references};
+
 pub const CLASS_MEMORY: &str = "class:memory";
 pub const CLASS_NOTE: &str = "class:note";
 pub const CLASS_CODE: &str = "class:code";
