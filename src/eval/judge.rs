@@ -175,7 +175,7 @@ impl Judge for OpenRouterJudge {
             .post(DECISIONS_URL)
             .bearer_auth(self.api_key.expose())
             .header("HTTP-Referer", "https://github.com/duketopceo/kurultai")
-            .header("X-OpenRouter-Title", "kurultai-eval")
+            .header("X-Title", "kurultai-eval")
             .json(&body)
             .send()
             .await

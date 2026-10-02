@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: scripts
 parent: INDEX.md
-updated: 2026-09-30
-version: 3
+updated: 2026-10-02
+version: 4
 ---
 
 # `scripts`
@@ -25,12 +25,14 @@ version: 3
 | [`hammer.mjs`](hammer.mjs) | Load/chaos harness — read/adversarial/payload/write/race/turn-cap/consistency/soak suites w/ p50–p99 + RSS watch | `/api/*` HTTP surface | `artifacts/` | 2026-09-30 | 1 | plan 2026-09-30-001 U1–U3+U6 |
 | [`hammer-mcp.mjs`](hammer-mcp.mjs) | MCP stdio lane hammer — concurrent `tools/call` through real `kurultai mcp` subprocess | MCP JSON-RPC stdio | — | 2026-09-30 | 1 | plan 2026-09-30-001 U5 |
 | [`build-ui.sh`](build-ui.sh) | website/ → ui/ production copy for rust-embed | — | `website/` · `ui/` | 2026-09-04 | 2 | 2026-09-04 prune legacy files and stale hashed bundles before rebuild · 2026-08-16 indexed (v1 seed) |
-| [`ui-batch.mjs`](ui-batch.mjs) | Batch UI design generator — OpenRouter chat completions over `design-lab/prompts/` → gitignored `design-lab/out/` variants | OPENROUTER_API_KEY · `--model` (Kimi/GPT) | `design-lab/` | 2026-09-26 | 1 | plan 2026-09-25-001 U3 scaffold |
+| [`ui-batch.mjs`](ui-batch.mjs) | Batch UI design generator — OpenRouter chat completions over `design-lab/prompts/` → gitignored `design-lab/out/` variants | OPENROUTER_API_KEY · `--model` (Kimi/GPT) | `design-lab/` | 2026-10-02 | 2 | add HTTP-Referer/X-Title app attribution headers ·plan 2026-09-25-001 U3 scaffold |
 | [`ui-smoke.mjs`](ui-smoke.mjs) | Bounded headless UI smoke check (hard timeout, `--disable-gpu`, tab/aria probe) | daemon on :8421 | `ui/` | 2026-09-27 | 1 | 2026-09-27 added — replaces ad-hoc Playwright heredocs after a hung one orphaned a 700% CPU SwiftShader proc |
 | [`install.ps1`](install.ps1) | Windows installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`install.sh`](install.sh) | Unix installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
+
+- 2026-10-02 — ui-batch.mjs: add HTTP-Referer/X-Title app attribution headers
 
 - 2026-09-27 — `ui-smoke.mjs`: bounded headless UI smoke check — 120s hard timeout, `--disable-gpu` (no SwiftShader burn), bounded waits; run via `timeout -k 5s 180s`
 - 2026-09-26 — `ui-batch.mjs`: OpenRouter batch UI design generator (plan 2026-09-25-001 U3) — reads `design-lab/prompts/*.md`, writes `--model`/`--n` variants to gitignored `design-lab/out/`
