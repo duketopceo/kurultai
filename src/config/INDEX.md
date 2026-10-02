@@ -19,11 +19,15 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`file.rs`](file.rs) | config.toml serde structs | `src/art` | `src/app/context.rs` · `src/config/loader.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-09-30 | 3 | 2026-09-30 `FileBrokerConfig` — `[broker]` upstream_url/port/socket/key_name · 2026-09-18 `FileJudgeConfig` `[judge] enabled/model` · 2026-09-15 `FileTiersConfig`/`FileTierRule` — `[tiers]` section (#325) |
+| [`file.rs`](file.rs) | config.toml serde structs | `src/art` | `src/app/context.rs` · `src/config/loader.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-10-02 | 4 | 2026-10-02 embed.backend doc — `perplexity` variant · 2026-09-30 `FileBrokerConfig` · 2026-09-18 `FileJudgeConfig` |
 | [`loader.rs`](loader.rs) | Load/merge config from file + env | `src/art` · `src/config` · `src/environment` · `src/error` · `src/types` | `src/app/context.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-09-30 | 4 | 2026-09-30 `[broker]` → `Config.broker` · 2026-09-18 [judge] → Config + tests · 2026-09-15 `tiers_to_policy` — strict cap/trust_lane validation (#325) |
-| [`mod.rs`](mod.rs) | Config module exports | `src/error` · `src/types` | `src/app/context.rs` · `src/config/loader.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`mod.rs`](mod.rs) | Config module exports | `src/error` · `src/types` | `src/app/context.rs` · `src/config/loader.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-10-02 | 2 | 2026-10-02 validate accepts `perplexity` embed backend |
 
 ## Recent
+
+- 2026-10-02 — `mod.rs`: validate allows `perplexity` embed backend
+
+- 2026-10-02 — `file.rs`: `embed.backend` doc gains `perplexity`
 
 - 2026-09-30 — `[broker]` config: `FileBrokerConfig` (file.rs) + `Config.broker` (loader.rs, mod.rs re-export) for the device broker daemon
 - 2026-09-15 — `loader.rs`: `tiers_to_policy` maps `[tiers]` rules into `TierPolicy` (#325)

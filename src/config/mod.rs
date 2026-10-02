@@ -55,9 +55,9 @@ pub fn validate(config: &Config) -> Result<()> {
 
     if let Some(backend) = config.embed_backend.as_deref() {
         let b = backend.trim().to_ascii_lowercase();
-        if b != "local" {
+        if !matches!(b.as_str(), "local" | "perplexity") {
             return Err(KurultaiError::config(format!(
-                "embed.backend must be \"local\" or omitted, got {backend:?}"
+                "embed.backend must be \"local\", \"perplexity\", or omitted, got {backend:?}"
             )));
         }
     }
