@@ -24,4 +24,5 @@ version: 1
 
 ## Recent
 
+- 2026-10-01 — `gen/` added: 202 generated atoms via `../generate-corpus.py` (seeded, dense [[wiki-links]] per cluster)
 - 2026-09-30 — added: 6 seeded fixture atoms
