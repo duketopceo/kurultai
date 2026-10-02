@@ -56,7 +56,12 @@ for (const file of picked) {
       try {
         const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+          headers: {
+            Authorization: `Bearer ${KEY}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://github.com/duketopceo/kurultai',
+            'X-Title': 'Kurultai',
+          },
           signal: AbortSignal.timeout(300_000),
           body: JSON.stringify({
             model: MODEL,
