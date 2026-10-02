@@ -74,7 +74,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 ## Recent
 
 - 2026-10-02 — `embed.backend = "perplexity"`: new PerplexityEmbedder (src/embed/perplexity.rs) decodes the API's int8-base64 vectors; verified live on the 208-atom demo corpus at dim 1024
-
+- 2026-10-01 — demo seed data (`feat/demo-seed`): +9 Meridian fixture atoms, `demo/seed.sh` + `entrypoint.sh` (boot-time Hey thread, ontology entities/links, pending `promote_atom` proposal); `demo/Dockerfile` gains curl + seed entrypoint
 - 2026-10-01 — competitive feature sweep plan (`docs/plans/2026-10-01-001`): pplx-embed backend, gap-aware ask, zero-LLM edge extraction, supersede chains, nightly sweep
 - 2026-09-30 — `daemon --demo` (U4, portfolio-hub #43): isolated fixture-corpus mode — `demo/` (config + 6 tagged atoms + tunnel/Access runbook), `docker-compose.demo.yml`, `demo_config_path()` in `main.rs`; loopback-forced, `--bind` ignored
 - 2026-09-30 — device broker U1–U3 (plan `docs/plans/2026-09-28-001`): `src/broker/` loopback daemon holds the upstream seat session and mints per-chat `sess_*` keys; `POST /mcp` relays upstream with `X-Kurultai-{agent,chat,session,device}` stamps; upstream `/mcp` now accepts registered seat tokens (full surface) alongside shared-secret read-only; `mcp --broker` is the agent stdio lane; `[broker]` config + `security::read_agent_key` added
