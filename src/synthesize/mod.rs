@@ -176,6 +176,7 @@ If excerpts are insufficient, say so briefly. Keep the answer concise.";
             citations,
             confidence: confidence_from_hits(hits),
             graph_chain: graph_chain_from_hits(hits),
+            gaps: vec![],
         })
     }
 }
@@ -204,6 +205,7 @@ pub fn empty_answer(question: &str) -> Answer {
         sources_used: vec![],
         confidence: 0.0,
         graph_chain: vec![],
+        gaps: vec![],
     }
 }
 
@@ -230,6 +232,7 @@ pub fn extractive_answer(question: &str, hits: &[SearchResult]) -> Answer {
         citations,
         confidence: confidence_from_hits(hits),
         graph_chain: graph_chain_from_hits(hits),
+        gaps: vec![],
     }
 }
 
@@ -423,6 +426,7 @@ mod tests {
                 citations,
                 confidence: confidence_from_hits(hits),
                 graph_chain: graph_chain_from_hits(hits),
+                gaps: vec![],
             })
         }
     }

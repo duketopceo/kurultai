@@ -332,6 +332,10 @@ pub struct Answer {
     /// Not a graph edge walk — use for provenance, not path reconstruction.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graph_chain: Vec<String>,
+    /// What the brain lacks — deterministic coverage gaps (empty hits, thin
+    /// coverage, quarantine-only, unmatched query terms). Empty = adequate.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gaps: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

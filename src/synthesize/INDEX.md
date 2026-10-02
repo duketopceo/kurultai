@@ -19,9 +19,11 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`mod.rs`](mod.rs) | ask / who-knows synthesis | `src/error` · `src/security` · `src/types` | `src/mcp/interface.rs` · `src/query/mod.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`mod.rs`](mod.rs) | ask / who-knows synthesis | `src/error` · `src/security` · `src/types` | `src/mcp/interface.rs` · `src/query/mod.rs` | 2026-10-02 | 2 | 2026-10-02 `Answer` literals gain `gaps: vec![]` |
 
 ## Recent
+
+- 2026-10-02 — `mod.rs`: `gaps` field on Answer constructors
 
 - 2026-08-16 — indexed this folder (v1 seed)
 

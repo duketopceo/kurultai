@@ -540,6 +540,9 @@ async fn main() -> Result<()> {
             println!("Q: {}", answer.question);
             println!("A: {}", answer.answer);
             println!("confidence: {:.2}", answer.confidence);
+            for g in &answer.gaps {
+                println!("  gap: {g}");
+            }
             for c in &answer.citations {
                 println!("  cite: {} / {} — {}", c.source, c.source_id, c.title);
             }

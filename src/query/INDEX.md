@@ -20,11 +20,13 @@ _None._
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`context.rs`](context.rs) | Ask context assembly | `src/brain` · `src/error` · `src/store` · `src/types` | `src/query/hybrid.rs` | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`gaps.rs`](gaps.rs) | Deterministic ask gap analysis (no/thin/quarantine-only coverage, unmatched terms) | `src/types` | `src/mcp/brain.rs` · `src/query/mod.rs` | 2026-10-02 | 1 | 2026-10-02 added |
 | [`hybrid.rs`](hybrid.rs) | FTS + vector hybrid retrieval | `src/brain` · `src/embed` · `src/error` · `src/ingest` · `src/query` | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`mod.rs`](mod.rs) | Search query module | `src/embed` · `src/error` · `src/rerank` · `src/store` · `src/synthesize` | `src/query/hybrid.rs` | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`mod.rs`](mod.rs) | Search query module | `src/embed` · `src/error` · `src/rerank` · `src/store` · `src/synthesize` | `src/query/hybrid.rs` | 2026-10-02 | 2 | 2026-10-02 `HybridQueryEngine::ask` sets `answer.gaps` · 2026-08-16 indexed (v1 seed) |
 | [`rrf.rs`](rrf.rs) | Reciprocal Rank Fusion | `src/types` | `src/query/hybrid.rs` | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-10-02 — `gaps.rs` added: `analyze_gaps(question, hits)` → `Answer.gaps`; wired into `HybridQueryEngine::ask` + `Brain::ask_with_team`/`ask_with_web`
 - 2026-08-16 — indexed this folder (v1 seed)
 

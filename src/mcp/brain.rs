@@ -426,6 +426,7 @@ impl BrainService {
         if answer.graph_chain.is_empty() {
             answer.graph_chain = crate::synthesize::graph_chain_from_hits(&hits);
         }
+        answer.gaps = crate::query::analyze_gaps(question, &hits);
         let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
         let detail: Option<String> = {
             let t: String = answer.answer.chars().take(160).collect();
@@ -480,8 +481,11 @@ impl BrainService {
         let mut merged = hits.clone();
         merged.extend(web_hits.iter().map(web_hit_to_result));
         let mut answer = self.synthesizer.synthesize(question, &merged).await?;
-        // Provenance is local-only: web pseudo-hits never enter graph_chain.
+        // Provenance and gaps are local-only: web pseudo-hits never enter
+        // graph_chain, and gaps describe what *the brain* lacks — web hits
+        // patched over them but nothing was learned.
         answer.graph_chain = crate::synthesize::graph_chain_from_hits(&hits);
+        answer.gaps = crate::query::analyze_gaps(question, &hits);
         let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
         let detail: Option<String> = {
             let t: String = answer.answer.chars().take(160).collect();
