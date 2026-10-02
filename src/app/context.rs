@@ -104,6 +104,14 @@ impl App {
 }
 
 pub fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>> {
+    if config
+        .embed_backend
+        .as_deref()
+        .is_some_and(|b| b.eq_ignore_ascii_case("perplexity"))
+    {
+        return build_perplexity_embedder(config);
+    }
+
     // API keys come from env only — never from config files.
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
         .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"))
@@ -127,6 +135,24 @@ pub fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embed
             Ok(Arc::new(NullEmbedder::new(config.embed_dim)))
         }
     }
+}
+
+fn build_perplexity_embedder(config: &Config) -> Result<Arc<dyn Embedder>> {
+    let key = api_key_from_env_optional("PERPLEXITY_API_KEY").ok_or_else(|| {
+        KurultaiError::config(
+            "embed.backend = \"perplexity\" requires PERPLEXITY_API_KEY in the environment",
+        )
+    })?;
+    tracing::info!(
+        model = %config.embed_model,
+        dim = config.embed_dim,
+        "using Perplexity embedder"
+    );
+    Ok(Arc::new(crate::embed::PerplexityEmbedder::new(
+        key.expose().to_string(),
+        config.embed_model.clone(),
+        config.embed_dim,
+    )))
 }
 
 fn wants_local_embed(config: &Config) -> bool {

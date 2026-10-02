@@ -7,6 +7,9 @@ mod local;
 #[cfg(feature = "local-embed")]
 pub use local::LocalEmbedder;
 
+mod perplexity;
+pub use perplexity::PerplexityEmbedder;
+
 /// Generates embeddings for text via an API or local model.
 #[async_trait::async_trait]
 pub trait Embedder: Send + Sync {

@@ -118,7 +118,8 @@ pub struct FileStorageConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileEmbedConfig {
-    /// `local` enables on-device ONNX (feature `local-embed`). Omit for OpenRouter/Null.
+    /// `local` enables on-device ONNX (feature `local-embed`); `perplexity` uses the
+    /// pplx-embed API with `PERPLEXITY_API_KEY`. Omit for OpenRouter/Null.
     pub backend: Option<String>,
     pub model: Option<String>,
     pub dimension: Option<usize>,
