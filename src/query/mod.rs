@@ -1,10 +1,12 @@
 //! Query pipeline: hybrid retrieval (Phase 2) and synthesis (Phase 3).
 
 mod context;
+mod gaps;
 mod hybrid;
 mod rrf;
 
 pub use context::expand_markdown_context;
+pub use gaps::analyze_gaps;
 pub use hybrid::{hybrid_search, hybrid_search_filtered};
 pub use rrf::{candidate_limit, fuse_rrf, fuse_rrf_ids, FusedId, RRF_K};
 
@@ -54,7 +56,9 @@ impl HybridQueryEngine {
 impl QueryEngine for HybridQueryEngine {
     async fn ask(&self, question: &str) -> Result<Answer> {
         let hits = self.search(question, 8).await?;
-        self.synthesizer.synthesize(question, &hits).await
+        let mut answer = self.synthesizer.synthesize(question, &hits).await?;
+        answer.gaps = analyze_gaps(question, &hits);
+        Ok(answer)
     }
 
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
