@@ -10,11 +10,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UI_BUILD = (() => {
   try {
     // Content hash of website sources — stable across merge refs and
-    // shallow CI checkouts where git history is unavailable. Index blob
-    // SHAs, not working-tree contents: an earlier CI step that touches a
-    // tracked file must not shift the stamp (and thus the chunk hashes).
+    // shallow CI checkouts where git history is unavailable. Commit-tree
+    // blob SHAs, not index or working-tree contents: nothing a CI step
+    // (or local edit) does to the worktree can shift the stamp, and the
+    // merge ref carries the same website/ blobs as the branch head.
     return execSync(
-      `git ls-files -s . | sort -k4 | awk '{print $2}' | git hash-object --stdin | cut -c1-7`,
+      `git ls-tree -r HEAD -- . | sort -k4 | awk '{print $3}' | git hash-object --stdin | cut -c1-7`,
       { cwd: __dirname, shell: '/bin/bash' },
     ).toString().trim();
   } catch {
