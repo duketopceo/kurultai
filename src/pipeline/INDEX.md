@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src/pipeline
 parent: src/INDEX.md
-updated: 2026-10-02
-version: 2
+updated: 2026-10-03
+version: 3
 ---
 
 # `src/pipeline`
@@ -19,9 +19,11 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`mod.rs`](mod.rs) | Index pipeline (hash-skip, embed, upsert, zero-LLM edge extraction) | `src/connectors` · `src/embed` · `src/error` · `src/hashutil` · `src/ontology/extract` · `src/quality` · `src/types` | `src/daemon/mod.rs` | 2026-10-02 | 3 | 2026-10-02 U3 `apply_extracted_edges` post-upsert · 2026-09-01 HUB-5 apply default_visibility_scope at ingest · 2026-08-16 indexed (v1 seed) |
+| [`mod.rs`](mod.rs) | Index pipeline (hash-skip, embed, upsert, zero-LLM edge extraction) | `src/connectors` · `src/embed` · `src/error` · `src/hashutil` · `src/ontology/extract` · `src/quality` · `src/types` | `src/daemon/mod.rs` | 2026-10-03 | 4 | U4 supersede pass: resolve+mark_superseded post-upsert ·2026-10-02 U3 `apply_extracted_edges` post-upsert · 2026-09-01 HUB-5 apply default_visibility_scope at ingest · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
+
+- 2026-10-03 — U4: `resolve_supersede_targets` + `mark_superseded` post-upsert; non-fatal
 
 - 2026-10-02 — U3: `apply_extracted_edges` after `upsert_batch` — `[[wiki-links]]`/`@mentions`/frontmatter rels → `references` ontology links; extraction failure logged, never fatal
 

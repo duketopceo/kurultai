@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src
 parent: INDEX.md
-updated: 2026-09-30
-version: 8
+updated: 2026-10-03
+version: 9
 ---
 
 # `src`
@@ -53,15 +53,17 @@ version: 8
 | [`logging.rs`](logging.rs) | tracing-subscriber setup | `src/environment` · `src/error` | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`connect.rs`](connect.rs) | `kurultai connect` device-authorization CLI — code → poll → omaseal/key-file → `wire_agent`; persistent seat-id + seat-scoped credential names | `src/error` · `src/mcp` · `src/security` · `src/webui` · `reqwest` | — | 2026-09-19 | 2 | 2026-09-19 seat file `<config>/seat-id` (`{hostname}-{rand}`) + `{lane}-{codename}-{seat}-agent-token` cred names · 2026-09-16 added |
 | [`login.rs`](login.rs) | `kurultai login` device-code flow for hosted agent tokens | `src/error` · `reqwest` · `dirs` | — | 2026-09-06 | 1 | 2026-09-06 added |
-| [`main.rs`](main.rs) |  CLI entry: init, index, search, ask [--web], eval, daemon [--demo], mcp [--broker], connect, login, export, broker  | — | — | 2026-10-02 | 15 | 2026-10-02 ask CLI prints gaps |
+| [`main.rs`](main.rs) |  CLI entry: init, index, search, ask [--web], eval, daemon [--demo], mcp [--broker], connect, login, export, broker  | — | — | 2026-10-03 | 16 | search/ask `--as-of` + `--include-superseded` flags (U4) ·2026-10-02 ask CLI prints gaps |
 | [`metrics.rs`](metrics.rs) | Prometheus text for GET /api/metrics + client-perf sample store | — | `src/http/mod.rs` | 2026-09-20 | 2 | 2026-09-20 client family: per-metric bounds (fps vs ms), `observe_client` + `ClientReport` for POST /api/metrics/client (#102) · 2026-08-16 indexed (v1 seed) |
 | [`project.rs`](project.rs) | project_id namespacing for shared-store sessions (#184) | — | `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope, OntologyProposal | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` · `src/ontology/mod.rs` | 2026-10-02 | 5 | 2026-10-02 `Answer.gaps` field |
+| [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope, OntologyProposal | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` · `src/ontology/mod.rs` | 2026-10-03 | 6 | `KnowledgeAtom.superseded_at/superseded_by` (U4) ·2026-10-02 `Answer.gaps` field |
 | [`testutil.rs`](testutil.rs) | Test-only process-env isolation: `EnvGuard` serializes `set_var` mutations + restores on drop (nextest-safe) | — | `src/http` tests · `src/app` tests | 2026-09-30 | 1 | 2026-09-30 added for parallel env tests |
 | [`webui.rs`](webui.rs) | `kurultai webui` — probe/spawn daemon, print URL, open browser | `src/error` | `src/main.rs` · `src/connect.rs` | 2026-09-16 | 2 | 2026-09-16 `open_browser` pub(crate) for `connect` · 2026-09-15 added (#329) |
 | [`write_policy.rs`](write_policy.rs) | Write provenance + SharedClosed quarantine containment | — | `src/mcp/server.rs` · `src/quality/promote.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
+
+- 2026-10-03 — U4 bi-temporal-lite: `types.rs` superseded_at/by fields; `main.rs` search+ask `--as-of`/`--include-superseded`; `store/` schema v17 + `mark_superseded` + supersede predicates; `ingest/dump.rs` `fm_*` metadata; `ontology/extract.rs` resolve_supersede_targets
 
 - 2026-10-02 — U3 zero-LLM edge extraction: `ontology/extract.rs` (`[[links]]`/`@mentions`/frontmatter rels → `references` edges + entity stubs post-upsert); `types.rs`: `OntologyLinkType::References`
 - 2026-10-02 — `types.rs`: `Answer.gaps` (serde skip-if-empty, no wire break); `main.rs`: ask prints gaps

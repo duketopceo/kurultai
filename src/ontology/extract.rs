@@ -141,6 +141,91 @@ pub fn extract_references(content: &str) -> Vec<(String, String, bool)> {
         .collect()
 }
 
+/// Read a comma/`[list]` frontmatter value stored as `fm_<key>` metadata
+/// (ingest strips the `---` block from `content`, so structural decls are
+/// carried on the atom instead).
+fn metadata_list(atom: &KnowledgeAtom, key: &str) -> Vec<String> {
+    atom.metadata
+        .get(&format!("fm_{key}"))
+        .map(|v| {
+            v.trim()
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .split(',')
+                .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Frontmatter `supersedes:` values (bi-temporal-lite U4) — raw strings as
+/// written (atom ids, `[[names]]`, or source_id slugs); resolution happens
+/// against the store in `pipeline`. Reads `fm_supersedes` metadata first
+/// (markdown ingest path), falls back to scanning an embedded `---` block
+/// for sources that keep frontmatter inside `content`.
+pub fn extract_supersedes(atom: &KnowledgeAtom) -> Vec<String> {
+    let mut out = metadata_list(atom, "supersedes");
+    let content = &atom.content;
+    if let Some(rest) = content.trim_start_matches('\u{feff}').strip_prefix("---\n") {
+        if let Some(end) = rest.find("\n---") {
+            for line in rest[..end].lines() {
+                if let Some((k, v)) = line.split_once(':') {
+                    if k.trim().eq_ignore_ascii_case("supersedes") {
+                        for item in v
+                            .trim()
+                            .trim_start_matches('[')
+                            .trim_end_matches(']')
+                            .split(',')
+                        {
+                            let name = item
+                                .trim()
+                                .trim_matches('"')
+                                .trim_matches('\'')
+                                .trim_start_matches("[[")
+                                .trim_end_matches("]]")
+                                .trim();
+                            if !name.is_empty() {
+                                out.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Resolve `supersedes:` declarations to atom ids: exact id, then
+/// `source_id` under the atom's own source, then slugified `source_id`.
+/// Self-references dropped; result sorted+deduped. Unresolvable names are
+/// skipped (caller logs count).
+pub async fn resolve_supersede_targets(
+    store: &dyn Store,
+    atom: &KnowledgeAtom,
+    source_name: &str,
+) -> Result<Vec<String>> {
+    let mut ids = Vec::new();
+    for raw in extract_supersedes(atom) {
+        if let Some(a) = store.get(&raw).await? {
+            ids.push(a.id);
+            continue;
+        }
+        let slug = slugify(&raw);
+        for cand in [raw.as_str(), slug.as_str()] {
+            if let Some(a) = store.get_by_source_id(source_name, cand).await? {
+                ids.push(a.id);
+                break;
+            }
+        }
+    }
+    ids.retain(|id| id != &atom.id);
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
+}
+
 /// Materialize extracted references for one atom as entities + `references`
 /// links. Creates the atom's own `ent:{atom_id}` instance lazily and target
 /// stubs `ent:<slug>` as needed. Returns (entities_created, links_upserted).
@@ -149,7 +234,17 @@ pub async fn apply_extracted_edges(
     atom: &KnowledgeAtom,
     actor: &str,
 ) -> Result<(usize, usize)> {
-    let mentions = extract_references(&atom.content);
+    let mut mentions = extract_references(&atom.content);
+    // Frontmatter rels survive ingest as fm_<key> metadata (the `---` block
+    // is stripped from `content`) — merge them, deduped by slug.
+    for key in REF_KEYS {
+        for name in metadata_list(atom, key) {
+            let slug = slugify(&name);
+            if !slug.is_empty() && !mentions.iter().any(|m| m.0 == slug) {
+                mentions.push((slug, name, false));
+            }
+        }
+    }
     if mentions.is_empty() {
         return Ok((0, 0));
     }
@@ -247,6 +342,27 @@ mod tests {
         assert!(slugs.contains(&"device-auth"));
         assert!(slugs.contains(&"lumen-api"));
         assert!(slugs.contains(&"embed-pipeline"));
+    }
+
+    #[test]
+    fn supersedes_frontmatter_variants() {
+        // Embedded frontmatter (raw-content fallback path).
+        let mut atom = crate::types::KnowledgeAtom {
+            content: "---\nsupersedes: abc123\n---\nbody".into(),
+            ..Default::default()
+        };
+        assert_eq!(extract_supersedes(&atom), vec!["abc123"]);
+        atom.content = "---\nsupersedes: [old-note, [[Deploy Runbook]]]\n---\nx".into();
+        assert_eq!(
+            extract_supersedes(&atom),
+            vec!["old-note", "Deploy Runbook"]
+        );
+        atom.content = "no frontmatter".into();
+        assert!(extract_supersedes(&atom).is_empty());
+        // Metadata path (what markdown ingest actually produces).
+        atom.metadata
+            .insert("fm_supersedes".into(), "[a1, b2]".into());
+        assert_eq!(extract_supersedes(&atom), vec!["a1", "b2"]);
     }
 
     #[test]

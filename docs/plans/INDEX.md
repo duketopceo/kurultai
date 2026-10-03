@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-09-30
-version: 8
+updated: 2026-10-03
+version: 9
 ---
 
 # `docs/plans`
@@ -19,6 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`2026-10-02-001-feat-supersede-bitemporal-plan.md`](2026-10-02-001-feat-supersede-bitemporal-plan.md) | Supersede/bi-temporal-lite (sweep U4): `supersedes:` frontmatter, `superseded_at/by` cols (schema v17), `--as-of`/`--include-superseded` on search+ask | 2026-10-01-001 | src/store · src/ontology · src/pipeline · src/ingest · src/main | 2026-10-02 | 1 | implemented same-day |
 | [`2026-10-01-001-feat-competitive-feature-sweep-plan.md`](2026-10-01-001-feat-competitive-feature-sweep-plan.md) | Competitor sweep (gbrain/OpenViking/agent-memory lane): U1 pplx-embed backend, U2 gap-aware ask, U3 zero-LLM edge extraction, U4 supersede/bi-temporal-lite, U5 nightly consolidation sweep | competitor scan 2026-10-01 | src/embed · src/mcp · src/pipeline · src/store | 2026-10-01 | 1 | research → feature plans |
 | [`2026-09-30-001-feat-load-chaos-harness-plan.md`](2026-09-30-001-feat-load-chaos-harness-plan.md) | Repeatable load/chaos suite: `scripts/hammer.mjs` (read ramp, adversarial search, write races, soak) + Rust `tests/chaos.rs` (kill mid-write, disk pressure, cold start) + MCP stdio lane | — | scripts · tests | 2026-09-30 | 1 | hammer session → implementation-ready plan |
 | [`2026-09-28-001-feat-device-broker-agent-onboarding-plan.md`](2026-09-28-001-feat-device-broker-agent-onboarding-plan.md) | Device broker: local daemon holds one upstream session; agents board with per-chat minted keys; full MCP proxy via RemoteBrainService | `docs/brainstorms/2026-09-28` | src/broker · src/mcp · src/http · src/mcp/init | 2026-09-28 | 1 | ce-brainstorm → ce-plan, decisions D1–D6 |
@@ -104,6 +105,8 @@ _None._
 | [`2026-09-28-001-feat-device-broker-agent-onboarding-plan.md`](2026-09-28-001-feat-device-broker-agent-onboarding-plan.md) | Device broker + per-chat minted agent keys (local broker holds upstream session; agents board over loopback) | — | `src/broker` · `src/http/mcp.rs` · `src/mcp` | 2026-09-30 | 1 | U1–U3 implemented 2026-09-30 (daemon + registry + relay + seat auth) |
 
 ## Recent
+
+- 2026-10-03 — `2026-10-02-001`: supersede/bi-temporal-lite plan (U4) — written and implemented in one pass
 
 - 2026-09-30 — `2026-09-28-001` device-broker plan U1–U3 landed: `src/broker/` daemon + `sess_*` registry + `/mcp` relay; upstream `/mcp` accepts seat tokens (full surface); `mcp --broker` stdio relay
 - 2026-09-25 — `2026-09-25-001` UI/UX teardown + rebuild plan: definitions-first, batch Kimi/GPT design variants, parallel `ui-next` app, local-preview gate before tagged cutover

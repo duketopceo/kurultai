@@ -9,7 +9,9 @@ use crate::store::Store;
 use crate::types::{OntologyEntity, OntologyLink, OntologyLinkType, OntologyProposal};
 
 pub mod extract;
-pub use extract::{apply_extracted_edges, extract_references};
+pub use extract::{
+    apply_extracted_edges, extract_references, extract_supersedes, resolve_supersede_targets,
+};
 
 pub const CLASS_MEMORY: &str = "class:memory";
 pub const CLASS_NOTE: &str = "class:note";
@@ -503,7 +505,7 @@ mod tests {
     #[tokio::test]
     async fn seed_classes_and_is_a_links() {
         let store = temp_store();
-        assert_eq!(migrations::CURRENT_SCHEMA_VERSION, 16);
+        assert_eq!(migrations::CURRENT_SCHEMA_VERSION, 17);
 
         let entities = store.list_ontology_entities(50).await.unwrap();
         let ids: Vec<&str> = entities.iter().map(|e| e.id.as_str()).collect();

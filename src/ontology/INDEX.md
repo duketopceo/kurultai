@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src/ontology
 parent: src/INDEX.md
-updated: 2026-10-02
-version: 6
+updated: 2026-10-03
+version: 7
 ---
 
 # `src/ontology`
@@ -19,10 +19,12 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`mod.rs`](mod.rs) | Entity/Link helpers + O3 proposal queue (submit/decide) + human-lane direct writes + re-exports `extract` | `src/error` · `src/store` · `src/types` · `src/ontology/extract.rs` | `src/mcp/server.rs` · `src/http/proposals.rs` · `src/http/ontology_write.rs` · `src/pipeline/mod.rs` | 2026-10-02 | 6 | 2026-10-02 `pub mod extract` + re-exports (U3) · 2026-09-14 `create_entity`/`create_link` human lane (#316) · 2026-09-11 O3 `submit_proposal`/`decide_proposal` (#118) · 2026-09-06 sync schema version assertion to v14 · 2026-09-04 sync schema version assertion to v12 · 2026-08-14 indexed (v1 seed) |
-| [`extract.rs`](extract.rs) | Zero-LLM edge extraction: `[[wiki-links]]`, `@mentions`, frontmatter `related:`/`depends_on:` → `references` links + entity stubs at index time | `src/error` · `src/store` · `src/types` | `src/pipeline/mod.rs` | 2026-10-02 | 1 | 2026-10-02 indexed (U3 zero-LLM edge extraction) |
+| [`mod.rs`](mod.rs) | Entity/Link helpers + O3 proposal queue (submit/decide) + human-lane direct writes + re-exports `extract` | `src/error` · `src/store` · `src/types` · `src/ontology/extract.rs` | `src/mcp/server.rs` · `src/http/proposals.rs` · `src/http/ontology_write.rs` · `src/pipeline/mod.rs` | 2026-10-03 | 7 | `extract_supersedes`/`resolve_supersede_targets` re-exports ·2026-10-02 `pub mod extract` + re-exports (U3) · 2026-09-14 `create_entity`/`create_link` human lane (#316) · 2026-09-11 O3 `submit_proposal`/`decide_proposal` (#118) · 2026-09-06 sync schema version assertion to v14 · 2026-09-04 sync schema version assertion to v12 · 2026-08-14 indexed (v1 seed) |
+| [`extract.rs`](extract.rs) | Zero-LLM edge extraction: `[[wiki-links]]`, `@mentions`, frontmatter `related:`/`depends_on:` → `references` links + entity stubs at index time | `src/error` · `src/store` · `src/types` | `src/pipeline/mod.rs` | 2026-10-03 | 2 | U4: `extract_supersedes` (fm_supersedes metadata + raw-fm fallback) + `resolve_supersede_targets`; fm_* metadata rels merged into mentions ·2026-10-02 indexed (U3 zero-LLM edge extraction) |
 
 ## Recent
+
+- 2026-10-03 — U4: `extract_supersedes` + `resolve_supersede_targets`; frontmatter rels now read `fm_*` atom metadata (fix: ingest strips `---` from content)
 
 - 2026-10-02 — U3 zero-LLM edge extraction: `extract.rs` (`extract_references` + `apply_extracted_edges`), new `OntologyLinkType::References` wire value; pipeline upserts edges post-`upsert_batch` (failure non-fatal)
 - 2026-09-15 — delete coverage test: entity delete cascades links, missing ids err (#320)

@@ -160,6 +160,7 @@ fn atomize_markdown(
             source_updated_at,
             0,
             1,
+            &fm,
         ));
         return atoms;
     }
@@ -187,6 +188,7 @@ fn atomize_markdown(
             source_updated_at,
             chunk_index as u32,
             chunk_count as u32,
+            &fm,
         ));
     }
     atoms
@@ -552,6 +554,7 @@ fn make_atom(
     source_updated_at: DateTime<Utc>,
     chunk_index: u32,
     chunk_count: u32,
+    fm: &HashMap<String, String>,
 ) -> KnowledgeAtom {
     let source_id = match heading {
         Some(h) if !h.is_empty() => format!("{rel_path}#{h}#c{chunk_index}"),
@@ -565,6 +568,14 @@ fn make_atom(
     ]);
     if let Some(h) = heading.filter(|h| !h.is_empty()) {
         metadata.insert("heading".into(), h.to_string());
+    }
+    // Structural frontmatter decls survive as `fm_<key>` metadata — the
+    // `---` block is stripped from `content`, so zero-LLM extraction
+    // (U3 refs / U4 supersedes) reads them here.
+    for key in ["supersedes", "related", "depends_on", "references", "links"] {
+        if let Some(v) = fm.get(key) {
+            metadata.insert(format!("fm_{key}"), v.clone());
+        }
     }
     finish_atom(
         source,
