@@ -220,6 +220,14 @@ pub struct KnowledgeAtom {
     /// Tiered visibility (`personal` | `team` | `company`). Default personal (#178).
     #[serde(default)]
     pub visibility: VisibilityScope,
+    /// Bi-temporal-lite (sweep U4): when this atom was superseded by a newer
+    /// one. NULL/None = currently valid; superseded atoms are excluded from
+    /// default search/ask and reachable via `--as-of`/`--include-superseded`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub superseded_at: Option<DateTime<Utc>>,
+    /// Id of the atom that superseded this one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub superseded_by: Option<String>,
 }
 
 impl Default for KnowledgeAtom {
@@ -245,6 +253,8 @@ impl Default for KnowledgeAtom {
             corpus_tier: CorpusTier::Public,
             visibility_labels: Vec::new(),
             visibility: VisibilityScope::Personal,
+            superseded_at: None,
+            superseded_by: None,
         }
     }
 }

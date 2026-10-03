@@ -414,8 +414,29 @@ impl BrainService {
         Ok(results)
     }
 
+    /// Search with an explicit filter (temporal flags from CLI, tests).
+    pub async fn search_with_filter(
+        &self,
+        query: &str,
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<SearchResult>> {
+        let fetch = (limit.max(1) * 4).min(40);
+        let mut results = self.hybrid_hits_filtered(query, fetch, filter).await?;
+        results = self.apply_retrieval_policy(results, limit, None);
+        let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
+        self.touch_non_noisy(&results).await;
+        self.activity.record("search", query, ids, None);
+        Ok(results)
+    }
+
     pub async fn ask_with_team(&self, question: &str, hub_team_id: Option<&str>) -> Result<Answer> {
         let filter = SearchFilter::default().with_hub_team(hub_team_id);
+        self.ask_with_filter(question, filter).await
+    }
+
+    /// Ask with an explicit filter (temporal flags from CLI, tests).
+    pub async fn ask_with_filter(&self, question: &str, filter: SearchFilter) -> Result<Answer> {
         let primary = self
             .hybrid_hits_filtered(question, 16, filter.clone())
             .await?;
@@ -456,6 +477,17 @@ impl BrainService {
         min_local_hits: usize,
     ) -> Result<Answer> {
         let filter = SearchFilter::default().with_hub_team(hub_team_id);
+        self.ask_with_web_filtered(question, filter, min_local_hits)
+            .await
+    }
+
+    /// `ask --web` with an explicit filter (temporal flags from CLI).
+    pub async fn ask_with_web_filtered(
+        &self,
+        question: &str,
+        filter: SearchFilter,
+        min_local_hits: usize,
+    ) -> Result<Answer> {
         let primary = self
             .hybrid_hits_filtered(question, 16, filter.clone())
             .await?;

@@ -132,7 +132,8 @@ pub struct AddReactionInput {
 /// Columns loaded when hydrating a full `KnowledgeAtom` from the SQLite store.
 const ATOM_COLUMNS: &str = "id, source, source_id, title, summary, content, question, resolution, \
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
-     last_accessed_at, visibility, corpus_tier, visibility_labels_json";
+     last_accessed_at, visibility, corpus_tier, visibility_labels_json, \
+     superseded_at, superseded_by";
 
 /// Read-only browse query for the `/ui/db` table view (`GET /api/db/{table}`).
 /// `table` selects a whitelist arm; `sort` is whitelisted per arm; `q` is a
@@ -168,6 +169,12 @@ pub struct SearchFilter {
     pub source: Option<String>,
     /// Exact `knowledge_atoms.source` exclusion (e.g. keep `repos` off the cortex).
     pub exclude_source: Option<String>,
+    /// Bi-temporal-lite (U4): return only atoms valid at this timestamp —
+    /// `indexed_at <= t` and not superseded at `t`. Overrides
+    /// `include_superseded`.
+    pub as_of: Option<chrono::DateTime<chrono::Utc>>,
+    /// Include superseded atoms in results (default: excluded entirely).
+    pub include_superseded: bool,
 }
 
 impl Default for SearchFilter {
@@ -178,6 +185,8 @@ impl Default for SearchFilter {
             hub_team_id: None,
             source: None,
             exclude_source: None,
+            as_of: None,
+            include_superseded: false,
         }
     }
 }
@@ -198,6 +207,8 @@ impl SearchFilter {
             hub_team_id: None,
             source: None,
             exclude_source: None,
+            as_of: None,
+            include_superseded: false,
         }
     }
 
@@ -227,6 +238,39 @@ impl SearchFilter {
             .filter(|p| !p.is_empty())
             .map(normalize_project);
         self
+    }
+
+    /// Time-travel (U4): only atoms valid at `t`. Overrides
+    /// `include_superseded`.
+    pub fn with_as_of(mut self, t: Option<chrono::DateTime<chrono::Utc>>) -> Self {
+        self.as_of = t;
+        self
+    }
+
+    /// Include atoms that were superseded (default: excluded entirely).
+    pub fn with_include_superseded(mut self, include: bool) -> Self {
+        self.include_superseded = include;
+        self
+    }
+
+    /// SQL predicate for supersede filtering (empty when no filter applies).
+    /// `as_of = t` means "valid at t": indexed at/before t AND not yet
+    /// superseded at t. Caller must supply `?` params in the same order
+    /// (`t` once) — the placeholder is caller-numbered via `pnum`.
+    fn supersede_predicate(&self, pnum: usize) -> (String, Option<String>) {
+        if let Some(t) = self.as_of {
+            let ts = t.to_rfc3339();
+            (
+                format!(
+                    " AND a.indexed_at <= ?{pnum} AND (a.superseded_at IS NULL OR a.superseded_at > ?{pnum})"
+                ),
+                Some(ts),
+            )
+        } else if !self.include_superseded {
+            (" AND a.superseded_at IS NULL".into(), None)
+        } else {
+            (String::new(), None)
+        }
     }
 
     /// Hub AE5 team isolation: company atoms plus team atoms for this team_id.
@@ -312,6 +356,18 @@ pub trait Store: Send + Sync {
 
     /// Delete a single atom (and its FTS/vec rows).
     async fn delete_atom(&self, id: &str) -> Result<()>;
+
+    /// Mark atoms superseded by `by_id` at `ts` (bi-temporal-lite U4).
+    /// Unknown ids are skipped; already-superseded rows keep their earliest
+    /// mark. Returns rows marked. Default is a no-op for stubs.
+    async fn mark_superseded(
+        &self,
+        _ids: &[String],
+        _by_id: &str,
+        _ts: DateTime<Utc>,
+    ) -> Result<u64> {
+        Ok(0)
+    }
 
     /// Atomic auto-merge: upsert survivor, delete loser (fts+vec+row), insert quality_audit
     /// in one `BEGIN IMMEDIATE` transaction.
@@ -1514,6 +1570,8 @@ impl Store for SqliteVecStore {
                 " AND COALESCE(json_extract(a.metadata_json, '$.project_id'), '{DEFAULT_PROJECT}') = ?3"
             ));
         }
+        let (sup_pred, sup_ts) = filter.supersede_predicate(if project.is_some() { 4 } else { 3 });
+        predicates.push_str(&sup_pred);
         let sql = format!(
             r#"
                 SELECT a.id, bm25(atoms_fts) AS score
@@ -1529,11 +1587,17 @@ impl Store for SqliteVecStore {
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids prepare: {e}")))?;
 
         let row_map = |r: &rusqlite::Row<'_>| Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?));
-        let rows = match project {
-            Some(p) => stmt.query_map(params![fts_query, limit as i64, p], row_map),
-            None => stmt.query_map(params![fts_query, limit as i64], row_map),
+        let mut pvals: Vec<Box<dyn rusqlite::ToSql>> =
+            vec![Box::new(fts_query), Box::new(limit as i64)];
+        if let Some(p) = project {
+            pvals.push(Box::new(p));
         }
-        .map_err(|e| KurultaiError::Store(format!("fts_search_ids query: {e}")))?;
+        if let Some(ts) = sup_ts {
+            pvals.push(Box::new(ts));
+        }
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(pvals.iter()), row_map)
+            .map_err(|e| KurultaiError::Store(format!("fts_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
@@ -1569,7 +1633,11 @@ impl Store for SqliteVecStore {
         // vec0 KNN cannot take arbitrary WHERE predicates, so lane and project are
         // applied in Rust — over-fetch harder when project-scoped so a session's own
         // atoms are not crowded out of the k window by other sessions on the box.
-        let mut k = if filter.trusted_only {
+        // Superseded rows are filtered post-KNN like trust lane — over-fetch
+        // so excluded rows don't starve the result window.
+        let needs_post_filter =
+            filter.trusted_only || filter.as_of.is_some() || !filter.include_superseded;
+        let mut k = if needs_post_filter {
             (limit.saturating_mul(3)).max(limit)
         } else {
             limit
@@ -1584,7 +1652,8 @@ impl Store for SqliteVecStore {
             .prepare(
                 r#"
                 SELECT a.id, v.distance, a.trust_lane,
-                       COALESCE(json_extract(a.metadata_json, '$.project_id'), 'default')
+                       COALESCE(json_extract(a.metadata_json, '$.project_id'), 'default'),
+                       a.indexed_at, a.superseded_at
                 FROM atoms_vec v
                 JOIN knowledge_atoms a ON a.rowid = v.rowid
                 WHERE v.embedding MATCH ?1 AND k = ?2
@@ -1600,18 +1669,30 @@ impl Store for SqliteVecStore {
                     r.get::<_, f64>(1)?,
                     r.get::<_, String>(2)?,
                     r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, Option<String>>(5)?,
                 ))
             })
             .map_err(|e| KurultaiError::Store(format!("vector_search_ids query: {e}")))?;
 
         let mut out = Vec::new();
         for row in rows {
-            let (id, distance, lane, atom_project) =
+            let (id, distance, lane, atom_project, indexed_raw, superseded_raw) =
                 row.map_err(|e| KurultaiError::Store(format!("vector_search_ids row: {e}")))?;
             if filter.trusted_only && lane != "trusted" {
                 continue;
             }
             if project.is_some_and(|p| p != atom_project) {
+                continue;
+            }
+            let valid = match filter.as_of {
+                Some(t) => {
+                    parse_dt(&indexed_raw) <= t
+                        && superseded_raw.as_deref().is_none_or(|s| parse_dt(s) > t)
+                }
+                None => filter.include_superseded || superseded_raw.is_none(),
+            };
+            if !valid {
                 continue;
             }
             let score = 1.0 / (1.0 + distance);
@@ -1835,6 +1916,34 @@ impl Store for SqliteVecStore {
                 Err(e)
             }
         }
+    }
+
+    async fn mark_superseded(&self, ids: &[String], by_id: &str, ts: DateTime<Utc>) -> Result<u64> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.lock()?;
+        let mut marked = 0u64;
+        let mut stmt = conn
+            .prepare(
+                "UPDATE knowledge_atoms SET superseded_at = ?1, superseded_by = ?2
+                 WHERE id = ?3 AND superseded_at IS NULL",
+            )
+            .map_err(|e| KurultaiError::Store(format!("mark_superseded prepare: {e}")))?;
+        for id in ids {
+            if id == by_id {
+                continue; // never self-supersede
+            }
+            marked += stmt
+                .execute(params![ts.to_rfc3339(), by_id, id])
+                .map_err(|e| KurultaiError::Store(format!("mark_superseded {id}: {e}")))?
+                as u64;
+        }
+        drop(stmt);
+        if marked > 0 {
+            self.bump_atom_epoch();
+        }
+        Ok(marked)
     }
 
     async fn apply_auto_merge(
@@ -3449,6 +3558,12 @@ fn row_to_atom(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeAtom> {
         corpus_tier: CorpusTier::parse(&corpus_tier_raw),
         visibility_labels: serde_json::from_str(&visibility_labels_json).unwrap_or_default(),
         visibility: VisibilityScope::parse(&visibility_raw),
+        superseded_at: row
+            .get::<_, Option<String>>(18)
+            .unwrap_or(None)
+            .as_deref()
+            .map(parse_dt),
+        superseded_by: row.get(19).unwrap_or(None),
     })
 }
 
@@ -4515,5 +4630,115 @@ mod tests {
             .expect("get_thread_by_name")
             .expect("decoy by name");
         assert_eq!(by_name.id, decoy.id);
+    }
+
+    #[tokio::test]
+    async fn supersede_mark_exclude_include_and_as_of() {
+        let store = temp_store(4);
+        // indexed_at must precede the `as_of` probe times below.
+        let indexed = Utc::now() - chrono::Duration::hours(1);
+        for (id, t) in [("a1", "Deploy Runbook v1"), ("b1", "Deploy Runbook v2")] {
+            let mut atom = sample_atom(id, t, &format!("deploy steps {id}"), None);
+            atom.indexed_at = indexed;
+            store.upsert(&atom).await.unwrap();
+        }
+
+        let mark_ts = Utc::now();
+        let n = store
+            .mark_superseded(&["a1".to_string()], "b1", mark_ts)
+            .await
+            .unwrap();
+        assert_eq!(n, 1);
+        // Self-supersede is dropped; unknown ids are skipped.
+        assert_eq!(
+            store
+                .mark_superseded(&["b1".to_string(), "missing".to_string()], "b1", Utc::now())
+                .await
+                .unwrap(),
+            0
+        );
+
+        // Marked row carries the successor id.
+        let old = store.get("a1").await.unwrap().unwrap();
+        assert_eq!(old.superseded_by.as_deref(), Some("b1"));
+        assert!(old.superseded_at.is_some());
+
+        // Default: superseded excluded entirely from FTS.
+        let hits = store
+            .fts_search_ids("deploy", 10, SearchFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].0, "b1");
+
+        // --include-superseded returns both.
+        let hits = store
+            .fts_search_ids(
+                "deploy",
+                10,
+                SearchFilter::default().with_include_superseded(true),
+            )
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 2);
+
+        // --as-of before the mark sees the old atom; after, only the new one.
+        let before = mark_ts - chrono::Duration::seconds(60);
+        let after = mark_ts + chrono::Duration::seconds(60);
+        let hits = store
+            .fts_search_ids(
+                "deploy",
+                10,
+                SearchFilter::default().with_as_of(Some(before)),
+            )
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 2);
+        let hits = store
+            .fts_search_ids(
+                "deploy",
+                10,
+                SearchFilter::default().with_as_of(Some(after)),
+            )
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].0, "b1");
+
+        // Reindex (upsert) does not clear the supersede mark.
+        store
+            .upsert(&sample_atom(
+                "a1",
+                "Deploy Runbook v1",
+                "deploy steps v1",
+                None,
+            ))
+            .await
+            .unwrap();
+        let old = store.get("a1").await.unwrap().unwrap();
+        assert_eq!(old.superseded_by.as_deref(), Some("b1"));
+    }
+
+    #[tokio::test]
+    async fn supersede_chain_only_newest_surfaces() {
+        let store = temp_store(4);
+        for (id, t) in [("a", "doc a"), ("b", "doc b"), ("c", "doc c")] {
+            store.upsert(&sample_atom(id, t, t, None)).await.unwrap();
+        }
+        let ts = Utc::now();
+        store
+            .mark_superseded(&["a".to_string()], "b", ts)
+            .await
+            .unwrap();
+        store
+            .mark_superseded(&["b".to_string()], "c", ts + chrono::Duration::seconds(1))
+            .await
+            .unwrap();
+        let hits = store
+            .fts_search_ids("doc", 10, SearchFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].0, "c");
     }
 }

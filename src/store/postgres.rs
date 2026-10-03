@@ -151,6 +151,24 @@ impl PostgresStore {
             "visibility_labels_json column",
         )
         .await?;
+        exec_ddl(
+            conn,
+            "ALTER TABLE knowledge_atoms ADD COLUMN IF NOT EXISTS superseded_at TEXT",
+            "superseded_at column",
+        )
+        .await?;
+        exec_ddl(
+            conn,
+            "ALTER TABLE knowledge_atoms ADD COLUMN IF NOT EXISTS superseded_by TEXT",
+            "superseded_by column",
+        )
+        .await?;
+        exec_ddl(
+            conn,
+            "CREATE INDEX IF NOT EXISTS idx_hub_atoms_superseded ON knowledge_atoms(superseded_at)",
+            "idx superseded",
+        )
+        .await?;
 
         let vec_sql = format!(
             r#"
@@ -627,9 +645,18 @@ impl Store for PostgresStore {
             extra_binds.push(p.to_string());
             bind_idx += 1;
         }
-        let (vis_sql, vis_binds, _) = Self::hub_visibility_sql(&filter, bind_idx);
+        let (vis_sql, vis_binds, next_idx) = Self::hub_visibility_sql(&filter, bind_idx);
         predicates.push_str(&vis_sql);
         extra_binds.extend(vis_binds);
+        bind_idx = next_idx;
+        if let Some(t) = filter.as_of {
+            predicates.push_str(&format!(
+                " AND indexed_at <= ${bind_idx} AND (superseded_at IS NULL OR superseded_at > ${bind_idx})"
+            ));
+            extra_binds.push(t.to_rfc3339());
+        } else if !filter.include_superseded {
+            predicates.push_str(" AND superseded_at IS NULL");
+        }
         let sql = format!(
             "SELECT id, ts_rank(search_tsv, plainto_tsquery('english', $1))::float8 AS score
              FROM knowledge_atoms
@@ -677,7 +704,8 @@ impl Store for PostgresStore {
         if Self::embedding_norm(query_embed) < MIN_EMBEDDING_NORM {
             return Ok(vec![]);
         }
-        let k = if filter.trusted_only {
+        // Superseded rows excluded by default — over-fetch like the lane filter.
+        let k = if filter.trusted_only || filter.as_of.is_some() || !filter.include_superseded {
             (limit.saturating_mul(3)).max(limit)
         } else {
             limit
@@ -692,10 +720,19 @@ impl Store for PostgresStore {
             extra_binds.push(p.to_string());
             bind_idx += 1;
         }
-        let (vis_sql, vis_binds, _) = Self::hub_visibility_sql(&filter, bind_idx);
+        let (vis_sql, vis_binds, next_idx) = Self::hub_visibility_sql(&filter, bind_idx);
         if !vis_sql.is_empty() {
             where_parts.push(vis_sql.trim_start_matches(" AND ").to_string());
             extra_binds.extend(vis_binds);
+        }
+        bind_idx = next_idx;
+        if let Some(t) = filter.as_of {
+            where_parts.push(format!(
+                "a.indexed_at <= ${bind_idx} AND (a.superseded_at IS NULL OR a.superseded_at > ${bind_idx})"
+            ));
+            extra_binds.push(t.to_rfc3339());
+        } else if !filter.include_superseded {
+            where_parts.push("a.superseded_at IS NULL".to_string());
         }
         let project_pred = if where_parts.is_empty() {
             String::new()
@@ -762,6 +799,23 @@ impl Store for PostgresStore {
             .await
             .map_err(|e| KurultaiError::Store(format!("delete_atom: {e}")))?;
         Ok(())
+    }
+
+    async fn mark_superseded(&self, ids: &[String], by_id: &str, ts: DateTime<Utc>) -> Result<u64> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let res = sqlx::query(
+            "UPDATE knowledge_atoms SET superseded_at = $1, superseded_by = $2
+             WHERE id = ANY($3) AND superseded_at IS NULL",
+        )
+        .bind(ts.to_rfc3339())
+        .bind(by_id)
+        .bind(ids)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("mark_superseded: {e}")))?;
+        Ok(res.rows_affected())
     }
 
     async fn apply_auto_merge(

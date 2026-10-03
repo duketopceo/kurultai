@@ -2,7 +2,7 @@ use crate::error::{KurultaiError, Result};
 use rusqlite::Connection;
 
 /// Bump when schema changes. Migrations run in order on store open.
-pub const CURRENT_SCHEMA_VERSION: i32 = 16;
+pub const CURRENT_SCHEMA_VERSION: i32 = 17;
 
 const MIGRATION_001: &str = r#"
 CREATE TABLE IF NOT EXISTS knowledge_atoms (
@@ -510,6 +510,21 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         )?;
         conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [16])
             .map_err(|e| KurultaiError::Store(format!("migration 016 record failed: {e}")))?;
+    }
+
+    if current < 17 {
+        // Bi-temporal-lite (sweep U4): supersede chains. NULL on legacy rows
+        // means "currently valid"; queries exclude `superseded_at IS NOT NULL`
+        // by default and support --as-of time travel.
+        add_column_if_missing(conn, "knowledge_atoms", "superseded_at", "TEXT")?;
+        add_column_if_missing(conn, "knowledge_atoms", "superseded_by", "TEXT")?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_atoms_superseded ON knowledge_atoms(superseded_at)",
+            [],
+        )
+        .map_err(|e| KurultaiError::Store(format!("migration 017 index failed: {e}")))?;
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (?1)", [17])
+            .map_err(|e| KurultaiError::Store(format!("migration 017 record failed: {e}")))?;
     }
 
     tracing::info!(version = CURRENT_SCHEMA_VERSION, "migrations complete");

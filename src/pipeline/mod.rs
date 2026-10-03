@@ -246,6 +246,43 @@ impl IndexPipeline {
                     "extracted references edges"
                 );
             }
+
+            // Bi-temporal-lite (U4): frontmatter `supersedes:` marks the older
+            // atoms invalid from now; exclusion is enforced at query time.
+            let mut superseded_total = 0u64;
+            for atom in &enriched {
+                match crate::ontology::resolve_supersede_targets(
+                    self.store.as_ref(),
+                    atom,
+                    source_name,
+                )
+                .await
+                {
+                    Ok(ids) if !ids.is_empty() => {
+                        match self
+                            .store
+                            .mark_superseded(&ids, &atom.id, chrono::Utc::now())
+                            .await
+                        {
+                            Ok(n) => superseded_total += n,
+                            Err(e) => {
+                                tracing::warn!(atom = %atom.id, error = %e, "mark_superseded failed")
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(atom = %atom.id, error = %e, "supersede resolution failed")
+                    }
+                    _ => {}
+                }
+            }
+            if superseded_total > 0 {
+                tracing::info!(
+                    source = %source_name,
+                    marked = superseded_total,
+                    "applied supersede marks"
+                );
+            }
         }
 
         // Inbox tray finalization (trusted → processed/, quarantine → failed/).

@@ -84,6 +84,12 @@ enum Commands {
         /// Number of results
         #[arg(long, default_value = "10")]
         limit: usize,
+        /// Time-travel: only atoms valid at this instant (RFC3339 or YYYY-MM-DD)
+        #[arg(long, value_name = "TIMESTAMP", conflicts_with = "include_superseded")]
+        as_of: Option<String>,
+        /// Include superseded atoms (excluded by default)
+        #[arg(long)]
+        include_superseded: bool,
     },
     /// Ask a question (extractive without an API key)
     Ask {
@@ -93,6 +99,12 @@ enum Commands {
         /// needs PERPLEXITY_API_KEY and KURULTAI_FEATURE_WEB_SEARCH=1)
         #[arg(long)]
         web: bool,
+        /// Time-travel: only atoms valid at this instant (RFC3339 or YYYY-MM-DD)
+        #[arg(long, value_name = "TIMESTAMP", conflicts_with = "include_superseded")]
+        as_of: Option<String>,
+        /// Include superseded atoms (excluded by default)
+        #[arg(long)]
+        include_superseded: bool,
     },
     /// Pre-merge commit review: judge each commit in a range for secrets,
     /// security regressions, and message/diff mismatches (needs OPENROUTER_API_KEY)
@@ -528,14 +540,20 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Commands::Ask { ref question, web } => {
+        Commands::Ask {
+            ref question,
+            web,
+            ref as_of,
+            include_superseded,
+        } => {
             let app = bootstrap_app(&cli).await?;
             tracing::info!(question = %question, web, "ask requested");
             let brain = brain_from_app(&app);
-            let answer = if web {
-                brain.ask_with_web(question, None, 2).await?
-            } else {
-                brain.ask(question).await?
+            let answer = match parse_temporal_filter(as_of, include_superseded)? {
+                Some(filter) if web => brain.ask_with_web_filtered(question, filter, 2).await?,
+                Some(filter) => brain.ask_with_filter(question, filter).await?,
+                None if web => brain.ask_with_web(question, None, 2).await?,
+                None => brain.ask(question).await?,
             };
             println!("Q: {}", answer.question);
             println!("A: {}", answer.answer);
@@ -679,11 +697,30 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Search { ref query, limit } => {
+        Commands::Search {
+            ref query,
+            limit,
+            ref as_of,
+            include_superseded,
+        } => {
             let app = bootstrap_app(&cli).await?;
             tracing::info!(query = %query, limit, "search requested");
             let brain = brain_from_app(&app);
-            let views = brain.search_views(query, limit).await?;
+            let views = match parse_temporal_filter(as_of, include_superseded)? {
+                Some(filter) => brain
+                    .search_with_filter(query, limit, filter)
+                    .await?
+                    .into_iter()
+                    .map(|r| {
+                        kurultai::brain::AgentAtomView::from_atom(
+                            &r.atom,
+                            r.score,
+                            kurultai::brain::DEFAULT_EXCERPT_CAP,
+                        )
+                    })
+                    .collect(),
+                None => brain.search_views(query, limit).await?,
+            };
             if views.is_empty() {
                 println!("No results.");
             } else {
@@ -1358,6 +1395,42 @@ fn init_key_setup(
         return Ok(None);
     }
     stored(line)
+}
+
+/// Build a SearchFilter from `--as-of`/`--include-superseded`. None when
+/// neither flag is set (caller uses the default path).
+fn parse_temporal_filter(
+    as_of: &Option<String>,
+    include_superseded: bool,
+) -> Result<Option<kurultai::store::SearchFilter>> {
+    if as_of.is_none() && !include_superseded {
+        return Ok(None);
+    }
+    let t = match as_of {
+        Some(raw) => Some(parse_as_of(raw)?),
+        None => None,
+    };
+    Ok(Some(
+        kurultai::store::SearchFilter::default()
+            .with_as_of(t)
+            .with_include_superseded(include_superseded),
+    ))
+}
+
+/// `--as-of` accepts RFC3339 or a bare `YYYY-MM-DD` (midnight UTC).
+fn parse_as_of(raw: &str) -> Result<chrono::DateTime<chrono::Utc>> {
+    let raw = raw.trim();
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(raw) {
+        return Ok(dt.with_timezone(&chrono::Utc));
+    }
+    if let Ok(d) = chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
+        if let Some(dt) = d.and_hms_opt(0, 0, 0) {
+            return Ok(dt.and_utc());
+        }
+    }
+    Err(kurultai::error::KurultaiError::Config(format!(
+        "invalid --as-of timestamp '{raw}' (want RFC3339 or YYYY-MM-DD)"
+    )))
 }
 
 /// Split a comma-separated CLI value into trimmed, non-empty parts.
