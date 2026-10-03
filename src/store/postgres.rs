@@ -373,6 +373,12 @@ impl PostgresStore {
             corpus_tier: CorpusTier::parse(&corpus_tier_raw),
             visibility_labels: serde_json::from_str(&visibility_labels_json).unwrap_or_default(),
             visibility: VisibilityScope::parse(&visibility_raw),
+            superseded_at: row
+                .try_get::<Option<String>, _>("superseded_at")
+                .unwrap_or(None)
+                .as_deref()
+                .map(parse_dt),
+            superseded_by: row.try_get("superseded_by").unwrap_or(None),
         })
     }
 
