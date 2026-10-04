@@ -8,6 +8,7 @@ services:
     environment:
       KURULTAI_ENV: prod
       KURULTAI_FEATURE_HUB: "0"
+      KURULTAI_FEATURE_REMOTE_INGEST: "1"
       KURULTAI_HUB_BIND: all
       KURULTAI_HUB_AUTH: api_key
       KURULTAI_HUB_API_KEYS: ${PERSONAL_API_KEYS:?missing PERSONAL_API_KEYS — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}

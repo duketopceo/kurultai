@@ -1,13 +1,18 @@
 //! Loopback dump ingest: `POST /ingest` (not under `/api/`).
 //!
 //! Requires `KURULTAI_INGEST_SECRET` (route disabled when unset). Peer must be
-//! loopback. Shared-secret compare is constant-time.
+//! loopback unless the `remote_ingest` feature flag
+//! (`KURULTAI_FEATURE_REMOTE_INGEST=1`) is set — then secret-authenticated
+//! remote callers are accepted too. Shared-secret compare is constant-time.
 //!
-//! IMPORTANT — the secret is a footgun-reducer, not an access control. On a shared
-//! box every session runs as the same uid and can read the daemon's environment via
-//! `/proc/<pid>/environ`, and every session already *is* loopback. Containment comes
-//! from [`crate::write_policy`]: under the closed policy ingested atoms are forced to
-//! quarantine and stamped with the caller's claimed provenance.
+//! IMPORTANT — the secret is a footgun-reducer for loopback callers, not an
+//! access control: on a shared box every session runs as the same uid and can
+//! read the daemon's environment via `/proc/<pid>/environ`, and every session
+//! already *is* loopback. With `remote_ingest` on, the secret becomes a real
+//! access control for remote callers — keep exposure tunnel/VPN-scoped.
+//! Containment comes from [`crate::write_policy`]: under the closed policy
+//! ingested atoms are forced to quarantine and stamped with the caller's
+//! claimed provenance.
 
 use crate::embed::Embedder;
 use crate::hashutil::sha256_hex;
@@ -33,6 +38,12 @@ pub fn resolve_ingest_secret() -> Option<String> {
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+/// Whether non-loopback peers may ingest (the shared secret is required
+/// either way). Off by default — enable via `KURULTAI_FEATURE_REMOTE_INGEST`.
+pub fn resolve_ingest_remote() -> bool {
+    crate::features::enabled("remote_ingest")
 }
 
 fn secrets_equal(a: &str, b: &str) -> bool {
@@ -79,6 +90,8 @@ pub struct IngestState {
     pub secret: String,
     /// Write containment policy, resolved once at route-mount time (not per request).
     pub mode: WriteMode,
+    /// Accept non-loopback callers when the `remote_ingest` feature flag is on.
+    pub remote: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -145,7 +158,8 @@ async fn ingest_post(
     Query(q): Query<IngestQuery>,
     body: Bytes,
 ) -> std::result::Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
-    if !is_loopback(&addr) {
+    let loopback = is_loopback(&addr);
+    if !loopback && !state.remote {
         return Err((
             StatusCode::FORBIDDEN,
             Json(json!({ "ok": false, "error": "loopback only" })),
@@ -161,6 +175,14 @@ async fn ingest_post(
             StatusCode::UNAUTHORIZED,
             Json(json!({ "ok": false, "error": "invalid ingest secret" })),
         ));
+    }
+
+    if !loopback {
+        // Provenance for remote callers: the peer is the proxy (cloudflared,
+        // docker bridge), so prefer the client IP headers it forwards.
+        let client_ip = header_str(&headers, "cf-connecting-ip")
+            .or_else(|| header_str(&headers, "x-forwarded-for"));
+        tracing::info!(peer = %addr, client_ip = ?client_ip, "remote ingest accepted");
     }
 
     if body.is_empty() {
@@ -280,6 +302,10 @@ mod tests {
     use tower::ServiceExt;
 
     fn state(secret: &str) -> IngestState {
+        state_with_remote(secret, false)
+    }
+
+    fn state_with_remote(secret: &str, remote: bool) -> IngestState {
         let dir = tempfile::tempdir().unwrap();
         // Leak tempdir path for test process lifetime (test-only).
         let path = dir.path().join("store.db");
@@ -290,6 +316,7 @@ mod tests {
             store,
             embedder: Arc::new(NullEmbedder::new(4)),
             secret: secret.into(),
+            remote,
         }
     }
 
@@ -369,11 +396,84 @@ mod tests {
         assert!(v["lane"].is_string());
     }
 
+    const BODY: &str =
+        "---\ntags: [ops]\n---\n\nBody with enough detail for ingest webhook quality gate pass.\n";
+
+    #[tokio::test]
+    async fn accepts_remote_with_flag_and_secret() {
+        let app = routes(state_with_remote("s3cret", true));
+        let (status, v) = call(
+            app,
+            "172.18.0.1:9".parse().unwrap(), // docker bridge peer, as seen behind the tunnel
+            Some("s3cret"),
+            BODY,
+            "markdown",
+        )
+        .await;
+        assert_eq!(status, Sc::OK, "{v}");
+        assert_eq!(v["ok"], true);
+    }
+
+    #[tokio::test]
+    async fn rejects_remote_without_secret_with_flag() {
+        let app = routes(state_with_remote("s3cret", true));
+        let (status, v) = call(app, "8.8.8.8:1".parse().unwrap(), None, BODY, "markdown").await;
+        assert_eq!(status, Sc::UNAUTHORIZED);
+        assert_eq!(v["ok"], false);
+    }
+
+    #[tokio::test]
+    async fn rejects_remote_bad_secret_with_flag() {
+        let app = routes(state_with_remote("s3cret", true));
+        let (status, v) = call(
+            app,
+            "8.8.8.8:1".parse().unwrap(),
+            Some("wrong"),
+            BODY,
+            "markdown",
+        )
+        .await;
+        assert_eq!(status, Sc::UNAUTHORIZED);
+        assert_eq!(v["ok"], false);
+    }
+
+    #[tokio::test]
+    async fn remote_flag_off_keeps_loopback_gate() {
+        // state() defaults remote=false — the 403 path is covered by
+        // rejects_non_loopback; this pins that enabling the flag is the
+        // ONLY way remote callers get in.
+        let app = routes(state("s3cret"));
+        let (status, _) = call(
+            app,
+            "10.0.0.5:1".parse().unwrap(),
+            Some("s3cret"),
+            BODY,
+            "markdown",
+        )
+        .await;
+        assert_eq!(status, Sc::FORBIDDEN);
+    }
+
+    #[test]
+    fn resolve_ingest_remote_reads_feature_env() {
+        {
+            let _unset = crate::testutil::EnvGuard::remove("KURULTAI_FEATURE_REMOTE_INGEST");
+            assert!(!resolve_ingest_remote());
+        }
+        {
+            let _on = crate::testutil::EnvGuard::set("KURULTAI_FEATURE_REMOTE_INGEST", "1");
+            assert!(resolve_ingest_remote());
+        }
+        let _off = crate::testutil::EnvGuard::set("KURULTAI_FEATURE_REMOTE_INGEST", "0");
+        assert!(!resolve_ingest_remote());
+    }
+
     #[test]
     fn resolve_ingest_secret_reads_env() {
-        let _guard = crate::testutil::EnvGuard::set("KURULTAI_INGEST_SECRET", "  abc  ");
-        assert_eq!(resolve_ingest_secret().as_deref(), Some("abc"));
-        drop(_guard);
+        {
+            let _guard = crate::testutil::EnvGuard::set("KURULTAI_INGEST_SECRET", "  abc  ");
+            assert_eq!(resolve_ingest_secret().as_deref(), Some("abc"));
+        }
         let _unset = crate::testutil::EnvGuard::remove("KURULTAI_INGEST_SECRET");
         assert_eq!(resolve_ingest_secret(), None);
     }

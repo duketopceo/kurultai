@@ -53,6 +53,12 @@ pub const ALL: &[FeatureSpec] = &[
         summary: "Shared team/company hub (HUB-3 transport; default off)",
     },
     FeatureSpec {
+        id: "remote_ingest",
+        since: "0.7.0",
+        default_on: false,
+        summary: "Accept non-loopback POST /ingest callers (shared secret still required)",
+    },
+    FeatureSpec {
         id: "web_search",
         since: "0.7.0",
         default_on: false,
