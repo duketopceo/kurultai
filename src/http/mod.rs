@@ -195,12 +195,18 @@ pub async fn serve_with(
         );
     }
     if let Some(secret) = resolve_ingest_secret() {
-        tracing::info!("loopback ingest enabled at POST /ingest (shared secret required)");
+        let remote = ingest::resolve_ingest_remote();
+        if remote {
+            tracing::warn!("ingest enabled at POST /ingest — REMOTE callers accepted with valid secret (KURULTAI_FEATURE_REMOTE_INGEST)");
+        } else {
+            tracing::info!("loopback ingest enabled at POST /ingest (shared secret required)");
+        }
         app = app.merge(ingest::routes(ingest::IngestState {
             store: brain.store(),
             embedder: brain.embedder(),
             secret,
             mode: crate::write_policy::WriteMode::from_env(),
+            remote,
         }));
     } else {
         tracing::info!("loopback ingest disabled (set KURULTAI_INGEST_SECRET to enable)");
@@ -268,6 +274,7 @@ fn router(state: AppState) -> Router {
 ///
 /// Mirrors the route mounted by [`serve_with`] without binding a socket, with the
 /// write containment `mode` injected rather than read from the environment.
+/// The `remote_ingest` flag IS read from the environment like the live mount.
 pub fn build_ingest_app(
     store: std::sync::Arc<dyn crate::store::Store>,
     embedder: std::sync::Arc<dyn crate::embed::Embedder>,
@@ -279,6 +286,7 @@ pub fn build_ingest_app(
         embedder,
         secret,
         mode,
+        remote: ingest::resolve_ingest_remote(),
     })
 }
 
