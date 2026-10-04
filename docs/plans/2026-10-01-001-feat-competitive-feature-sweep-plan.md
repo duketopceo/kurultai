@@ -5,6 +5,7 @@ execution: code
 
 # Competitive feature sweep — gbrain / OpenViking / agent-memory lane
 
+**Status:** ✅ Complete — all units merged (U1 #400, U2 `2f428be`, U3 #403, U4 #405, U5 #407). Wrap-up: `phase-7-competitive-sweep-complete.md`
 **Date:** 2026-10-01 · **Origin:** competitor scan (GBrain `garrytan/gbrain`, OpenViking context DB, mem0/Zep-Graphiti/Letta/Cognee/Supermemory landscape + pplx-embed release).
 
 ## Goal Capsule
