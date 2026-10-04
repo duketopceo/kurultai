@@ -20,6 +20,8 @@ services:
       KURULTAI_CF_ACCESS_AUDS: 681b516695b2a7ff73edfb09e824e394a92fbdca62246b6d23f505badd3e28ca
       # Hey admin lane — verified CF Access emails get edit/delete + post-as-luke
       KURULTAI_ADMIN_EMAILS: duketopceo@gmail.com
+      # pplx-embed backend ([embed] backend="perplexity" in /data config)
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
       PORT: "8421"
       HOME: /data
       RUST_LOG: "kurultai=info,error"
