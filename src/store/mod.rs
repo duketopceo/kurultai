@@ -369,6 +369,20 @@ pub trait Store: Send + Sync {
         Ok(0)
     }
 
+    /// Content-hash groups having >1 trusted, non-superseded atom (sweep U5).
+    /// Each entry is `(content_hash, ids)` ordered by `indexed_at` ascending —
+    /// `ids[0]` is the canonical survivor. Default empty for stubs.
+    async fn duplicate_content_groups(&self) -> Result<Vec<(String, Vec<String>)>> {
+        Ok(Vec::new())
+    }
+
+    /// Delete ontology links/entities whose endpoints no longer exist
+    /// (dangling link endpoint, or entity whose `atom_id` atom was deleted).
+    /// Returns `(links_removed, entities_removed)`. Default no-op for stubs.
+    async fn prune_stale_ontology(&self) -> Result<(u64, u64)> {
+        Ok((0, 0))
+    }
+
     /// Atomic auto-merge: upsert survivor, delete loser (fts+vec+row), insert quality_audit
     /// in one `BEGIN IMMEDIATE` transaction.
     async fn apply_auto_merge(
@@ -1944,6 +1958,58 @@ impl Store for SqliteVecStore {
             self.bump_atom_epoch();
         }
         Ok(marked)
+    }
+
+    async fn duplicate_content_groups(&self) -> Result<Vec<(String, Vec<String>)>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT content_hash, id FROM knowledge_atoms
+                 WHERE trust_lane = 'trusted' AND superseded_at IS NULL
+                   AND content_hash IS NOT NULL AND content_hash != ''
+                   AND content_hash IN (
+                       SELECT content_hash FROM knowledge_atoms
+                       WHERE trust_lane = 'trusted' AND superseded_at IS NULL
+                         AND content_hash IS NOT NULL AND content_hash != ''
+                       GROUP BY content_hash HAVING COUNT(*) > 1
+                   )
+                 ORDER BY content_hash, indexed_at",
+            )
+            .map_err(|e| KurultaiError::Store(format!("dup_groups prepare: {e}")))?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| KurultaiError::Store(format!("dup_groups query: {e}")))?;
+        let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+        for row in rows {
+            let (hash, id) =
+                row.map_err(|e| KurultaiError::Store(format!("dup_groups row: {e}")))?;
+            match groups.last_mut() {
+                Some((h, ids)) if *h == hash => ids.push(id),
+                _ => groups.push((hash, vec![id])),
+            }
+        }
+        Ok(groups)
+    }
+
+    async fn prune_stale_ontology(&self) -> Result<(u64, u64)> {
+        let conn = self.lock()?;
+        let links =
+            conn.execute(
+                "DELETE FROM ontology_links
+                 WHERE from_id NOT IN (SELECT id FROM ontology_entities)
+                    OR to_id NOT IN (SELECT id FROM ontology_entities)",
+                [],
+            )
+            .map_err(|e| KurultaiError::Store(format!("prune links: {e}")))? as u64;
+        let entities =
+            conn.execute(
+                "DELETE FROM ontology_entities
+                 WHERE atom_id IS NOT NULL
+                   AND atom_id NOT IN (SELECT id FROM knowledge_atoms)",
+                [],
+            )
+            .map_err(|e| KurultaiError::Store(format!("prune entities: {e}")))? as u64;
+        Ok((links, entities))
     }
 
     async fn apply_auto_merge(

@@ -151,6 +151,16 @@ enum Commands {
         #[arg(long, default_value = "20")]
         limit: usize,
     },
+    /// Consolidation sweep: fold content-dupe atoms, prune stale ontology
+    /// links/entities, report tier census, optionally post results to Hey.
+    Sweep {
+        /// Report what would change without mutating the store
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip the Hey `kurultai-sweep` report post
+        #[arg(long)]
+        no_report: bool,
+    },
     /// Environment, sources, atom counts, feature flags
     Status {
         /// Print Prometheus metrics from a running local daemon (`GET /api/metrics`)
@@ -742,6 +752,17 @@ async fn main() -> Result<()> {
             let res = brain.promote(atom_id, &actor, reason.as_deref()).await?;
             println!("promoted {} (actor={})", res.atom_id, res.actor);
         }
+        Commands::Sweep { dry_run, no_report } => {
+            let app = bootstrap_app(&cli).await?;
+            let report = kurultai::sweep::run(
+                app.store.as_ref(),
+                &app.config.tier_policy,
+                dry_run,
+                !no_report,
+            )
+            .await?;
+            println!("{}", report.summary());
+        }
         Commands::Status { metrics, port } => {
             let app = bootstrap_app(&cli).await?;
             let _ = print_banner_stdout(ArtVariant::Compact, app.config.banner, plain, no_color);
@@ -1030,6 +1051,7 @@ async fn main() -> Result<()> {
                     inactivity_threshold_hours: app.config.inactivity_threshold_hours,
                     mcp_http_secret: mcp_secret,
                     bind: bind.clone(),
+                    tier_policy: Some(app.config.tier_policy.clone()),
                 },
             )
             .await?;

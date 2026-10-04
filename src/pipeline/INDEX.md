@@ -19,7 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`mod.rs`](mod.rs) | Index pipeline (hash-skip, embed, upsert, zero-LLM edge extraction) | `src/connectors` · `src/embed` · `src/error` · `src/hashutil` · `src/ontology/extract` · `src/quality` · `src/types` | `src/daemon/mod.rs` | 2026-10-03 | 4 | U4 supersede pass: resolve+mark_superseded post-upsert ·2026-10-02 U3 `apply_extracted_edges` post-upsert · 2026-09-01 HUB-5 apply default_visibility_scope at ingest · 2026-08-16 indexed (v1 seed) |
+| [`mod.rs`](mod.rs) | Index pipeline (hash-skip, embed, upsert, zero-LLM edge extraction) | `src/connectors` · `src/embed` · `src/error` · `src/hashutil` · `src/ontology/extract` · `src/quality` · `src/types` | `src/daemon/mod.rs` | 2026-10-04 | 5 | `store()` accessor for daemon sweep hook ·2026-10-03 U4 supersede pass: resolve+mark_superseded post-upsert ·2026-10-02 U3 `apply_extracted_edges` post-upsert · 2026-09-01 HUB-5 apply default_visibility_scope at ingest · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
