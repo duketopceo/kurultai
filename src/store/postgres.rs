@@ -824,6 +824,54 @@ impl Store for PostgresStore {
         Ok(res.rows_affected())
     }
 
+    async fn duplicate_content_groups(&self) -> Result<Vec<(String, Vec<String>)>> {
+        let rows = sqlx::query_as::<_, (String, String)>(
+            "SELECT content_hash, id FROM knowledge_atoms
+             WHERE trust_lane = 'trusted' AND superseded_at IS NULL
+               AND content_hash IS NOT NULL AND content_hash != ''
+               AND content_hash IN (
+                   SELECT content_hash FROM knowledge_atoms
+                   WHERE trust_lane = 'trusted' AND superseded_at IS NULL
+                     AND content_hash IS NOT NULL AND content_hash != ''
+                   GROUP BY content_hash HAVING COUNT(*) > 1
+               )
+             ORDER BY content_hash, indexed_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("dup_groups: {e}")))?;
+        let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+        for (hash, id) in rows {
+            match groups.last_mut() {
+                Some((h, ids)) if *h == hash => ids.push(id),
+                _ => groups.push((hash, vec![id])),
+            }
+        }
+        Ok(groups)
+    }
+
+    async fn prune_stale_ontology(&self) -> Result<(u64, u64)> {
+        let links = sqlx::query(
+            "DELETE FROM ontology_links
+             WHERE from_id NOT IN (SELECT id FROM ontology_entities)
+                OR to_id NOT IN (SELECT id FROM ontology_entities)",
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("prune links: {e}")))?
+        .rows_affected();
+        let entities = sqlx::query(
+            "DELETE FROM ontology_entities
+             WHERE atom_id IS NOT NULL
+               AND atom_id NOT IN (SELECT id FROM knowledge_atoms)",
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("prune entities: {e}")))?
+        .rows_affected();
+        Ok((links, entities))
+    }
+
     async fn apply_auto_merge(
         &self,
         survivor: &KnowledgeAtom,

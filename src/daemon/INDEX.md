@@ -19,7 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`mod.rs`](mod.rs) | Background poll + notify watch loop | `src/connectors` · `src/error` · `src/http` · `src/mcp` · `src/pipeline` | `src/http/mod.rs` | 2026-09-20 | 4 | 2026-09-20 `WATCH_MIN_INTERVAL` 30s floor between watch-triggered cycles — sustained event streams could hot-loop at ~2,000 cycles/46min · 2026-09-15 `DaemonOptions.bind` → `ServeOptions` (#329) |
+| [`mod.rs`](mod.rs) | Background poll + notify watch loop | `src/connectors` · `src/error` · `src/http` · `src/mcp` · `src/pipeline` | `src/http/mod.rs` | 2026-10-04 | 5 | U5: `DaemonOptions.tier_policy` + sweep pass after nightly full sync, posts `kurultai-sweep` Hey report ·2026-09-20 `WATCH_MIN_INTERVAL` 30s floor between watch-triggered cycles — sustained event streams could hot-loop at ~2,000 cycles/46min · 2026-09-15 `DaemonOptions.bind` → `ServeOptions` (#329) |
 
 ## Recent
 

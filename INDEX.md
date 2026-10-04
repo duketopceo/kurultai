@@ -73,6 +73,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-10-04 — U5 nightly consolidation sweep (competitive-sweep finale): `kurultai sweep` folds content-hash dupes into canonical atoms via supersede, prunes stale ontology links/entities, reports tier+quarantine census to Hey `kurultai-sweep` thread; daemon runs it after each nightly full sync
 - 2026-10-03 — `remote_ingest` feature flag: secret-authenticated non-loopback `POST /ingest` (`src/http/ingest.rs` gate + peer audit log, `src/features.rs` catalog, `build_ingest_app` env parity); personal compose enables `KURULTAI_FEATURE_REMOTE_INGEST` for dayflow sync
 - 2026-10-03 — U4 supersede/bi-temporal-lite (sweep): `supersedes:` frontmatter marks atoms at index time; excluded from default search/ask; `--as-of`/`--include-superseded` flags on both; schema v17
 

@@ -37,6 +37,11 @@ impl IndexPipeline {
         }
     }
 
+    /// Shared store handle (daemon sweep hooks, tests).
+    pub fn store(&self) -> Arc<dyn Store> {
+        Arc::clone(&self.store)
+    }
+
     /// Register source configs so [`IndexPipeline::index_connector`] can apply
     /// per-source `default_corpus_tier` / `default_visibility_labels` / `default_visibility_scope` defaults.
     pub fn register_sources(&mut self, configs: &[SourceConfig]) {

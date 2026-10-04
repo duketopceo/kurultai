@@ -43,6 +43,9 @@ pub struct DaemonOptions {
     pub mcp_http_secret: Option<String>,
     /// `--bind` override (e.g. `tailscale`, `0.0.0.0`, a literal IP). None = env/default.
     pub bind: Option<String>,
+    /// Tier policy for the nightly consolidation sweep (U5). When set, a
+    /// `sweep::run` pass follows each nightly full sync and posts to Hey.
+    pub tier_policy: Option<crate::memory::TierPolicy>,
 }
 
 /// Live daemon scheduler state for `/api/status` (#73).
@@ -294,8 +297,19 @@ pub async fn run(
             let connectors = Arc::clone(&connectors);
             let flight = Arc::clone(&flight);
             let status = Arc::clone(&status);
+            let sweep_store = pipeline.store();
+            let tier_policy = opts.tier_policy.clone();
             bg.0.push(tokio::spawn(async move {
-                nightly_full_loop(pipeline, connectors, flight, status, hour).await;
+                nightly_full_loop(
+                    pipeline,
+                    connectors,
+                    flight,
+                    status,
+                    hour,
+                    sweep_store,
+                    tier_policy,
+                )
+                .await;
             }));
         }
     }
@@ -393,12 +407,15 @@ pub(crate) async fn poll_loop(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn nightly_full_loop(
     pipeline: Arc<IndexPipeline>,
     connectors: Arc<ConnectorRegistry>,
     flight: Arc<Mutex<()>>,
     status: Arc<DaemonStatus>,
     hour: u8,
+    sweep_store: Arc<dyn crate::store::Store>,
+    tier_policy: Option<crate::memory::TierPolicy>,
 ) {
     let mut last_run_day = String::new();
     loop {
@@ -415,6 +432,12 @@ async fn nightly_full_loop(
                 true,
             )
             .await;
+            if let Some(policy) = &tier_policy {
+                match crate::sweep::run(sweep_store.as_ref(), policy, false, true).await {
+                    Ok(report) => tracing::info!(summary = %report.summary(), "nightly sweep done"),
+                    Err(e) => tracing::warn!(error = %e, "nightly sweep failed"),
+                }
+            }
             last_run_day = day;
         }
         tokio::time::sleep(Duration::from_secs(60)).await;
@@ -689,6 +712,7 @@ mod tests {
             inactivity_threshold_hours: None,
             mcp_http_secret: None,
             bind: None,
+            tier_policy: None,
         }
     }
 
