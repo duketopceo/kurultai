@@ -52,6 +52,8 @@ services:
       KURULTAI_INGEST_SECRET: ${WORK_INGEST_SECRET:?missing WORK_INGEST_SECRET — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}
       KURULTAI_CF_ACCESS_TEAM: duketopceo
       KURULTAI_CF_ACCESS_AUDS: 4b8e471a751f46bdaa510b6662528279231d7d9cee00b8a75a93048b19444146
+      # pplx-embed backend ([embed] backend="perplexity" in /data config)
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
       PORT: "8422"
       HOME: /data
       RUST_LOG: "kurultai=info,error"
