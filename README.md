@@ -89,16 +89,20 @@ CLI · axum daemon (/api/*) · MCP stdio · Brain UI (embedded)
 
 Config templates: [`config.example.toml`](config.example.toml) · [`.env.example`](.env.example). Domain vocabulary: [`CONCEPTS.md`](CONCEPTS.md).
 
-## What ships (v0.5.0)
+## What ships (v0.6.0)
 
 | Area | Details |
 |------|---------|
-| **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon`, `prune`, `doctor`, `admin key` |
+| **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon`, `sweep`, `prune`, `doctor`, `admin key` |
+| **Embeddings** | OpenRouter (default) · **Perplexity `pplx-embed-v1`** (0.6b @1024d / 4b @2560d, ~30× cheaper) · local ONNX (feature `local-embed`) |
+| **Ask** | Cited synthesis + **gap report** — answers name what the brain *doesn't* know |
+| **Ontology** | O1 class tree + `ontology_get` / `ontology_promote` MCP tools + **zero-LLM edge extraction** (`[[links]]`, `@mentions`, frontmatter rels → typed `references` edges at index time) |
+| **Memory lifecycle** | Hot/warm/cold tiers · `supersedes:` frontmatter corrections · `--as-of` time-travel queries · `kurultai sweep` nightly consolidation (dedupe, stale-link prune, Hey report) |
 | **Connectors** | Markdown · JSON · inbox tray · Dayflow · Pond · GitHub (local checkout). AppFlowy is not implemented ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
 | **Daemon API** | `/api/status`, `/api/atoms`, `/api/graph`, `/api/search`, `/api/ask`, `/api/recall`, `/api/ontology`, `/api/metrics`, … |
 | **MCP** | Stdio (full write tools). Daemon HTTP/SSE is read-only when `KURULTAI_MCP_HTTP_SECRET` is set |
 | **Trust** | Atoms in `trusted` or `quarantine` lanes; visibility scopes `personal` / `team` / `company` (HUB-1) |
-| **Ontology** | O1 class tree + `ontology_get` / `ontology_promote` MCP tools |
+| **Coordination** | Hey message board — agents post/read threads, claim repos, and receive sweep reports via MCP + dashboard |
 
 Acceptance coverage: [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) · [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md).
 
@@ -121,6 +125,7 @@ Loopback ingest (opt-in): set `KURULTAI_INGEST_SECRET`, then `POST /ingest` with
 | Connectors (Dayflow, Pond, GitHub FS, inbox) | ✅ |
 | MCP HTTP/SSE · export/import · solo `init --docs` | ✅ v0.4.1 |
 | Tiered hub · Postgres store · team transport | ✅ Shipped in v0.5.0 |
+| Competitive sweep: pplx-embed · gap-aware ask · zero-LLM edges · supersede/`--as-of` · nightly sweep | ✅ Shipped in v0.6.0 |
 | Team web app (`web/`) | 🚧 Next.js + Clerk scaffold |
 
 Roadmap: [`ROADMAP.md`](ROADMAP.md) — solo → team → company. Issues: [#25](https://github.com/duketopceo/kurultai/issues/25) (developer → solo), [#27](https://github.com/duketopceo/kurultai/issues/27) (team → company). Work queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md).

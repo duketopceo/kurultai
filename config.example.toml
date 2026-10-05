@@ -65,6 +65,11 @@ root_path = "/Users/you/src/your-repo"
 # One OPENROUTER_API_KEY (env) powers embeddings here and chat models below.
 model = "openai/text-embedding-3-large"
 dimension = 3072
+# Perplexity alternative (PERPLEXITY_API_KEY env; ~30x cheaper, quantized output):
+# Replace the two lines above — do not leave conflicting model/dimension active:
+# backend = "perplexity"
+# model = "pplx-embed-v1-0.6b"   # or "pplx-embed-v1-4b" @ dimension = 2560
+# dimension = 1024
 # Local ONNX alternative (requires: cargo build --features local-embed).
 # Replace the two lines above — do not leave conflicting model/dimension active:
 # backend = "local"

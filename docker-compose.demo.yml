@@ -23,6 +23,7 @@ services:
       KURULTAI_CF_ACCESS_AUDS: ${KURULTAI_CF_ACCESS_AUDS:-}
       # Container needs a non-loopback bind so cloudflared can reach it.
       KURULTAI_DEMO_BIND_ALL: "1"
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
     # No host port — reachable only on the compose network via cloudflared.
     expose:
       - "8421"
