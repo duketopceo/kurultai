@@ -36,7 +36,7 @@ export const Scene03Atom: React.FC = () => {
   return (
     <div style={{position: 'absolute', inset: 0, background: color.canvas}}>
       <div style={{position: 'absolute', top: 64, left: 0, right: 0}}>
-        <KineticType text="Notes become atoms." delay={2} size={72} />
+        <KineticType text="Memory with a source. And a trust tier." delay={2} size={60} />
       </div>
 
       {/* raw note → exits left */}

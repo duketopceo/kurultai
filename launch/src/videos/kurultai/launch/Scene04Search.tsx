@@ -18,7 +18,7 @@ export const Scene04Search: React.FC = () => {
   return (
     <div style={{position: 'absolute', inset: 0, background: color.canvas}}>
       <div style={{position: 'absolute', top: 64, left: 0, right: 0}}>
-        <KineticType text="Ask the fleet's memory." delay={2} size={72} />
+        <KineticType text="Ask where a claim came from." delay={2} size={64} />
       </div>
 
       {/* query bar */}

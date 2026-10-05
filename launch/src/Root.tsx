@@ -21,7 +21,7 @@ export const Root: React.FC = () => {
       <Composition
         id="KurultaiLaunch"
         component={KurultaiLaunch}
-        durationInFrames={2160}
+        durationInFrames={2520}
         fps={60}
         width={1920}
         height={1080}
@@ -29,7 +29,7 @@ export const Root: React.FC = () => {
       <Composition
         id="KurultaiLaunchSquare"
         component={KurultaiLaunchSquare}
-        durationInFrames={2160}
+        durationInFrames={2520}
         fps={60}
         width={1080}
         height={1080}
