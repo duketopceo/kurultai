@@ -3,6 +3,13 @@
 
 environment = "dev"
 
+# pplx-embed API backend — demo gets real semantic search when
+# PERPLEXITY_API_KEY is present (docker-compose.demo.yml passes it through).
+[embed]
+backend = "perplexity"
+model = "pplx-embed-v1-0.6b"
+dimension = 1024
+
 [storage]
 # Isolated DB — demo atoms never mix with any personal/work store.
 path = "~/.local/share/kurultai/demo/store.db"
