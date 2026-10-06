@@ -12,7 +12,7 @@ Unified knowledge retrieval for agents and humans. Index notes, chats, JSON dump
 |---|---|
 | **Author** | [Luke Kimball](https://github.com/duketopceo) (`duketopceo@gmail.com`) |
 | **Repo** | Public — [github.com/duketopceo/kurultai](https://github.com/duketopceo/kurultai) |
-| **Release** | [v0.6.0](https://github.com/duketopceo/kurultai/releases/tag/v0.6.0) (crate `0.6.0`) |
+| **Release** | [v0.6.0](https://github.com/duketopceo/kurultai/releases/tag/v0.7.0) (crate `0.7.0`) |
 
 ## Why
 
@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/in
 From source ([Rust stable](https://rustup.rs)):
 
 ```bash
-cargo install --git https://github.com/duketopceo/kurultai --tag v0.6.0 --locked
+cargo install --git https://github.com/duketopceo/kurultai --tag v0.7.0 --locked
 ```
 
 **OpenRouter** (full brain — one key for embeddings, rerank, and LLM `ask`):
@@ -89,7 +89,7 @@ CLI · axum daemon (/api/*) · MCP stdio · Brain UI (embedded)
 
 Config templates: [`config.example.toml`](config.example.toml) · [`.env.example`](.env.example). Domain vocabulary: [`CONCEPTS.md`](CONCEPTS.md).
 
-## What ships (v0.6.0)
+## What ships (v0.7.0)
 
 | Area | Details |
 |------|---------|
@@ -125,7 +125,7 @@ Loopback ingest (opt-in): set `KURULTAI_INGEST_SECRET`, then `POST /ingest` with
 | Connectors (Dayflow, Pond, GitHub FS, inbox) | ✅ |
 | MCP HTTP/SSE · export/import · solo `init --docs` | ✅ v0.4.1 |
 | Tiered hub · Postgres store · team transport | ✅ Shipped in v0.5.0 |
-| Competitive sweep: pplx-embed · gap-aware ask · zero-LLM edges · supersede/`--as-of` · nightly sweep | ✅ Shipped in v0.6.0 |
+| Competitive sweep: pplx-embed · gap-aware ask · zero-LLM edges · supersede/`--as-of` · nightly sweep | ✅ Shipped in v0.7.0 |
 | Team web app (`web/`) | 🚧 Next.js + Clerk scaffold |
 
 Roadmap: [`ROADMAP.md`](ROADMAP.md) — solo → team → company. Issues: [#25](https://github.com/duketopceo/kurultai/issues/25) (developer → solo), [#27](https://github.com/duketopceo/kurultai/issues/27) (team → company). Work queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md).
