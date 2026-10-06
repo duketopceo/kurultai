@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-10-03
-version: 9
+updated: 2026-10-05
+version: 10
 ---
 
 # `docs/plans`
@@ -19,6 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`2026-10-05-001-docs-program-roadmap-plan.md`](2026-10-05-001-docs-program-roadmap-plan.md) | Full program roadmap: verified current state, Now/Next/Later units U1-U21 linking child plans, classification of all dated plans (done/active/stale/superseded) | `ROADMAP.md` · merged PRs · open issues | `ROADMAP.md` · `docs/plans/` · `plans/` | 2026-10-05 | 1 | 2026-10-05 created (docs only) |
 | [`2026-10-02-001-feat-supersede-bitemporal-plan.md`](2026-10-02-001-feat-supersede-bitemporal-plan.md) | Supersede/bi-temporal-lite (sweep U4): `supersedes:` frontmatter, `superseded_at/by` cols (schema v17), `--as-of`/`--include-superseded` on search+ask | 2026-10-01-001 | src/store · src/ontology · src/pipeline · src/ingest · src/main | 2026-10-02 | 1 | implemented same-day |
 | [`2026-10-01-001-feat-competitive-feature-sweep-plan.md`](2026-10-01-001-feat-competitive-feature-sweep-plan.md) | Competitor sweep (gbrain/OpenViking/agent-memory lane): U1 pplx-embed backend, U2 gap-aware ask, U3 zero-LLM edge extraction, U4 supersede/bi-temporal-lite, U5 nightly consolidation sweep | competitor scan 2026-10-01 | src/embed · src/mcp · src/pipeline · src/store | 2026-10-04 | 2 | 2026-10-04 marked ✅ complete (all units merged) ·2026-10-01 research → feature plans |
 | [`2026-09-30-001-feat-load-chaos-harness-plan.md`](2026-09-30-001-feat-load-chaos-harness-plan.md) | Repeatable load/chaos suite: `scripts/hammer.mjs` (read ramp, adversarial search, write races, soak) + Rust `tests/chaos.rs` (kill mid-write, disk pressure, cold start) + MCP stdio lane | — | scripts · tests | 2026-09-30 | 1 | hammer session → implementation-ready plan |
@@ -107,6 +108,7 @@ _None._
 
 ## Recent
 
+- 2026-10-05 — `2026-10-05-001`: program roadmap plan (U1-U21) classifying every dated plan; `ROADMAP.md` links it first
 - 2026-10-03 — `2026-10-02-001`: supersede/bi-temporal-lite plan (U4) — written and implemented in one pass
 
 - 2026-09-30 — `2026-09-28-001` device-broker plan U1–U3 landed: `src/broker/` daemon + `sess_*` registry + `/mcp` relay; upstream `/mcp` accepts seat tokens (full surface); `mcp --broker` stdio relay
