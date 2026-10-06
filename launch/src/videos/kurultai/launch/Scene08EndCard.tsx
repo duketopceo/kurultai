@@ -38,7 +38,7 @@ export const Scene08EndCard: React.FC = () => {
           opacity: cardIn,
         }}
       >
-        kurultai <span style={{color: color.ink3, fontSize: 44}}>v0.6.0</span>
+        kurultai <span style={{color: color.ink3, fontSize: 44}}>v0.7.0</span>
       </div>
       <div
         style={{
