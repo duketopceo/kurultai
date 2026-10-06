@@ -84,8 +84,23 @@ if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
 fi
 
 echo "==> ensure config sources.repos → /data/repos"
+# Merge, do not overwrite: strip only the managed [sources.repos]/[sources.pond]
+# sections (and any previous copy of our managed block) from the live config,
+# then append fresh ones. Other sections ([embed], [runtime], ...) are
+# preserved — overwriting them once dropped embed config and crash-looped the
+# daemon on embed_dim mismatch.
 docker exec -u 0 "$CONTAINER" mkdir -p /data/.config/kurultai
-docker exec -u 0 "$CONTAINER" bash -c 'cat > /data/.config/kurultai/config.toml <<EOF
+docker exec -u 0 "$CONTAINER" bash -c '
+CFG=/data/.config/kurultai/config.toml
+touch "$CFG"
+awk "
+  /^# Managed by sync-and-reindex-repos\.sh/ { next }
+  /^\[sources\.(repos|pond)\]/ { skip=1; next }
+  /^\[/ { skip=0 }
+  !skip { print }
+" "$CFG" > "$CFG.new"
+cat >> "$CFG.new" <<EOF
+
 # Managed by sync-and-reindex-repos.sh — Brain Repos lattice from org checkouts.
 [sources.repos]
 enabled = true
@@ -97,6 +112,7 @@ root_path = "/data/repos"
 enabled = false
 kind = "pond"
 EOF
+mv "$CFG.new" "$CFG"
 chown -R 1000:1000 /data/.config/kurultai'
 
 echo "==> kurultai index --full (personal)"
