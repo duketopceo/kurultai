@@ -74,6 +74,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-10-05 — launch film v3 3D-brain cut: `launch/src/videos/kurultai/v3/` (7 beats, ~28s) + `launch/src/core/Brain3D.tsx` R3F primitive (cortex hull, emissive neurons, edge pending/supersede states); `@remotion/three`+`three`+r3f deps
 - 2026-10-05 — `launch/` Remotion film project added (PR #411)
 - 2026-10-04 — competitive sweep phase closed: `docs/plans/phase-7-competitive-sweep-complete.md` wrap-up; plan 2026-10-01-001 marked complete
 - 2026-10-04 — U5 nightly consolidation sweep (competitive-sweep finale): `kurultai sweep` folds content-hash dupes into canonical atoms via supersede, prunes stale ontology links/entities, reports tier+quarantine census to Hey `kurultai-sweep` thread; daemon runs it after each nightly full sync

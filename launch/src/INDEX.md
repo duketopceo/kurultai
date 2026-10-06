@@ -21,7 +21,7 @@ version: 1
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`Root.tsx`](Root.tsx) | Remotion root — registers all compositions | videos/kurultai/launch | index.ts | 2026-10-05 | 1 | 2026-10-05 added |
+| [`Root.tsx`](Root.tsx) | Remotion root — registers all compositions | videos/kurultai/launch + v3 | index.ts | 2026-10-05 | 2 | 2026-10-05 registers v3 comps + WebglProbe |
 | [`index.ts`](index.ts) | Bundle entry — registerRoot(Root) | Root.tsx | remotion.config.ts | 2026-10-05 | 1 | 2026-10-05 added |
 
 ## Recent

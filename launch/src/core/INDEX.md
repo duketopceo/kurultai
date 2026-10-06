@@ -21,7 +21,9 @@ version: 1
 | [`SynthCursor.tsx`](SynthCursor.tsx) | Synthetic cursor with easing trails | tokens.ts | demo scenes | 2026-10-05 | 1 | 2026-10-05 added |
 | [`TerminalScene.tsx`](TerminalScene.tsx) | Terminal chrome + typed-line renderer | Fonts.tsx | Scene02Wire · Scene07Onboard | 2026-10-05 | 1 | 2026-10-05 added |
 | [`UIZoom.tsx`](UIZoom.tsx) | Camera-zoom wrapper for UI-callout beats | tokens.ts | Scene04Search · Scene05Hey | 2026-10-05 | 1 | 2026-10-05 added |
+| [`Brain3D.tsx`](Brain3D.tsx) | R3F 3D brain — cortex hull, emissive neurons, edge growth/pending/supersede states | tokens.ts · @remotion/three | v3 scenes | 2026-10-05 | 1 | 2026-10-05 added |
 
 ## Recent
 
 - 2026-10-05 — added (launch film PR #411)
+- 2026-10-05 — Brain3D added for v3 3D-brain cut (WebGL probe-verified headless on Asahi)
