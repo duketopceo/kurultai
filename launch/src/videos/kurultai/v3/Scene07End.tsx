@@ -39,7 +39,7 @@ export const Scene07End: React.FC = () => {
         }}
       >
         <div style={{fontFamily: font.grotesk, fontWeight: 700, fontSize: 64, color: color.ink}}>
-          kurultai <span style={{color: color.ink3, fontSize: 40}}>v0.6.0</span>
+          kurultai <span style={{color: color.ink3, fontSize: 40}}>v0.7.0</span>
         </div>
         <div
           style={{
