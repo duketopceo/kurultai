@@ -141,6 +141,7 @@ mod tests {
             judge_enabled: true,
             judge_model: None,
             broker: Default::default(),
+            embed_late: Default::default(),
         };
 
         let registry = ConnectorRegistry::from_config(&config).await.unwrap();
@@ -175,6 +176,7 @@ mod tests {
             judge_enabled: true,
             judge_model: None,
             broker: Default::default(),
+            embed_late: Default::default(),
         };
         let registry = ConnectorRegistry::from_config(&config).await.unwrap();
         assert_eq!(registry.len(), 1);
@@ -206,6 +208,7 @@ mod tests {
             judge_enabled: true,
             judge_model: None,
             broker: Default::default(),
+            embed_late: Default::default(),
         };
         match ConnectorRegistry::from_config(&config).await {
             Ok(_) => panic!("expected unimplemented connector error"),

@@ -19,11 +19,13 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`file.rs`](file.rs) | config.toml serde structs | `src/art` | `src/app/context.rs` · `src/config/loader.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-10-02 | 4 | 2026-10-02 embed.backend doc — `perplexity` variant · 2026-09-30 `FileBrokerConfig` · 2026-09-18 `FileJudgeConfig` |
-| [`loader.rs`](loader.rs) | Load/merge config from file + env | `src/art` · `src/config` · `src/environment` · `src/error` · `src/types` | `src/app/context.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-09-30 | 4 | 2026-09-30 `[broker]` → `Config.broker` · 2026-09-18 [judge] → Config + tests · 2026-09-15 `tiers_to_policy` — strict cap/trust_lane validation (#325) |
+| [`file.rs`](file.rs) | config.toml serde structs | `src/art` | `src/app/context.rs` · `src/config/loader.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-10-07 | 5 | 2026-10-07 `[embed.late]` `FileLateEmbedConfig` (#424) · 2026-10-02 embed.backend doc — `perplexity` variant · 2026-09-30 `FileBrokerConfig` · 2026-09-18 `FileJudgeConfig` |
+| [`loader.rs`](loader.rs) | Load/merge config from file + env | `src/art` · `src/config` · `src/environment` · `src/error` · `src/types` | `src/app/context.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-10-07 | 5 | 2026-10-07 `embed.late` → `Config.embed_late` (backend validation, http-requires-url) (#424) · 2026-09-30 `[broker]` → `Config.broker` · 2026-09-18 [judge] → Config + tests · 2026-09-15 `tiers_to_policy` — strict cap/trust_lane validation (#325) |
 | [`mod.rs`](mod.rs) | Config module exports | `src/error` · `src/types` | `src/app/context.rs` · `src/config/loader.rs` · `src/doctor.rs` · `src/export/mod.rs` · `src/mcp/init.rs` | 2026-10-02 | 2 | 2026-10-02 validate accepts `perplexity` embed backend |
 
 ## Recent
+
+- 2026-10-07 — `file.rs`/`loader.rs`: `[embed.late]` block → `Config.embed_late` (`off|http|local`, token_dim, max_doc_tokens) (#424)
 
 - 2026-10-02 — `mod.rs`: validate allows `perplexity` embed backend
 

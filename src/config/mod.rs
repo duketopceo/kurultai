@@ -138,6 +138,7 @@ mod tests {
             judge_enabled: true,
             judge_model: None,
             broker: Default::default(),
+            embed_late: Default::default(),
         };
         assert!(validate(&config).is_err());
     }

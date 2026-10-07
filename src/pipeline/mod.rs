@@ -1,5 +1,5 @@
 use crate::connectors::ConnectorRegistry;
-use crate::embed::Embedder;
+use crate::embed::{Embedder, MultiVectorEmbedder};
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::quality::{apply_gate, evaluate};
@@ -23,6 +23,9 @@ pub struct IndexStats {
 pub struct IndexPipeline {
     store: Arc<dyn Store>,
     embedder: Arc<dyn Embedder>,
+    /// Optional late-interaction embedder; when live, trusted atoms also get
+    /// per-token multi-vectors in `atoms_multivec` for the rerank lane.
+    late_embedder: Arc<dyn MultiVectorEmbedder>,
     /// Resolved source configs keyed by connector name, used to apply
     /// `default_corpus_tier` / `default_visibility_labels` / `default_visibility_scope` at ingest time.
     sources: HashMap<String, SourceConfig>,
@@ -33,8 +36,15 @@ impl IndexPipeline {
         Self {
             store,
             embedder,
+            late_embedder: Arc::new(crate::embed::NullMultiVectorEmbedder::new()),
             sources: HashMap::new(),
         }
+    }
+
+    /// Attach a late-interaction embedder (multi-vector rerank lane).
+    pub fn with_late_embedder(&mut self, e: Arc<dyn MultiVectorEmbedder>) -> &mut Self {
+        self.late_embedder = e;
+        self
     }
 
     /// Shared store handle (daemon sweep hooks, tests).
@@ -222,6 +232,43 @@ impl IndexPipeline {
                 .upsert_batch(&enriched)
                 .await
                 .map_err(|e| KurultaiError::Store(format!("upsert_batch failed: {e}")))?;
+
+            if self.late_embedder.is_live() {
+                // Late-interaction lane: per-token vectors for trusted atoms only.
+                // Best-effort — failures log and skip, never fail the index.
+                let trusted: Vec<&crate::types::KnowledgeAtom> = enriched
+                    .iter()
+                    .filter(|a| a.trust_lane == crate::types::TrustLane::Trusted)
+                    .collect();
+                let mut mv = 0usize;
+                for chunk in trusted.chunks(32) {
+                    let texts: Vec<String> = chunk
+                        .iter()
+                        .map(|a| format!("{}\n{}", a.title, a.content))
+                        .collect();
+                    let refs: Vec<&str> = texts.iter().map(String::as_str).collect();
+                    let batch = match self.late_embedder.embed_document_batch(&refs).await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            tracing::warn!(error = %e, "late embed batch failed");
+                            continue;
+                        }
+                    };
+                    for (atom, vecs) in chunk.iter().zip(batch) {
+                        if vecs.is_empty() {
+                            continue;
+                        }
+                        if let Err(e) = self.store.upsert_multivecs(&atom.id, &vecs).await {
+                            tracing::warn!(atom = %atom.id, error = %e, "multivec upsert failed");
+                        } else {
+                            mv += 1;
+                        }
+                    }
+                }
+                if mv > 0 {
+                    tracing::debug!(source = %source_name, mv, "late-interaction vectors written");
+                }
+            }
 
             // Zero-LLM graph edges: [[wiki-links]], @mentions, frontmatter
             // rels → references links (competitive-sweep U3). Extraction
