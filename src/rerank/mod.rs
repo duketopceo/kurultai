@@ -200,6 +200,58 @@ pub fn apply_rerank_order(
     out
 }
 
+/// Late-interaction reranker (ColBERT MaxSim) over `atoms_multivec`.
+///
+/// Scores candidates with the multi-vector lane: the query is embedded once
+/// per-token, each candidate's stored token matrix is MaxSim-scored, and the
+/// returned order is by descending MaxSim. Candidates without multivecs (not
+/// yet indexed through the lane, or quarantined) keep no vote — callers merge
+/// the returned order via `apply_rerank_order`, which keeps them at the tail.
+///
+/// Construct only when `embedder.is_live()` — see `App::build_reranker`.
+pub struct LateInteractionReranker {
+    embedder: std::sync::Arc<dyn crate::embed::MultiVectorEmbedder>,
+    store: std::sync::Arc<dyn crate::store::Store>,
+}
+
+impl LateInteractionReranker {
+    pub fn new(
+        embedder: std::sync::Arc<dyn crate::embed::MultiVectorEmbedder>,
+        store: std::sync::Arc<dyn crate::store::Store>,
+    ) -> Self {
+        Self { embedder, store }
+    }
+}
+
+#[async_trait::async_trait]
+impl Reranker for LateInteractionReranker {
+    fn name(&self) -> &str {
+        "late-interaction"
+    }
+
+    fn is_live(&self) -> bool {
+        self.embedder.is_live()
+    }
+
+    async fn rerank(&self, query: &str, candidates: &[(String, String)]) -> Result<Vec<String>> {
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+        let q = self.embedder.embed_query(query).await?;
+        if q.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<String> = candidates.iter().map(|(id, _)| id.clone()).collect();
+        let mats = self.store.get_multivecs(&ids).await?;
+        let mut scored: Vec<(f32, String)> = mats
+            .into_iter()
+            .map(|(id, mat)| (crate::embed::maxsim(&q, &mat), id))
+            .collect();
+        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(scored.into_iter().map(|(_, id)| id).collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,5 +304,70 @@ mod tests {
     async fn null_reranker_not_live() {
         let r = NullReranker::new();
         assert!(!r.is_live());
+    }
+
+    struct StubLateEmbedder;
+
+    #[async_trait::async_trait]
+    impl crate::embed::MultiVectorEmbedder for StubLateEmbedder {
+        fn name(&self) -> &str {
+            "stub"
+        }
+        fn token_dim(&self) -> usize {
+            2
+        }
+        async fn embed_query(&self, _t: &str) -> Result<Vec<Vec<f32>>> {
+            Ok(vec![vec![1.0, 0.0]])
+        }
+        async fn embed_document(&self, _t: &str) -> Result<Vec<Vec<f32>>> {
+            Ok(vec![vec![1.0, 0.0]])
+        }
+    }
+
+    #[tokio::test]
+    async fn late_reranker_orders_by_maxsim() {
+        use crate::store::SqliteVecStore;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "kurultai-late-test-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store: std::sync::Arc<dyn crate::store::Store> =
+            std::sync::Arc::new(SqliteVecStore::open(dir.join("s.db"), 4).unwrap());
+
+        for (id, title) in [("a", "x"), ("b", "y")] {
+            store
+                .upsert(&KnowledgeAtom {
+                    id: id.into(),
+                    source: "t".into(),
+                    source_id: id.into(),
+                    title: title.into(),
+                    content: "c".into(),
+                    indexed_at: Utc::now(),
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+        }
+        // "b" aligns with the query direction; "a" is orthogonal.
+        store
+            .upsert_multivecs("b", &[vec![0.9, 0.1]])
+            .await
+            .unwrap();
+        store
+            .upsert_multivecs("a", &[vec![0.0, 1.0]])
+            .await
+            .unwrap();
+
+        let r = LateInteractionReranker::new(std::sync::Arc::new(StubLateEmbedder), store);
+        assert!(r.is_live());
+        let order = r
+            .rerank("q", &[("a".into(), "x".into()), ("b".into(), "y".into())])
+            .await
+            .unwrap();
+        assert_eq!(order, vec!["b".to_string(), "a".to_string()]);
     }
 }

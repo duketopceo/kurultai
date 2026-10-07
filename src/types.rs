@@ -547,6 +547,33 @@ pub struct Config {
     /// `[broker]` — device broker settings (`kurultai broker`).
     #[serde(default)]
     pub broker: crate::config::FileBrokerConfig,
+    /// `[embed.late]` — late-interaction rerank lane.
+    #[serde(default)]
+    pub embed_late: LateEmbedConfig,
+}
+
+/// Runtime `[embed.late]` config (resolved from `FileLateEmbedConfig`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LateEmbedConfig {
+    /// `off` (default) | `http` | `local`.
+    pub backend: String,
+    /// `http` backend sidecar base URL.
+    pub url: Option<String>,
+    /// Expected per-token dim (validated against backend responses).
+    pub token_dim: usize,
+    /// Per-atom token cap written to `atoms_multivec`.
+    pub max_doc_tokens: usize,
+}
+
+impl Default for LateEmbedConfig {
+    fn default() -> Self {
+        Self {
+            backend: "off".into(),
+            url: None,
+            token_dim: 128,
+            max_doc_tokens: 512,
+        }
+    }
 }
 
 fn default_true() -> bool {

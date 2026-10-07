@@ -19,6 +19,7 @@ version: 4
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`late-embed-server.py`](late-embed-server.py) | Late-interaction embed sidecar: `MultiVectorEncoder` (pplx-embed-v2-late-*) → `/embed_query`+`/embed_document` for `[embed.late] backend = "http"` | sentence-transformers ≥6 | `src/embed/late.rs` | 2026-10-07 | 1 | pplx-embed-v2 drop → sidecar (#424) |
 | [`audit-agent-index.py`](audit-agent-index.py) | CI audit: INDEX.md coverage vs git ls-files | — | — | 2026-09-13 | 2 | 2026-09-13 skip `website/public/` — Vite public assets are cataloged in `website/INDEX.md` · 2026-08-16 indexed (v1 seed) |
 | [`audit-ui.py`](audit-ui.py) | Audit built `ui/` for stale/dead assets and outdated deps | — | `website/` · `ui/` | 2026-09-04 | 1 | 2026-09-04 add dead-code/old-version UI audit · 2026-08-16 indexed (v1 seed) |
 | [`recall-harness.py`](recall-harness.py) | Randomized recall/search load + correctness suite (volume, deep, same/mixed-path concurrency, failover, p50/95/99) | `/api/search` · `/api/recall` · `/api/atoms` | — | 2026-09-08 | 1 | 2026-09-08 added |
@@ -31,6 +32,8 @@ version: 4
 | [`install.sh`](install.sh) | Unix installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
+
+- 2026-10-07 — `late-embed-server.py`: multi-vector sidecar for `[embed.late] backend="http"` (#424)
 
 - 2026-10-02 — ui-batch.mjs: add HTTP-Referer/X-Title app attribution headers
 

@@ -76,6 +76,19 @@ dimension = 3072
 # model = "AllMiniLML6V2"
 # dimension = 384
 
+# [embed.late] — optional ColBERT late-interaction rerank lane. When enabled,
+# trusted atoms also get per-token multi-vectors (atoms_multivec) and the top
+# fused candidates are rescored with MaxSim, replacing the LLM reranker.
+# backend = "http" runs a sidecar serving pplx-embed-v2-late-*:
+#   pip install 'sentence-transformers>=6.0.0' 'transformers>=5.4.0'
+#   python3 scripts/late-embed-server.py    # listens on 127.0.0.1:8790
+# [embed.late]
+# backend = "http"
+# url = "http://127.0.0.1:8790"
+# token_dim = 128           # pplx-embed-v2-late; BGE-M3 local backend is 1024
+# max_doc_tokens = 512
+# backend = "local" uses the BGE-M3 ColBERT head (requires --features local-embed).
+
 # --- Runtime (rerank + search tuning) --------------------------------------
 
 [judge]

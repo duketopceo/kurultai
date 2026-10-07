@@ -7,6 +7,11 @@ mod local;
 #[cfg(feature = "local-embed")]
 pub use local::LocalEmbedder;
 
+mod late;
+#[cfg(feature = "local-embed")]
+pub use late::LateBgem3Embedder;
+pub use late::{maxsim, LateHttpEmbedder, MultiVectorEmbedder, NullMultiVectorEmbedder};
+
 mod perplexity;
 pub use perplexity::PerplexityEmbedder;
 
@@ -263,6 +268,7 @@ mod tests {
             judge_enabled: true,
             judge_model: None,
             broker: Default::default(),
+            embed_late: Default::default(),
         };
         assert!(crate::config::validate(&cfg).is_ok());
         cfg.embed_backend = Some("cloud".into());

@@ -369,6 +369,22 @@ pub trait Store: Send + Sync {
         Ok(0)
     }
 
+    /// Replace an atom's late-interaction token vectors (multi-vector lane).
+    /// `vecs` is the per-token matrix; empty clears the rows. Default no-op
+    /// for stores without a multivec table.
+    async fn upsert_multivecs(&self, _atom_id: &str, _vecs: &[Vec<f32>]) -> Result<()> {
+        Ok(())
+    }
+
+    /// Load late-interaction token vectors for `ids` (missing ids omitted).
+    /// Default returns empty for stores without a multivec table.
+    async fn get_multivecs(
+        &self,
+        _ids: &[String],
+    ) -> Result<std::collections::HashMap<String, Vec<Vec<f32>>>> {
+        Ok(std::collections::HashMap::new())
+    }
+
     /// Content-hash groups having >1 trusted, non-superseded atom (sweep U5).
     /// Each entry is `(content_hash, ids)` ordered by `indexed_at` ascending —
     /// `ids[0]` is the canonical survivor. Default empty for stubs.
@@ -1930,6 +1946,94 @@ impl Store for SqliteVecStore {
                 Err(e)
             }
         }
+    }
+
+    async fn upsert_multivecs(&self, atom_id: &str, vecs: &[Vec<f32>]) -> Result<()> {
+        let conn = self.lock()?;
+        migrations::ensure_multivec_table(&conn)?;
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| KurultaiError::Store(format!("begin multivecs: {e}")))?;
+        let result = (|| {
+            conn.execute("DELETE FROM atoms_multivec WHERE atom_id = ?1", [atom_id])
+                .map_err(|e| KurultaiError::Store(format!("clear multivecs: {e}")))?;
+            if vecs.is_empty() {
+                return Ok(());
+            }
+            let mut stmt = conn
+                .prepare("INSERT INTO atoms_multivec (atom_id, token_idx, vec) VALUES (?1, ?2, ?3)")
+                .map_err(|e| KurultaiError::Store(format!("multivec prepare: {e}")))?;
+            for (idx, v) in vecs.iter().enumerate() {
+                let mut blob = Vec::with_capacity(v.len() * 4);
+                for x in v {
+                    blob.extend_from_slice(&x.to_le_bytes());
+                }
+                stmt.execute(rusqlite::params![atom_id, idx as i64, blob])
+                    .map_err(|e| KurultaiError::Store(format!("multivec insert: {e}")))?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                conn.execute_batch("COMMIT;")
+                    .map_err(|e| KurultaiError::Store(format!("commit multivecs: {e}")))?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(e)
+            }
+        }
+    }
+
+    async fn get_multivecs(
+        &self,
+        ids: &[String],
+    ) -> Result<std::collections::HashMap<String, Vec<Vec<f32>>>> {
+        use std::collections::HashMap;
+        let mut out: HashMap<String, Vec<Vec<f32>>> = HashMap::new();
+        if ids.is_empty() {
+            return Ok(out);
+        }
+        let conn = self.lock()?;
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='atoms_multivec'",
+                [],
+                |_| Ok(true),
+            )
+            .optional()
+            .map_err(|e| KurultaiError::Store(format!("multivec table check: {e}")))?
+            .unwrap_or(false);
+        if !exists {
+            return Ok(out);
+        }
+        let mut stmt = conn
+            .prepare(
+                "SELECT atom_id, token_idx, vec FROM atoms_multivec
+                 WHERE atom_id = ?1 ORDER BY token_idx",
+            )
+            .map_err(|e| KurultaiError::Store(format!("multivec prepare: {e}")))?;
+        for id in ids {
+            let rows = stmt
+                .query_map([id.as_str()], |r| {
+                    let blob: Vec<u8> = r.get(2)?;
+                    Ok(blob)
+                })
+                .map_err(|e| KurultaiError::Store(format!("multivec query: {e}")))?;
+            let mut mat = Vec::new();
+            for row in rows {
+                let blob = row.map_err(|e| KurultaiError::Store(format!("multivec row: {e}")))?;
+                let mut v = Vec::with_capacity(blob.len() / 4);
+                for chunk in blob.as_chunks::<4>().0 {
+                    v.push(f32::from_le_bytes(*chunk));
+                }
+                mat.push(v);
+            }
+            if !mat.is_empty() {
+                out.insert(id.clone(), mat);
+            }
+        }
+        Ok(out)
     }
 
     async fn mark_superseded(&self, ids: &[String], by_id: &str, ts: DateTime<Utc>) -> Result<u64> {
@@ -4806,5 +4910,65 @@ mod tests {
             .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].0, "c");
+    }
+
+    #[tokio::test]
+    async fn multivecs_roundtrip_and_replace() {
+        let store = temp_store(4);
+        store
+            .upsert(&sample_atom("a", "t", "doc a", None))
+            .await
+            .unwrap();
+        store
+            .upsert(&sample_atom("b", "t", "doc b", None))
+            .await
+            .unwrap();
+
+        // Lazily-created table; nothing stored yet → empty map.
+        assert!(store
+            .get_multivecs(&["a".to_string()])
+            .await
+            .unwrap()
+            .is_empty());
+
+        let mat = vec![vec![1.0f32, 0.5, -0.25], vec![0.0, 1.0, 2.0]];
+        store.upsert_multivecs("a", &mat).await.unwrap();
+
+        let got = store
+            .get_multivecs(&["a".to_string(), "b".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(got.len(), 1);
+        let back = &got["a"];
+        assert_eq!(back.len(), 2);
+        assert!((back[0][0] - 1.0).abs() < 1e-6);
+        assert!((back[1][2] - 2.0).abs() < 1e-6);
+
+        // Replace shrinks the matrix; empty clears.
+        store.upsert_multivecs("a", &[vec![9.0]]).await.unwrap();
+        let got = store.get_multivecs(&["a".to_string()]).await.unwrap();
+        assert_eq!(got["a"].len(), 1);
+        store.upsert_multivecs("a", &[]).await.unwrap();
+        assert!(store
+            .get_multivecs(&["a".to_string()])
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn multivecs_cascade_on_delete() {
+        let store = temp_store(4);
+        store
+            .upsert(&sample_atom("a", "t", "doc a", None))
+            .await
+            .unwrap();
+        store.upsert_multivecs("a", &[vec![1.0]]).await.unwrap();
+        store.delete_atom("a").await.unwrap();
+        assert!(store
+            .get_multivecs(&["a".to_string()])
+            .await
+            .unwrap()
+            .is_empty());
     }
 }
