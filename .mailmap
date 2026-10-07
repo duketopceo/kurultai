@@ -1,0 +1,6 @@
+# Map historical personal identities to the Bartlett work identity.
+# Full form (name + email) so BOTH %aN and %aE resolve under --use-mailmap.
+Luke Kimball <luke.k@bartlettroofs.com> <duketopceo@gmail.com>
+Luke Kimball <luke.k@bartlettroofs.com> duketopceo@gmail.com
+# Email-only fallback for tools that read the short form.
+<luke.k@bartlettroofs.com> <duketopceo@gmail.com>
