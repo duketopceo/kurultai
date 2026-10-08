@@ -15,6 +15,7 @@ version: 1
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`storyboard.md`](storyboard.md) | Explainer bible + beat map (draft pacing, VO re-times) | — | — | 2026-10-06 | 1 | 2026-10-06 added |
 | [`index.tsx`](index.tsx) | KurultaiExplainer + KurultaiExplainer916 comps, persistent Anchor, BEATS timing map | all scenes + StageFit | Root.tsx | 2026-10-06 | 1 | 2026-10-06 added |
 | [`Diagram.tsx`](Diagram.tsx) | StageBox / DArrow / MTag diagram primitives | tokens | — | 2026-10-06 | 1 | 2026-10-06 added |
 | [`E1Hook.tsx`](E1Hook.tsx) | Two agents — one learned, one empty | tokens · Diagram | — | 2026-10-06 | 1 | 2026-10-06 added |
