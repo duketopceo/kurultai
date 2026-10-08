@@ -17,4 +17,5 @@ version: 1
 
 ## Recent
 
+- 2026-10-06 — explainer film added: `videos/kurultai/explainer/` (KurultaiExplainer + 916 comps, ~80s diagram-first, VO-timed draft)
 - 2026-10-05 — added (launch film PR #411)
