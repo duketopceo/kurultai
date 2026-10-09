@@ -32,6 +32,10 @@ jobs:
         id: review
         with:
           openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          # Install the CLI from the npm tarball (ships dist/), not the
+          # action-ref folder pack — that path runs `prepare`→tsc with no
+          # devDeps in the action checkout and fails on @types/node.
+          argus-version: '0.5.0'
           # Review-only: kurultai's app is a CLI + axum daemon on ephemeral
           # ports — no per-PR web target, so the browser-flow lane is off.
           run: 'false'
