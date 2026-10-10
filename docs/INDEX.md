@@ -19,6 +19,7 @@ version: 8
 - [`deploy/`](deploy/INDEX.md) — Hub / Railway operator recipes
 - [`eval/`](eval/INDEX.md) — Eval notes
 - [`ideas/`](ideas/INDEX.md) — Parked ideas
+- [`research/`](research/INDEX.md) — Landscape research (agent-memory systems)
 - [`plans/`](plans/INDEX.md) — LFG plans and work-order packs (live queue: phase-6-next)
 - [`residual-review-findings/`](residual-review-findings/INDEX.md) — Review residual records
 - [`solutions/`](solutions/INDEX.md) — Documented past solutions
