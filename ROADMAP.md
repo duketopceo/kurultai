@@ -7,6 +7,7 @@ This doc sequences *who the product serves next* and what "done" means per stage
 - Live work queue → [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md)
 - Dates, revenue targets, work orders → [`docs/plans/YEAR-1-MILESTONES.md`](docs/plans/YEAR-1-MILESTONES.md)
 - Audience spine issues → [#25](https://github.com/duketopceo/kurultai/issues/25) (developer → solo) · [#27](https://github.com/duketopceo/kurultai/issues/27) (team → company) · [#10](https://github.com/duketopceo/kurultai/issues/10) (open-source launch)
+- Program overlay (difficulty, feasibility, simpler alternatives per unit; extends PR #420) → [`docs/plans/2026-10-10-001-docs-program-overlay-plan.md`](docs/plans/2026-10-10-001-docs-program-overlay-plan.md)
 
 Update this file when a stage flips or a scope decision changes — not per PR.
 

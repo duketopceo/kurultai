@@ -24,6 +24,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 - [`.github/`](.github/INDEX.md) — CI, templates, CODEOWNERS
 - [`.compound-engineering/`](.compound-engineering/INDEX.md) — Compound Engineering per-checkout local configuration
 - [`.devcontainer/`](.devcontainer/INDEX.md) — Local dev-container dogfood definitions (Debian + Ubuntu)
+- [`assets/`](assets/INDEX.md) — Brand assets (logo proposal)
 - [`design-lab/`](design-lab/INDEX.md) — UI batch-design scratch: committed prompts, gitignored generated variants
 - [`docs/`](docs/INDEX.md) — Product + agent docs
 - [`evals/`](evals/INDEX.md) — Retrieval eval golden set + labeling guide
@@ -61,6 +62,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`DESIGN.md`](DESIGN.md) | Design direction proposal "Council Ring": tokens, glyphs, motion, surfaces | docs/design/bases/linear.DESIGN.md | website/src/next tokens | 2026-10-10 | 1 | 2026-10-10 created (repo program) |
 | [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-12 | 5 | 2026-09-12 link ROADMAP.md in Status · 2026-09-11 v0.6.0 release stack facts · 2026-09-01 v0.5.0 release stack facts |
 | [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-09-12 | 1 | 2026-09-12 created — issue #122 |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |

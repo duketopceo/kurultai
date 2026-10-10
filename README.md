@@ -1,12 +1,22 @@
-# Kurultai
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/wordmark-dark.svg">
+    <img src="assets/brand/wordmark.svg" alt="Kurultai" height="44">
+  </picture>
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org)
-[![Release](https://img.shields.io/github/v/release/duketopceo/kurultai)](https://github.com/duketopceo/kurultai/releases/latest)
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
+  <a href="https://github.com/duketopceo/kurultai/releases/latest"><img src="https://img.shields.io/github/v/release/duketopceo/kurultai" alt="Release"></a>
+</p>
 
 **Assemble what you know, from wherever it lives.**
 
-Unified knowledge retrieval for agents and humans. Index notes, chats, JSON dumps, Dayflow, Pond, and local code checkouts into one SQLite store — then `search`, `ask`, and MCP with excerpts and citations, not whole-vault dumps.
+Kurultai indexes your notes, chats, JSON dumps, Dayflow, Pond and local code checkouts into one local SQLite store, then gives agents and people cited search and answers over CLI, HTTP and MCP, with excerpts and sources instead of whole-vault dumps.
+
+> Logo and wordmark are a proposal awaiting owner sign-off (`assets/brand/`, `DESIGN.md`).
+> TODO: add a Brain UI screenshot captured from `kurultai daemon` (`/ui/`).
 
 | | |
 |---|---|
@@ -128,7 +138,7 @@ Loopback ingest (opt-in): set `KURULTAI_INGEST_SECRET`, then `POST /ingest` with
 | Competitive sweep: pplx-embed · gap-aware ask · zero-LLM edges · supersede/`--as-of` · nightly sweep | ✅ Shipped in v0.7.0 |
 | Team web app (`web/`) | 🚧 Next.js + Clerk scaffold |
 
-Roadmap: [`ROADMAP.md`](ROADMAP.md) — solo → team → company. Issues: [#25](https://github.com/duketopceo/kurultai/issues/25) (developer → solo), [#27](https://github.com/duketopceo/kurultai/issues/27) (team → company). Work queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md).
+Roadmap: [`ROADMAP.md`](ROADMAP.md) (program overlay: [`docs/plans/2026-10-10-001-docs-program-overlay-plan.md`](docs/plans/2026-10-10-001-docs-program-overlay-plan.md); landscape: [`docs/research/2026-10-10-landscape.md`](docs/research/2026-10-10-landscape.md); design: [`DESIGN.md`](DESIGN.md)) — solo → team → company. Issues: [#25](https://github.com/duketopceo/kurultai/issues/25) (developer → solo), [#27](https://github.com/duketopceo/kurultai/issues/27) (team → company). Work queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md).
 
 ## Contributing
 
