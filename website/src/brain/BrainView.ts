@@ -161,23 +161,23 @@ interface Palette {
 }
 
 const DARK_PALETTE: Palette = {
-  nodeBase: 0xdcd7f2,
+  nodeBase: 0xe6e0d2,
   nodeHot: 0xffffff,
-  nodeUnfocus: 0x37324a,
-  edgeRest: 0x7c5ce8,
+  nodeUnfocus: 0x3a3b42,
+  edgeRest: 0xc98a26,
   edgeActive: 0xffffff,
-  edgeDim: 0x1d1832,
-  particles: [0xffffff, 0xd4cfff, 0xf6f2ff, 0x9a7ff0, 0xffffff],
+  edgeDim: 0x22242b,
+  particles: [0xffffff, 0xefe6d2, 0xfbf6ea, 0xe8b35a, 0xffffff],
 };
 
 const LIGHT_PALETTE: Palette = {
-  nodeBase: 0x4a4468,
-  nodeHot: 0x181430,
-  nodeUnfocus: 0xbdb7d6,
-  edgeRest: 0x6d28d9,
-  edgeActive: 0x4c1d95,
-  edgeDim: 0xd8d2ec,
-  particles: [0x3f3a5e, 0x6d28d9, 0x4a4468, 0x7c3aed, 0x3f3a5e],
+  nodeBase: 0x5c594f,
+  nodeHot: 0x16171c,
+  nodeUnfocus: 0xcfcabd,
+  edgeRest: 0x9a5b00,
+  edgeActive: 0x7a4600,
+  edgeDim: 0xdcd8cc,
+  particles: [0x5c594f, 0x9a5b00, 0x5c594f, 0xb87a1f, 0x5c594f],
 };
 
 /** userData on a brain-mode synapse line: the Link plus shimmer state, the
@@ -470,8 +470,8 @@ export class BrainView {
 
     // Light rig for node spheres (MeshStandardMaterial) — cortex particles and
     // edges are shader/basic materials and ignore lights, so this only adds
-    // volumetric shading to the neurons. Cool key light + faint purple fill.
-    this.scene.add(new THREE.HemisphereLight(0xbbaadd, 0x080510, 0.9));
+    // volumetric shading to the neurons. Cool key light + faint warm fill.
+    this.scene.add(new THREE.HemisphereLight(0xd8cfba, 0x0a0b0e, 0.9));
     const key = new THREE.DirectionalLight(0xffffff, 1.6);
     key.position.set(2.5, 3, 4);
     this.scene.add(key);
@@ -675,7 +675,7 @@ export class BrainView {
       rotations[i] = Math.random() * 2 - 1;
       sizes[i] = 1.0 + Math.random() * 4.0;
       seeds[i] = Math.random();
-      // White is rare; purples dominate.
+      // White is rare; embers dominate.
       const idx = Math.random() < 0.08 ? this.palette.particles.length - 1 : Math.floor(Math.random() * (this.palette.particles.length - 1));
       this.particleColorIndex.push(idx);
       color.setHex(this.palette.particles[idx]);
@@ -709,7 +709,7 @@ export class BrainView {
 
   private regionColor(region: Region): number {
     if (region === 'left') return 0x60a5fa; // blue tint
-    if (region === 'right') return 0xa855f7; // purple tint
+    if (region === 'right') return 0xe8a33d; // ember tint
     return 0xffffff; // stem — white
   }
 
@@ -1398,9 +1398,9 @@ export class BrainView {
 
   private nodeMaterial(active: boolean) {
     // Lit spheres: dark body + emissive tint gives real 3D shading under the
-    // key light while staying in the black/white/purple palette.
+    // key light while staying in the black/white/ember palette.
     return new THREE.MeshStandardMaterial({
-      color: 0x1a0f2e,
+      color: 0x201a10,
       emissive: active ? this.palette.nodeHot : this.palette.nodeBase,
       emissiveIntensity: active ? 1.4 : this.somaEmissive(),
       roughness: 0.35,
@@ -1951,7 +1951,7 @@ export class BrainView {
     }
   }
 
-  /** U2: purple-family group tints derived from the class tree (presentation only). */
+  /** U2: ember-family group tints derived from the class tree (presentation only). */
   private applyOntologyGrouping(): void {
     const entities: GroupInputEntity[] = this.ontologyDoc.entities.map((e) => ({
       id: e.id,

@@ -8,10 +8,10 @@
   --store-line: rgb(192 171 221 / 13%);
   --store-line-strong: rgb(192 171 221 / 23%);
   --store-text: #e8e3ef;
-  --store-muted: #a49aad;
-  --store-purple: #a855f7;
-  --store-purple-light: #c084fc;
-  --store-purple-deep: #7c3aed;
+  --store-muted: #aaa69d;
+  --store-purple: #e8a33d;
+  --store-purple-light: #f2b95f;
+  --store-purple-deep: #b87a1f;
   --store-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
 
   display: flex;
@@ -54,8 +54,8 @@
 
 .store-view button:hover:not(:disabled) {
   color: var(--store-purple-light);
-  border-color: rgb(168 85 247 / 50%);
-  background-color: rgb(168 85 247 / 8%);
+  border-color: rgb(232 163 61 / 50%);
+  background-color: rgb(232 163 61 / 8%);
 }
 
 .store-view :is(button, input, select, [tabindex]):focus-visible {
@@ -130,9 +130,9 @@
 }
 
 .store-tabs button[aria-pressed="true"] {
-  color: #eddcff;
+  color: #fcf1e0;
   background: rgb(124 58 237 / 23%);
-  border-color: rgb(168 85 247 / 37%);
+  border-color: rgb(232 163 61 / 37%);
   box-shadow: inset 0 1px rgb(255 255 255 / 5%);
 }
 
@@ -160,7 +160,7 @@
 
 .store-search:focus-within {
   border-color: var(--store-purple);
-  box-shadow: 0 0 0 2px rgb(168 85 247 / 12%);
+  box-shadow: 0 0 0 2px rgb(232 163 61 / 12%);
 }
 
 .store-search svg {
@@ -219,7 +219,7 @@
 }
 
 .store-control select:hover {
-  border-color: rgb(168 85 247 / 50%);
+  border-color: rgb(232 163 61 / 50%);
 }
 
 .store-sort {
@@ -261,7 +261,7 @@
   min-height: 0;
   overflow: auto;
   scrollbar-width: thin;
-  scrollbar-color: #493459 #0e0c14;
+  scrollbar-color: #4b4842 #0e0c14;
   overscroll-behavior: contain;
 }
 
@@ -335,11 +335,11 @@
 }
 
 .store-grid tbody tr:has(.store-row-title):hover {
-  background: rgb(168 85 247 / 7%);
+  background: rgb(232 163 61 / 7%);
 }
 
 .store-grid tbody tr:has(.store-row-title):focus-within {
-  background: rgb(168 85 247 / 9%);
+  background: rgb(232 163 61 / 9%);
 }
 
 .store-grid tbody tr.is-selected,
@@ -393,19 +393,19 @@ tr.is-selected .store-open-arrow {
 }
 
 .store-tier.is-hot {
-  color: #d6b0fb;
+  color: #f7deb4;
 }
 
 .store-tier.is-warm {
-  color: #bda9d0;
+  color: #c1beb8;
 }
 
 .store-tier.is-cold {
-  color: #928a9d;
+  color: #9b968c;
 }
 
 .store-lane {
-  color: #bcb2c8;
+  color: #c2bfb8;
 }
 
 .store-lane.is-quarantine {
@@ -533,7 +533,7 @@ tr.is-selected .store-open-arrow {
   flex: 0 0 330px;
   min-width: 0;
   background: rgb(19 15 27 / 94%);
-  border-left: 1px solid rgb(168 85 247 / 28%);
+  border-left: 1px solid rgb(232 163 61 / 28%);
   box-shadow: -12px 0 30px rgb(0 0 0 / 12%);
 }
 
@@ -565,7 +565,7 @@ tr.is-selected .store-open-arrow {
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: #493459 transparent;
+  scrollbar-color: #4b4842 transparent;
 }
 
 .store-inspector-table {
@@ -730,7 +730,7 @@ tr.is-selected .store-open-arrow {
     flex: 0 1 48%;
     min-height: 130px;
     border-left: 0;
-    border-top: 1px solid rgb(168 85 247 / 35%);
+    border-top: 1px solid rgb(232 163 61 / 35%);
     box-shadow: 0 -8px 24px rgb(0 0 0 / 18%);
   }
 

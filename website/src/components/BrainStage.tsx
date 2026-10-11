@@ -119,8 +119,8 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
         <div id="lattice-fallback" className="lattice-fallback" aria-hidden="true">
           <svg className="fallback-svg" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid slice">
             <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#a855f7" stopOpacity={0.12} />
-              <stop offset="100%" stopColor="#050508" stopOpacity={0} />
+              <stop offset="0%" stopColor="#e8a33d" stopOpacity={0.12} />
+              <stop offset="100%" stopColor="#0c0d11" stopOpacity={0} />
             </radialGradient>
             <rect width="800" height="400" fill="url(#bgGlow)" />
             {[[400,200,200,100],[400,200,600,100],[400,200,600,300],[400,200,200,300],
@@ -138,7 +138,7 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
               <feGaussianBlur stdDeviation="5" result="b" />
               <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
-            <circle cx="400" cy="200" r="12" fill="#a855f7" filter="url(#centreGlow)" />
+            <circle cx="400" cy="200" r="12" fill="#e8a33d" filter="url(#centreGlow)" />
           </svg>
         </div>
       )}

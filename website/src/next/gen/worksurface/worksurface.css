@@ -3,16 +3,16 @@
 
 .ws {
   --ws-canvas: #09080e;
-  --ws-panel: rgba(20, 16, 30, 0.78);
+  --ws-panel: rgba(21, 22, 24, 0.78);
   --ws-inset: rgba(9, 8, 14, 0.46);
   --ws-text: #eeeaf5;
-  --ws-muted: #a79bb8;
-  --ws-faint: #82768f;
-  --ws-accent: #a855f7;
-  --ws-accent-light: #c084fc;
-  --ws-accent-deep: #7c3aed;
-  --ws-line: rgba(192, 132, 252, 0.17);
-  --ws-line-strong: rgba(192, 132, 252, 0.38);
+  --ws-muted: #afaba4;
+  --ws-faint: #8b857a;
+  --ws-accent: #e8a33d;
+  --ws-accent-light: #f2b95f;
+  --ws-accent-deep: #b87a1f;
+  --ws-line: rgba(242, 185, 95, 0.17);
+  --ws-line-strong: rgba(242, 185, 95, 0.38);
   --ws-danger: #f6a3b5;
   --ws-radius: 6px;
   --ws-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
@@ -23,7 +23,7 @@
   overflow: hidden;
   color: var(--ws-text);
   background:
-    radial-gradient(ellipse at 85% 0, rgba(124, 58, 237, 0.075), transparent 55%),
+    radial-gradient(ellipse at 85% 0, rgba(184, 122, 31, 0.075), transparent 55%),
     var(--ws-panel);
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius);
@@ -188,14 +188,14 @@
 
 .ws-tab:hover {
   color: var(--ws-text);
-  background: rgba(168, 85, 247, 0.08);
+  background: rgba(232, 163, 61, 0.08);
 }
 
 .ws-tab[aria-selected="true"] {
-  color: #fff;
+  color: #0c0d11;
   background: var(--ws-accent-deep);
-  border-color: rgba(192, 132, 252, 0.6);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 12px rgba(124, 58, 237, 0.2);
+  border-color: rgba(242, 185, 95, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 12px rgba(184, 122, 31, 0.2);
 }
 
 .ws-panel {
@@ -255,7 +255,7 @@
 
 .ws-presence-dot[data-status="online"] {
   background: var(--ws-accent-light);
-  box-shadow: 0 0 8px rgba(192, 132, 252, 0.5);
+  box-shadow: 0 0 8px rgba(242, 185, 95, 0.5);
 }
 
 .ws-presence-dot[data-status="away"] {
@@ -284,7 +284,7 @@
 
 .ws-segment button[aria-pressed="true"] {
   color: var(--ws-accent-light);
-  background: rgba(168, 85, 247, 0.15);
+  background: rgba(232, 163, 61, 0.15);
 }
 
 .ws-muted,
@@ -308,7 +308,7 @@
   min-height: 34px;
   padding: 7px 12px;
   color: var(--ws-text);
-  background: rgba(192, 132, 252, 0.06);
+  background: rgba(242, 185, 95, 0.06);
   border: 1px solid var(--ws-line-strong);
   border-radius: var(--ws-radius);
   font: 11px/1.5 var(--ws-mono) !important;
@@ -316,19 +316,19 @@
 }
 
 .ws-button:hover:not(:disabled) {
-  background: rgba(192, 132, 252, 0.13);
+  background: rgba(242, 185, 95, 0.13);
   border-color: var(--ws-accent-light);
   transform: translateY(-1px);
 }
 
 .ws-button-primary {
-  color: #fff;
+  color: #0c0d11;
   background: var(--ws-accent-deep);
   border-color: var(--ws-accent);
 }
 
 .ws-button-primary:hover:not(:disabled) {
-  background: #8b43ef;
+  background: #ebaf47;
 }
 
 .ws-link {
@@ -345,7 +345,7 @@
 }
 
 .ws-link:hover {
-  color: #e2c3ff;
+  color: #f9e7c9;
   text-decoration: underline;
   text-underline-offset: 4px;
 }
@@ -414,12 +414,12 @@
 }
 
 .ws-thread:hover {
-  background: rgba(192, 132, 252, 0.05);
+  background: rgba(242, 185, 95, 0.05);
 }
 
 .ws-thread[aria-current="true"] {
   color: var(--ws-text);
-  background: rgba(168, 85, 247, 0.1);
+  background: rgba(232, 163, 61, 0.1);
   border-color: var(--ws-line);
 }
 
@@ -441,7 +441,7 @@
 
 .ws-unread[data-unread="true"] {
   background: var(--ws-accent-light);
-  box-shadow: 0 0 6px rgba(168, 85, 247, 0.5);
+  box-shadow: 0 0 6px rgba(232, 163, 61, 0.5);
 }
 
 .ws-conversation {
@@ -477,7 +477,7 @@
 
 .ws-message {
   padding: 14px 0 10px;
-  border-top: 1px solid rgba(192, 132, 252, 0.09);
+  border-top: 1px solid rgba(242, 185, 95, 0.09);
 }
 
 .ws-message:first-child {
@@ -542,7 +542,7 @@
 
 .ws-message-actions button:hover {
   color: var(--ws-accent-light);
-  background: rgba(168, 85, 247, 0.08);
+  background: rgba(232, 163, 61, 0.08);
 }
 
 .ws-reactions {
@@ -563,7 +563,7 @@
 
 .ws-reactions button[aria-pressed="true"] {
   color: var(--ws-accent-light);
-  background: rgba(168, 85, 247, 0.12);
+  background: rgba(232, 163, 61, 0.12);
   border-color: var(--ws-line-strong);
 }
 
@@ -652,7 +652,7 @@
 }
 
 .ws-board-column[data-over="true"] {
-  background: rgba(168, 85, 247, 0.09);
+  background: rgba(232, 163, 61, 0.09);
   border-color: var(--ws-accent-light);
 }
 
@@ -685,7 +685,7 @@
 
 .ws-task {
   padding: 12px;
-  background: rgba(30, 23, 43, 0.68);
+  background: rgba(31, 32, 34, 0.68);
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius);
   transition: border-color 160ms ease, transform 160ms ease, opacity 160ms ease;
@@ -737,7 +737,7 @@
   min-width: 0;
   padding: 4px 6px;
   color: var(--ws-muted);
-  background: #15101f;
+  background: #1f1a10;
   border: 1px solid var(--ws-line);
   border-radius: 4px;
   cursor: pointer;
@@ -833,7 +833,7 @@
 }
 
 .ws-stream-row:hover {
-  background: rgba(168, 85, 247, 0.035);
+  background: rgba(232, 163, 61, 0.035);
 }
 
 .ws-event,
@@ -885,7 +885,7 @@
 .ws-class-toggle:hover,
 .ws-class-toggle[aria-expanded="true"] {
   color: var(--ws-accent-light);
-  background: rgba(168, 85, 247, 0.06);
+  background: rgba(232, 163, 61, 0.06);
 }
 
 .ws-chevron {
@@ -925,7 +925,7 @@
   padding: 16px;
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius);
-  background: rgba(25, 19, 36, 0.5);
+  background: rgba(26, 27, 29, 0.5);
   transition: transform 160ms ease, border-color 160ms ease;
 }
 
@@ -958,12 +958,12 @@
 
 .ws-proposal[data-status="approved"] {
   border-left: 2px solid var(--ws-accent-light);
-  background: rgba(124, 58, 237, 0.055);
+  background: rgba(184, 122, 31, 0.055);
 }
 
 .ws-proposal[data-status="approved"] .ws-status-tag {
   color: var(--ws-accent-light);
-  background: rgba(168, 85, 247, 0.09);
+  background: rgba(232, 163, 61, 0.09);
 }
 
 .ws-proposal[data-status="rejected"] {
@@ -1066,16 +1066,16 @@
 }
 
 .ws-table tbody tr:hover {
-  background: rgba(168, 85, 247, 0.04);
+  background: rgba(232, 163, 61, 0.04);
 }
 
 .ws-tier-hot {
   color: var(--ws-accent-light);
-  background: rgba(168, 85, 247, 0.11);
+  background: rgba(232, 163, 61, 0.11);
 }
 
 .ws-tier-warm {
-  color: #d6b9ed;
+  color: #eddab9;
 }
 
 .ws-sr-only {

@@ -16,12 +16,12 @@ export interface ClassGroup {
   tintIndex: number;
 }
 export const GROUP_TINTS: number[] = [
-  0x5b21b6,
-  0x6d28d9,
-  0x7c3aed,
-  0x8b5cf6,
-  0xa78bfa,
-  0xc4b5fd
+  0x8a5200,
+  0x9a5b00,
+  0xb87a1f,
+  0xd9962f,
+  0xecb455,
+  0xf6cf86
 ];
 function compareText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;

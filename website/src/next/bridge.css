@@ -25,7 +25,7 @@
   --k-font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   --k-mono: var(--k-font-mono);
   --k-sans: Inter, system-ui, sans-serif;
-  --k-hair: rgba(168, 85, 247, .08);
+  --k-hair: rgba(236, 232, 223, 0.064);
   --k-err: var(--k-danger);
 
   /* --kt-* globals consumed by gen/brain-hero/brain-hero.css */

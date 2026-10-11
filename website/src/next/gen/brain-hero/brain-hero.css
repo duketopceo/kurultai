@@ -1,13 +1,13 @@
 /* brain-hero.css */
 .brain-hero {
   --bh-bg: var(--kt-bg-deep, #050507);
-  --bh-accent: var(--kt-accent, #a855f7);
-  --bh-accent-soft: var(--kt-accent-soft, #c084fc);
-  --bh-accent-deep: var(--kt-accent-deep, #7c3aed);
-  --bh-ink: var(--kt-ink, #ece8f5);
-  --bh-ink-dim: rgba(236, 232, 245, 0.5);
-  --bh-ink-faint: rgba(236, 232, 245, 0.32);
-  --bh-hairline: rgba(168, 85, 247, 0.1);
+  --bh-accent: var(--kt-accent, #e8a33d);
+  --bh-accent-soft: #f2b95f;
+  --bh-accent-deep: var(--kt-accent-deep, #b87a1f);
+  --bh-ink: var(--kt-ink, #f5f0e8);
+  --bh-ink-dim: rgba(236, 232, 223, 0.66);
+  --bh-ink-faint: rgba(236, 232, 223, 0.42);
+  --bh-hairline: rgba(236, 232, 223, 0.08);
   --bh-warn: #f0b35a;
   --bh-mono: var(
     --kt-mono,
@@ -95,8 +95,8 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--bh-ink-faint);
-  background: rgba(14, 10, 22, 0.52);
-  border: 1px solid rgba(192, 132, 252, 0.16);
+  background: rgba(15, 16, 18, 0.52);
+  border: 1px solid rgba(242, 185, 95, 0.16);
   border-radius: 6px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   -webkit-backdrop-filter: blur(10px) saturate(140%);
@@ -105,7 +105,7 @@
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .brain-hero__chip {
-    background: rgba(14, 10, 22, 0.86);
+    background: rgba(15, 16, 18, 0.86);
   }
 }
 
@@ -140,7 +140,7 @@
 }
 
 .brain-hero__sep {
-  color: rgba(168, 85, 247, 0.45);
+  color: rgba(232, 163, 61, 0.45);
 }
 
 /* ── Caption row (bottom-left) ────────────────────────────── */
@@ -176,7 +176,7 @@
 }
 
 .brain-hero__caption .brain-hero__sep {
-  color: rgba(168, 85, 247, 0.5);
+  color: rgba(232, 163, 61, 0.5);
 }
 
 .brain-hero__hint {
@@ -208,8 +208,8 @@
   font-weight: 500;
   letter-spacing: 0.16em;
   color: var(--bh-accent-soft);
-  background: rgba(124, 58, 237, 0.14);
-  border: 1px solid rgba(168, 85, 247, 0.42);
+  background: rgba(184, 122, 31, 0.14);
+  border: 1px solid rgba(232, 163, 61, 0.42);
   border-radius: 3px;
 }
 
@@ -226,7 +226,7 @@
   text-align: center;
   background: radial-gradient(
     ellipse 40% 35% at 50% 50%,
-    rgba(124, 58, 237, 0.07),
+    rgba(184, 122, 31, 0.07),
     transparent 70%
   );
 }
@@ -235,8 +235,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: rgba(168, 85, 247, 0.35);
-  box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.06);
+  background: rgba(232, 163, 61, 0.35);
+  box-shadow: 0 0 0 4px rgba(232, 163, 61, 0.06);
 }
 
 .brain-hero__empty-text {
@@ -264,7 +264,7 @@
   height: 1.05em;
   margin-left: 3px;
   vertical-align: -0.18em;
-  background: rgba(192, 132, 252, 0.7);
+  background: rgba(242, 185, 95, 0.7);
   animation: brain-hero-blink 1.1s steps(1, end) infinite;
 }
 
