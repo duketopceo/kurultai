@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License: AGPL-3.0"></a>
   <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust"></a>
   <a href="https://github.com/duketopceo/kurultai/releases/latest"><img src="https://img.shields.io/github/v/release/duketopceo/kurultai" alt="Release"></a>
 </p>
@@ -153,6 +153,10 @@ Brain UI changes: edit `website/`, run `bash scripts/build-ui.sh`, rebuild the d
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+AGPL-3.0. Free to use and modify, including privately. If you host or distribute a modified version, you must publish your source under the same license. See [`LICENSE`](LICENSE).
+
+The Agent Zero plugin in [`plugin/`](plugin/) stays under the MIT License (see [`plugin/LICENSE`](plugin/LICENSE)) so it can be installed alongside Agent Zero without license friction.
+
+Releases up to and including v0.7.0 were published under the MIT License and remain available under MIT.
 
 **Kurultai** (курултай) — a council or assembly; a system that gathers knowledge from many sources.

@@ -3,6 +3,7 @@
   "version": "0.7.0",
   "private": true,
   "description": "React + Three.js brain UI source. Build outputs to ui/ for Rust embedding.",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",
