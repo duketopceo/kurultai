@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-09-30
-version: 8
+updated: 2026-10-05
+version: 9
 ---
 
 # `docs`
@@ -40,6 +40,7 @@ version: 8
 
 ## Recent
 
+- 2026-10-05 — plans/ added 2026-10-05-001 program roadmap plan (U1-U21, plan classification)
 - 2026-09-30 — plans/ added 2026-09-30-001 load + chaos harness plan (scripts/hammer.mjs + tests/chaos.rs); hosted write-hammer evidence: ~133 wps, zero errors
 - 2026-10-06 — `AGENT_CONNECTION_PROMPT.md`: remote MCP section documents seat-token write surface + api-* hostnames
 - 2026-09-29 — `AGENT_CONNECTION_PROMPT.md` added: agent connect prompt ported from kurultai-private

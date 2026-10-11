@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-10-03
-version: 18
+updated: 2026-10-05
+version: 19
 ---
 
 # `.`
@@ -64,7 +64,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`DESIGN.md`](DESIGN.md) | Design direction proposal "Council Ring": tokens, glyphs, motion, surfaces | docs/design/bases/linear.DESIGN.md | website/src/next tokens | 2026-10-10 | 1 | 2026-10-10 created (repo program) |
 | [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-12 | 5 | 2026-09-12 link ROADMAP.md in Status · 2026-09-11 v0.6.0 release stack facts · 2026-09-01 v0.5.0 release stack facts |
-| [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-09-12 | 1 | 2026-09-12 created — issue #122 |
+| [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/2026-10-05-001-docs-program-roadmap-plan.md` · `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-10-05 | 2 | 2026-10-05 lists program roadmap plan first · 2026-09-12 created — issue #122 |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`argus-reviewer.config.ts`](argus-reviewer.config.ts) | Argus reviewer config — code-review-only (`run: 'false'`), OpenRouter BYOK, Jev secrets adjudication on | `.github/workflows/argus-reviewer.yml` · `package.json` | — | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
 | [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-18 | 3 | 2026-09-18 [judge] section docs · 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
@@ -79,6 +79,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 - 2026-10-07 — `docs/plans/2026-10-07-001`: multi-vector late-interaction embed plan (pplx-embed-v2-late rerank lane, `MultiVectorEmbedder` + `atoms_multivec` sidecar, fastembed/http backends, dense v1 primary untouched); tracking issue #424
 - 2026-10-06 — explainer film: `launch/src/videos/kurultai/explainer/` — "how does an agent remember between sessions?" (~80s, diagram-first, VO-timed draft); Diagram.tsx primitives
 - 2026-10-05 — launch film v3 3D-brain cut: `launch/src/videos/kurultai/v3/` (7 beats, ~28s) + `launch/src/core/Brain3D.tsx` R3F primitive (cortex hull, emissive neurons, edge pending/supersede states); `@remotion/three`+`three`+r3f deps
+- 2026-10-05 — `docs/plans/2026-10-05-001` program roadmap plan added; `ROADMAP.md` links it first
 - 2026-10-05 — `launch/` Remotion film project added (PR #411)
 - 2026-10-04 — competitive sweep phase closed: `docs/plans/phase-7-competitive-sweep-complete.md` wrap-up; plan 2026-10-01-001 marked complete
 - 2026-10-04 — U5 nightly consolidation sweep (competitive-sweep finale): `kurultai sweep` folds content-hash dupes into canonical atoms via supersede, prunes stale ontology links/entities, reports tier+quarantine census to Hey `kurultai-sweep` thread; daemon runs it after each nightly full sync
