@@ -13,8 +13,10 @@ version: 1
 
 ## Children
 
-- [`launch/`](launch/INDEX.md) — the launch film
+- [`launch/`](launch/INDEX.md) — the launch film (v2 cut, merged PR #411)
+- [`v3/`](v3/INDEX.md) — v3 3D-brain cut (~28s, near-wordless)
 
 ## Recent
 
 - 2026-10-05 — added (launch film PR #411)
+- 2026-10-05 — v3/ added (3D brain cut)

@@ -66,3 +66,25 @@ Hook (verbatim): **"Every agent has its own memory. None of them share it."**
 
 `KurultaiLaunch` (1920×1080) · `KurultaiLaunchSquare` (1:1, X feed) ·
 `KurultaiReadmeLoop` (7.5s silent). X post copy drafted separately.
+
+---
+
+# v3 — 3D brain cut (~28s, near-wordless)
+
+Direction: the brain IS the hero. Five silo dots → `kurultai mcp` → dots
+snap into a live 3D synapse (@remotion/three + R3F — WebGL probe verified
+on Asahi headless) → plain question → answer card with source → pending
+edge locks on human tap → zoom out: same brain behind laptop AND server →
+end card. ~60% less text than v2; every word beat is a caption.
+
+## Shot list v3
+
+| t | scene | motion | caption |
+|---|-------|--------|---------|
+| 0–3s | SiloDots | five glowing dots drift apart, each orbited by a private memory | "five agents. five memories." |
+| 3–7s | Snap | `"kurultai mcp"` flashes once; dots SNAP into the 3D brain — it ignites | "one brain." |
+| 7–12s | LiveBrain | neurons land, edges fire (zero-LLM extraction); camera orbits slow | "it learns on its own." |
+| 12–16s | Ask | plain question types → one neuron lights → answer card + source chip slides out | "ask where it came from." |
+| 16–20s | Gate | new edge hovers, pulses pending → human tap → edge locks gold | "you approve what it learns." |
+| 20–25s | ZoomOut | camera dollies back: brain behind laptop icon AND server icon | "run it here. or there." |
+| 25–28s | EndCard | brain → synapse mark → `kurultai daemon --demo` + repo URL | "kurultai v0.6.0" |

@@ -29,7 +29,9 @@ version: 1
 | [`Scene07Mcp.tsx`](Scene07Mcp.tsx) | 8-tool MCP grid | KineticType · Stage | index.tsx | 2026-10-05 | 1 | 2026-10-05 added |
 | [`Scene07Onboard.tsx`](Scene07Onboard.tsx) | kurultai init --docs onboarding terminal | TerminalScene | index.tsx | 2026-10-05 | 1 | 2026-10-05 added |
 | [`Scene08EndCard.tsx`](Scene08EndCard.tsx) | End card — 'One brain. Every agent.' + mark | BrainMark · KineticType | index.tsx | 2026-10-05 | 1 | 2026-10-05 added |
+| [`Probe.tsx`](Probe.tsx) | WebGL canary comp — verifies headless @remotion/three renders on this stack | @remotion/three | Root.tsx | 2026-10-05 | 1 | 2026-10-05 added (v3 gate) |
 
 ## Recent
 
+- 2026-10-05 — Probe.tsx WebGL canary added for v3
 - 2026-10-05 — added (launch film PR #411)

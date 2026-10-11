@@ -12,7 +12,7 @@ Unified knowledge retrieval for agents and humans. Index notes, chats, JSON dump
 |---|---|
 | **Author** | [Luke Kimball](https://github.com/duketopceo) (`duketopceo@gmail.com`) |
 | **Repo** | Public — [github.com/duketopceo/kurultai](https://github.com/duketopceo/kurultai) |
-| **Release** | [v0.6.0](https://github.com/duketopceo/kurultai/releases/tag/v0.7.0) (crate `0.7.0`) |
+| **Release** | [v0.7.0](https://github.com/duketopceo/kurultai/releases/tag/v0.7.0) (crate `0.7.0`) |
 
 ## Why
 

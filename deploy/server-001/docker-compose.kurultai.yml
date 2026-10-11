@@ -11,6 +11,10 @@ services:
       KURULTAI_FEATURE_REMOTE_INGEST: "1"
       KURULTAI_HUB_BIND: all
       KURULTAI_HUB_AUTH: api_key
+      # Contain agent-reachable writes in quarantine (agent_write_containment);
+      # promote/touch/ontology writes gated behind the admin token.
+      KURULTAI_FEATURE_SHARED_WRITE: "1"
+      KURULTAI_ADMIN_TOKEN: ${PERSONAL_ADMIN_TOKEN:?missing PERSONAL_ADMIN_TOKEN — mint one, store omaseal kurultai/personal-admin-token, add to <repo>/.env}
       KURULTAI_HUB_API_KEYS: ${PERSONAL_API_KEYS:?missing PERSONAL_API_KEYS — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}
       KURULTAI_MCP_HTTP_SECRET: ${PERSONAL_MCP_SECRET:?missing PERSONAL_MCP_SECRET — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}
       KURULTAI_INGEST_SECRET: ${PERSONAL_INGEST_SECRET:?missing PERSONAL_INGEST_SECRET — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}
