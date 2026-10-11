@@ -123,6 +123,9 @@ pub struct FileEmbedConfig {
     pub backend: Option<String>,
     pub model: Option<String>,
     pub dimension: Option<usize>,
+    /// `[embed.late]` — late-interaction rerank lane (ColBERT MaxSim).
+    #[serde(default)]
+    pub late: FileLateEmbedConfig,
 }
 
 impl Default for FileEmbedConfig {
@@ -131,8 +134,24 @@ impl Default for FileEmbedConfig {
             backend: None,
             model: Some("openai/text-embedding-3-large".into()),
             dimension: Some(3072),
+            late: FileLateEmbedConfig::default(),
         }
     }
+}
+
+/// `[embed.late]` — optional ColBERT-style rerank lane. `backend` is
+/// `off` (default), `http` (sidecar like `scripts/late-embed-server.py`
+/// serving `pplx-embed-v2-late-*`), or `local` (BGE-M3 ColBERT head,
+/// requires `--features local-embed`).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct FileLateEmbedConfig {
+    pub backend: Option<String>,
+    /// `http` backend: sidecar base URL (e.g. `http://127.0.0.1:8790`).
+    pub url: Option<String>,
+    /// Expected per-token dimension (128 for pplx-embed-v2-late, 1024 for BGE-M3).
+    pub token_dim: Option<usize>,
+    /// Per-atom token cap written to `atoms_multivec` (default 512).
+    pub max_doc_tokens: Option<usize>,
 }
 
 /// `[judge]` — the Jev judge used by evals, `ask --web` sufficiency, and
