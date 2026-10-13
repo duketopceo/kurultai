@@ -24,6 +24,8 @@ _None._
 
 ## Recent
 
+- 2026-10-07 — `context.rs`: `build_late_embedder` (`off|http|local`); live lane swaps reranker to `LateInteractionReranker`, attaches to pipeline (#424)
+
 - 2026-10-02 — `context.rs`: perplexity backend wiring (explicit backend wins, fails loud on missing key)
 
 - 2026-08-29 — `from_config` opens `open_hub_store` when `KURULTAI_FEATURE_HUB=1`
