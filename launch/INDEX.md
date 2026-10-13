@@ -29,5 +29,6 @@ version: 1
 
 ## Recent
 
+- 2026-10-06 — explainer film added: `videos/kurultai/explainer/` (KurultaiExplainer + 916 comps, ~80s diagram-first, VO-timed draft)
 - 2026-10-05 — v3 3D-brain cut (src/videos/kurultai/v3, core/Brain3D)
 - 2026-10-05 — added (launch film PR #411)
