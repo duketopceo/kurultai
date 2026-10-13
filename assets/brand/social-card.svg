@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none" role="img" aria-label="Kurultai social card (proposal)">
+  <rect width="1200" height="630" fill="#0c0d11"/>
+  <g transform="translate(940 315) scale(12)" opacity="0.07"><g transform="translate(-16 -16)">
+    <circle cx="16" cy="16" r="12.5" stroke="#ece8df" stroke-width="3"/>
+    <path d="M7.2 7.2L24.8 24.8M24.8 7.2L7.2 24.8" stroke="#ece8df" stroke-width="2.5" stroke-linecap="round"/></g></g>
+  <g transform="translate(80 130) scale(3)">
+    <circle cx="16" cy="16" r="12.5" stroke="#ece8df" stroke-width="3"/>
+    <path d="M7.2 7.2L24.8 24.8M24.8 7.2L7.2 24.8" stroke="#ece8df" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="16" cy="16" r="5.6" fill="#0c0d11"/><circle cx="16" cy="16" r="3.4" fill="#e8a33d"/>
+  </g>
+  <g transform="translate(80 330) scale(3.4)" stroke="#ece8df" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M0 0V28M20 0L0 18M7 12L20 28"/>
+    <path transform="translate(30 0)" d="M0 0V18A10 10 0 0 0 20 18V0"/>
+    <path transform="translate(60 0)" d="M0 28V0H11A7.5 7.5 0 0 1 11 15H0M11 15L20 28"/>
+    <path transform="translate(90 0)" d="M0 0V18A10 10 0 0 0 20 18V0"/>
+    <path transform="translate(120 0)" d="M0 0V28H18"/>
+    <path transform="translate(148 0)" d="M0 0H20M10 0V28"/>
+    <path transform="translate(178 0)" d="M0 28L10 0L20 28M4 18H16"/>
+    <path transform="translate(198 0)" d="M10 0V28"/>
+  </g>
+</svg>
