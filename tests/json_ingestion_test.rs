@@ -360,6 +360,7 @@ async fn json_connector_from_registry_via_config() {
         judge_enabled: true,
         judge_model: None,
         broker: Default::default(),
+        embed_late: Default::default(),
     };
 
     let registry = ConnectorRegistry::from_config(&config).await.unwrap();

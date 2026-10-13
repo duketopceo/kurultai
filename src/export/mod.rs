@@ -649,6 +649,7 @@ poll_interval_secs = 300
             judge_enabled: true,
             judge_model: None,
             broker: Default::default(),
+            embed_late: Default::default(),
         };
 
         let pack = tmp.path().join("fb.kurultai");

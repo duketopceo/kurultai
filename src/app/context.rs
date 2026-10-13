@@ -63,10 +63,21 @@ impl App {
         };
 
         let embedder = build_embedder(&config, environment)?;
-        let reranker = build_reranker(&config);
+        let late_embedder = build_late_embedder(&config)?;
+        // Late-interaction lane replaces the LLM reranker when enabled; it is
+        // a second-stage rescore over the same fused candidate set.
+        let reranker = if late_embedder.is_live() {
+            Arc::new(crate::rerank::LateInteractionReranker::new(
+                Arc::clone(&late_embedder),
+                Arc::clone(&store),
+            )) as Arc<dyn Reranker>
+        } else {
+            build_reranker(&config)
+        };
         let synthesizer = synthesizer_from_env(None);
         let connectors = ConnectorRegistry::from_config(&config).await?;
         let mut pipeline = IndexPipeline::new(Arc::clone(&store), Arc::clone(&embedder));
+        pipeline.with_late_embedder(Arc::clone(&late_embedder));
         pipeline.register_sources(&config.sources);
 
         tracing::info!(
@@ -188,6 +199,49 @@ fn build_local_embedder(config: &Config) -> Result<Arc<dyn Embedder>> {
     }
 }
 
+/// `[embed.late]` backend: `off` (default) → Null; `http` → sidecar
+/// (`pplx-embed-v2-late-*` via `scripts/late-embed-server.py`); `local` →
+/// BGE-M3 ColBERT head (feature `local-embed`).
+fn build_late_embedder(config: &Config) -> Result<Arc<dyn crate::embed::MultiVectorEmbedder>> {
+    match config.embed_late.backend.as_str() {
+        "off" => Ok(Arc::new(crate::embed::NullMultiVectorEmbedder::new())),
+        "http" => {
+            let url = config.embed_late.url.clone().ok_or_else(|| {
+                KurultaiError::config("embed.late.backend = \"http\" requires embed.late.url")
+            })?;
+            tracing::info!(
+                url = %url,
+                token_dim = config.embed_late.token_dim,
+                "late-interaction lane via http sidecar"
+            );
+            Ok(Arc::new(crate::embed::LateHttpEmbedder::new(
+                url,
+                config.embed_late.token_dim,
+                Some(config.embed_late.max_doc_tokens),
+            )))
+        }
+        "local" => {
+            #[cfg(feature = "local-embed")]
+            {
+                tracing::info!("late-interaction lane via local BGE-M3");
+                let e = crate::embed::LateBgem3Embedder::try_new(Some(
+                    config.embed_late.max_doc_tokens,
+                ))?;
+                return Ok(Arc::new(e));
+            }
+            #[cfg(not(feature = "local-embed"))]
+            {
+                Err(KurultaiError::config(
+                    "embed.late.backend = \"local\" requires building with --features local-embed",
+                ))
+            }
+        }
+        other => Err(KurultaiError::config(format!(
+            "unknown embed.late.backend {other:?} (off|http|local)"
+        ))),
+    }
+}
+
 fn build_reranker(config: &Config) -> Arc<dyn Reranker> {
     let Some(model) = config
         .reranker_model
@@ -234,6 +288,7 @@ mod tests {
             judge_enabled: true,
             judge_model: None,
             broker: Default::default(),
+            embed_late: Default::default(),
         }
     }
 
