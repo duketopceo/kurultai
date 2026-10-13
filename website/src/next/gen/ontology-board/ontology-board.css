@@ -5,15 +5,15 @@
   --ob-bg: #09090d;
   --ob-panel: rgba(255, 255, 255, 0.025);
   --ob-card: #111019;
-  --ob-card-hover: #15131f;
+  --ob-card-hover: #1b1a17;
   --ob-line: rgba(255, 255, 255, 0.08);
   --ob-line-strong: rgba(255, 255, 255, 0.16);
   --ob-text: #e7e5ee;
-  --ob-muted: #8b8798;
-  --ob-faint: #5a5666;
-  --ob-accent: #a855f7;
-  --ob-accent-soft: #c084fc;
-  --ob-accent-deep: #7c3aed;
+  --ob-muted: #979288;
+  --ob-faint: #656057;
+  --ob-accent: #e8a33d;
+  --ob-accent-soft: #f2b95f;
+  --ob-accent-deep: #b87a1f;
   --ob-danger: #f87171;
   --ob-warn: #fbbf24;
   --ob-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -130,7 +130,7 @@
 }
 
 .ob-btn--accent {
-  color: #fff;
+  color: #0c0d11;
   background: var(--ob-accent-deep);
   border-color: var(--ob-accent-deep);
 }
@@ -200,7 +200,7 @@
 .ob-linkbar {
   font-family: var(--ob-mono);
   font-size: 11px;
-  border-color: rgba(168, 85, 247, 0.45);
+  border-color: rgba(232, 163, 61, 0.45);
 }
 
 .ob-linkbar strong {
@@ -405,7 +405,7 @@
 }
 
 .ob-card.is-hot {
-  border-color: rgba(168, 85, 247, 0.55);
+  border-color: rgba(232, 163, 61, 0.55);
 }
 
 .ob-card.is-dim {
@@ -536,10 +536,10 @@
 @keyframes ob-pulse {
   0%,
   100% {
-    outline-color: rgba(168, 85, 247, 0.95);
+    outline-color: rgba(232, 163, 61, 0.95);
   }
   50% {
-    outline-color: rgba(168, 85, 247, 0.2);
+    outline-color: rgba(236, 232, 223, 0.16);
   }
 }
 
@@ -577,7 +577,7 @@
 
 .ob-menu-item:hover:not(:disabled),
 .ob-menu-item:focus-visible {
-  background: rgba(168, 85, 247, 0.14);
+  background: rgba(232, 163, 61, 0.14);
   outline: none;
 }
 
@@ -687,7 +687,7 @@
   display: inline-block;
   width: 10px;
   height: 10px;
-  border: 1px solid rgba(192, 132, 252, 0.3);
+  border: 1px solid rgba(242, 185, 95, 0.3);
   border-top-color: var(--ob-accent-soft);
   border-radius: 50%;
   animation: ob-rot 0.7s linear infinite;

@@ -1,6 +1,6 @@
 /* ==========================================================================
    tokens.css: Kurultai design-token layer
-   Dark-instrument console. Single canvas family, single accent (purple).
+   Dark-instrument console. Single canvas family, single accent (ember).
    Everything is a custom property on :root. The only selectors beyond :root
    are the documented global utilities at the bottom:
      [U1] ::selection        [U2] :focus-visible ring
@@ -11,22 +11,22 @@
   color-scheme: dark;
 
   /* ---- Canvas (single near-black family) -------------------------------- */
-  --canvas-0: #050508;              /* page background */
-  --canvas-1: #08070d;              /* recessed wells, code blocks */
-  --canvas-2: #0c0a14;              /* solid fallback when glass is unsupported */
-  --canvas-3: #13101d;              /* solid raised (menus without blur) */
+  --canvas-0: #0c0d11;              /* page background */
+  --canvas-1: #090a0d;              /* recessed wells, code blocks */
+  --canvas-2: #111318;              /* solid fallback when glass is unsupported */
+  --canvas-3: #15171d;              /* solid raised (menus without blur) */
 
-  /* ---- Accent: electric purple (the only accent) ------------------------ */
-  --accent:          #a855f7;       /* base: links, active marks, primary fill */
-  --accent-strong:   #c084fc;       /* text-on-dark accent, hover emphasis */
-  --accent-dim:      #7c3aed;       /* pressed, deep fills, gradient floor */
-  --accent-rgb:      168 85 247;    /* for composing alphas */
-  --accent-contrast: #0b0612;       /* text placed ON a solid accent fill */
+  /* ---- Accent: ember (Council Ring) (the only accent) ------------------------ */
+  --accent:          #e8a33d;       /* base: links, active marks, primary fill */
+  --accent-strong:   #f2b95f;       /* text-on-dark accent, hover emphasis */
+  --accent-dim:      #b87a1f;       /* pressed, deep fills, gradient floor */
+  --accent-rgb:      232 163 61;    /* for composing alphas */
+  --accent-contrast: #0c0d11;       /* text placed ON a solid accent fill */
 
-  --glow-1: rgba(168, 85, 247, 0.14); /* ambient wash, row hover */
-  --glow-2: rgba(168, 85, 247, 0.22); /* selected row, active tab bg */
-  --glow-3: rgba(168, 85, 247, 0.32); /* focus halo, live indicators */
-  --glow-4: rgba(168, 85, 247, 0.42); /* hero glow, primary button hover */
+  --glow-1: rgba(232, 163, 61, 0.14); /* ambient wash, row hover */
+  --glow-2: rgba(232, 163, 61, 0.22); /* selected row, active tab bg */
+  --glow-3: rgba(232, 163, 61, 0.32); /* focus halo, live indicators */
+  --glow-4: rgba(232, 163, 61, 0.42); /* hero glow, primary button hover */
 
   /* ---- Semantic state (muted; never purple) ----------------------------- */
   --ok:        #7fd4a8;
@@ -41,29 +41,29 @@
   --danger-bg:     rgba(255, 107, 138, 0.10);
   --danger-border: rgba(255, 107, 138, 0.30);
 
-  --neutral-state: #8a8699;         /* idle / unknown / not-yet-loaded */
+  --neutral-state: #979288;         /* idle / unknown / not-yet-loaded */
 
   /* ---- Text ------------------------------------------------------------- */
-  --text-1: #ece9f5;                /* primary: values, headings */
-  --text-2: #b4afc6;                /* secondary: prose, descriptions */
-  --text-3: #7e7892;                /* tertiary: HUD labels, metadata */
-  --text-4: #57526a;                /* disabled, placeholders */
+  --text-1: #ece8df;                /* primary: values, headings */
+  --text-2: #bdb8ac;                /* secondary: prose, descriptions */
+  --text-3: #9a968c;                /* tertiary: HUD labels, metadata */
+  --text-4: #6b685f;                /* disabled, placeholders */
   --text-accent: var(--accent-strong);
 
   /* ---- Surfaces (glass over black) -------------------------------------- */
-  --surface-glass-1: rgba(10, 8, 20, 0.60); /* ambient cards over canvas */
-  --surface-glass-2: rgba(10, 8, 20, 0.72); /* standard panel */
-  --surface-glass-3: rgba(10, 8, 20, 0.84); /* sticky headers, toolbars */
-  --surface-glass-4: rgba(10, 8, 20, 0.92); /* popovers, dialogs, menus */
+  --surface-glass-1: rgba(22, 23, 25, 0.60); /* ambient cards over canvas */
+  --surface-glass-2: rgba(22, 23, 25, 0.72); /* standard panel */
+  --surface-glass-3: rgba(22, 23, 25, 0.84); /* sticky headers, toolbars */
+  --surface-glass-4: rgba(22, 23, 25, 0.92); /* popovers, dialogs, menus */
   --surface-blur:    blur(14px) saturate(120%);
   --surface-inset:   rgba(0, 0, 0, 0.35);   /* inputs, wells inside panels */
-  --scrim:           rgba(3, 2, 6, 0.72);   /* modal backdrop */
+  --scrim:           rgba(3, 3, 5, 0.72);   /* modal backdrop */
 
   /* ---- Borders ---------------------------------------------------------- */
   --border-width:  1px;
-  --border:        rgba(168, 85, 247, 0.14); /* resting */
-  --border-hover:  rgba(168, 85, 247, 0.40); /* hover + focus-within */
-  --border-strong: rgba(168, 85, 247, 0.55); /* selected / active */
+  --border:        rgba(236, 232, 223, 0.112); /* resting */
+  --border-hover:  rgba(232, 163, 61, 0.40); /* hover + focus-within */
+  --border-strong: rgba(232, 163, 61, 0.55); /* selected / active */
   --border-subtle: rgba(255, 255, 255, 0.05); /* internal dividers */
 
   /* ---- Radius ----------------------------------------------------------- */
@@ -151,12 +151,12 @@
   /* ---- Scrollbar -------------------------------------------------------- */
   --scrollbar-size:        8px;
   --scrollbar-track:       transparent;
-  --scrollbar-thumb:       rgba(168, 85, 247, 0.18);
-  --scrollbar-thumb-hover: rgba(168, 85, 247, 0.40);
+  --scrollbar-thumb:       rgba(232, 163, 61, 0.18);
+  --scrollbar-thumb-hover: rgba(232, 163, 61, 0.40);
 
   /* ---- Selection -------------------------------------------------------- */
-  --selection-bg:   rgba(168, 85, 247, 0.32);
-  --selection-text: #f6f2ff;
+  --selection-bg:   rgba(232, 163, 61, 0.32);
+  --selection-text: #fbf6ea;
 
   /* ---- Layers ----------------------------------------------------------- */
   --z-base:     0;

@@ -70,13 +70,13 @@ test('empty inputs yield no groups; inputs are never mutated', () => {
   assert.equal(JSON.stringify({ entities, links }), before);
 });
 
-test('GROUP_TINTS stays inside the purple family (six shades)', () => {
+test('GROUP_TINTS stays inside the ember family (six shades)', () => {
   assert.equal(GROUP_TINTS.length, 6);
   for (const tint of GROUP_TINTS) {
     const r = (tint >> 16) & 0xff;
     const g = (tint >> 8) & 0xff;
     const b = tint & 0xff;
-    assert.ok(b > r && r > g, `tint ${tint.toString(16)} is purple-family (b > r > g)`);
-    assert.ok(b >= 0xfd * 0.6, `tint ${tint.toString(16)} is bright enough on black`);
+    assert.ok(r > g && g > b, `tint ${tint.toString(16)} is ember-family (r > g > b)`);
+    assert.ok(r >= 0x8a, `tint ${tint.toString(16)} is bright enough on black`);
   }
 });
