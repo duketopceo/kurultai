@@ -22,6 +22,7 @@ version: 9
 - [`research/`](research/INDEX.md) — Landscape research (agent-memory systems)
 - [`plans/`](plans/INDEX.md) — LFG plans and work-order packs (live queue: phase-6-next)
 - [`residual-review-findings/`](residual-review-findings/INDEX.md) — Review residual records
+- [`screenshots/`](screenshots/INDEX.md) — Visual captures referenced by docs/PRs
 - [`solutions/`](solutions/INDEX.md) — Documented past solutions
 
 ## Files
