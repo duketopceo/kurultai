@@ -570,6 +570,23 @@ pub fn ensure_vec_table(conn: &Connection, embed_dim: usize) -> Result<()> {
     Ok(())
 }
 
+/// Late-interaction sidecar table (multi-vector lane). Created lazily — no
+/// schema-version bump — because it is additive and droppable; stores that
+/// never enable `[embed.late]` never get it.
+pub fn ensure_multivec_table(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS atoms_multivec (
+            atom_id TEXT NOT NULL REFERENCES knowledge_atoms(id) ON DELETE CASCADE,
+            token_idx INTEGER NOT NULL,
+            vec BLOB NOT NULL,
+            PRIMARY KEY (atom_id, token_idx)
+        );
+        CREATE INDEX IF NOT EXISTS idx_atoms_multivec_atom ON atoms_multivec(atom_id);",
+    )
+    .map_err(|e| KurultaiError::Store(format!("create atoms_multivec failed: {e}")))?;
+    Ok(())
+}
+
 /// Read the highest applied migration version from `schema_migrations` (0 if none).
 pub fn current_applied_version(conn: &Connection) -> i32 {
     conn.query_row(
