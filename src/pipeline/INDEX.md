@@ -23,6 +23,8 @@ _None._
 
 ## Recent
 
+- 2026-10-07 — `mod.rs`: `with_late_embedder` — trusted atoms get `embed_document` → `store.upsert_multivecs` after `upsert_batch` (FK order), best-effort (#424)
+
 - 2026-10-03 — U4: `resolve_supersede_targets` + `mark_superseded` post-upsert; non-fatal
 
 - 2026-10-02 — U3: `apply_extracted_edges` after `upsert_batch` — `[[wiki-links]]`/`@mentions`/frontmatter rels → `references` ontology links; extraction failure logged, never fatal
