@@ -91,6 +91,7 @@ fn default_config(env: Environment) -> Result<Config> {
         judge_enabled: true,
         judge_model: None,
         broker: crate::config::file::FileBrokerConfig::default(),
+        embed_late: Default::default(),
     })
 }
 
@@ -168,6 +169,34 @@ fn file_to_runtime(file: FileConfig, env: Environment, explicit_storage: bool) -
         judge_enabled: file.judge.enabled.unwrap_or(true),
         judge_model: file.judge.model,
         broker: file.broker,
+        embed_late: {
+            let late = file.embed.late;
+            let backend = late
+                .backend
+                .as_deref()
+                .unwrap_or("off")
+                .trim()
+                .to_ascii_lowercase();
+            match backend.as_str() {
+                "off" | "http" | "local" => {}
+                other => {
+                    return Err(KurultaiError::config(format!(
+                        "embed.late.backend must be \"off\", \"http\", or \"local\", got {other:?}"
+                    )));
+                }
+            }
+            if backend == "http" && late.url.as_deref().map(str::trim).unwrap_or("").is_empty() {
+                return Err(KurultaiError::config(
+                    "embed.late.backend = \"http\" requires embed.late.url",
+                ));
+            }
+            crate::types::LateEmbedConfig {
+                backend,
+                url: late.url,
+                token_dim: late.token_dim.unwrap_or(128),
+                max_doc_tokens: late.max_doc_tokens.unwrap_or(512),
+            }
+        },
     })
 }
 
