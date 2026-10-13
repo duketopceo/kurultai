@@ -12,6 +12,7 @@ import {
   KurultaiLaunchV3Square,
   KurultaiV3Loop,
 } from './videos/kurultai/v3';
+import {KurultaiExplainer, EXPLAINER_FRAMES} from './videos/kurultai/explainer';
 
 export const Root: React.FC = () => {
   return (
@@ -79,6 +80,22 @@ export const Root: React.FC = () => {
         fps={60}
         width={1920}
         height={1080}
+      />
+      <Composition
+        id="KurultaiExplainer"
+        component={KurultaiExplainer}
+        durationInFrames={EXPLAINER_FRAMES}
+        fps={60}
+        width={1920}
+        height={1080}
+      />
+      <Composition
+        id="KurultaiExplainer916"
+        component={KurultaiExplainer}
+        durationInFrames={EXPLAINER_FRAMES}
+        fps={60}
+        width={1080}
+        height={1920}
       />
     </>
   );
