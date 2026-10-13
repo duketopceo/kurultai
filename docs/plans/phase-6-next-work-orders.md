@@ -1,7 +1,8 @@
 # Phase 6 — next work orders (post–Wave B)
 
-**Status:** v0.4.1 production prep · Wave G hub = **v0.5.0**  
-**Date:** 2026-08-12 · **Updated:** 2026-09-01  
+**Status:** Current release **v0.7.0** (2026-10-06) · v0.6.0 (2026-09-11) · v0.5.0 Team/hub (2026-09-01) · v0.4.1 solo kernel (2026-08-13)  
+**Date:** 2026-08-12 · **Updated:** 2026-10-11  
+**Current roadmap:** [`ROADMAP.md`](../../ROADMAP.md) · program plan [`2026-10-10-001-docs-program-overlay-plan.md`](2026-10-10-001-docs-program-overlay-plan.md). Sections below are kept as Phase 6 history.  
 **Base:** `main` after Wave B foundation (MCP HTTP/SSE · thin metrics · soft labels · export/import · Brain UI)  
 **Umbrella:** [#10](https://github.com/duketopceo/kurultai/issues/10) Open Source Launch · Milestone 6  
 **Parent pack:** [`phase-6-work-orders.md`](phase-6-work-orders.md)  
@@ -10,7 +11,7 @@
 **Linear:** [imluketheduke / Khan](https://linear.app/imluketheduke) — `KHAN-*` only (not bartlettroofs-it `PRO-*`).  
 **Audience spine:** developer ✅ → solo ✅ (kernel) → **team 🔜** → company ([#25](https://github.com/duketopceo/kurultai/issues/25))
 
-**Next LFG:** Wave D/E/Ops / v0.6.0+ planning (v0.5.0 Team released 2026-09-01)
+**Next LFG:** see [`ROADMAP.md`](../../ROADMAP.md) (v0.7.0 released 2026-10-06; v0.5.0 Team released 2026-09-01)
 
 ## Version flags
 
@@ -22,9 +23,9 @@ Override with `KURULTAI_FEATURE_<ID>=0|1`. Catalog: `src/features.rs` · `kurult
 | `brain_ui` | v0.4.0 | on | Embedded `/ui/` (shipped) |
 | `mcp_http` | v0.4.0 | on | Daemon MCP HTTP/SSE (shipped) |
 | `local_embed` | v0.3.0 | cargo feature | `--features local-embed` |
-| `hub` | **v0.5.0** | **off** | Wave G HUB-2…6 — do not treat as v0.4.x |
+| `hub` | **v0.5.0** | **off** | Team/company hub (HUB-3 transport shipped: `Dockerfile`, [`docs/deploy/railway-hub.md`](../deploy/railway-hub.md)); still default off |
 
-**v0.3.1 was skipped.** Production tag is [v0.4.1](https://github.com/duketopceo/kurultai/releases/tag/v0.4.1). Team cashflow stays **v0.5.0**.
+**v0.3.1 was skipped.** Latest release is [v0.7.0](https://github.com/duketopceo/kurultai/releases/tag/v0.7.0); the hub track first shipped in **v0.5.0**.
 
 ## Reality check
 
