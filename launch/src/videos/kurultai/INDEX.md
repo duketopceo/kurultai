@@ -15,8 +15,10 @@ version: 1
 
 - [`launch/`](launch/INDEX.md) — the launch film (v2 cut, merged PR #411)
 - [`v3/`](v3/INDEX.md) — v3 3D-brain cut (~28s, near-wordless)
+- [`explainer/`](explainer/INDEX.md) — concept explainer "how does an agent remember?" (~80s, VO-timed)
 
 ## Recent
 
+- 2026-10-06 — explainer/ added (diagram-first concept film, draft pacing)
 - 2026-10-05 — added (launch film PR #411)
 - 2026-10-05 — v3/ added (3D brain cut)
