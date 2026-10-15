@@ -94,7 +94,7 @@ function hashLabel(label: string): number {
   return (h >>> 0) / 0xffffffff;
 }
 
-const PURPLE_STOPS = [0x4c1d95, 0x5b21b6, 0x6d28d9, 0x7c3aed, 0x8b5cf6, 0xa78bfa, 0xc4b5fd];
+const PURPLE_STOPS = [0x7a4600, 0x8a5200, 0x9a5b00, 0xb87a1f, 0xd9962f, 0xecb455, 0xf6cf86];
 
 function labelGradientCss(label: string): string {
   const t = hashLabel(label);
@@ -104,7 +104,7 @@ function labelGradientCss(label: string): string {
   const a = PURPLE_STOPS[i];
   const b = PURPLE_STOPS[Math.min(i + 1, PURPLE_STOPS.length - 1)];
   const mid = lerpHex(a, b, f);
-  const deep = lerpHex(mid, 0x2e1065, 0.45);
+  const deep = lerpHex(mid, 0x5a3200, 0.45);
   const light = lerpHex(mid, 0xffffff, 0.28);
   return `linear-gradient(135deg, ${hexToCss(deep)}, ${hexToCss(mid)} 55%, ${hexToCss(light)})`;
 }

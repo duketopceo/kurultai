@@ -4,14 +4,14 @@
 .cb,
 .cb-overlay {
   --cb-canvas: #09080e;
-  --cb-panel: rgba(20, 17, 29, 0.86);
+  --cb-panel: rgba(21, 22, 24, 0.86);
   --cb-text: #ece9f3;
-  --cb-muted: #a09aad;
-  --cb-faint: #81798f;
+  --cb-muted: #aaa69d;
+  --cb-faint: #8d877b;
   --cb-line: rgba(192, 169, 228, 0.13);
-  --cb-purple: #a855f7;
-  --cb-purple-light: #c084fc;
-  --cb-purple-deep: #7c3aed;
+  --cb-ember: #e8a33d;
+  --cb-ember-light: #f2b95f;
+  --cb-ember-deep: #b87a1f;
   --cb-green: #5bd6a0;
   --cb-danger: #f59aa9;
   --cb-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
@@ -39,7 +39,7 @@
   min-height: 360px;
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 90% 0%, rgba(124, 58, 237, 0.075), transparent 55%),
+    radial-gradient(ellipse at 90% 0%, rgba(184, 122, 31, 0.075), transparent 55%),
     var(--cb-panel);
   border: 1px solid var(--cb-line);
   border-radius: 12px;
@@ -64,7 +64,7 @@
 }
 
 .cb :focus-visible {
-  outline: 2px solid var(--cb-purple-light);
+  outline: 2px solid var(--cb-ember-light);
   outline-offset: 3px;
 }
 
@@ -152,14 +152,14 @@
 }
 
 .cb-thread:hover {
-  background: rgba(192, 132, 252, 0.035);
+  background: rgba(242, 185, 95, 0.035);
   color: var(--cb-text);
 }
 
 .cb-thread[aria-current="page"] {
-  border-color: rgba(168, 85, 247, 0.16);
-  background: rgba(168, 85, 247, 0.075);
-  color: var(--cb-purple-light);
+  border-color: rgba(236, 232, 223, 0.128);
+  background: rgba(232, 163, 61, 0.075);
+  color: var(--cb-ember-light);
 }
 
 .cb-thread[aria-current="page"]::before {
@@ -167,7 +167,7 @@
   inset: 8px auto 8px -1px;
   width: 3px;
   border-radius: 0 2px 2px 0;
-  background: var(--cb-purple);
+  background: var(--cb-ember);
   content: "";
 }
 
@@ -198,10 +198,10 @@
   height: 17px;
   padding-inline: 4px;
   place-items: center;
-  border: 1px solid rgba(192, 132, 252, 0.28);
+  border: 1px solid rgba(242, 185, 95, 0.28);
   border-radius: 999px;
-  background: rgba(168, 85, 247, 0.15);
-  color: var(--cb-purple-light);
+  background: rgba(232, 163, 61, 0.15);
+  color: var(--cb-ember-light);
   font-size: 9px;
 }
 
@@ -260,9 +260,9 @@
 }
 
 .cb-quiet-button:hover:not(:disabled) {
-  border-color: rgba(192, 132, 252, 0.35);
-  background: rgba(168, 85, 247, 0.06);
-  color: var(--cb-purple-light);
+  border-color: rgba(242, 185, 95, 0.35);
+  background: rgba(232, 163, 61, 0.06);
+  color: var(--cb-ember-light);
 }
 
 .cb-transcript {
@@ -270,7 +270,7 @@
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  scrollbar-color: rgba(192, 132, 252, 0.23) transparent;
+  scrollbar-color: rgba(242, 185, 95, 0.23) transparent;
   scrollbar-width: thin;
 }
 
@@ -288,7 +288,7 @@
 }
 
 .cb-empty code {
-  color: var(--cb-purple-light);
+  color: var(--cb-ember-light);
   font-family: var(--cb-mono);
 }
 
@@ -307,7 +307,7 @@
 }
 
 .cb-message--human {
-  border-left-color: rgba(192, 132, 252, 0.48);
+  border-left-color: rgba(242, 185, 95, 0.48);
 }
 
 .cb-message:hover,
@@ -325,7 +325,7 @@
 }
 
 .cb-identity {
-  color: #d2c7e3;
+  color: #e3d9c7;
   overflow-wrap: anywhere;
   font-size: 11px;
   font-weight: 500;
@@ -333,9 +333,9 @@
 
 .cb-you {
   padding: 2px 4px;
-  border: 1px solid rgba(192, 132, 252, 0.27);
+  border: 1px solid rgba(242, 185, 95, 0.27);
   border-radius: 3px;
-  color: var(--cb-purple-light);
+  color: var(--cb-ember-light);
   font-size: 8px;
   letter-spacing: 0.08em;
 }
@@ -358,10 +358,10 @@
 
 .cb-body code {
   padding: 2px 5px;
-  border: 1px solid rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(236, 232, 223, 0.08);
   border-radius: 3px;
-  background: rgba(168, 85, 247, 0.09);
-  color: #d6b4fa;
+  background: rgba(232, 163, 61, 0.09);
+  color: #f7e0b7;
   font-family: var(--cb-mono);
   font-size: 0.86em;
   box-decoration-break: clone;
@@ -374,7 +374,7 @@
   gap: 5px;
   margin: 0 0 12px;
   padding: 7px 10px;
-  border-left: 2px solid rgba(168, 85, 247, 0.3);
+  border-left: 2px solid rgba(232, 163, 61, 0.3);
   color: var(--cb-muted);
   font-size: 10px;
 }
@@ -411,9 +411,9 @@
 
 .cb-reaction:hover:not(:disabled),
 .cb-reaction[aria-pressed="true"] {
-  border-color: rgba(192, 132, 252, 0.38);
-  background: rgba(168, 85, 247, 0.09);
-  color: var(--cb-purple-light);
+  border-color: rgba(242, 185, 95, 0.38);
+  background: rgba(232, 163, 61, 0.09);
+  color: var(--cb-ember-light);
 }
 
 .cb-actions {
@@ -444,7 +444,7 @@
 }
 
 .cb-actions button:hover:not(:disabled) {
-  color: var(--cb-purple-light);
+  color: var(--cb-ember-light);
 }
 
 .cb-actions .cb-delete:hover:not(:disabled) {
@@ -463,9 +463,9 @@
   display: flex;
   gap: 2px;
   padding: 5px;
-  border: 1px solid rgba(192, 132, 252, 0.28);
+  border: 1px solid rgba(242, 185, 95, 0.28);
   border-radius: 7px;
-  background: #191221;
+  background: #1b1a18;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -477,7 +477,7 @@
 }
 
 .cb-picker button:hover:not(:disabled) {
-  background: rgba(168, 85, 247, 0.16);
+  background: rgba(232, 163, 61, 0.16);
 }
 
 .cb-edit textarea,
@@ -502,8 +502,8 @@
 }
 
 .cb textarea:focus {
-  border-color: rgba(168, 85, 247, 0.6);
-  outline: 2px solid rgba(168, 85, 247, 0.12);
+  border-color: rgba(232, 163, 61, 0.6);
+  outline: 2px solid rgba(236, 232, 223, 0.096);
   outline-offset: 0;
 }
 
@@ -537,7 +537,7 @@
   flex-shrink: 0;
   padding: 15px 24px 8px;
   border-top: 1px solid var(--cb-line);
-  background: rgba(12, 9, 19, 0.6);
+  background: rgba(13, 14, 16, 0.6);
 }
 
 .cb-composer-label {
@@ -564,10 +564,10 @@
   gap: 12px;
   margin-bottom: 12px;
   padding: 9px 10px;
-  border: 1px solid rgba(168, 85, 247, 0.22);
-  border-left: 2px solid var(--cb-purple);
+  border: 1px solid rgba(232, 163, 61, 0.22);
+  border-left: 2px solid var(--cb-ember);
   border-radius: 4px;
-  background: rgba(168, 85, 247, 0.055);
+  background: rgba(232, 163, 61, 0.055);
 }
 
 .cb-target > div {
@@ -578,7 +578,7 @@
 .cb-target-author {
   display: block;
   margin-bottom: 4px;
-  color: var(--cb-purple-light);
+  color: var(--cb-ember-light);
   font-size: 10px;
   overflow-wrap: anywhere;
 }
@@ -604,14 +604,14 @@
 }
 
 .cb-primary-button {
-  border-color: rgba(192, 132, 252, 0.3);
-  background: rgba(124, 58, 237, 0.26);
-  color: #ead6ff;
+  border-color: rgba(242, 185, 95, 0.3);
+  background: rgba(184, 122, 31, 0.26);
+  color: #fbefda;
 }
 
 .cb-primary-button:hover:not(:disabled) {
-  border-color: var(--cb-purple);
-  background: rgba(124, 58, 237, 0.42);
+  border-color: var(--cb-ember);
+  background: rgba(184, 122, 31, 0.42);
 }
 
 .cb-post {

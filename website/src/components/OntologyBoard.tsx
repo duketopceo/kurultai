@@ -261,7 +261,7 @@ export function OntologyBoard({ ontology, atoms, onSelect, onOntologyChanged }: 
           proOptions={{ hideAttribution: true }}
           colorMode="dark"
         >
-          <Background gap={24} size={1} color="rgba(168,85,247,0.12)" />
+          <Background gap={24} size={1} color="rgba(232, 163, 61, 0.12)" />
           <Controls showInteractive={false} position="bottom-right" />
         </ReactFlow>
 

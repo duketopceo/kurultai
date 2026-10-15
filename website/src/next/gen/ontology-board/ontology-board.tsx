@@ -54,7 +54,7 @@ type AddState = { title: string; classId: string } | null;
 const DEFAULT_LINK_TYPES = ["mentions", "belongs_to", "authored", "references", "blocks"];
 /** Weak / referential links render dashed; structural links render solid. */
 const DASHED_TYPES = new Set(["mentions", "references", "cites"]);
-const FALLBACK_COLORS = ["#c084fc", "#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#94a3b8"];
+const FALLBACK_COLORS = ["#f2b95f", "#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#94a3b8"];
 const NARROW_QUERY = "(max-width: 767px)";
 
 /* ───────────────────────── helpers ───────────────────────── */

@@ -22,6 +22,7 @@ version: 1
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`favicon.ico`](favicon.ico) | favicon.ico | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`icon.svg`](icon.svg) | App icon (Council Ring token pass) | — | — | 2026-10-13 | 1 | 2026-10-13 indexed (PR #441) |
 | [`globals.css`](globals.css) | Global CSS | — | — | 2026-09-04 | 2 | 2026-09-04 human vs agent auth layout · 2026-08-16 indexed (v1 seed) |
 | [`layout.tsx`](layout.tsx) | Root layout + Clerk provider | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`page.tsx`](page.tsx) | Marketing/home — human GitHub vs agent keys | — | — | 2026-09-04 | 2 | 2026-09-04 clarify human vs agent access · 2026-08-16 indexed (v1 seed) |
