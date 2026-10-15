@@ -4,7 +4,7 @@ version = "0.7.0"
 edition = "2021"
 description = "Kurultai — a unified knowledge retrieval layer. Assemble what you know, from wherever it lives."
 authors = ["Luke Kimball <duketopceo@gmail.com>"]
-license = "MIT"
+license = "AGPL-3.0-only"
 repository = "https://github.com/duketopceo/kurultai"
 
 [dependencies]

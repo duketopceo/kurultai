@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Kurultai launch video — 'The brain your agents share'. Isolated Remotion project; never shipped in the daemon.",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "studio": "remotion studio src/index.ts",
     "render": "remotion render src/index.ts KurultaiLaunch out/kurultai-launch.mp4",
