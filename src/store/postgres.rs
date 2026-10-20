@@ -39,7 +39,15 @@ impl PostgresStore {
             .await
             .map_err(|e| KurultaiError::Store(format!("postgres connect: {e}")))?;
         let store = Self { pool, embed_dim };
-        store.migrate().await?;
+        // KTD8: the hub runtime role (`kurultai_app`) has no DDL rights — with
+        // `KURULTAI_PG_SKIP_MIGRATE=1` the pool skips the eager `migrate()`
+        // entirely. Migrations then run out-of-band under
+        // `KURULTAI_MIGRATE_DATABASE_URL` (`kurultai_migrate`, BYPASSRLS):
+        // `kurultai hub …` CLI and `init-hub-db.sql` run without the env set,
+        // so they still migrate.
+        if !skip_migrate_enabled() {
+            store.migrate().await?;
+        }
         Ok(store)
     }
 
@@ -272,6 +280,15 @@ impl PostgresStore {
         .await?;
 
         HubActivityStore::migrate_conn(conn).await?;
+
+        // R11/KTD1 — ENABLE + FORCE row-level security and the GUC-keyed scope
+        // policies (defense-in-depth under `hub_visibility_sql`). Statement
+        // bodies live with the rest of the schema DDL in
+        // `migrations::PG_HUB_RLS`; requires table ownership — the migrate
+        // path (KTD8) is the owner, the runtime `kurultai_app` role is not.
+        for (sql, ctx) in super::migrations::PG_HUB_RLS {
+            exec_ddl(conn, sql, ctx).await?;
+        }
 
         Ok(())
     }
@@ -543,6 +560,20 @@ fn parse_dt(s: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(s)
         .map(|d| d.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now())
+}
+
+/// `KURULTAI_PG_SKIP_MIGRATE=1` marks a runtime-role (`kurultai_app`)
+/// connection — no DDL rights, so `connect` must not attempt `migrate()`
+/// (KTD8). Shared by `PostgresStore::connect` and `HubKeyStore::connect`.
+pub(crate) fn skip_migrate_enabled() -> bool {
+    std::env::var("KURULTAI_PG_SKIP_MIGRATE")
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "on" | "yes"
+            )
+        })
+        .unwrap_or(false)
 }
 
 async fn exec_ddl(conn: &mut sqlx::postgres::PgConnection, sql: &str, ctx: &str) -> Result<()> {

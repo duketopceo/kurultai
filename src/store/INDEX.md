@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src/store
 parent: src/INDEX.md
-updated: 2026-10-03
-version: 7
+updated: 2026-10-20
+version: 8
 ---
 
 # `src/store`
@@ -19,11 +19,13 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`migrations.rs`](migrations.rs) | SQLite schema migrations + `ensure_multivec_table` (lazy `atoms_multivec`) | `src/error` | `src/export/mod.rs` · `src/http/ingest.rs` · `src/ontology/mod.rs` · `src/quality/gate.rs` · `src/quality/near_dupe.rs` | 2026-10-07 | 6 | 2026-10-07 `ensure_multivec_table` (lazy, no schema bump) (#424) · schema v17 `superseded_at`/`superseded_by` + idx ·2026-09-16 v16 `agent_seats` + `device_flows.instance_id` · 2026-09-11 v15 `ontology_proposals` table (#118) · 2026-09-06 v14 `device_flows` table · 2026-08-16 indexed (v1 seed) |
+| [`migrations.rs`](migrations.rs) | SQLite schema migrations + `ensure_multivec_table` (lazy `atoms_multivec`) + `PG_HUB_RLS` Postgres RLS policy DDL (consumed by `postgres::migrate_locked`) | `src/error` | `src/export/mod.rs` · `src/http/ingest.rs` · `src/ontology/mod.rs` · `src/quality/gate.rs` · `src/quality/near_dupe.rs` · `src/store/postgres.rs` | 2026-10-20 | 7 | 2026-10-20 `PG_HUB_RLS` — FORCE RLS + GUC-keyed scope policies on `knowledge_atoms`/`atoms_vec`/`hub_activity` (R11/KTD1, hub adoption U1) · 2026-10-07 `ensure_multivec_table` (lazy, no schema bump) (#424) · schema v17 `superseded_at`/`superseded_by` + idx ·2026-09-16 v16 `agent_seats` + `device_flows.instance_id` · 2026-09-11 v15 `ontology_proposals` table (#118) · 2026-09-06 v14 `device_flows` table · 2026-08-16 indexed (v1 seed) |
 | [`mod.rs`](mod.rs) | Store trait, open_store, SqliteVecStore, multivec lane | `src/error` · `src/hashutil` · `src/memory` · `src/types` | `src/export/mod.rs` · `src/http/ingest.rs` · `src/ontology/mod.rs` · `src/quality/gate.rs` · `src/app/context.rs` · `src/http/device_auth.rs` · `src/http/device.rs` | 2026-10-07 | 11 | 2026-10-07 `upsert_multivecs`/`get_multivecs` (trait defaults + SqliteVec, lazy table, FK cascade) (#424) · U5: `duplicate_content_groups` + `prune_stale_ontology` (trait+SQLite) ·2026-10-03 U4: `superseded_at/by` cols in ATOM_COLUMNS+hydrate; `SearchFilter.as_of/include_superseded` + `mark_superseded`; fts+vector supersede predicates ·2026-09-23 `atom_epoch()` — mutation epoch on `SqliteVecStore` (upsert/delete/lane/auto-merge bump; `touch_access` doesn't) for prepared `/api/graph` invalidation; `u64::MAX` default = untrackable (#324) · 2026-09-19 `get_thread(id)` added — id-vs-name collision resolution for Hey threads · 2026-09-16 `issue_agent_seat_token`/`revoke_agent`/`deny_device_flow`; key-hash resolve covers seats · 2026-09-15 `classify_atom` in tier paths — sequester rules apply (#325) |
-| [`postgres.rs`](postgres.rs) | Optional PostgresStore (--features postgres) | `src/error` · `src/hashutil` · `src/hub/activity.rs` · `src/memory` · `src/types` | `src/export/mod.rs` · `src/http/ingest.rs` · `src/ontology/mod.rs` · `src/quality/gate.rs` · `src/quality/near_dupe.rs` | 2026-10-04 | 6 | U5: `duplicate_content_groups` + `prune_stale_ontology` (Postgres parity) ·2026-10-03 U4: superseded columns ddl + fts/vector predicates + `mark_superseded` ·2026-09-15 `classify_atom` in tier paths — sequester rules apply (#325) |
+| [`postgres.rs`](postgres.rs) | Optional PostgresStore (--features postgres); `KURULTAI_PG_SKIP_MIGRATE` env gate on `connect` (KTD8) | `src/error` · `src/hashutil` · `src/hub/activity.rs` · `src/memory` · `src/types` · `src/store/migrations.rs` | `src/export/mod.rs` · `src/http/ingest.rs` · `src/ontology/mod.rs` · `src/quality/gate.rs` · `src/quality/near_dupe.rs` · `src/hub/keys.rs` | 2026-10-20 | 7 | 2026-10-20 hub adoption U1: RLS loop from `migrations::PG_HUB_RLS` in `migrate_locked` + `skip_migrate_enabled()` env gate (KTD8) · U5: `duplicate_content_groups` + `prune_stale_ontology` (Postgres parity) ·2026-10-03 U4: superseded columns ddl + fts/vector predicates + `mark_superseded` ·2026-09-15 `classify_atom` in tier paths — sequester rules apply (#325) |
 
 ## Recent
+
+- 2026-10-20 — `migrations.rs`/`postgres.rs` (hub adoption U1, R11/KTD1/KTD8): `PG_HUB_RLS` — ENABLE+FORCE RLS on `knowledge_atoms` (select/insert/update/delete policies keyed on `kurultai.team_id`/`kurultai.is_admin` GUCs), `atoms_vec` (parent-atom EXISTS scope), `hub_activity` (append-only, admin SELECT); `KURULTAI_PG_SKIP_MIGRATE` skips eager `migrate()` on `connect`
 
 - 2026-10-07 — `mod.rs`/`migrations.rs`: `atoms_multivec` sidecar — `Store::upsert_multivecs`/`get_multivecs` (defaults for other stores), lazy table, cascade delete; roundtrip+cascade tests
 

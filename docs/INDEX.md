@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-10-19
-version: 10
+updated: 2026-10-20
+version: 11
 ---
 
 # `docs`
@@ -38,9 +38,11 @@ version: 10
 | [`HANDOFF-omarchy-macbook-m1.md`](HANDOFF-omarchy-macbook-m1.md) | m1→max migration handoff: shipped PRs, watcher hot-loop bug, new-machine connect bootstrap | — | — | 2026-09-19 | 1 | 2026-09-19 added |
 | [`multi-user-kurultai.md`](multi-user-kurultai.md) | Multi-user / hub product notes | — | — | 2026-08-29 | 2 | 2026-08-29 hosted-hub row points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`upstream-inspiration.md`](upstream-inspiration.md) | Upstream inspiration notes | — | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`runbook-hub.md`](runbook-hub.md) | Operator runbook for the Postgres hub on server-001: env/Access/tunnel prereqs, `init-hub-db.sql` bootstrap, migrate via migrate DSN, first admin key, connect-join, AE6 RLS proof, rollback, `pg_dump` warning | `deploy/server-001/docker-compose.kurultai.yml` · `deploy/server-001/init-hub-db.sql` · `deploy/server-001/.env.example` | — | 2026-10-20 | 1 | 2026-10-20 added (hub adoption U7) |
 
 ## Recent
 
+- 2026-10-20 — `runbook-hub.md` added (U7): operator runbook for the server-001 Postgres hub (bootstrap → AE6 → rollback)
 - 2026-10-19 — plans/ added `2026-10-19-2053-feat-hub-adoption-easy-connect-plan.md` (first team/company adoption: RLS, connect-join, hub deploy, web/ team app)
 - 2026-10-19 — `AGENT_SETUP_PROMPT.md` + `mac-dev.md`: cargo install tag refs bumped v0.4.x → v0.7.0 (stale since release)
 - 2026-10-05 — plans/ added 2026-10-05-001 program roadmap plan (U1-U21, plan classification)

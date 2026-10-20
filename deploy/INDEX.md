@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: deploy
 parent: INDEX.md
-updated: 2026-09-05
-version: 2
+updated: 2026-10-20
+version: 3
 ---
 
 # `deploy`
@@ -12,7 +12,7 @@ version: 2
 
 ## Children
 
-- [`server-001/`](server-001/INDEX.md) — Two-instance Kurultai stack on Ubuntu 24.04 / Docker.
+- [`server-001/`](server-001/INDEX.md) — Kurultai stack on Ubuntu 24.04 / Docker: solo instances + Postgres team hub.
 
 ## Files
 
@@ -20,5 +20,6 @@ _None._
 
 ## Recent
 
+- 2026-10-20 — `server-001/` hub deploy recipe (U7): `Dockerfile.hub`, `kurultai-hub`/`kurultai-hub-db` compose services, hub `.env` vars, `init-hub-db.sql`; operator runbook at `docs/runbook-hub.md`
 - 2026-09-05 — `server-001/` add `add-agent-api-hostnames.sh` for agent-only API subdomains
 - 2026-09-04 — added `server-001/` Kurultai personal + work + landing stack.

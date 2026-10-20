@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-10-19
-version: 20
+updated: 2026-10-20
+version: 22
 ---
 
 # `.`
@@ -77,6 +77,8 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-10-20 — hub RLS + roles (plan 2026-10-19-2053 U1): `migrations::PG_HUB_RLS` — FORCE RLS on `knowledge_atoms`/`atoms_vec`/`hub_activity` keyed on `kurultai.team_id`/`kurultai.is_admin` GUCs; `KURULTAI_PG_SKIP_MIGRATE` gate on `PostgresStore`/`HubKeyStore` connects (KTD8); `deploy/server-001/init-hub-db.sql` role+grant bootstrap; `tests/hub_rls.rs` self-provisioning coverage
+- 2026-10-20 — hub deploy recipe (plan 2026-10-19-2053 U7): `deploy/server-001/` gains `Dockerfile.hub` (`--features postgres`), `kurultai-hub`/`kurultai-hub-db` compose services + `kurultai-hub-pgdata`, hub `.env` placeholders, `redeploy.sh` hub build; `docs/runbook-hub.md` operator runbook
 - 2026-10-19 — repo cleanup: 10 dependabot PRs merged (cargo×5, web×4, website vite pending); issues #116/#117/#122/#132 closed as shipped, #137/#140 status-updated to current brain doctrine; 14 dead remote branches + 6 local deleted (mesh-schema kept — unique unmerged work); version refs reconciled to v0.7.0 (version.ts, INSTALL_GUIDE, AGENT_SETUP, mac-dev, skill readme), CHANGELOG gains missing 0.7.0 section, `.gitignore` `.worktrees/`, INSTALL_REPORT historical banner, LICENSE row → AGPL
 - 2026-10-07 — `docs/plans/2026-10-07-001`: multi-vector late-interaction embed plan (pplx-embed-v2-late rerank lane, `MultiVectorEmbedder` + `atoms_multivec` sidecar, fastembed/http backends, dense v1 primary untouched); tracking issue #424
 - 2026-10-06 — explainer film: `launch/src/videos/kurultai/explainer/` — "how does an agent remember between sessions?" (~80s, diagram-first, VO-timed draft); Diagram.tsx primitives

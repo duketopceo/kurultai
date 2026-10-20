@@ -40,8 +40,14 @@ impl HubKeyStore {
             .await
             .map_err(|e| KurultaiError::Store(format!("hub keys connect: {e}")))?;
         let store = Self { pool };
-        store.migrate().await?;
-        HubActivityStore::migrate(store.pool()).await?;
+        // KTD8 — same gate as `PostgresStore::connect`: under
+        // `KURULTAI_PG_SKIP_MIGRATE=1` (hub runtime role `kurultai_app`,
+        // no DDL rights) the pool skips `migrate()`; schema comes from the
+        // `KURULTAI_MIGRATE_DATABASE_URL` path instead.
+        if !crate::store::postgres::skip_migrate_enabled() {
+            store.migrate().await?;
+            HubActivityStore::migrate(store.pool()).await?;
+        }
         Ok(store)
     }
 
