@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.7.0] — 2026-10-06
+
+Shared agent memory — embeds, honesty, lifecycle. Competitive feature sweep (U1–U5) shipped.
+
+**Retrieval + embeddings:**
+
+- Perplexity embed backend — `embed.backend = "perplexity"` (`pplx-embed-v1-0.6b` @1024 / `v1-4b` @2560, int8-base64 decode) (#400); wired into demo + hosted instances (#409–#412).
+- Multi-vector late-interaction lane — `MultiVectorEmbedder` + `atoms_multivec` sidecar (fastembed/http backends) for `pplx-embed-v2-late` rerank; dense v1 primary untouched (#424).
+- Gap-aware ask — `Answer.gaps` deterministic analyzer reports what the brain lacks (zero/thin/quarantine-only coverage, unmatched salient terms) instead of confabulating (#401, sweep U2).
+
+**Knowledge lifecycle:**
+
+- Supersede chains + time travel — `supersedes:` frontmatter at index time; `--as-of`/`--include-superseded` on `search`/`ask`; schema v17 (#405, sweep U4).
+- Zero-LLM ontology edge extraction — `[[wiki-links]]`/`@mentions`/frontmatter `related:` become `references` edges + entity stubs at index time (#403, sweep U3).
+- Nightly consolidation sweep — `kurultai sweep` folds content-hash dupes into canonical atoms via supersede, prunes stale ontology links/entities, reports tier+quarantine census to the Hey board; daemon runs it after nightly full sync (#407, sweep U5).
+
+**Agents + access:**
+
+- Per-device broker + seat-token MCP auth — loopback daemon holds the upstream seat, mints per-chat `sess_*` keys; `POST /mcp` relays upstream with `X-Kurultai-{agent,chat,session,device}` stamps; upstream `/mcp` accepts registered seat tokens (full surface) + shared-secret read-only; `mcp --broker` agent stdio lane; `[broker]` config + `security::read_agent_key` (#381).
+- `remote_ingest` feature flag — secret-authenticated non-loopback `POST /ingest` with peer audit log (#406).
+- Demo mode — isolated fixture-corpus daemon (`daemon --demo`), solo Dockerfile, container bind opt-in, CF Access satisfies bind gate (#379, #388); Meridian seed corpus, 202+ fixture atoms + boot-time Hey/ontology seeding (#390, #391).
+- `ui-next` served as the default `/ui/` surface (#387).
+
+**Repo + docs:**
+
+- Launch film project under `launch/` (Remotion, "One brain. Every agent.") (#411); explainer cut added 2026-10-06.
+- `LICENSE` → AGPL-3.0-only (#443).
+- Canonical OpenRouter app attribution on all call sites (#404); cloudflared svc dropped from deploy compose, secrets required at compose time (#386).
+- Docs: CBM code-graph index note for agents (#385); competitive sweep wrap-up (#408).
+
 ## [0.6.0] — 2026-09-11
 
 Brain wave-1 + hosted access + agent board. All version strings reconciled (`Cargo.toml`, `website/src/version.ts`, `website/package.json` = `0.6.0`).

@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-10-05
-version: 19
+updated: 2026-10-19
+version: 20
 ---
 
 # `.`
@@ -46,23 +46,23 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`.coderabbit.yaml`](.coderabbit.yaml) | CodeRabbit: auto-review off | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`.dockerignore`](.dockerignore) | Docker build context excludes for the hub image | — | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 hub image context |
 | [`.env.example`](.env.example) | Example env vars (API keys, hub bind, eval/web) | — | — | 2026-09-17 | 3 | 2026-09-17 eval/web block (`PERPLEXITY_API_KEY`, `KURULTAI_FEATURE_WEB_SEARCH`) · 2026-08-29 hub env block (HUB-3) · 2026-08-16 indexed (v1 seed) |
-| [`.gitignore`](.gitignore) | Ignored build, env, agent workspace, eval report, design-lab output paths | — | — | 2026-09-26 | 7 | 2026-09-26 `design-lab/out/` (batch variants are scratch) · 2026-09-18 root `node_modules/` (Argus tooling shim) · 2026-09-17 `evals/reports/` · 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
+| [`.gitignore`](.gitignore) | Ignored build, env, agent workspace, eval report, design-lab output, worktree paths | — | — | 2026-10-19 | 8 | 2026-10-19 `.worktrees/` (salvaged from docs/tighten-agent-facing-docs) · 2026-09-26 `design-lab/out/` (batch variants are scratch) · 2026-09-18 root `node_modules/` (Argus tooling shim) · 2026-09-17 `evals/reports/` · 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
 | [`.mailmap`](.mailmap) | Maps duketopceo@gmail.com commits to luke.k@bartlettroofs.com | — | — | 2026-10-07 | 1 | 2026-10-07 added (#423) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-05 | 3 | 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Prompt snippet for wiring agents to Kurultai | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-09-11 | 4 | 2026-09-11 v0.6.0 release notes · 2026-09-01 v0.5.0 release notes · 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
+| [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-10-19 | 5 | 2026-10-19 v0.7.0 section backfill (was missing since release) · 2026-09-11 v0.6.0 release notes · 2026-09-01 v0.5.0 release notes · 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor covenant | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CONCEPTS.md`](CONCEPTS.md) | Shared domain vocabulary (atoms, hub, FTS-first, ontology, golden set, judge, web augmentation) | — | — | 2026-09-17 | 3 | 2026-09-17 golden set / judge / web augmentation terms · 2026-08-29 Hub paragraph points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup, tests, PR and architecture guidelines | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-15 | 4 | 2026-09-15 FEATURE_MATRIX sync-contract note (#329) |
 | [`Cargo.lock`](Cargo.lock) | Locked Rust dependency graph for reproducible CI | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.6.0) and optional features | — | — | 2026-09-11 | 5 | 2026-09-11 bump to v0.6.0 · 2026-09-01 bump to v0.5.0 · 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-16 indexed (v1 seed) |
+| [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.7.0) and optional features | — | — | 2026-10-06 | 6 | 2026-10-06 bump to v0.7.0 (#415) · 2026-09-11 bump to v0.6.0 · 2026-09-01 bump to v0.5.0 · 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-16 indexed (v1 seed) |
 | [`Dockerfile`](Dockerfile) | Multi-stage hub image (`--features postgres`) | `docs/deploy/railway-hub.md` | `docker-compose.hub.yml` | 2026-08-29 | 1 | 2026-08-29 HUB-3 Railway/compose image |
 | [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | Kurultai Feature Matrix (KHAN-251) | — | — | 2026-09-15 | 2 | 2026-09-15 ported from kurultai-private + sync-contract note (#329) |
-| [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`LICENSE`](LICENSE) | MIT license | — | — | 2026-07-18 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`INSTALL_GUIDE.md`](INSTALL_GUIDE.md) | Kurultai Install Guide (macOS) | — | — | 2026-10-19 | 2 | 2026-10-19 version refs v0.4.1 → v0.7.0 (stale 2 releases) · 2026-08-16 indexed (v1 seed) |
+| [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report (historical v0.4.1) | — | — | 2026-10-19 | 2 | 2026-10-19 historical-verification banner (content stays v0.4.1 evidence) · 2026-08-16 indexed (v1 seed) |
+| [`LICENSE`](LICENSE) | AGPL-3.0-only license | — | — | 2026-10-15 | 2 | 2026-10-15 MIT → AGPL-3.0-only (#443) · 2026-08-16 indexed (v1 seed) |
 | [`DESIGN.md`](DESIGN.md) | Design direction proposal "Council Ring": tokens, glyphs, motion, surfaces | docs/design/bases/linear.DESIGN.md | website/src/next tokens | 2026-10-10 | 1 | 2026-10-10 created (repo program) |
 | [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-12 | 5 | 2026-09-12 link ROADMAP.md in Status · 2026-09-11 v0.6.0 release stack facts · 2026-09-01 v0.5.0 release stack facts |
 | [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/2026-10-05-001-docs-program-roadmap-plan.md` · `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-10-05 | 2 | 2026-10-05 lists program roadmap plan first · 2026-09-12 created — issue #122 |
@@ -77,6 +77,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-10-19 — repo cleanup: 10 dependabot PRs merged (cargo×5, web×4, website vite pending); issues #116/#117/#122/#132 closed as shipped, #137/#140 status-updated to current brain doctrine; 14 dead remote branches + 6 local deleted (mesh-schema kept — unique unmerged work); version refs reconciled to v0.7.0 (version.ts, INSTALL_GUIDE, AGENT_SETUP, mac-dev, skill readme), CHANGELOG gains missing 0.7.0 section, `.gitignore` `.worktrees/`, INSTALL_REPORT historical banner, LICENSE row → AGPL
 - 2026-10-07 — `docs/plans/2026-10-07-001`: multi-vector late-interaction embed plan (pplx-embed-v2-late rerank lane, `MultiVectorEmbedder` + `atoms_multivec` sidecar, fastembed/http backends, dense v1 primary untouched); tracking issue #424
 - 2026-10-06 — explainer film: `launch/src/videos/kurultai/explainer/` — "how does an agent remember between sessions?" (~80s, diagram-first, VO-timed draft); Diagram.tsx primitives
 - 2026-10-05 — launch film v3 3D-brain cut: `launch/src/videos/kurultai/v3/` (7 beats, ~28s) + `launch/src/core/Brain3D.tsx` R3F primitive (cortex hull, emissive neurons, edge pending/supersede states); `@remotion/three`+`three`+r3f deps

@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/duketopceo/kurultai/main/scripts/in
 Or pin a tag with cargo ([rustup](https://rustup.rs)):
 
 ```bash
-cargo install --git https://github.com/duketopceo/kurultai --tag v0.4.1 --locked
+cargo install --git https://github.com/duketopceo/kurultai --tag v0.7.0 --locked
 ```
 
 Ensure `~/.local/bin` or `~/.cargo/bin` is on `PATH`.
