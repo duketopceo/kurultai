@@ -50,7 +50,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`.mailmap`](.mailmap) | Maps duketopceo@gmail.com commits to luke.k@bartlettroofs.com | — | — | 2026-10-07 | 1 | 2026-10-07 added (#423) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-05 | 3 | 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
+| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-10-19 | 4 | 2026-10-19 ui rebuilds require node 22 (hash parity w/ CI) · 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Prompt snippet for wiring agents to Kurultai | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-10-19 | 5 | 2026-10-19 v0.7.0 section backfill (was missing since release) · 2026-09-11 v0.6.0 release notes · 2026-09-01 v0.5.0 release notes · 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor covenant | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |

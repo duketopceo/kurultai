@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website
 parent: INDEX.md
-updated: 2026-09-15
-version: 9
+updated: 2026-10-19
+version: 10
 ---
 
 # `website`
@@ -19,7 +19,7 @@ version: 9
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`README.md`](README.md) | How to run Vite preview + build-ui.sh | — | — | 2026-09-04 | 2 | 2026-09-04 clarify source is website/src and scripts/build-ui.sh prunes stale assets · 2026-08-16 indexed (v1 seed) |
+| [`README.md`](README.md) | How to run Vite preview + build-ui.sh | — | — | 2026-10-19 | 3 | 2026-10-19 node-22 note on build-ui.sh · 2026-09-04 clarify source is website/src and scripts/build-ui.sh prunes stale assets · 2026-08-16 indexed (v1 seed) |
 | [`brain.html`](brain.html) | Brain page HTML entry + favicon/theme meta | — | `src/http/mod.rs` · `src/mcp/brain.rs` · `src/query/context.rs` · `src/query/hybrid.rs` | 2026-09-06 | 2 | 2026-09-06 favicon link, theme-color, hosted-neutral description, ui-version sync · 2026-08-16 indexed (v1 seed) |
 | [`ui-next.html`](ui-next.html) | ui-next page HTML entry (plan U4 parallel surface) | — | `src/next/main.tsx` | 2026-09-27 | 1 | 2026-09-27 added |
 | [`package-lock.json`](package-lock.json) | npm lockfile | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -30,6 +30,7 @@ version: 9
 
 ## Recent
 
+- 2026-10-19 — README: build-ui.sh runs under node 22 (script now fails closed on other majors)
 - 2026-09-27 — ui-next parallel surface: `ui-next.html` entry + `src/next/` app (design-lab stitch, plan U4)
 
 - 2026-09-15 — board v2 delete UX; `ui/` rebuilt (#320)
