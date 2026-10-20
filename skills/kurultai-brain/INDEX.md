@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: skills/kurultai-brain
 parent: skills/INDEX.md
-updated: 2026-08-16
-version: 1
+updated: 2026-10-19
+version: 2
 ---
 
 # `skills/kurultai-brain`
@@ -19,10 +19,11 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`README.md`](README.md) | Skill readme | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`README.md`](README.md) | Skill readme | — | — | 2026-10-19 | 2 | 2026-10-19 install tag v0.4.0 → v0.7.0 · 2026-08-16 indexed (v1 seed) |
 | [`SKILL.md`](SKILL.md) | Kurultai Brain agent skill | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-10-19 — `README.md` install tag v0.4.0 → v0.7.0
 - 2026-08-16 — indexed this folder (v1 seed)
 

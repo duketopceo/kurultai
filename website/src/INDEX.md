@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src
 parent: website/INDEX.md
-updated: 2026-09-27
-version: 10
+updated: 2026-10-19
+version: 11
 ---
 
 # `website/src`
@@ -35,10 +35,11 @@ version: 10
 | [`types.ts`](types.ts) | TS types for atoms/graph/ontology | — | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`proposals.ts`](proposals.ts) | O3 proposal type + describeProposal (pure, node-testable) | — | `website/src/api` · `website/src/proposals.test.ts` · `website/src/components/ProposalsPanel` | 2026-09-11 | 1 | 2026-09-11 added (#118) |
 | [`proposals.test.ts`](proposals.test.ts) | describeProposal unit tests | `website/src/proposals` | — | 2026-09-11 | 1 | 2026-09-11 added (#118) |
-| [`version.ts`](version.ts) | UI version string | — | — | 2026-09-11 | 2 | 2026-09-11 bump to 0.6.0 · 2026-08-16 indexed (v1 seed) |
+| [`version.ts`](version.ts) | UI version string | — | — | 2026-10-19 | 3 | 2026-10-19 bump to 0.7.0 · 2026-09-11 bump to 0.6.0 · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-10-19 — `version.ts` UI_VERSION 0.6.0 → 0.7.0 (was stale since the v0.7.0 release)
 - 2026-09-20 — client perf telemetry (#102): `perf.ts` reporter (nav_ms, tier_load_ms, fps, long_tasks, heap_mb → `POST /api/metrics/client`); `App.tsx` inits + tags tier + reports per-load ms; `BrainStage` BrainHud feeds FPS samples
 - 2026-09-19 — mobile overflow fix (`styles.css`): dead `.nav-links` selector replaced with `.topbar-nav`; command-strip/mission wrap rules moved into the ≤960px block *after* their base rules — equal-specificity cascade had silently dropped them
 - 2026-09-19 — Hey whole-thread view: Chatboard gains `kb-expanded` portal overlay (Esc/close) + UUID thread labels shorten to 8 chars; HeyPanel active-thread resolution prefers id over name (UUID-named threads caused thread hopping); `styles.css` gains expanded-overlay rules + base `.kb-panes` grid

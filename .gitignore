@@ -70,3 +70,6 @@ node_modules/
 
 # Design-lab generated variants (U3 outputs are scratch)
 design-lab/out/
+
+# Worktrees
+.worktrees/

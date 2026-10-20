@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-10-05
-version: 9
+updated: 2026-10-19
+version: 10
 ---
 
 # `docs`
@@ -30,17 +30,18 @@ version: 9
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`AGENT_CONNECTION_PROMPT.md`](AGENT_CONNECTION_PROMPT.md) | Copy-paste agent prompt for reading/writing the Kurultai brain (local MCP + hosted instances) | — | — | 2026-10-06 | 2 | 2026-10-06 §B corrected: seat-token bearer on /mcp grants full write surface, `api-*` hostnames bearer-only · 2026-09-29 ported from archived kurultai-private |
-| [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Copy-paste agent setup prompt | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Copy-paste agent setup prompt | — | — | 2026-10-19 | 2 | 2026-10-19 install tag v0.4.0 → v0.7.0 · 2026-08-16 indexed (v1 seed) |
 | [`PROJECT_SCOPING.md`](PROJECT_SCOPING.md) | Project scoping notes | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`agent-index.md`](agent-index.md) | Agent INDEX.md schema, skip list, update ritual | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`crew-instance-node3.md`](crew-instance-node3.md) | Crew instance notes | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`mac-dev.md`](mac-dev.md) | macOS dev setup | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`mac-dev.md`](mac-dev.md) | macOS dev setup | — | — | 2026-10-19 | 2 | 2026-10-19 install tag v0.4.1 → v0.7.0 · 2026-08-16 indexed (v1 seed) |
 | [`HANDOFF-omarchy-macbook-m1.md`](HANDOFF-omarchy-macbook-m1.md) | m1→max migration handoff: shipped PRs, watcher hot-loop bug, new-machine connect bootstrap | — | — | 2026-09-19 | 1 | 2026-09-19 added |
 | [`multi-user-kurultai.md`](multi-user-kurultai.md) | Multi-user / hub product notes | — | — | 2026-08-29 | 2 | 2026-08-29 hosted-hub row points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`upstream-inspiration.md`](upstream-inspiration.md) | Upstream inspiration notes | — | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-10-19 — `AGENT_SETUP_PROMPT.md` + `mac-dev.md`: cargo install tag refs bumped v0.4.x → v0.7.0 (stale since release)
 - 2026-10-05 — plans/ added 2026-10-05-001 program roadmap plan (U1-U21, plan classification)
 - 2026-09-30 — plans/ added 2026-09-30-001 load + chaos harness plan (scripts/hammer.mjs + tests/chaos.rs); hosted write-hammer evidence: ~133 wps, zero errors
 - 2026-10-06 — `AGENT_CONNECTION_PROMPT.md`: remote MCP section documents seat-token write surface + api-* hostnames
