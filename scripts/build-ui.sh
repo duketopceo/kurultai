@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Rebuild website/ → ui/ for rust-embed (daemon GET /ui/).
+# NOTE: run under node 22 (see .nvmrc) — hash-named ui-next-* assets differ
+# across node majors, and the CI embedded-asset check builds with node 22.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
