@@ -41,6 +41,7 @@ version: 10
 
 ## Recent
 
+- 2026-10-19 — plans/ added `2026-10-19-2053-feat-hub-adoption-easy-connect-plan.md` (first team/company adoption: RLS, connect-join, hub deploy, web/ team app)
 - 2026-10-19 — `AGENT_SETUP_PROMPT.md` + `mac-dev.md`: cargo install tag refs bumped v0.4.x → v0.7.0 (stale since release)
 - 2026-10-05 — plans/ added 2026-10-05-001 program roadmap plan (U1-U21, plan classification)
 - 2026-09-30 — plans/ added 2026-09-30-001 load + chaos harness plan (scripts/hammer.mjs + tests/chaos.rs); hosted write-hammer evidence: ~133 wps, zero errors
