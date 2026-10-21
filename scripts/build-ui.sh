@@ -2,6 +2,9 @@
 # Rebuild website/ → ui/ for rust-embed (daemon GET /ui/).
 # NOTE: run under node 22 (see .nvmrc) — hash-named ui-next-* assets differ
 # across node majors, and the CI embedded-asset check builds with node 22.
+# NOTE: the bundle embeds the website/ TREE hash of HEAD (vite.config.ts).
+# Any change under website/ — even INDEX.md/README — bumps the stamp, so
+# rebuild + commit ui/ as the last change on any PR touching website/.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
