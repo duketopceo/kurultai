@@ -1,6 +1,7 @@
 pub mod migrations;
 #[cfg(feature = "postgres")]
 pub mod postgres;
+pub mod scope;
 
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;

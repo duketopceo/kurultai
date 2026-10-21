@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: tests
 parent: INDEX.md
 updated: 2026-10-20
-version: 7
+version: 8
 ---
 
 # `tests`
@@ -29,7 +29,7 @@ version: 7
 | [`acceptance_write_policy.rs`](acceptance_write_policy.rs) | Acceptance tests — shared-store write containment (Track A / A2). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`chaos.rs`](chaos.rs) | Chaos tests — SIGKILL mid-write WAL recovery, cold-start bound, disk pressure (ignored) — hermetic scratch DBs | spawned daemon subprocess | tmp dirs | 2026-09-30 | 1 | plan 2026-09-30-001 U4 |
 | [`cli_smoke.rs`](cli_smoke.rs) | Phase 1 CLI smoke (#5 / #23) — binary against fixture vault. | — | — | 2026-08-29 | 2 | 2026-08-29 unset ambient hub flag in bin() · 2026-08-16 indexed (v1 seed) |
-| [`hub_rls.rs`](hub_rls.rs) | Hub RLS tests (plan 2026-10-19-2053 U1, R11/KTD1/KTD8) — self-provisions `kurultai_app`/`kurultai_migrate` roles + grants (superuser bypasses FORCE RLS, so scoped checks run on per-role connections); eng/no-GUC/admin scope reads, member WITH CHECK + CHECK-constraint write rejections, delete/DDL denial, atoms_vec parent-scope EXISTS, hub_activity append-only, `KURULTAI_PG_SKIP_MIGRATE` gate | `KURULTAI_TEST_DATABASE_URL` · `--features postgres` | `deploy/server-001/init-hub-db.sql` (grant list mirror) | 2026-10-20 | 1 | 2026-10-20 added (hub adoption U1) |
+| [`hub_rls.rs`](hub_rls.rs) | Hub RLS tests (plan 2026-10-19-2053 U1+U2, R11/KTD1/KTD5/KTD8) — self-provisions `kurultai_app`/`kurultai_migrate` roles + grants; eng/no-GUC/admin scope reads, member WITH CHECK + CHECK-constraint rejections, atoms_vec EXISTS, hub_activity append-only, skip-migrate gate; U2 adds pool-checkout scope bleed, closed-scope fail-closed, member→admin negative, HTTP member `/api/search` AE5 via `build_app`, member `remember` stamping, `/api/hub/activity` 403 | `KURULTAI_TEST_DATABASE_URL` · `--features postgres` | `deploy/server-001/init-hub-db.sql` (grant list mirror) | 2026-10-20 | 2 | 2026-10-20 U2 suite — `PgScope` task-local + `begin_scope` tx coverage end-to-end on `kurultai_app` (15 tests) · 2026-10-20 added (hub adoption U1) |
 | [`inbox_adapter_test.rs`](inbox_adapter_test.rs) | Inbox tray + dump format parity + gate heuristics (AE1–AE7). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`install_script_test.rs`](install_script_test.rs) | Personal installer script smoke (#72) — bash syntax + dry-run / help. | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`json_ingestion_test.rs`](json_ingestion_test.rs) | Integration tests for U1.1–U1.3: schema migration v006, ingestion_jobs store | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -43,6 +43,7 @@ version: 7
 
 ## Recent
 
+- 2026-10-20 — `hub_rls.rs` U2 suite (hub adoption U2): sequential pool-checkout bleed (eng→sales→eng→closed), closed-scope company-only + member-never-admin negative, `build_app` member-key `/api/search` AE5 over HTTP, `remember` server-side team stamping, `/api/hub/activity` member 403 — 15 tests on the real `kurultai_app` role
 - 2026-10-20 — `hub_rls.rs` added (hub adoption U1): 10 Postgres RLS tests — scope reads, member/admin writes, atoms_vec/hub_activity policies, skip-migrate gate
 - 2026-09-30 — `cli_smoke.rs`: `daemon --demo` fails closed without config; `demo/config.toml` parses
 - 2026-09-18 — `evals_search.rs` `review_commits` flagging-judge test

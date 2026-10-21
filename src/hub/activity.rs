@@ -102,17 +102,29 @@ impl HubActivityStore {
         Ok(())
     }
 
+    /// List write activity. `hub_activity` SELECT is admin-only under RLS
+    /// (KTD1), so this runs in a scoped transaction resolving the request's
+    /// [`PgScope`] — the HTTP route additionally 403s member keys before
+    /// reaching here.
     pub async fn list(&self, limit: usize) -> Result<Vec<HubActivityEntry>> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| KurultaiError::Store(format!("hub activity begin: {e}")))?;
+        crate::store::postgres::apply_pg_scope(&mut tx, &crate::store::scope::PgScope::current())
+            .await?;
         let rows = sqlx::query(
             "SELECT id, at, agent_id, team_id, namespace, transport, reason, atom_id
              FROM hub_activity ORDER BY at DESC, id DESC LIMIT $1",
         )
         .bind(limit as i64)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("hub activity list: {e}")))?;
 
-        rows.iter()
+        let entries = rows
+            .iter()
             .map(|row| {
                 Ok(HubActivityEntry {
                     id: row
@@ -137,6 +149,10 @@ impl HubActivityStore {
                     atom_id: row.try_get("atom_id").ok(),
                 })
             })
-            .collect()
+            .collect::<Result<Vec<HubActivityEntry>>>()?;
+        tx.commit()
+            .await
+            .map_err(|e| KurultaiError::Store(format!("hub activity commit: {e}")))?;
+        Ok(entries)
     }
 }

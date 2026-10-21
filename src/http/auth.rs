@@ -35,6 +35,16 @@ impl MaybeHubPrincipal {
     pub fn agent_id(&self) -> Option<&str> {
         None
     }
+
+    /// Whether the resolved hub principal is an admin principal.
+    ///
+    /// `hub_api_keys` has no admin flag yet (U4 adds the column) — every
+    /// issued key today is a member, so this is `false`. Surfaces gate on
+    /// this accessor rather than on `team_id`, so nothing changes shape when
+    /// the flag lands.
+    pub fn is_admin(&self) -> bool {
+        false
+    }
 }
 
 impl<S> FromRequestParts<S> for MaybeHubPrincipal
@@ -237,6 +247,39 @@ pub async fn hub_api_auth(
     Ok(unauthorized_response(
         "invalid or revoked credential — run `kurultai connect <instance-url>` to mint a fresh agent key",
     ))
+}
+
+/// Resolve the KTD1 [`crate::store::scope::PgScope`] for an authenticated
+/// request. Runs in the `pg_rls_scope` middleware **after** `hub_api_auth`
+/// inserted any `HubPrincipal`, which is the only source of truth — client
+/// input (body, query, metadata, headers) is never read.
+///
+/// * member principal → `PgScope::member(team_id)`. `is_admin` is never
+///   reachable from a member path — there is no code path that can OR it in.
+/// * `HubAuth::None` → [`PgScope::INTERNAL`]: trusted-local mode — no
+///   credential layer exists, every caller is the operator (same posture as
+///   CLI/stdio MCP).
+/// * `/api/hub/*` reached on operator-class credentials (static key /
+///   CF Access — member keys carry a `HubPrincipal` and take the branch
+///   above) → `PgScope::admin()` so the admin-only `hub_activity` SELECT
+///   keeps working.
+/// * anything else authenticated without a member principal → `closed()`:
+///   no GUCs, `company` rows only (fail closed — KTD1).
+#[cfg(feature = "postgres")]
+pub(crate) fn request_pg_scope(gate: &HubGate, req: &Request) -> crate::store::scope::PgScope {
+    use crate::store::scope::PgScope;
+    if let Some(p) = req.extensions().get::<HubPrincipal>() {
+        // Member scope only — when U4 adds `is_admin` to `hub_api_keys`,
+        // admin principals OR into `PgScope::admin()` right here.
+        return PgScope::member(p.team_id.clone());
+    }
+    if gate.auth == HubAuth::None {
+        return PgScope::INTERNAL;
+    }
+    if req.uri().path().starts_with("/api/hub/") {
+        return PgScope::admin();
+    }
+    PgScope::closed()
 }
 
 /// Check a bearer token against issued hub keys, static API keys, and

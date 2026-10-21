@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src
 parent: INDEX.md
-updated: 2026-10-03
-version: 9
+updated: 2026-10-20
+version: 10
 ---
 
 # `src`
@@ -64,6 +64,7 @@ version: 9
 
 ## Recent
 
+- 2026-10-20 — hub adoption U2 session-GUC wiring + write stamping (plan 2026-10-19-2053): `store/scope.rs` `PgScope` task-local; `store/postgres.rs` `PathClass` + `begin_scope`/`apply_pg_scope` transaction-local `set_config`; `http/auth.rs` `request_pg_scope` classifier + `http/mod.rs` `pg_rls_scope` middleware + `/api/hub/activity` member→403; `mcp/brain.rs` `remember_with` member team stamping (KTD5) + `multi_hop_expand` scope re-entry across `JoinSet`; `hub/activity.rs` scoped `list`
 - 2026-10-04 — U5 consolidation sweep: `sweep.rs` (dedupe→`mark_superseded`, `prune_stale_ontology`, tier census, Hey `kurultai-sweep` post); `store/` `duplicate_content_groups` + `prune_stale_ontology`; `daemon/mod.rs` sweep after nightly full sync; `pipeline/mod.rs` `store()` accessor; `main.rs` `sweep` subcommand
 - 2026-10-03 — U4 bi-temporal-lite: `types.rs` superseded_at/by fields; `main.rs` search+ask `--as-of`/`--include-superseded`; `store/` schema v17 + `mark_superseded` + supersede predicates; `ingest/dump.rs` `fm_*` metadata; `ontology/extract.rs` resolve_supersede_targets
 

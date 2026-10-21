@@ -230,7 +230,8 @@ pub async fn serve_with(
 }
 
 fn router(state: AppState) -> Router {
-    Router::new()
+    #[allow(unused_mut)] // mutable only under `--features postgres`
+    let mut app = Router::new()
         .route("/health", get(health))
         .route("/api/status", get(api_status))
         .route("/api/metrics", get(api_metrics))
@@ -257,17 +258,29 @@ fn router(state: AppState) -> Router {
         .merge(ontology_write::routes())
         .merge(ui::routes())
         .merge(device_auth::routes(state.clone()))
-        .merge(device::routes(state.clone()))
-        .layer(middleware::from_fn_with_state(
+        .merge(device::routes(state.clone()));
+
+    // Innermost of the stack — runs right after `hub_api_auth` inserted any
+    // `HubPrincipal`: translate the server-resolved principal into the
+    // request's KTD1 RLS scope task-local before handlers touch Postgres.
+    #[cfg(feature = "postgres")]
+    {
+        app = app.layer(middleware::from_fn_with_state(
             state.hub.clone(),
-            hub_api_auth,
-        ))
-        // Outermost of the two: runs before hub auth, and fails closed on write
-        // routes regardless of `HubAuth` (which is `None` by default).
-        .layer(middleware::from_fn(auth::write_route_guard))
-        .layer(middleware::from_fn(no_store_api))
-        .layer(TraceLayer::new_for_http())
-        .with_state(state)
+            pg_rls_scope,
+        ));
+    }
+
+    app.layer(middleware::from_fn_with_state(
+        state.hub.clone(),
+        hub_api_auth,
+    ))
+    // Outermost of the two: runs before hub auth, and fails closed on write
+    // routes regardless of `HubAuth` (which is `None` by default).
+    .layer(middleware::from_fn(auth::write_route_guard))
+    .layer(middleware::from_fn(no_store_api))
+    .layer(TraceLayer::new_for_http())
+    .with_state(state)
 }
 
 /// Build the loopback `POST /ingest` router for integration tests / external embedding.
@@ -345,6 +358,17 @@ async fn no_store_api(req: Request, next: Next) -> Response {
             .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }
     res
+}
+
+/// KTD1 RLS scope (U2): classify this request's [`crate::store::scope::PgScope`]
+/// from the server-resolved `HubPrincipal` / admin-surface path, then run the
+/// rest of the stack inside it. `PostgresStore` transactions pick the scope up
+/// via [`PgScope::current`]. The value always derives from request extensions
+/// — never from body/query/metadata.
+#[cfg(feature = "postgres")]
+async fn pg_rls_scope(State(gate): State<HubGate>, req: Request, next: Next) -> Response {
+    let scope = auth::request_pg_scope(&gate, &req);
+    scope.run(next.run(req)).await
 }
 
 async fn health() -> Json<serde_json::Value> {
@@ -912,9 +936,20 @@ async fn api_activity(
 #[cfg(feature = "postgres")]
 async fn api_hub_activity(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
+    // KTD1/U2: the write log spans every team — member keys are refused
+    // outright (RLS `SELECT` is admin-only underneath). `is_admin` is `false`
+    // for all issued keys today; U4 flips it via `hub_api_keys.is_admin`.
+    if principal.0.is_some() && !principal.is_admin() {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            "hub activity is admin-only",
+            &request_id,
+        ));
+    }
     let limit = params
         .get("limit")
         .and_then(|v| v.parse().ok())

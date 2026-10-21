@@ -2,6 +2,7 @@
 //!
 //! Solo [`super::open_store`] stays SQLite. Personal atoms are refused (AE4).
 
+use super::scope::PgScope;
 use super::{IngestionJob, SearchFilter, Store, DEFAULT_PROJECT, MIN_EMBEDDING_NORM};
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
@@ -20,6 +21,58 @@ const ATOM_SELECT: &str = "id, source, source_id, title, summary, content, quest
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
      last_accessed_at, visibility, team_id, content_hash, soft_labels_json, \
      corpus_tier, visibility_labels_json";
+
+/// KTD1 path classification for scope resolution.
+///
+/// * `Request` — resolve the task-local [`PgScope`] installed by HTTP
+///   middleware: member `HubPrincipal` → `kurultai.team_id`; `/api/hub/*`
+///   under operator credentials → `is_admin`; no principal → fail closed
+///   (company-only). With no request scope at all the caller is internal
+///   (pipeline, CLI, `/ingest`, stdio MCP) → [`PgScope::INTERNAL`].
+/// * `Internal` — always [`PgScope::INTERNAL`]: maintenance writes that
+///   must work regardless of ambient request scope (`touch_access` on a
+///   member-visible company row, merges, deletes, audit, ingestion jobs).
+#[derive(Clone, Copy)]
+enum PathClass {
+    Request,
+    Internal,
+}
+
+/// Bind a [`PgScope`] to a transaction via `SELECT set_config(…, true)` —
+/// `SET`/`SET LOCAL` cannot take bind parameters (KTD1), so `team_id` is
+/// bound through `set_config` and `is_admin` is only ever the literal `'on'`.
+/// `set_config(…, true)` is transaction-local: nothing survives commit, so
+/// the next pool checkout always starts scope-free.
+pub(crate) async fn apply_pg_scope(
+    tx: &mut Transaction<'_, sqlx::Postgres>,
+    scope: &PgScope,
+) -> Result<()> {
+    match (scope.team_id.as_deref(), scope.is_admin) {
+        (Some(team), true) => {
+            sqlx::query(
+                "SELECT set_config('kurultai.team_id', $1, true), \
+                 set_config('kurultai.is_admin', 'on', true)",
+            )
+            .bind(team)
+            .execute(&mut **tx)
+            .await
+        }
+        (Some(team), false) => {
+            sqlx::query("SELECT set_config('kurultai.team_id', $1, true)")
+                .bind(team)
+                .execute(&mut **tx)
+                .await
+        }
+        (None, true) => {
+            sqlx::query("SELECT set_config('kurultai.is_admin', 'on', true)")
+                .execute(&mut **tx)
+                .await
+        }
+        (None, false) => return Ok(()),
+    }
+    .map_err(|e| KurultaiError::Store(format!("rls scope: {e}")))?;
+    Ok(())
+}
 
 pub struct PostgresStore {
     pool: PgPool,
@@ -293,6 +346,29 @@ impl PostgresStore {
         Ok(())
     }
 
+    /// Open a transaction with the KTD1 scope applied — every PostgresStore
+    /// statement runs inside one of these so transaction-local GUCs die with
+    /// the tx and can never bleed into the next pool checkout (AE5).
+    async fn begin_scope(&self, class: PathClass) -> Result<Transaction<'static, sqlx::Postgres>> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| KurultaiError::Store(format!("begin tx: {e}")))?;
+        let scope = match class {
+            PathClass::Request => PgScope::current(),
+            PathClass::Internal => PgScope::INTERNAL,
+        };
+        apply_pg_scope(&mut tx, &scope).await?;
+        Ok(tx)
+    }
+
+    async fn commit_scope(tx: Transaction<'static, sqlx::Postgres>, ctx: &str) -> Result<()> {
+        tx.commit()
+            .await
+            .map_err(|e| KurultaiError::Store(format!("commit {ctx}: {e}")))
+    }
+
     fn hub_visibility_sql(
         filter: &SearchFilter,
         start_bind: usize,
@@ -545,122 +621,23 @@ impl PostgresStore {
         Ok(())
     }
 
-    async fn load_by_id(&self, id: &str) -> Result<Option<KnowledgeAtom>> {
+    async fn load_by_id_tx(
+        tx: &mut Transaction<'_, sqlx::Postgres>,
+        id: &str,
+    ) -> Result<Option<KnowledgeAtom>> {
         let sql = format!("SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE id = $1");
         let row = sqlx::query(&sql)
             .bind(id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut **tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("get: {e}")))?;
         row.map(|r| Self::atom_from_row(&r)).transpose()
     }
-}
 
-fn parse_dt(s: &str) -> DateTime<Utc> {
-    DateTime::parse_from_rfc3339(s)
-        .map(|d| d.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now())
-}
-
-/// `KURULTAI_PG_SKIP_MIGRATE=1` marks a runtime-role (`kurultai_app`)
-/// connection — no DDL rights, so `connect` must not attempt `migrate()`
-/// (KTD8). Shared by `PostgresStore::connect` and `HubKeyStore::connect`.
-pub(crate) fn skip_migrate_enabled() -> bool {
-    std::env::var("KURULTAI_PG_SKIP_MIGRATE")
-        .map(|v| {
-            matches!(
-                v.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "on" | "yes"
-            )
-        })
-        .unwrap_or(false)
-}
-
-async fn exec_ddl(conn: &mut sqlx::postgres::PgConnection, sql: &str, ctx: &str) -> Result<()> {
-    match sqlx::query(sql).execute(&mut *conn).await {
-        Ok(_) => Ok(()),
-        Err(e) if is_benign_catalog_race(&e) => Ok(()),
-        Err(e) => Err(KurultaiError::Store(format!("{ctx}: {e}"))),
-    }
-}
-
-fn is_benign_catalog_race(err: &sqlx::Error) -> bool {
-    match err {
-        sqlx::Error::Database(db) => {
-            matches!(db.code().as_deref(), Some("23505" | "42710"))
-        }
-        _ => {
-            let msg = err.to_string();
-            msg.contains("already exists")
-                || msg.contains("pg_extension_name_index")
-                || msg.contains("pg_type_typname_nsp_index")
-                || msg.contains("pg_class_relname_nsp_index")
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl Store for PostgresStore {
-    async fn upsert(&self, atom: &KnowledgeAtom) -> Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| KurultaiError::Store(format!("begin upsert: {e}")))?;
-        Self::upsert_in_tx(&mut tx, atom, self.embed_dim).await?;
-        tx.commit()
-            .await
-            .map_err(|e| KurultaiError::Store(format!("commit upsert: {e}")))
-    }
-
-    async fn upsert_batch(&self, atoms: &[KnowledgeAtom]) -> Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| KurultaiError::Store(format!("begin batch: {e}")))?;
-        for atom in atoms {
-            Self::upsert_in_tx(&mut tx, atom, self.embed_dim).await?;
-        }
-        tx.commit()
-            .await
-            .map_err(|e| KurultaiError::Store(format!("commit batch: {e}")))
-    }
-
-    async fn vector_search(
+    /// `fts_search_ids` body on an already-scoped transaction (KTD1).
+    async fn fts_search_ids_tx(
         &self,
-        query_embed: &[f32],
-        limit: usize,
-        filter: SearchFilter,
-    ) -> Result<Vec<(KnowledgeAtom, f64)>> {
-        let ids = self.vector_search_ids(query_embed, limit, filter).await?;
-        let mut out = Vec::with_capacity(ids.len());
-        for (id, score) in ids {
-            if let Some(atom) = self.load_by_id(&id).await? {
-                out.push((atom, score));
-            }
-        }
-        Ok(out)
-    }
-
-    async fn fts_search(
-        &self,
-        query: &str,
-        limit: usize,
-        filter: SearchFilter,
-    ) -> Result<Vec<(KnowledgeAtom, f64)>> {
-        let ids = self.fts_search_ids(query, limit, filter).await?;
-        let mut out = Vec::with_capacity(ids.len());
-        for (id, score) in ids {
-            if let Some(atom) = self.load_by_id(&id).await? {
-                out.push((atom, score));
-            }
-        }
-        Ok(out)
-    }
-
-    async fn fts_search_ids(
-        &self,
+        tx: &mut Transaction<'_, sqlx::Postgres>,
         query: &str,
         limit: usize,
         filter: SearchFilter,
@@ -706,7 +683,7 @@ impl Store for PostgresStore {
             q = q.bind(b);
         }
         let rows = q
-            .fetch_all(&self.pool)
+            .fetch_all(&mut **tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("fts_search_ids: {e}")))?;
         let mut out = Vec::new();
@@ -722,8 +699,10 @@ impl Store for PostgresStore {
         Ok(out)
     }
 
-    async fn vector_search_ids(
+    /// `vector_search_ids` body on an already-scoped transaction (KTD1).
+    async fn vector_search_ids_tx(
         &self,
+        tx: &mut Transaction<'_, sqlx::Postgres>,
         query_embed: &[f32],
         limit: usize,
         filter: SearchFilter,
@@ -790,7 +769,7 @@ impl Store for PostgresStore {
             q = q.bind(b);
         }
         let rows = q
-            .fetch_all(&self.pool)
+            .fetch_all(&mut **tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("vector_search_ids: {e}")))?;
         let mut out = Vec::new();
@@ -814,34 +793,169 @@ impl Store for PostgresStore {
         }
         Ok(out)
     }
+}
+
+fn parse_dt(s: &str) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(s)
+        .map(|d| d.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now())
+}
+
+/// `KURULTAI_PG_SKIP_MIGRATE=1` marks a runtime-role (`kurultai_app`)
+/// connection — no DDL rights, so `connect` must not attempt `migrate()`
+/// (KTD8). Shared by `PostgresStore::connect` and `HubKeyStore::connect`.
+pub(crate) fn skip_migrate_enabled() -> bool {
+    std::env::var("KURULTAI_PG_SKIP_MIGRATE")
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "on" | "yes"
+            )
+        })
+        .unwrap_or(false)
+}
+
+async fn exec_ddl(conn: &mut sqlx::postgres::PgConnection, sql: &str, ctx: &str) -> Result<()> {
+    match sqlx::query(sql).execute(&mut *conn).await {
+        Ok(_) => Ok(()),
+        Err(e) if is_benign_catalog_race(&e) => Ok(()),
+        Err(e) => Err(KurultaiError::Store(format!("{ctx}: {e}"))),
+    }
+}
+
+fn is_benign_catalog_race(err: &sqlx::Error) -> bool {
+    match err {
+        sqlx::Error::Database(db) => {
+            matches!(db.code().as_deref(), Some("23505" | "42710"))
+        }
+        _ => {
+            let msg = err.to_string();
+            msg.contains("already exists")
+                || msg.contains("pg_extension_name_index")
+                || msg.contains("pg_type_typname_nsp_index")
+                || msg.contains("pg_class_relname_nsp_index")
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Store for PostgresStore {
+    async fn upsert(&self, atom: &KnowledgeAtom) -> Result<()> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
+        Self::upsert_in_tx(&mut tx, atom, self.embed_dim).await?;
+        Self::commit_scope(tx, "upsert").await
+    }
+
+    async fn upsert_batch(&self, atoms: &[KnowledgeAtom]) -> Result<()> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
+        for atom in atoms {
+            Self::upsert_in_tx(&mut tx, atom, self.embed_dim).await?;
+        }
+        Self::commit_scope(tx, "batch").await
+    }
+
+    async fn vector_search(
+        &self,
+        query_embed: &[f32],
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<(KnowledgeAtom, f64)>> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
+        let ids = self
+            .vector_search_ids_tx(&mut tx, query_embed, limit, filter)
+            .await?;
+        let mut out = Vec::with_capacity(ids.len());
+        for (id, score) in ids {
+            if let Some(atom) = Self::load_by_id_tx(&mut tx, &id).await? {
+                out.push((atom, score));
+            }
+        }
+        Self::commit_scope(tx, "vector_search").await?;
+        Ok(out)
+    }
+
+    async fn fts_search(
+        &self,
+        query: &str,
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<(KnowledgeAtom, f64)>> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
+        let ids = self
+            .fts_search_ids_tx(&mut tx, query, limit, filter)
+            .await?;
+        let mut out = Vec::with_capacity(ids.len());
+        for (id, score) in ids {
+            if let Some(atom) = Self::load_by_id_tx(&mut tx, &id).await? {
+                out.push((atom, score));
+            }
+        }
+        Self::commit_scope(tx, "fts_search").await?;
+        Ok(out)
+    }
+
+    async fn fts_search_ids(
+        &self,
+        query: &str,
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<(String, f64)>> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
+        let out = self
+            .fts_search_ids_tx(&mut tx, query, limit, filter)
+            .await?;
+        Self::commit_scope(tx, "fts_search_ids").await?;
+        Ok(out)
+    }
+
+    async fn vector_search_ids(
+        &self,
+        query_embed: &[f32],
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<Vec<(String, f64)>> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
+        let out = self
+            .vector_search_ids_tx(&mut tx, query_embed, limit, filter)
+            .await?;
+        Self::commit_scope(tx, "vector_search_ids").await?;
+        Ok(out)
+    }
 
     async fn get_many(&self, ids: &[String]) -> Result<Vec<KnowledgeAtom>> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {
-            if let Some(atom) = self.load_by_id(id).await? {
+            if let Some(atom) = Self::load_by_id_tx(&mut tx, id).await? {
                 out.push(atom);
             }
         }
+        Self::commit_scope(tx, "get_many").await?;
         Ok(out)
     }
 
     async fn get(&self, id: &str) -> Result<Option<KnowledgeAtom>> {
-        self.load_by_id(id).await
+        let mut tx = self.begin_scope(PathClass::Request).await?;
+        let out = Self::load_by_id_tx(&mut tx, id).await?;
+        Self::commit_scope(tx, "get").await?;
+        Ok(out)
     }
 
     async fn delete_atom(&self, id: &str) -> Result<()> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         sqlx::query("DELETE FROM knowledge_atoms WHERE id = $1")
             .bind(id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("delete_atom: {e}")))?;
-        Ok(())
+        Self::commit_scope(tx, "delete_atom").await
     }
 
     async fn mark_superseded(&self, ids: &[String], by_id: &str, ts: DateTime<Utc>) -> Result<u64> {
         if ids.is_empty() {
             return Ok(0);
         }
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         let res = sqlx::query(
             "UPDATE knowledge_atoms SET superseded_at = $1, superseded_by = $2
              WHERE id = ANY($3) AND superseded_at IS NULL",
@@ -849,13 +963,16 @@ impl Store for PostgresStore {
         .bind(ts.to_rfc3339())
         .bind(by_id)
         .bind(ids)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("mark_superseded: {e}")))?;
-        Ok(res.rows_affected())
+        let n = res.rows_affected();
+        Self::commit_scope(tx, "mark_superseded").await?;
+        Ok(n)
     }
 
     async fn duplicate_content_groups(&self) -> Result<Vec<(String, Vec<String>)>> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         let rows = sqlx::query_as::<_, (String, String)>(
             "SELECT content_hash, id FROM knowledge_atoms
              WHERE trust_lane = 'trusted' AND superseded_at IS NULL
@@ -868,7 +985,7 @@ impl Store for PostgresStore {
                )
              ORDER BY content_hash, indexed_at",
         )
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("dup_groups: {e}")))?;
         let mut groups: Vec<(String, Vec<String>)> = Vec::new();
@@ -878,16 +995,18 @@ impl Store for PostgresStore {
                 _ => groups.push((hash, vec![id])),
             }
         }
+        Self::commit_scope(tx, "dup_groups").await?;
         Ok(groups)
     }
 
     async fn prune_stale_ontology(&self) -> Result<(u64, u64)> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         let links = sqlx::query(
             "DELETE FROM ontology_links
              WHERE from_id NOT IN (SELECT id FROM ontology_entities)
                 OR to_id NOT IN (SELECT id FROM ontology_entities)",
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("prune links: {e}")))?
         .rows_affected();
@@ -896,10 +1015,11 @@ impl Store for PostgresStore {
              WHERE atom_id IS NOT NULL
                AND atom_id NOT IN (SELECT id FROM knowledge_atoms)",
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("prune entities: {e}")))?
         .rows_affected();
+        Self::commit_scope(tx, "prune_stale_ontology").await?;
         Ok((links, entities))
     }
 
@@ -909,11 +1029,7 @@ impl Store for PostgresStore {
         loser_id: &str,
         audit_detail: &serde_json::Value,
     ) -> Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| KurultaiError::Store(format!("begin merge: {e}")))?;
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         Self::upsert_in_tx(&mut tx, survivor, self.embed_dim).await?;
         sqlx::query("DELETE FROM knowledge_atoms WHERE id = $1")
             .bind(loser_id)
@@ -931,35 +1047,38 @@ impl Store for PostgresStore {
         .execute(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("merge audit: {e}")))?;
-        tx.commit()
-            .await
-            .map_err(|e| KurultaiError::Store(format!("commit merge: {e}")))
+        Self::commit_scope(tx, "merge").await
     }
 
     async fn delete_source(&self, source: &str) -> Result<()> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         sqlx::query("DELETE FROM knowledge_atoms WHERE source = $1")
             .bind(source)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("delete_source: {e}")))?;
-        Ok(())
+        Self::commit_scope(tx, "delete_source").await
     }
 
     async fn count(&self) -> Result<u64> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM knowledge_atoms")
-            .fetch_one(&self.pool)
+            .fetch_one(&mut *tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("count: {e}")))?;
+        Self::commit_scope(tx, "count").await?;
         Ok(n as u64)
     }
 
     async fn count_by_lane(&self, lane: TrustLane) -> Result<u64> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         let (n,): (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM knowledge_atoms WHERE trust_lane = $1")
                 .bind(lane.as_str())
-                .fetch_one(&self.pool)
+                .fetch_one(&mut *tx)
                 .await
                 .map_err(|e| KurultaiError::Store(format!("count_by_lane: {e}")))?;
+        Self::commit_scope(tx, "count_by_lane").await?;
         Ok(n as u64)
     }
 
@@ -968,16 +1087,19 @@ impl Store for PostgresStore {
         source: &str,
         source_id: &str,
     ) -> Result<Option<KnowledgeAtom>> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         let sql = format!(
             "SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE source = $1 AND source_id = $2 LIMIT 1"
         );
         let row = sqlx::query(&sql)
             .bind(source)
             .bind(source_id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("get_by_source_id: {e}")))?;
-        row.map(|r| Self::atom_from_row(&r)).transpose()
+        let out = row.map(|r| Self::atom_from_row(&r)).transpose();
+        Self::commit_scope(tx, "get_by_source_id").await?;
+        out
     }
 
     async fn get_by_chunk_meta(
@@ -986,6 +1108,7 @@ impl Store for PostgresStore {
         rel_path: &str,
         chunk_index: u32,
     ) -> Result<Option<KnowledgeAtom>> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         let sql = format!(
             "SELECT {ATOM_SELECT} FROM knowledge_atoms
              WHERE source = $1
@@ -997,13 +1120,16 @@ impl Store for PostgresStore {
             .bind(source)
             .bind(rel_path)
             .bind(chunk_index as i32)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("get_by_chunk_meta: {e}")))?;
-        row.map(|r| Self::atom_from_row(&r)).transpose()
+        let out = row.map(|r| Self::atom_from_row(&r)).transpose();
+        Self::commit_scope(tx, "get_by_chunk_meta").await?;
+        out
     }
 
     async fn has_fresh_embedding(&self, id: &str, content_hash: &str) -> Result<bool> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         let found: Option<(i32,)> = sqlx::query_as(
             r#"
             SELECT 1
@@ -1015,13 +1141,15 @@ impl Store for PostgresStore {
         )
         .bind(id)
         .bind(content_hash)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("has_fresh_embedding: {e}")))?;
+        Self::commit_scope(tx, "has_fresh_embedding").await?;
         Ok(found.is_some())
     }
 
     async fn list_atoms(&self, limit: usize, filter: SearchFilter) -> Result<Vec<KnowledgeAtom>> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         let mut predicates = String::new();
         let mut extra_binds: Vec<String> = Vec::new();
         let bind_idx = 2usize;
@@ -1047,39 +1175,46 @@ impl Store for PostgresStore {
             q = q.bind(b);
         }
         let rows = q
-            .fetch_all(&self.pool)
+            .fetch_all(&mut *tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("list_atoms: {e}")))?;
-        rows.iter().map(Self::atom_from_row).collect()
+        let out: Result<Vec<KnowledgeAtom>> = rows.iter().map(Self::atom_from_row).collect();
+        let atoms = out?;
+        Self::commit_scope(tx, "list_atoms").await?;
+        Ok(atoms)
     }
 
     async fn find_atoms_by_source_id_patterns(
         &self,
         patterns: &[&str],
     ) -> Result<Vec<KnowledgeAtom>> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         let mut out = Vec::new();
         for pat in patterns {
             let sql = format!("SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE source_id LIKE $1");
             let rows = sqlx::query(&sql)
                 .bind(*pat)
-                .fetch_all(&self.pool)
+                .fetch_all(&mut *tx)
                 .await
                 .map_err(|e| KurultaiError::Store(format!("find patterns: {e}")))?;
             for row in rows {
                 out.push(Self::atom_from_row(&row)?);
             }
         }
+        Self::commit_scope(tx, "find_patterns").await?;
         Ok(out)
     }
 
     async fn find_trusted_by_content_hash(&self, content_hash: &str) -> Result<Option<String>> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         let row: Option<(String,)> = sqlx::query_as(
             "SELECT id FROM knowledge_atoms WHERE content_hash = $1 AND trust_lane = 'trusted' LIMIT 1",
         )
         .bind(content_hash)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("find_trusted_by_content_hash: {e}")))?;
+        Self::commit_scope(tx, "find_trusted_by_content_hash").await?;
         Ok(row.map(|r| r.0))
     }
 
@@ -1089,16 +1224,17 @@ impl Store for PostgresStore {
         lane: TrustLane,
         quarantine_reason: Option<&str>,
     ) -> Result<()> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         sqlx::query(
             "UPDATE knowledge_atoms SET trust_lane = $1, quarantine_reason = $2 WHERE id = $3",
         )
         .bind(lane.as_str())
         .bind(quarantine_reason)
         .bind(id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("set_trust_lane: {e}")))?;
-        Ok(())
+        Self::commit_scope(tx, "set_trust_lane").await
     }
 
     async fn insert_quality_audit(
@@ -1109,6 +1245,7 @@ impl Store for PostgresStore {
         detail: &serde_json::Value,
     ) -> Result<()> {
         let detail_json = detail.to_string();
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         sqlx::query(
             "INSERT INTO quality_audit (action, atom_id, actor, detail_json) VALUES ($1,$2,$3,$4)",
         )
@@ -1116,10 +1253,10 @@ impl Store for PostgresStore {
         .bind(atom_id)
         .bind(actor)
         .bind(&detail_json)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("insert_quality_audit: {e}")))?;
-        Ok(())
+        Self::commit_scope(tx, "insert_quality_audit").await
     }
 
     async fn insert_merge_candidate(
@@ -1128,6 +1265,7 @@ impl Store for PostgresStore {
         atom_b: &str,
         reason: &str,
     ) -> Result<bool> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         let res = sqlx::query(
             r#"
             INSERT INTO merge_candidates (atom_a, atom_b, reason)
@@ -1138,22 +1276,27 @@ impl Store for PostgresStore {
         .bind(atom_a)
         .bind(atom_b)
         .bind(reason)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("insert_merge_candidate: {e}")))?;
-        Ok(res.rows_affected() > 0)
+        let inserted = res.rows_affected() > 0;
+        Self::commit_scope(tx, "insert_merge_candidate").await?;
+        Ok(inserted)
     }
 
     async fn count_merge_candidates_pending(&self) -> Result<u64> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         let (n,): (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM merge_candidates WHERE status = 'pending'")
-                .fetch_one(&self.pool)
+                .fetch_one(&mut *tx)
                 .await
                 .map_err(|e| KurultaiError::Store(format!("count_merge_candidates: {e}")))?;
+        Self::commit_scope(tx, "count_merge_candidates").await?;
         Ok(n as u64)
     }
 
     async fn list_near_dupe_candidates(&self, limit: usize) -> Result<Vec<KnowledgeAtom>> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         let sql = format!(
             "SELECT {ATOM_SELECT} FROM knowledge_atoms
              WHERE trust_lane = 'quarantine' OR indexed_at >= $1
@@ -1163,26 +1306,34 @@ impl Store for PostgresStore {
         let rows = sqlx::query(&sql)
             .bind(cutoff)
             .bind(limit as i64)
-            .fetch_all(&self.pool)
+            .fetch_all(&mut *tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("list_near_dupe: {e}")))?;
-        rows.iter().map(Self::atom_from_row).collect()
+        let atoms: Result<Vec<KnowledgeAtom>> = rows.iter().map(Self::atom_from_row).collect();
+        let atoms = atoms?;
+        Self::commit_scope(tx, "list_near_dupe").await?;
+        Ok(atoms)
     }
 
     async fn touch_access(&self, id: &str) -> Result<()> {
+        // Internal (KTD1): a member reading a `company` atom must still bump
+        // `last_accessed_at`; the member UPDATE policy only permits own-team
+        // writes, so this maintenance write runs admin-scoped.
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         sqlx::query("UPDATE knowledge_atoms SET last_accessed_at = $1 WHERE id = $2")
             .bind(Utc::now().to_rfc3339())
             .bind(id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("touch_access: {e}")))?;
-        Ok(())
+        Self::commit_scope(tx, "touch_access").await
     }
 
     async fn count_by_tier(&self, policy: TierPolicy) -> Result<(u64, u64, u64)> {
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         let sql = format!("SELECT {ATOM_SELECT} FROM knowledge_atoms WHERE trust_lane = 'trusted'");
         let rows = sqlx::query(&sql)
-            .fetch_all(&self.pool)
+            .fetch_all(&mut *tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("count_by_tier: {e}")))?;
         let now = Utc::now();
@@ -1197,6 +1348,7 @@ impl Store for PostgresStore {
                 MemoryTier::Cold => cold += 1,
             }
         }
+        Self::commit_scope(tx, "count_by_tier").await?;
         Ok((hot, warm, cold))
     }
 
@@ -1207,6 +1359,10 @@ impl Store for PostgresStore {
         filter: SearchFilter,
         policy: TierPolicy,
     ) -> Result<Vec<GraphNode>> {
+        // Member-scoped (KTD1): the graph query has no app-level visibility
+        // clause — RLS under the member scope is what keeps other teams' atom
+        // ids out of the node set.
+        let mut tx = self.begin_scope(PathClass::Request).await?;
         let mut conditions: Vec<&str> = Vec::new();
         if filter.trusted_only {
             conditions.push("trust_lane = 'trusted'");
@@ -1244,7 +1400,7 @@ impl Store for PostgresStore {
             q = q.bind(s);
         }
         let rows = q
-            .fetch_all(&self.pool)
+            .fetch_all(&mut *tx)
             .await
             .map_err(|e| KurultaiError::Store(format!("list_graph_nodes: {e}")))?;
         let now = Utc::now();
@@ -1262,6 +1418,7 @@ impl Store for PostgresStore {
                 break;
             }
         }
+        Self::commit_scope(tx, "list_graph_nodes").await?;
         Ok(out)
     }
 
@@ -1271,15 +1428,17 @@ impl Store for PostgresStore {
         source: &str,
         file_path: &str,
     ) -> Result<i64> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         let (id,): (i64,) = sqlx::query_as(
             "INSERT INTO ingestion_jobs (batch_id, source, file_path) VALUES ($1,$2,$3) RETURNING id",
         )
         .bind(batch_id)
         .bind(source)
         .bind(file_path)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("record_ingestion_start: {e}")))?;
+        Self::commit_scope(tx, "record_ingestion_start").await?;
         Ok(id)
     }
 
@@ -1294,6 +1453,7 @@ impl Store for PostgresStore {
         } else {
             "completed"
         };
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         sqlx::query(
             "UPDATE ingestion_jobs SET status = $1, atoms_count = $2, error_message = $3, completed_at = $4 WHERE id = $5",
         )
@@ -1302,18 +1462,19 @@ impl Store for PostgresStore {
         .bind(error_message)
         .bind(Utc::now().to_rfc3339())
         .bind(job_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("record_ingestion_finish: {e}")))?;
-        Ok(())
+        Self::commit_scope(tx, "record_ingestion_finish").await
     }
 
     async fn list_pending_ingestion_jobs(&self) -> Result<Vec<IngestionJob>> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
         let rows = sqlx::query(
             "SELECT id, batch_id, source, file_path, status, atoms_count, error_message, created_at, completed_at
              FROM ingestion_jobs WHERE status = 'pending' ORDER BY id",
         )
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *tx)
         .await
         .map_err(|e| KurultaiError::Store(format!("list_pending_ingestion_jobs: {e}")))?;
         let mut out = Vec::new();
@@ -1330,6 +1491,7 @@ impl Store for PostgresStore {
                 completed_at: row.try_get("completed_at").ok(),
             });
         }
+        Self::commit_scope(tx, "list_pending_ingestion_jobs").await?;
         Ok(out)
     }
 
