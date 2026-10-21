@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: web/src
 parent: web/INDEX.md
-updated: 2026-08-16
-version: 1
+updated: 2026-10-20
+version: 2
 ---
 
 # `web/src`
@@ -14,14 +14,16 @@ version: 1
 ## Children
 
 - [`app/`](app/INDEX.md) — App router pages
+- [`components/`](components/INDEX.md) — Shared console components (client forms + server panels)
+- [`lib/`](lib/INDEX.md) — Server-only hub client + admin gate + format helpers
 
 ## Files
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`proxy.ts`](proxy.ts) | API proxy toward local daemon | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`proxy.ts`](proxy.ts) | Clerk middleware gate (non-public routes → sign-in) | Clerk env | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-10-20 — U8: `lib/` + `components/` for the hub admin console
 - 2026-08-16 — indexed this folder (v1 seed)
-
