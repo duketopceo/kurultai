@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: tests
 parent: INDEX.md
 updated: 2026-10-21
-version: 9
+version: 10
 ---
 
 # `tests`
@@ -30,6 +30,7 @@ version: 9
 | [`chaos.rs`](chaos.rs) | Chaos tests — SIGKILL mid-write WAL recovery, cold-start bound, disk pressure (ignored) — hermetic scratch DBs | spawned daemon subprocess | tmp dirs | 2026-09-30 | 1 | plan 2026-09-30-001 U4 |
 | [`cli_smoke.rs`](cli_smoke.rs) | Phase 1 CLI smoke (#5 / #23) — binary against fixture vault. | — | — | 2026-08-29 | 2 | 2026-08-29 unset ambient hub flag in bin() · 2026-08-16 indexed (v1 seed) |
 | [`connect_hub.rs`](connect_hub.rs) | Hub connect-join tests (plan 2026-10-19-2053 U3, R12/R13, AE7) — self-provisions roles like `hub_rls`; end-to-end `--team` hint → picker → approve → once-only `krt_` key → member-scoped `/api/search`; approver-pick-wins, new-team free text, invalid team_id rejected, concurrent polls mint exactly one key, `list_device_flows` never serializes `issued_key`, solo lane unchanged (no picker, seat token, no team_id), approve requires human auth | `KURULTAI_TEST_DATABASE_URL` · `--features postgres` | `src/http/device.rs` (operator static-key bearer; CF allowlist in unit tests) | 2026-10-21 | 1 | 2026-10-21 added (hub adoption U3, 8 tests) |
+| [`hub_admin.rs`](hub_admin.rs) | Hub admin-surface tests (plan 2026-10-19-2053 U4, R17/KTD7) — self-provisions roles like `connect_hub` but runs `HubKeyStore` on the `kurultai_app` DSN so the census is RLS-discriminating; member→403 sweep on every `/api/hub/*` route, admin→200, HTTP issue→list (metadata/role, no secret), DELETE revoke→401, pending flow listed sans `issued_key`, API approve mints team-bound member key through `approve_for_team`, census counts all scopes under `is_admin` GUC (member search proves no bleed), `kurultai hub key issue --admin` child-process mints a working admin key | `KURULTAI_TEST_DATABASE_URL` · `--features postgres` · `CARGO_BIN_EXE_kurultai` | `deploy/server-001/init-hub-db.sql` (grant + owner-transfer mirror) | 2026-10-21 | 1 | 2026-10-21 added (hub adoption U4, 9 tests) |
 | [`hub_rls.rs`](hub_rls.rs) | Hub RLS tests (plan 2026-10-19-2053 U1+U2, R11/KTD1/KTD5/KTD8) — self-provisions `kurultai_app`/`kurultai_migrate` roles + grants; eng/no-GUC/admin scope reads, member WITH CHECK + CHECK-constraint rejections, atoms_vec EXISTS, hub_activity append-only, skip-migrate gate; U2 adds pool-checkout scope bleed, closed-scope fail-closed, member→admin negative, HTTP member `/api/search` AE5 via `build_app`, member `remember` stamping, `/api/hub/activity` 403 | `KURULTAI_TEST_DATABASE_URL` · `--features postgres` | `deploy/server-001/init-hub-db.sql` (grant list mirror) | 2026-10-20 | 2 | 2026-10-20 U2 suite — `PgScope` task-local + `begin_scope` tx coverage end-to-end on `kurultai_app` (15 tests) · 2026-10-20 added (hub adoption U1) |
 | [`inbox_adapter_test.rs`](inbox_adapter_test.rs) | Inbox tray + dump format parity + gate heuristics (AE1–AE7). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`install_script_test.rs`](install_script_test.rs) | Personal installer script smoke (#72) — bash syntax + dry-run / help. | — | — | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -44,6 +45,7 @@ version: 9
 
 ## Recent
 
+- 2026-10-21 — `hub_admin.rs` added (hub adoption U4): 9 tests — member 403s on all admin routes, admin clears all gates, HTTP mint→list (prefix/role only), revoke→401, pending-flow list, API approve mints team-bound member key + once-only handout, scope census sees every team under `is_admin` GUC on the `kurultai_app` pool (no bleed into member search), `hub key issue --admin` CLI end-to-end via `CARGO_BIN_EXE`
 - 2026-10-21 — `connect_hub.rs` added (hub adoption U3): 8 tests on the `kurultai_app` role — AE7 end-to-end (`--team` hint → authenticated picker → approve → once-only `krt_` key → member-scoped search), pick-overrides-hint, free-text new team, invalid team_id 400 + pending flow, 6 concurrent polls → exactly one key, `list_device_flows` sans `issued_key`, solo lane unchanged, unauthenticated approve 401
 - 2026-10-20 — `hub_rls.rs` U2 suite (hub adoption U2): sequential pool-checkout bleed (eng→sales→eng→closed), closed-scope company-only + member-never-admin negative, `build_app` member-key `/api/search` AE5 over HTTP, `remember` server-side team stamping, `/api/hub/activity` member 403 — 15 tests on the real `kurultai_app` role
 - 2026-10-20 — `hub_rls.rs` added (hub adoption U1): 10 Postgres RLS tests — scope reads, member/admin writes, atoms_vec/hub_activity policies, skip-migrate gate

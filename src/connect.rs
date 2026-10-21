@@ -239,9 +239,37 @@ pub async fn run(opts: ConnectOptions) -> Result<()> {
                     ),
                 }
                 println!("Agent key stored in {where_stored}.");
-                let wired = crate::mcp::wire_agent(opts.agent)?;
-                for p in &wired {
-                    println!("MCP wired: {}", p.display());
+                let wired = if token.team_id.is_some() {
+                    // Hub lane (U5/R13): remote `{url, headers}` entries where
+                    // the client config format can carry a bearer; the local
+                    // `mcp --broker` bridge where it can't — the minted key
+                    // stays in the key store either way.
+                    let remote = crate::mcp::RemoteWire {
+                        mcp_url: format!("{base}/mcp"),
+                        upstream_url: base.clone(),
+                        token: token.agent_key.clone(),
+                        key_name: name.clone(),
+                    };
+                    crate::mcp::wire_agent_remote(opts.agent, &remote)?
+                } else {
+                    crate::mcp::wire_agent(opts.agent)?
+                        .into_iter()
+                        .map(crate::mcp::WireOutcome::Local)
+                        .collect()
+                };
+                for w in &wired {
+                    match w {
+                        crate::mcp::WireOutcome::Remote(p) => {
+                            println!("MCP wired (remote): {}", p.display());
+                        }
+                        crate::mcp::WireOutcome::Local(p) => {
+                            println!("MCP wired: {}", p.display());
+                        }
+                        crate::mcp::WireOutcome::Bridge { path, note } => {
+                            println!("MCP wired (bridge): {}", path.display());
+                            println!("  {note}");
+                        }
+                    }
                 }
                 println!("Done. If this key is ever revoked, run `kurultai connect` again.");
                 return Ok(());

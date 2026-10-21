@@ -799,6 +799,19 @@ pub const PG_HUB_RLS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Hub-adoption U4 (R17/KTD7): `hub_api_keys.is_admin` — the member-vs-admin
+/// flag behind the `/api/hub/*` admin routes and `hub key issue --admin`.
+/// `NOT NULL DEFAULT false` backfills every already-issued key as a member, so
+/// existing deployments keep working with no data migration. Consumed by both
+/// migrate paths (`postgres::PostgresStore::migrate_locked`,
+/// `hub::keys::HubKeyStore::migrate`); `ADD COLUMN IF NOT EXISTS` keeps it
+/// idempotent like the rest of the Postgres DDL.
+///
+/// Deliberately **no RLS** on `hub_api_keys` (see `PG_HUB_RLS` coverage
+/// verdicts): `resolve_token` runs before any principal/GUC exists.
+pub const PG_HUB_KEYS_ADMIN: &str =
+    "ALTER TABLE hub_api_keys ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false";
+
 /// Hub-adoption U3 (R12/KTD3): `hub_device_flows` — the Postgres mirror of
 /// SQLite's `device_flows` (v14 + v16 `instance_id`), plus connect-join
 /// columns: `team_hint` (the CLI's `--team` prefill), `team_id` (the

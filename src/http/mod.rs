@@ -43,6 +43,8 @@ use axum::extract::{Path, Query, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
+#[cfg(feature = "postgres")]
+use axum::routing::delete;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
@@ -265,6 +267,19 @@ fn router(state: AppState) -> Router {
     // request's KTD1 RLS scope task-local before handlers touch Postgres.
     #[cfg(feature = "postgres")]
     {
+        // U4/R17 (KTD7) — the hub admin surface the web console calls with
+        // an `is_admin` hub key: key issue/list/revoke (R10 parity over
+        // HTTP), device-flow approvals, and the scope census. Every handler
+        // re-checks `MaybeHubPrincipal::admin_permitted` — member keys 403.
+        app = app
+            .route(
+                "/api/hub/keys",
+                get(api_hub_keys_list).post(api_hub_keys_issue),
+            )
+            .route("/api/hub/keys/{id}", delete(api_hub_keys_revoke))
+            .route("/api/hub/device/pending", get(api_hub_device_pending))
+            .route("/api/hub/device/approve", post(api_hub_device_approve))
+            .route("/api/hub/scopes", get(api_hub_scopes));
         app = app.layer(middleware::from_fn_with_state(
             state.hub.clone(),
             pg_rls_scope,
@@ -941,9 +956,9 @@ async fn api_hub_activity(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     // KTD1/U2: the write log spans every team — member keys are refused
-    // outright (RLS `SELECT` is admin-only underneath). `is_admin` is `false`
-    // for all issued keys today; U4 flips it via `hub_api_keys.is_admin`.
-    if principal.0.is_some() && !principal.is_admin() {
+    // outright (RLS `SELECT` is admin-only underneath); U4/R17 makes
+    // `is_admin` real on `hub_api_keys`.
+    if !principal.admin_permitted() {
         return Err(json_error(
             StatusCode::FORBIDDEN,
             "hub activity is admin-only",
@@ -983,6 +998,315 @@ async fn api_hub_activity(
         "hub activity log requires postgres feature",
         &request_id,
     ))
+}
+
+// ── U4/R17 hub admin surface (`/api/hub/*`) ──────────────────────────────
+//
+// Every handler gates the same way: `admin_permitted` refuses member keys
+// (403 — operator-class credentials without a `HubPrincipal` still pass),
+// then the wired `HubKeyStore` proves the daemon runs the Postgres hub lane
+// (503 otherwise). `pg_rls_scope` has already mapped an admin principal to
+// `PgScope::admin()` (`request_pg_scope`), so the RLS policies underneath
+// agree with the app gate.
+
+/// Resolve the admin gate + hub key store for the `/api/hub/*` routes, or
+/// the error response the caller should return.
+#[cfg(feature = "postgres")]
+fn require_hub_admin(
+    state: &AppState,
+    principal: &MaybeHubPrincipal,
+    request_id: &str,
+) -> Result<Arc<crate::hub::HubKeyStore>, (StatusCode, Json<serde_json::Value>)> {
+    if !principal.admin_permitted() {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            "hub admin key required (kurultai hub key issue --admin)",
+            request_id,
+        ));
+    }
+    state.hub.key_store.clone().ok_or_else(|| {
+        json_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "hub admin endpoints require KURULTAI_FEATURE_HUB=1 with Postgres",
+            request_id,
+        )
+    })
+}
+
+/// U4/R17 audit: append an admin action to `hub_activity` (best-effort —
+/// the insert policy accepts any scope; the row is only readable by admin
+/// SELECT). Agent is the resolved admin principal, else the transport's
+/// operator actor for static-key/CF admin calls.
+#[cfg(feature = "postgres")]
+async fn log_hub_admin(
+    state: &AppState,
+    principal: &MaybeHubPrincipal,
+    action: &str,
+    detail: &str,
+) {
+    let Some(store) = state.hub_activity.as_ref() else {
+        return;
+    };
+    let agent_id = principal
+        .agent_id()
+        .map(str::to_string)
+        .unwrap_or_else(|| http_actor(principal));
+    let team_id = principal.team_id().unwrap_or("admin").to_string();
+    let reason: String = format!("{action}: {detail}").chars().take(200).collect();
+    if let Err(e) = store
+        .append(
+            &agent_id,
+            &team_id,
+            "hub-admin",
+            "http",
+            Some(&reason),
+            None,
+        )
+        .await
+    {
+        tracing::warn!(error = %e, "hub admin activity append failed");
+    }
+}
+
+/// `GET /api/hub/keys` — issued keys (prefix + team + flags + lifecycle;
+/// `HubKeyRecord` never carries hash or plaintext).
+#[cfg(feature = "postgres")]
+async fn api_hub_keys_list(
+    State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let keys = require_hub_admin(&state, &principal, &request_id)?;
+    match keys.list().await {
+        Ok(records) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "request_id": request_id,
+            "keys": records,
+        }))),
+        Err(e) => Err(json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            e.to_string(),
+            &request_id,
+        )),
+    }
+}
+
+#[cfg(feature = "postgres")]
+#[derive(Debug, Deserialize)]
+struct HubKeyIssueBody {
+    agent_id: String,
+    team_id: String,
+    #[serde(default)]
+    is_admin: bool,
+}
+
+/// `POST /api/hub/keys` — mint `{agent_id, team_id, is_admin?}`. Plaintext
+/// returns exactly once (the `hub key issue` CLI contract); only sha256
+/// persists at rest.
+#[cfg(feature = "postgres")]
+async fn api_hub_keys_issue(
+    State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
+    Json(body): Json<HubKeyIssueBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let keys = require_hub_admin(&state, &principal, &request_id)?;
+    let agent_id = body.agent_id.trim();
+    if agent_id.is_empty() {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "agent_id is required",
+            &request_id,
+        ));
+    }
+    let team_id = body.team_id.trim();
+    if let Err(e) = crate::store::scope::validate_team_id(team_id) {
+        return Err(json_error(StatusCode::BAD_REQUEST, e, &request_id));
+    }
+    match keys.issue_admin(agent_id, team_id, body.is_admin).await {
+        Ok((token, id)) => {
+            log_hub_admin(
+                &state,
+                &principal,
+                "key.issue",
+                &format!(
+                    "agent={agent_id} team={team_id} id={id} admin={}",
+                    body.is_admin
+                ),
+            )
+            .await;
+            Ok(Json(serde_json::json!({
+                "ok": true,
+                "request_id": request_id,
+                "id": id,
+                "agent_id": agent_id,
+                "team_id": team_id,
+                "is_admin": body.is_admin,
+                // Minted secret — returned this once, never listed after.
+                "key": token,
+            })))
+        }
+        Err(e) => Err(json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            e.to_string(),
+            &request_id,
+        )),
+    }
+}
+
+/// `DELETE /api/hub/keys/{id}` — revoke by key id (AE3 shape: subsequent
+/// member requests with the key deny at `hub_api_auth`).
+#[cfg(feature = "postgres")]
+async fn api_hub_keys_revoke(
+    State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
+    Path(id): Path<i64>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let keys = require_hub_admin(&state, &principal, &request_id)?;
+    match keys.revoke_by_id(id).await {
+        Ok(true) => {
+            log_hub_admin(&state, &principal, "key.revoke", &format!("id={id}")).await;
+            Ok(Json(serde_json::json!({
+                "ok": true,
+                "request_id": request_id,
+                "id": id,
+                "revoked": true,
+            })))
+        }
+        Ok(false) => Err(json_error(
+            StatusCode::NOT_FOUND,
+            "no active key with that id",
+            &request_id,
+        )),
+        Err(e) => Err(json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            e.to_string(),
+            &request_id,
+        )),
+    }
+}
+
+/// `GET /api/hub/device/pending` — device-flow list for the web approvals
+/// surface (`Store::list_device_flows`: pending first, then recent
+/// decisions; `issued_key` is `#[serde(skip)]` so no secret serializes).
+#[cfg(feature = "postgres")]
+async fn api_hub_device_pending(
+    State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    require_hub_admin(&state, &principal, &request_id)?;
+    let limit = params
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100)
+        .clamp(1, 500);
+    match state.brain.store().list_device_flows(limit).await {
+        Ok(flows) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "request_id": request_id,
+            "flows": flows,
+        }))),
+        Err(e) => Err(json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            e.to_string(),
+            &request_id,
+        )),
+    }
+}
+
+#[cfg(feature = "postgres")]
+#[derive(Debug, Deserialize)]
+struct HubDeviceApproveBody {
+    /// The `user_code` shown on `/connect` (case-insensitive).
+    code: String,
+    /// The approver's team pick — bound to the minted key.
+    team_id: String,
+}
+
+/// `POST /api/hub/device/approve` — approve a pending flow with a team pick.
+/// Same mint-at-approve path as the `/connect` form
+/// (`device::approve_for_team` → `HubKeyStore::issue` once, revoke on a lost
+/// race); the minted member key goes only to the polling CLI, never here.
+#[cfg(feature = "postgres")]
+async fn api_hub_device_approve(
+    State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
+    Json(body): Json<HubDeviceApproveBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    require_hub_admin(&state, &principal, &request_id)?;
+    let code = body.code.trim().to_uppercase();
+    if code.is_empty() {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "code is required",
+            &request_id,
+        ));
+    }
+    // Same approver label as `/connect`'s Hub gate for operator creds.
+    let approver = principal
+        .agent_id()
+        .map(str::to_string)
+        .unwrap_or_else(|| "hub-api-key".to_string());
+    match device::approve_for_team(&state, &code, &approver, body.team_id.trim()).await {
+        Ok(team) => {
+            log_hub_admin(
+                &state,
+                &principal,
+                "device.approve",
+                &format!("code={code} team={}", team.as_deref().unwrap_or("-")),
+            )
+            .await;
+            Ok(Json(serde_json::json!({
+                "ok": true,
+                "request_id": request_id,
+                "code": code,
+                "team_id": team,
+                "approved_by": approver,
+            })))
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            let status = if msg.contains("invalid team_id") || msg.contains("pick a team") {
+                StatusCode::BAD_REQUEST
+            } else if msg.contains("not found")
+                || msg.contains("already decided")
+                || msg.contains("expired")
+            {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            Err(json_error(status, msg, &request_id))
+        }
+    }
+}
+
+/// `GET /api/hub/scopes` — scope census: atom counts by `visibility` +
+/// `team_id` (R10 parity over HTTP). Runs under the admin `PgScope` — the
+/// RLS SELECT policy is what lets the GROUP BY see every team's rows.
+#[cfg(feature = "postgres")]
+async fn api_hub_scopes(
+    State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let request_id = Uuid::new_v4().to_string();
+    let keys = require_hub_admin(&state, &principal, &request_id)?;
+    match keys.scope_census().await {
+        Ok(scopes) => Ok(Json(serde_json::json!({
+            "ok": true,
+            "request_id": request_id,
+            "scopes": scopes,
+        }))),
+        Err(e) => Err(json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            e.to_string(),
+            &request_id,
+        )),
+    }
 }
 
 fn http_actor(principal: &MaybeHubPrincipal) -> String {

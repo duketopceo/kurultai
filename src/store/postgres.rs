@@ -324,6 +324,7 @@ impl PostgresStore {
                 key_prefix TEXT NOT NULL,
                 agent_id TEXT NOT NULL,
                 team_id TEXT NOT NULL,
+                is_admin BOOLEAN NOT NULL DEFAULT false,
                 created_at TEXT NOT NULL,
                 revoked_at TEXT
             )
@@ -335,6 +336,13 @@ impl PostgresStore {
             conn,
             "CREATE INDEX IF NOT EXISTS idx_hub_api_keys_hash ON hub_api_keys(key_hash)",
             "idx hub_api_keys hash",
+        )
+        .await?;
+        // U4/R17 — self-heal `is_admin` on DBs created before the flag.
+        exec_ddl(
+            conn,
+            super::migrations::PG_HUB_KEYS_ADMIN,
+            "hub_api_keys is_admin column",
         )
         .await?;
 

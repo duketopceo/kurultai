@@ -345,6 +345,114 @@ pub fn wire_agent(agent: AgentTarget) -> Result<Vec<PathBuf>> {
     }
 }
 
+/// Remote-hub wiring payload for `connect` (U5/R13). The minted
+/// `hub_api_keys` bearer is written ONLY into config formats that carry an
+/// `Authorization` header inside an owner-only (0600) file — everywhere else
+/// the member's agent gets a stdio bridge entry and the token stays in
+/// omaseal / the 0600 agent-key file under [`RemoteWire::key_name`].
+#[derive(Debug, Clone)]
+pub struct RemoteWire {
+    /// Hub `POST /mcp` endpoint, e.g. `https://api-hub.shippedit.dev/mcp`.
+    pub mcp_url: String,
+    /// Hub base URL — surfaced in bridge notes as `kurultai broker --upstream`.
+    pub upstream_url: String,
+    /// The minted bearer (plaintext). See the type docs — never lands in a
+    /// TOML/YAML config or on stdout.
+    pub token: String,
+    /// Key name `connect` stored the token under — referenced by the bridge
+    /// note so `kurultai broker --key-name` can resolve it at spawn.
+    pub key_name: String,
+}
+
+/// What remote wiring produced for one client — `connect` prints these so the
+/// member sees where the credential went (or deliberately did not).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WireOutcome {
+    /// Local `command: kurultai mcp` stdio entry (`wire_agent` / solo lane).
+    Local(PathBuf),
+    /// `{url, headers:{Authorization: Bearer …}}` remote entry — the bearer
+    /// lives in the agent's config file, written 0600 by `atomic_write`.
+    Remote(PathBuf),
+    /// Stdio bridge entry (`kurultai mcp --broker`) for formats that cannot
+    /// safely carry the bearer — no secret in the file; `note` is the
+    /// member-facing next step (start `kurultai broker`, mint a session).
+    Bridge { path: PathBuf, note: String },
+}
+
+impl WireOutcome {
+    /// The config path this outcome wrote.
+    pub fn path(&self) -> &Path {
+        match self {
+            Self::Local(p) | Self::Remote(p) | Self::Bridge { path: p, .. } => p,
+        }
+    }
+}
+
+/// The member-facing setup line attached to every [`WireOutcome::Bridge`].
+fn bridge_note(remote: &RemoteWire) -> String {
+    format!(
+        "stdio bridge (no token in config): run `kurultai broker --upstream {} --key-name {}`, \
+         mint a session with `POST http://127.0.0.1:8420/board`, then set KURULTAI_SESSION_KEY \
+         in this entry's env",
+        remote.upstream_url, remote.key_name
+    )
+}
+
+/// Wire the agent's MCP config at a remote hub (`connect` lane, U5/R13).
+///
+/// Per-format ruling — mirrors the per-agent decision table in the hub plan:
+///
+/// | Agent | Config | Shape written |
+/// |-------|--------|---------------|
+/// | cursor | `~/.cursor/mcp.json` | `{url, headers:{Authorization}}` |
+/// | claude | `~/.claude.json` | `{type:"http", url, headers:{Authorization}}` |
+/// | codex | `~/.codex/config.toml` | broker stdio bridge (no secret in file) |
+/// | hermes | `~/.hermes/config.yaml` | broker stdio bridge (no secret in file) |
+pub fn wire_agent_remote(agent: AgentTarget, remote: &RemoteWire) -> Result<Vec<WireOutcome>> {
+    if agent == AgentTarget::None {
+        return Ok(Vec::new());
+    }
+    let home = home_dir()?;
+    let bin = resolve_kurultai_bin()?;
+    let one = |target: AgentTarget| -> Result<WireOutcome> {
+        match target {
+            AgentTarget::Cursor => Ok(WireOutcome::Remote(wire_json_mcp_remote_at(
+                &home.join(".cursor/mcp.json"),
+                remote,
+                false,
+            )?)),
+            AgentTarget::Claude => Ok(WireOutcome::Remote(wire_json_mcp_remote_at(
+                &home.join(".claude.json"),
+                remote,
+                true,
+            )?)),
+            // Codex TOML has no secrets mechanism the member's environment can
+            // guarantee (a `bearer_token_env_var` entry still needs the var
+            // exported into the agent's process env), so it wires the local
+            // `mcp --broker` bridge — same pattern as scripts/mcp/kurultai/.
+            AgentTarget::Codex => Ok(WireOutcome::Bridge {
+                path: wire_codex_bridge_at(&home.join(".codex/config.toml"), &bin)?,
+                note: bridge_note(remote),
+            }),
+            // Hermes' documented shape is stdio `command`/`args` — same bridge.
+            AgentTarget::Hermes => Ok(WireOutcome::Bridge {
+                path: wire_hermes_bridge_at(&home.join(".hermes/config.yaml"), &bin)?,
+                note: bridge_note(remote),
+            }),
+            AgentTarget::All | AgentTarget::None => unreachable!("handled above"),
+        }
+    };
+    match agent {
+        AgentTarget::All => Ok(vec![
+            one(AgentTarget::Cursor)?,
+            one(AgentTarget::Claude)?,
+            one(AgentTarget::Codex)?,
+            one(AgentTarget::Hermes)?,
+        ]),
+        single => Ok(vec![one(single)?]),
+    }
+}
+
 fn home_dir() -> Result<PathBuf> {
     dirs::home_dir().ok_or_else(|| KurultaiError::config("cannot resolve home directory"))
 }
@@ -358,8 +466,6 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
 
 /// Merge `mcpServers.kurultai` into a Cursor/Claude-style JSON MCP config.
 fn wire_json_mcp_at(path: &Path, kurultai_bin: &str, include_stdio_type: bool) -> Result<PathBuf> {
-    ensure_parent_dir(path)?;
-
     let mut entry = json!({
         "command": kurultai_bin,
         "args": ["mcp"],
@@ -370,6 +476,33 @@ fn wire_json_mcp_at(path: &Path, kurultai_bin: &str, include_stdio_type: bool) -
         })?;
         obj.insert("type".into(), json!("stdio"));
     }
+    upsert_json_mcp_at(path, entry)
+}
+
+/// Remote `{url, headers:{Authorization: Bearer …}}` variant (U5/R13) —
+/// Cursor `mcp.json` detects URL-keyed servers; Claude needs `"type": "http"`.
+/// The file lands 0600 via `atomic_write`, same posture as the key file.
+fn wire_json_mcp_remote_at(
+    path: &Path,
+    remote: &RemoteWire,
+    include_http_type: bool,
+) -> Result<PathBuf> {
+    let mut entry = json!({
+        "url": remote.mcp_url,
+        "headers": { "Authorization": format!("Bearer {}", remote.token) },
+    });
+    if include_http_type {
+        let obj = entry.as_object_mut().ok_or_else(|| {
+            KurultaiError::Other(anyhow::anyhow!("mcp entry must be a JSON object"))
+        })?;
+        obj.insert("type".into(), json!("http"));
+    }
+    upsert_json_mcp_at(path, entry)
+}
+
+/// Merge/overwrite `mcpServers.kurultai` with `entry`, preserving siblings.
+fn upsert_json_mcp_at(path: &Path, entry: Value) -> Result<PathBuf> {
+    ensure_parent_dir(path)?;
 
     let mut root: Value = match fs::read_to_string(path) {
         Ok(raw) => serde_json::from_str(&raw).map_err(|e| {
@@ -405,6 +538,47 @@ fn wire_json_mcp_at(path: &Path, kurultai_bin: &str, include_stdio_type: bool) -
 
 /// Merge `[mcp_servers.kurultai]` into a Codex `config.toml`.
 fn wire_codex_at(path: &Path, kurultai_bin: &str) -> Result<PathBuf> {
+    let mut kurultai = toml::map::Map::new();
+    kurultai.insert(
+        "command".into(),
+        toml::Value::String(kurultai_bin.to_string()),
+    );
+    kurultai.insert(
+        "args".into(),
+        toml::Value::Array(vec![toml::Value::String("mcp".into())]),
+    );
+    upsert_codex_mcp_at(path, toml::Value::Table(kurultai))
+}
+
+/// Codex bridge entry (U5/R13): `kurultai mcp --broker` stdio so the hub
+/// bearer never lands in `config.toml` — the local broker resolves it from
+/// the key store and attaches it upstream. `KURULTAI_BROKER_URL` pins the
+/// broker's default port; the member adds `KURULTAI_SESSION_KEY` after
+/// `POST /board` (see [`bridge_note`]).
+fn wire_codex_bridge_at(path: &Path, kurultai_bin: &str) -> Result<PathBuf> {
+    let mut kurultai = toml::map::Map::new();
+    kurultai.insert(
+        "command".into(),
+        toml::Value::String(kurultai_bin.to_string()),
+    );
+    kurultai.insert(
+        "args".into(),
+        toml::Value::Array(vec![
+            toml::Value::String("mcp".into()),
+            toml::Value::String("--broker".into()),
+        ]),
+    );
+    let mut env = toml::map::Map::new();
+    env.insert(
+        "KURULTAI_BROKER_URL".into(),
+        toml::Value::String("http://127.0.0.1:8420".into()),
+    );
+    kurultai.insert("env".into(), toml::Value::Table(env));
+    upsert_codex_mcp_at(path, toml::Value::Table(kurultai))
+}
+
+/// Merge/overwrite `[mcp_servers.kurultai]` with `entry`, preserving siblings.
+fn upsert_codex_mcp_at(path: &Path, entry: toml::Value) -> Result<PathBuf> {
     ensure_parent_dir(path)?;
 
     let mut root: toml::Value = match fs::read_to_string(path) {
@@ -432,16 +606,7 @@ fn wire_codex_at(path: &Path, kurultai_bin: &str) -> Result<PathBuf> {
         ))
     })?;
 
-    let mut kurultai = toml::map::Map::new();
-    kurultai.insert(
-        "command".into(),
-        toml::Value::String(kurultai_bin.to_string()),
-    );
-    kurultai.insert(
-        "args".into(),
-        toml::Value::Array(vec![toml::Value::String("mcp".into())]),
-    );
-    servers.insert("kurultai".into(), toml::Value::Table(kurultai));
+    servers.insert("kurultai".into(), entry);
 
     let rendered = toml::to_string_pretty(&root)
         .map_err(|e| KurultaiError::Other(anyhow::anyhow!("encode codex config.toml: {e}")))?;
@@ -455,6 +620,48 @@ fn wire_codex_at(path: &Path, kurultai_bin: &str) -> Result<PathBuf> {
 /// (see https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp).
 /// Stdio shape: `command` + `args`. Tools register as `mcp_kurultai_<tool>`.
 fn wire_hermes_at(path: &Path, kurultai_bin: &str) -> Result<PathBuf> {
+    let mut kurultai = serde_yaml::Mapping::new();
+    kurultai.insert(
+        serde_yaml::Value::String("command".into()),
+        serde_yaml::Value::String(kurultai_bin.to_string()),
+    );
+    kurultai.insert(
+        serde_yaml::Value::String("args".into()),
+        serde_yaml::Value::Sequence(vec![serde_yaml::Value::String("mcp".into())]),
+    );
+    upsert_hermes_mcp_at(path, serde_yaml::Value::Mapping(kurultai))
+}
+
+/// Hermes bridge entry (U5/R13): `kurultai mcp --broker` — the config never
+/// holds the hub bearer (no documented secrets mechanism for remote URLs);
+/// see [`wire_codex_bridge_at`] / [`bridge_note`].
+fn wire_hermes_bridge_at(path: &Path, kurultai_bin: &str) -> Result<PathBuf> {
+    let mut kurultai = serde_yaml::Mapping::new();
+    kurultai.insert(
+        serde_yaml::Value::String("command".into()),
+        serde_yaml::Value::String(kurultai_bin.to_string()),
+    );
+    kurultai.insert(
+        serde_yaml::Value::String("args".into()),
+        serde_yaml::Value::Sequence(vec![
+            serde_yaml::Value::String("mcp".into()),
+            serde_yaml::Value::String("--broker".into()),
+        ]),
+    );
+    let mut env = serde_yaml::Mapping::new();
+    env.insert(
+        serde_yaml::Value::String("KURULTAI_BROKER_URL".into()),
+        serde_yaml::Value::String("http://127.0.0.1:8420".into()),
+    );
+    kurultai.insert(
+        serde_yaml::Value::String("env".into()),
+        serde_yaml::Value::Mapping(env),
+    );
+    upsert_hermes_mcp_at(path, serde_yaml::Value::Mapping(kurultai))
+}
+
+/// Merge/overwrite `mcp_servers.kurultai` with `entry`, preserving siblings.
+fn upsert_hermes_mcp_at(path: &Path, entry: serde_yaml::Value) -> Result<PathBuf> {
     ensure_parent_dir(path)?;
 
     let mut root: serde_yaml::Value = match fs::read_to_string(path) {
@@ -487,19 +694,7 @@ fn wire_hermes_at(path: &Path, kurultai_bin: &str) -> Result<PathBuf> {
         ))
     })?;
 
-    let mut kurultai = serde_yaml::Mapping::new();
-    kurultai.insert(
-        serde_yaml::Value::String("command".into()),
-        serde_yaml::Value::String(kurultai_bin.to_string()),
-    );
-    kurultai.insert(
-        serde_yaml::Value::String("args".into()),
-        serde_yaml::Value::Sequence(vec![serde_yaml::Value::String("mcp".into())]),
-    );
-    servers.insert(
-        serde_yaml::Value::String("kurultai".into()),
-        serde_yaml::Value::Mapping(kurultai),
-    );
+    servers.insert(serde_yaml::Value::String("kurultai".into()), entry);
 
     let rendered = serde_yaml::to_string(&root)
         .map_err(|e| KurultaiError::Other(anyhow::anyhow!("encode hermes config.yaml: {e}")))?;
@@ -588,6 +783,135 @@ mod tests {
     #[test]
     fn wire_agent_none_writes_nothing() {
         assert!(wire_agent(AgentTarget::None).unwrap().is_empty());
+    }
+
+    // ---- U5/R13 remote (connect-to-hub) wiring ----
+
+    fn test_remote() -> RemoteWire {
+        RemoteWire {
+            mcp_url: "https://api-hub.shippedit.dev/mcp".into(),
+            upstream_url: "https://api-hub.shippedit.dev".into(),
+            token: "krt_testtoken123".into(),
+            key_name: "work-cursor-seat-agent-token".into(),
+        }
+    }
+
+    #[cfg(unix)]
+    fn file_mode(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn remote_wire_cursor_writes_bearer_header_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp.json");
+        wire_json_mcp_remote_at(&path, &test_remote(), false).unwrap();
+        let root: JsonValue =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let k = &root["mcpServers"]["kurultai"];
+        assert_eq!(k["url"], "https://api-hub.shippedit.dev/mcp");
+        assert_eq!(
+            k["headers"]["Authorization"],
+            "Bearer krt_testtoken123"
+        );
+        assert!(k.get("command").is_none(), "remote entry has no stdio fields");
+        #[cfg(unix)]
+        assert_eq!(file_mode(&path), 0o600, "token-bearing config is owner-only");
+    }
+
+    #[test]
+    fn remote_wire_claude_writes_http_type_and_preserves_siblings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".claude.json");
+        fs::write(
+            &path,
+            r#"{"mcpServers": {"other": {"command": "other-bin"}}, "theme": "dark"}"#,
+        )
+        .unwrap();
+        wire_json_mcp_remote_at(&path, &test_remote(), true).unwrap();
+        let root: JsonValue =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let k = &root["mcpServers"]["kurultai"];
+        assert_eq!(k["type"], "http");
+        assert_eq!(k["url"], "https://api-hub.shippedit.dev/mcp");
+        assert_eq!(
+            k["headers"]["Authorization"],
+            "Bearer krt_testtoken123"
+        );
+        assert_eq!(
+            root["mcpServers"]["other"]["command"],
+            "other-bin",
+            "sibling server preserved"
+        );
+        assert_eq!(root["theme"], "dark", "top-level keys preserved");
+    }
+
+    #[test]
+    fn remote_wire_codex_uses_bridge_without_token_in_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        wire_codex_bridge_at(&path, "kurultai").unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(
+            !raw.contains("krt_"),
+            "hub bearer must never land in codex config.toml"
+        );
+        let parsed: toml::Value = toml::from_str(&raw).unwrap();
+        let k = &parsed["mcp_servers"]["kurultai"];
+        assert_eq!(k["command"].as_str(), Some("kurultai"));
+        assert_eq!(
+            k["args"].as_array().unwrap(),
+            &vec![toml::Value::String("mcp".into()), toml::Value::String("--broker".into())]
+        );
+        assert_eq!(
+            k["env"]["KURULTAI_BROKER_URL"].as_str(),
+            Some("http://127.0.0.1:8420")
+        );
+    }
+
+    #[test]
+    fn remote_wire_hermes_uses_bridge_without_token_in_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        wire_hermes_bridge_at(&path, "kurultai").unwrap();
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(
+            !raw.contains("krt_"),
+            "hub bearer must never land in hermes config.yaml"
+        );
+        let parsed: serde_yaml::Value = serde_yaml::from_str(&raw).unwrap();
+        let k = &parsed["mcp_servers"]["kurultai"];
+        assert_eq!(k["command"].as_str(), Some("kurultai"));
+        assert_eq!(
+            k["args"].as_sequence().unwrap(),
+            &vec![
+                serde_yaml::Value::String("mcp".into()),
+                serde_yaml::Value::String("--broker".into())
+            ]
+        );
+        assert_eq!(
+            k["env"]["KURULTAI_BROKER_URL"].as_str(),
+            Some("http://127.0.0.1:8420")
+        );
+    }
+
+    #[test]
+    fn bridge_note_points_at_stored_key_not_secret() {
+        let note = bridge_note(&test_remote());
+        assert!(note.contains("work-cursor-seat-agent-token"));
+        assert!(note.contains("https://api-hub.shippedit.dev"));
+        assert!(
+            !note.contains("krt_testtoken123"),
+            "note references the key name, never the secret"
+        );
+    }
+
+    #[test]
+    fn wire_agent_remote_none_writes_nothing() {
+        assert!(wire_agent_remote(AgentTarget::None, &test_remote())
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

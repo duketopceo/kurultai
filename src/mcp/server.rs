@@ -205,6 +205,13 @@ pub enum ToolSurface {
     Full,
     /// HTTP/SSE — read tools only (no `remember` / `promote`).
     ReadOnly,
+    /// Minted `hub_api_keys` member credential on `POST /mcp` (U5/R13):
+    /// full read surface + `remember` + board/proposal reads, but governance
+    /// writes (`promote`, `ontology_promote`, `ontology_propose`) are denied
+    /// — those need an `is_admin` hub key. The dispatch also re-denies by
+    /// request [`crate::store::scope::PgScope`], so the listing is only a
+    /// courtesy copy of the real gate.
+    HubMember,
 }
 
 /// Handle one JSON-RPC message with a solo (unidentified) write context.
@@ -278,9 +285,35 @@ pub async fn handle_message_with(
     }))
 }
 
+/// Handle one JSON-RPC message under a request [`crate::store::scope::PgScope`]
+/// (U5 hub lane, R13).
+///
+/// The scope is resolved at the HTTP edge from the minted `hub_api_keys`
+/// principal — never client input — and its task-local covers every store
+/// call the dispatch makes: `PostgresStore` applies it as transaction-local
+/// RLS GUCs (`begin_scope(PathClass::Request)`), `call_tool` derives the
+/// `hub_team_id` filter from it, and `remember_with` stamps
+/// `team_id`/`visibility=team` off it. Spawned sub-tasks re-enter the
+/// captured scope themselves (see `multi_hop_expand`).
+///
+/// Solo callers (shared secret, seat tokens, stdio) keep
+/// [`handle_message_with`] — ambient `PgScope::INTERNAL`, zero change.
+pub async fn handle_message_scoped(
+    brain: &BrainService,
+    msg: Value,
+    surface: ToolSurface,
+    ctx: &WriteContext,
+    scope: crate::store::scope::PgScope,
+) -> Result<Option<Value>> {
+    scope
+        .run(handle_message_with(brain, msg, surface, ctx))
+        .await
+}
+
 fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
     static FULL: OnceLock<Vec<Value>> = OnceLock::new();
     static READ: OnceLock<Vec<Value>> = OnceLock::new();
+    static HUB_MEMBER: OnceLock<Vec<Value>> = OnceLock::new();
     let defs = FULL.get_or_init(|| {
         vec![
             json!({
@@ -490,6 +523,24 @@ fn tool_defs_for(surface: ToolSurface) -> &'static [Value] {
     });
     match surface {
         ToolSurface::Full => defs.as_slice(),
+        // Member surface (U5/R13): everything except governance writes —
+        // `promote` / `ontology_promote` / `ontology_propose` require an
+        // `is_admin` hub key. `call_tool` re-denies on the request scope.
+        ToolSurface::HubMember => HUB_MEMBER
+            .get_or_init(|| {
+                defs.iter()
+                    .filter(|t| {
+                        !matches!(
+                            t.get("name").and_then(|n| n.as_str()),
+                            Some(TOOL_PROMOTE)
+                                | Some(TOOL_ONTOLOGY_PROMOTE)
+                                | Some(TOOL_ONTOLOGY_PROPOSE)
+                        )
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .as_slice(),
         ToolSurface::ReadOnly => READ
             .get_or_init(|| {
                 defs.iter()
@@ -726,16 +777,41 @@ async fn call_tool(
         )));
     }
 
+    // U5/R13 — hub member context lives in the request [`PgScope`] installed
+    // by `handle_message_scoped` (resolved from `hub_api_keys` at the HTTP
+    // edge, never from client input). `hub_team` threads the resolved
+    // team_id into the scoped read paths; `hub_member` is the governance
+    // gate. INTERNAL/admin scopes read `is_admin` → neither applies.
+    let scope = crate::store::scope::PgScope::current();
+    let hub_member = !scope.is_admin && scope.team_id.is_some();
+    let hub_team = if scope.is_admin {
+        None
+    } else {
+        scope.team_id.as_deref()
+    };
+
+    if matches!(
+        call.name.as_str(),
+        TOOL_PROMOTE | TOOL_ONTOLOGY_PROMOTE | TOOL_ONTOLOGY_PROPOSE
+    ) && (hub_member || surface == ToolSurface::HubMember)
+    {
+        return Err(KurultaiError::Other(anyhow::anyhow!(
+            "tool '{}' requires a hub admin key (403) — member credentials cannot run governance writes",
+            call.name
+        )));
+    }
+
     let text = match call.name.as_str() {
         TOOL_SEARCH => {
             let args: SearchArgs = serde_json::from_value(call.arguments)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad search args: {e}")))?;
             let views = brain
-                .search_views_scoped(
+                .search_views_scoped_hub(
                     &args.query,
                     args.limit,
                     args.include_quarantine,
                     args.source.as_deref(),
+                    hub_team,
                 )
                 .await?;
             serde_json::to_string(&views)
@@ -746,7 +822,13 @@ async fn call_tool(
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad recall args: {e}")))?;
             let project = resolve_project(args.project.as_deref());
             let views = brain
-                .recall_for_agent(&project, &args.query, args.limit, args.include_quarantine)
+                .recall_for_agent_hub(
+                    &project,
+                    &args.query,
+                    args.limit,
+                    args.include_quarantine,
+                    hub_team,
+                )
                 .await?;
             serde_json::to_string(&views)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
@@ -796,9 +878,9 @@ async fn call_tool(
             let args: AskArgs = serde_json::from_value(call.arguments)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad ask args: {e}")))?;
             let answer = if args.web {
-                brain.ask_with_web(&args.question, None, 2).await?
+                brain.ask_with_web(&args.question, hub_team, 2).await?
             } else {
-                brain.ask(&args.question).await?
+                brain.ask_with_team(&args.question, hub_team).await?
             };
             serde_json::to_string(&answer)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
@@ -806,7 +888,9 @@ async fn call_tool(
         TOOL_WHO_KNOWS => {
             let args: WhoKnowsArgs = serde_json::from_value(call.arguments)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("bad who_knows args: {e}")))?;
-            let entries = brain.who_knows(&args.topic, args.limit).await?;
+            let entries = brain
+                .who_knows_with_team(&args.topic, args.limit, hub_team)
+                .await?;
             serde_json::to_string(&entries)
                 .map_err(|e| KurultaiError::Other(anyhow::anyhow!("{e}")))?
         }

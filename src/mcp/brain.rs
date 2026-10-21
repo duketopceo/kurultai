@@ -318,8 +318,24 @@ impl BrainService {
         include_quarantine: bool,
         source: Option<&str>,
     ) -> Result<Vec<AgentAtomView>> {
+        self.search_views_scoped_hub(query, limit, include_quarantine, source, None)
+            .await
+    }
+
+    /// U5/R13: member-scoped MCP search. `hub_team_id` is resolved from the
+    /// request's `hub_api_keys` principal at the HTTP edge — never client
+    /// input — and pins the `company OR (team AND team_id = …)` predicate;
+    /// Postgres RLS re-checks the same boundary underneath.
+    pub async fn search_views_scoped_hub(
+        &self,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+        source: Option<&str>,
+        hub_team_id: Option<&str>,
+    ) -> Result<Vec<AgentAtomView>> {
         let results = self
-            .search_scoped(query, limit, include_quarantine, source)
+            .search_scoped_hub(query, limit, include_quarantine, source, hub_team_id)
             .await?;
         Ok(results
             .into_iter()
@@ -628,8 +644,25 @@ impl BrainService {
         limit: usize,
         include_quarantine: bool,
     ) -> Result<Vec<AgentAtomView>> {
+        self.recall_for_agent_hub(project, query, limit, include_quarantine, None)
+            .await
+    }
+
+    /// U5/R13: `recall` under a hub member's resolved team — same project
+    /// namespacing, plus the `company OR team` visibility predicate RLS
+    /// re-checks underneath.
+    pub async fn recall_for_agent_hub(
+        &self,
+        project: &str,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+        hub_team_id: Option<&str>,
+    ) -> Result<Vec<AgentAtomView>> {
         let project = normalize_project(project);
-        let filter = SearchFilter::trusted(!include_quarantine).with_project(Some(&project));
+        let filter = SearchFilter::trusted(!include_quarantine)
+            .with_project(Some(&project))
+            .with_hub_team(hub_team_id);
         let limit = limit.max(1);
         let mut results = self
             .hybrid_hits_filtered(query, (limit * 4).min(40), filter)

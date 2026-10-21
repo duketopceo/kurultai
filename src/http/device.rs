@@ -546,7 +546,9 @@ async fn connect_page_post(
 /// authoritative, the hub key mints NOW and rides on the flow until the
 /// single token-poll handout (KTD4 mint-at-approve — concurrent polls can
 /// never double-mint). Returns the team the key was bound to.
-async fn approve_for_team(
+/// `pub(crate)` — `POST /api/hub/device/approve` (U4/R17) reuses the same
+/// mint path.
+pub(crate) async fn approve_for_team(
     state: &AppState,
     user_code: &str,
     approver: &str,

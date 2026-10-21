@@ -36,14 +36,37 @@ impl MaybeHubPrincipal {
         None
     }
 
-    /// Whether the resolved hub principal is an admin principal.
-    ///
-    /// `hub_api_keys` has no admin flag yet (U4 adds the column) — every
-    /// issued key today is a member, so this is `false`. Surfaces gate on
-    /// this accessor rather than on `team_id`, so nothing changes shape when
-    /// the flag lands.
+    /// Whether the resolved hub principal carries `hub_api_keys.is_admin`
+    /// (U4/R17). Member keys → `false`; operator-class credentials (static
+    /// hub key / verified CF Access) resolve no `HubPrincipal` at all and
+    /// also read `false` — use [`MaybeHubPrincipal::admin_permitted`] for
+    /// the admin-route gate, which passes operator credentials.
     pub fn is_admin(&self) -> bool {
-        false
+        #[cfg(feature = "postgres")]
+        {
+            self.0.as_ref().map(|p| p.is_admin).unwrap_or(false)
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            false
+        }
+    }
+
+    /// Whether this request may reach `is_admin`-gated `/api/hub/*` admin
+    /// routes (U4/R17, KTD7): an admin hub key, or an operator-class
+    /// credential (static `KURULTAI_HUB_API_KEYS` entry / verified CF
+    /// Access — those authenticate without a `HubPrincipal`). Member keys
+    /// are the only refused class; the unauthenticated case is already
+    /// handled upstream by `hub_api_auth`.
+    pub fn admin_permitted(&self) -> bool {
+        #[cfg(feature = "postgres")]
+        {
+            self.0.as_ref().map(|p| p.is_admin).unwrap_or(true)
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            true
+        }
     }
 }
 
@@ -254,6 +277,8 @@ pub async fn hub_api_auth(
 /// inserted any `HubPrincipal`, which is the only source of truth — client
 /// input (body, query, metadata, headers) is never read.
 ///
+/// * admin principal (`hub_api_keys.is_admin`, U4/R17) → `PgScope::admin()`
+///   — the `kurultai.is_admin` GUC lifts RLS scope for the request.
 /// * member principal → `PgScope::member(team_id)`. `is_admin` is never
 ///   reachable from a member path — there is no code path that can OR it in.
 /// * `HubAuth::None` → [`PgScope::INTERNAL`]: trusted-local mode — no
@@ -269,8 +294,9 @@ pub async fn hub_api_auth(
 pub(crate) fn request_pg_scope(gate: &HubGate, req: &Request) -> crate::store::scope::PgScope {
     use crate::store::scope::PgScope;
     if let Some(p) = req.extensions().get::<HubPrincipal>() {
-        // Member scope only — when U4 adds `is_admin` to `hub_api_keys`,
-        // admin principals OR into `PgScope::admin()` right here.
+        if p.is_admin {
+            return PgScope::admin();
+        }
         return PgScope::member(p.team_id.clone());
     }
     if gate.auth == HubAuth::None {
