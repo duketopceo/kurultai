@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: deploy/server-001
 parent: deploy/INDEX.md
 updated: 2026-10-20
-version: 4
+version: 5
 ---
 
 # `deploy/server-001`
@@ -19,7 +19,7 @@ version: 4
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`.dockerignore`](.dockerignore) | Build-context exclusions for the `kurultai:solo` image build. | Docker build context | — | 2026-09-29 | 1 | 2026-09-29 port: keep secrets/target out of image build |
-| [`.env.example`](.env.example) | Required environment variables and secrets (incl. hub Postgres + Access app vars). | real `.env` on host | — | 2026-10-20 | 2 | 2026-10-20 hub var placeholders (KURULTAI_HUB_*, KURULTAI_ADMIN_EMAILS, HUB_CF_ACCESS_AUDS) · 2026-09-04 private fork seed |
+| [`.env.example`](.env.example) | Required environment variables and secrets (incl. hub Postgres + Access app vars). | real `.env` on host | — | 2026-10-20 | 3 | 2026-10-20 `PERSONAL_ADMIN_TOKEN` (required `:?` guard since 10-06, was undocumented) + `PERPLEXITY_API_KEY` optional passthrough (hub adoption U6 parity pass) · 2026-10-20 hub var placeholders (KURULTAI_HUB_*, KURULTAI_ADMIN_EMAILS, HUB_CF_ACCESS_AUDS) · 2026-09-04 private fork seed |
 | [`Dockerfile.solo`](Dockerfile.solo) | Solo SQLite Kurultai image (non-root, persistent /data). | Rust build deps | — | 2026-09-04 | 1 | 2026-09-04 private fork seed |
 | [`Dockerfile.hub`](Dockerfile.hub) | Hub Postgres Kurultai image (`--features postgres`, non-root, port 8423). | Rust build deps | `docker-compose.kurultai.yml` · `redeploy.sh` | 2026-10-20 | 1 | 2026-10-20 added (hub adoption U7) |
 | [`add-kurultai-tunnel.sh`](add-kurultai-tunnel.sh) | Add `knowledge`/`work` DNS + tunnel ingress. | `CLOUDFLARE_API_TOKEN` | — | 2026-09-04 | 1 | 2026-09-04 private fork seed |
@@ -34,6 +34,7 @@ version: 4
 
 ## Recent
 
+- 2026-10-20 — hub adoption U6 env parity (plan 2026-10-19-2053): `.env.example` gains `PERSONAL_ADMIN_TOKEN` (required `:?` guard) + `PERPLEXITY_API_KEY` passthrough docs
 - 2026-10-20 — hub deploy recipe (plan 2026-10-19-2053 U7): `Dockerfile.hub`, `kurultai-hub` + `kurultai-hub-db` compose services + `kurultai-hub-pgdata`, hub `.env` vars, `redeploy.sh` builds `kurultai:hub`; `init-hub-db.sql` catalogued — operator flow in `docs/runbook-hub.md`
 - 2026-09-29 — ported from kurultai-private into the public repo; kurultai-private archived. Host `.env` on server-001 is unchanged and remains the only place real secrets live.
 - 2026-09-05 — add `add-agent-api-hostnames.sh` for agent-only `api-knowledge`/`api-work` hostnames

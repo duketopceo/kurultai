@@ -411,6 +411,7 @@ enum HubCommands {
     },
     /// Read append-only hub write activity log
     Log {
+        /// Max entries to print (newest first)
         #[arg(long, default_value = "50")]
         limit: usize,
     },
@@ -421,8 +422,12 @@ enum HubCommands {
 enum HubKeyCommands {
     /// Issue a device key. Plaintext shown once; sha256 stored at rest.
     Issue {
+        /// Agent id the key is issued to (e.g. `devin` or `devin@laptop` for a
+        /// `connect` seat — the label recorded on `hub_api_keys.agent_id`)
         #[arg(long)]
         agent: String,
+        /// Team the key is scoped to — members see `company` + this team's
+        /// atoms only (validated; becomes the RLS `kurultai.team_id` GUC)
         #[arg(long)]
         team: String,
         /// Mint an admin key — required on `/api/hub/*` admin routes (U4/R17)
@@ -431,8 +436,10 @@ enum HubKeyCommands {
     },
     /// Revoke by key prefix (first 12 chars shown at issue)
     Revoke {
+        /// First 12 chars of the key (printed at issue, shown by `list`)
         #[arg(long, conflicts_with = "id")]
         prefix: Option<String>,
+        /// Numeric key id (shown by `list`)
         #[arg(long, conflicts_with = "prefix")]
         id: Option<i64>,
     },

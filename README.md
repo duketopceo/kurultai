@@ -93,7 +93,7 @@ CLI · axum daemon (/api/*) · MCP stdio · Brain UI (embedded)
 | **Agents** | MCP stdio — `search`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, `ontology_promote`, `recall` |
 | **Brain UI** | Vite + React + Three.js (`website/` → built `ui/`, rust-embedded at `GET /ui/`) |
 
-**Optional hub track (off by default):** `--features postgres` + `KURULTAI_FEATURE_HUB=1` adds a Postgres/pgvector store for shared `team` / `company` atoms. Default installs stay SQLite-only.
+**Optional hub track (off by default):** `--features postgres` + `KURULTAI_FEATURE_HUB=1` adds a Postgres/pgvector store for shared `team` / `company` atoms — row-level security keyed on session GUCs enforces the team boundary under the app filter. Members join with `kurultai connect <hub-api-url>`; admins mint keys with `kurultai hub key issue --agent <a> --team <t> [--admin]` (operator recipe: [`docs/runbook-hub.md`](docs/runbook-hub.md)). Default installs stay SQLite-only.
 
 **Other surfaces:** [`website/`](website/) — Brain UI source and Vite dev preview · [`web/`](web/) — Next.js team app (Clerk auth, separate from the embedded brain).
 
@@ -103,7 +103,7 @@ Config templates: [`config.example.toml`](config.example.toml) · [`.env.example
 
 | Area | Details |
 |------|---------|
-| **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon`, `sweep`, `prune`, `doctor`, `admin key` |
+| **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon`, `connect`, `login`, `agent`, `broker`, `webui`, `eval`, `review`, `sweep`, `prune`, `doctor`, `admin key`, `hub key` (postgres feature) |
 | **Embeddings** | OpenRouter (default) · **Perplexity `pplx-embed-v1`** (0.6b @1024d / 4b @2560d, ~30× cheaper) · local ONNX (feature `local-embed`) |
 | **Ask** | Cited synthesis + **gap report** — answers name what the brain *doesn't* know |
 | **Ontology** | O1 class tree + `ontology_get` / `ontology_promote` MCP tools + **zero-LLM edge extraction** (`[[links]]`, `@mentions`, frontmatter rels → typed `references` edges at index time) |
@@ -123,7 +123,7 @@ kurultai init --agent cursor    # also: claude | codex | hermes | all | none
 kurultai mcp                    # restart the agent after init
 ```
 
-Copy-paste setup for any agent: [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md). Portable skill: [`skills/kurultai-brain/SKILL.md`](skills/kurultai-brain/SKILL.md).
+Copy-paste setup for any agent: [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md). Connecting an agent to a **hosted** instance (one command — browser approve, key to keyring, MCP wired): [`docs/AGENT_CONNECTION_PROMPT.md`](docs/AGENT_CONNECTION_PROMPT.md). Portable skill: [`skills/kurultai-brain/SKILL.md`](skills/kurultai-brain/SKILL.md).
 
 Loopback ingest (opt-in): set `KURULTAI_INGEST_SECRET`, then `POST /ingest` with the secret header.
 

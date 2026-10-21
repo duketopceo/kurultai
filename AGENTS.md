@@ -71,12 +71,12 @@ Kurultai is the knowledge brain. All autonomous agents (Cursor, Claude, Codex, H
 - Build connectors in `src/connectors/` (e.g., `dayflow`, `json`) to bridge isolated stores into the brain.
 
 ### 2. MCP Agent Wiring
-Agents discover and connect to the Kurultai knowledge graph using the Model Context Protocol (MCP). Kurultai provides 8 tools: `search`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, and `ontology_promote`.
+Agents discover and connect to the Kurultai knowledge graph using the Model Context Protocol (MCP). Full stdio surface: `search`, `recall`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, `ontology_promote`, `ontology_propose`, `ontology_proposals`, and the `hey_*` board tools (`hey_threads`, `hey_read`, `hey_post`, `hey_react`, `hey_poll`). HTTP `/mcp` narrows by credential — shared secret is read-only; hub member keys get everything except governance writes (`promote`/`ontology_promote`/`ontology_propose`).
 
 To wire an agent on a new machine or environment:
 1. Build/install the binary (`cargo build --release` → `~/.cargo/bin/kurultai`)
-2. Run **`kurultai init --agent <name>`** (valid targets: `cursor`, `claude`, `codex`, `hermes`, or `all`).
-3. This automatically updates `~/.cursor/mcp.json`, `~/.claude.json`, `~/.codex/config.toml`, or `~/.hermes/config.yaml`. `--agent none` skips MCP. Combine with `--docs` to provision a local markdown folder.
+2. Local daemon → **`kurultai init --agent <name>`** (valid targets: `cursor`, `claude`, `codex`, `hermes`, or `all`) — writes `~/.cursor/mcp.json`, `~/.claude.json`, `~/.codex/config.toml`, or `~/.hermes/config.yaml` (`--agent none` skips; `--docs` provisions a markdown folder).
+3. Hosted instance → **`kurultai connect <api-url> --codename <name>`** (`docs/AGENT_CONNECTION_PROMPT.md`) — device-code approve mints the key, stores it in the keyring, and wires MCP (Cursor/Claude remote `url`+`Bearer`; Codex/Hermes a `mcp --broker` bridge).
 4. Restart the agent(s) to load the MCP server.
 
 ### Egress caveat (Brain UI 3D graph)

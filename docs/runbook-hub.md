@@ -39,16 +39,24 @@ never migrate (`KURULTAI_PG_SKIP_MIGRATE=1`).
    ```
 
    The compose `:?` guards fail **every** command on
-   `docker-compose.kurultai.yml` (including solo-only ops) until these exist.
+   `docker-compose.kurultai.yml` (including solo-only ops) until these exist —
+   and the solo `:?` vars apply too (`PERSONAL_API_KEYS`, `PERSONAL_MCP_SECRET`,
+   `PERSONAL_INGEST_SECRET`, `PERSONAL_ADMIN_TOKEN`, the `WORK_*` trio). All are
+   in `.env.example`.
 
-2. Cloudflare Access application (Zero Trust, team `duketopceo`), admin-scoped
-   interactive policy on `hub.shippedit.dev`. Copy its AUD tag into
-   `HUB_CF_ACCESS_AUDS`.
+2. Cloudflare Access application (Zero Trust, team `duketopceo` — hardcoded as
+   `KURULTAI_CF_ACCESS_TEAM` in compose), admin-scoped interactive policy on
+   `hub.shippedit.dev`. Copy its AUD tag into `HUB_CF_ACCESS_AUDS` (compose maps
+   it to `KURULTAI_CF_ACCESS_AUDS`).
    - Keep `api-hub.shippedit.dev` out of interactive Access policies — member
      `connect` calls and agent `/mcp` traffic carry hub keys, not Access JWTs;
      an interactive policy would edge-block them (same reason
      `api-knowledge.`/`api-work.` bypass Access). A non-interactive
      service-token policy is acceptable later (#333, deferred).
+   - The same scoping split applies to the `web/` admin console hostname when
+     it deploys (U8): `web.shippedit.dev` gets the interactive admin policy,
+     `api-hub.` stays bearer-only — the console calls `/api/hub/*` server-side
+     with `KURULTAI_ADMIN_KEY`.
 
 3. Tunnel ingress — the `shippedit-server` cloudflared config lives in the
    shippedit repo, not here. Add:
@@ -57,8 +65,10 @@ never migrate (`KURULTAI_PG_SKIP_MIGRATE=1`).
    |----------|---------|
    | `hub.shippedit.dev` | `http://kurultai-hub:8423` |
    | `api-hub.shippedit.dev` | `http://kurultai-hub:8423` |
+   | `web.shippedit.dev` | `http://<web-container>:<port>` — U8 console, when it lands |
 
-   plus CNAMEs `hub` and `api-hub` → `<tunnel-id>.cfargotunnel.com`
+   plus CNAMEs `hub` and `api-hub` (and `web` when the console ships) →
+   `<tunnel-id>.cfargotunnel.com`
    (same pattern as `deploy/server-001/add-agent-api-hostnames.sh`).
 
 ## 2. Deploy
@@ -66,6 +76,7 @@ never migrate (`KURULTAI_PG_SKIP_MIGRATE=1`).
 ```bash
 # on server-001, kurultai repo root
 ./deploy/server-001/redeploy.sh        # builds kurultai:solo + kurultai:hub, compose up -d
+                                       # (.env path override: KURULTAI_ENV_FILE=/path/.env)
 docker ps                              # kurultai-hub, kurultai-hub-db healthy
 docker exec kurultai-hub curl -fsS http://127.0.0.1:8423/health
 ```
@@ -95,7 +106,11 @@ docker exec kurultai-hub sh -c \
   'KURULTAI_PG_SKIP_MIGRATE=0 DATABASE_URL="$KURULTAI_MIGRATE_DATABASE_URL" kurultai status'
 ```
 
-Verify `FORCE ROW LEVEL SECURITY` + policies on `knowledge_atoms`:
+Verify `FORCE ROW LEVEL SECURITY` + policies — the migration covers
+`knowledge_atoms`, `atoms_vec`, and `hub_activity`. `hub_api_keys` /
+`hub_device_flows` deliberately carry no policy: `/api/device/*` and the key
+lookup are auth-exempt paths that run before any `HubPrincipal`/GUC exists, so
+a scope policy would fail closed on the auth/flow path itself.
 
 ```bash
 docker exec kurultai-hub-db psql -U postgres -d kurultai -c '\d+ knowledge_atoms'
@@ -116,10 +131,16 @@ Plaintext is shown once; sha256 is stored. Save it — this is the
 `api-hub.shippedit.dev/api/hub/*` admin endpoints.
 
 ```bash
-# list / revoke
+# list / revoke / audit
 docker exec kurultai-hub sh -c 'DATABASE_URL="$KURULTAI_MIGRATE_DATABASE_URL" kurultai hub key list'
-docker exec kurultai-hub sh -c 'DATABASE_URL="$KURULTAI_MIGRATE_DATABASE_URL" kurultai hub key revoke --prefix <12char>'
+docker exec kurultai-hub sh -c 'DATABASE_URL="$KURULTAI_MIGRATE_DATABASE_URL" kurultai hub key revoke --prefix <12char>'   # or --id <n>
+docker exec kurultai-hub sh -c 'DATABASE_URL="$KURULTAI_MIGRATE_DATABASE_URL" kurultai hub log --limit 50'            # hub_activity write/audit log
 ```
+
+Member-key minting also works over HTTP with the admin key as bearer:
+`POST /api/hub/keys {agent_id, team_id, is_admin?}` (plaintext returned once),
+`GET /api/hub/keys`, `DELETE /api/hub/keys/{id}`, `GET /api/hub/scopes`
+(scope census). Member keys get `403` on all of these.
 
 ## 6. Member join (connect)
 
@@ -128,13 +149,26 @@ docker exec kurultai-hub sh -c 'DATABASE_URL="$KURULTAI_MIGRATE_DATABASE_URL" ku
 kurultai connect https://api-hub.shippedit.dev            # optional: --team eng prefills
 ```
 
-1. CLI POSTs `/api/device/code` and prints the approval URL.
+1. CLI POSTs `/api/device/code` and prints the approval URL — derived from the
+   request host with the `api-`/`api.` prefix stripped (override with
+   `KURULTAI_AUTH_HOST` if the human hostname ever stops following that
+   pattern).
 2. An admin (email in `KURULTAI_ADMIN_EMAILS`) opens
    `https://hub.shippedit.dev/connect`, passes Access, picks the team —
    existing list or "new team" free text — and approves. The key is minted at
    approve; the approver's team choice wins over `--team`.
-3. The member's token poll returns the key once; `connect` stores it and wires
-   the agent's MCP config to `https://api-hub.shippedit.dev/mcp`.
+3. The member's token poll returns the key once; `connect` stores it
+   (`<lane>-<codename>-<seat>-agent-token` in omaseal, else a 0600 file under
+   `~/.config/kurultai/agent-keys/`) and wires the agent's MCP config to
+   `https://api-hub.shippedit.dev/mcp`. Cursor/Claude get remote
+   `url`+`Bearer` entries; Codex/Hermes get a `kurultai mcp --broker` stdio
+   bridge (member runs `kurultai broker --upstream https://api-hub.shippedit.dev
+   --key-name <name>` + `POST http://127.0.0.1:8420/board` →
+   `KURULTAI_SESSION_KEY`).
+
+The same endpoints can be driven without the browser page:
+`GET /api/hub/device/pending` + `POST /api/hub/device/approve {code, team_id}`
+under an admin bearer (that's what the `web/` console calls).
 
 Verify from the member side: `search`/`remember` see `company` + own-`team`
 atoms only.
