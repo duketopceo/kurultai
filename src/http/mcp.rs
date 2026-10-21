@@ -215,9 +215,7 @@ async fn mcp_post(
         #[cfg(feature = "postgres")]
         McpAuth::Hub(principal) => {
             let ctx = WriteContext {
-                agent_id: Some(
-                    h("x-kurultai-agent").unwrap_or_else(|| principal.agent_id.clone()),
-                ),
+                agent_id: Some(h("x-kurultai-agent").unwrap_or_else(|| principal.agent_id.clone())),
                 namespace: h("x-kurultai-chat"),
                 transport: WriteTransport::Mcp,
                 mode: crate::write_policy::WriteMode::from_env(),

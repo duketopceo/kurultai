@@ -807,17 +807,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("mcp.json");
         wire_json_mcp_remote_at(&path, &test_remote(), false).unwrap();
-        let root: JsonValue =
-            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let root: JsonValue = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         let k = &root["mcpServers"]["kurultai"];
         assert_eq!(k["url"], "https://api-hub.shippedit.dev/mcp");
-        assert_eq!(
-            k["headers"]["Authorization"],
-            "Bearer krt_testtoken123"
+        assert_eq!(k["headers"]["Authorization"], "Bearer krt_testtoken123");
+        assert!(
+            k.get("command").is_none(),
+            "remote entry has no stdio fields"
         );
-        assert!(k.get("command").is_none(), "remote entry has no stdio fields");
         #[cfg(unix)]
-        assert_eq!(file_mode(&path), 0o600, "token-bearing config is owner-only");
+        assert_eq!(
+            file_mode(&path),
+            0o600,
+            "token-bearing config is owner-only"
+        );
     }
 
     #[test]
@@ -830,18 +833,13 @@ mod tests {
         )
         .unwrap();
         wire_json_mcp_remote_at(&path, &test_remote(), true).unwrap();
-        let root: JsonValue =
-            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let root: JsonValue = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         let k = &root["mcpServers"]["kurultai"];
         assert_eq!(k["type"], "http");
         assert_eq!(k["url"], "https://api-hub.shippedit.dev/mcp");
+        assert_eq!(k["headers"]["Authorization"], "Bearer krt_testtoken123");
         assert_eq!(
-            k["headers"]["Authorization"],
-            "Bearer krt_testtoken123"
-        );
-        assert_eq!(
-            root["mcpServers"]["other"]["command"],
-            "other-bin",
+            root["mcpServers"]["other"]["command"], "other-bin",
             "sibling server preserved"
         );
         assert_eq!(root["theme"], "dark", "top-level keys preserved");
@@ -862,7 +860,10 @@ mod tests {
         assert_eq!(k["command"].as_str(), Some("kurultai"));
         assert_eq!(
             k["args"].as_array().unwrap(),
-            &vec![toml::Value::String("mcp".into()), toml::Value::String("--broker".into())]
+            &vec![
+                toml::Value::String("mcp".into()),
+                toml::Value::String("--broker".into())
+            ]
         );
         assert_eq!(
             k["env"]["KURULTAI_BROKER_URL"].as_str(),
