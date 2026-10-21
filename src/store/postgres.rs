@@ -118,12 +118,12 @@ impl PostgresStore {
             .acquire()
             .await
             .map_err(|e| KurultaiError::Store(format!("acquire for migrate: {e}")))?;
-        sqlx::query("SELECT pg_advisory_lock(87231401)")
+        sqlx::query(&format!("SELECT pg_advisory_lock({PG_MIGRATE_LOCK_ID})"))
             .execute(&mut *conn)
             .await
             .map_err(|e| KurultaiError::Store(format!("advisory lock: {e}")))?;
         let result = self.migrate_locked(&mut conn).await;
-        let _ = sqlx::query("SELECT pg_advisory_unlock(87231401)")
+        let _ = sqlx::query(&format!("SELECT pg_advisory_unlock({PG_MIGRATE_LOCK_ID})"))
             .execute(&mut *conn)
             .await;
         result
@@ -860,6 +860,12 @@ fn parse_dt(s: &str) -> DateTime<Utc> {
         .map(|d| d.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now())
 }
+
+/// Advisory lock id serializing `CREATE … IF NOT EXISTS` migrations —
+/// held by `PostgresStore::migrate` and `HubKeyStore::connect` so the two
+/// entry points can never interleave catalog DDL (pg_class unique-index
+/// race). Distinct from the per-test provision locks (87231402+).
+pub(crate) const PG_MIGRATE_LOCK_ID: i64 = 87231401;
 
 /// `KURULTAI_PG_SKIP_MIGRATE=1` marks a runtime-role (`kurultai_app`)
 /// connection — no DDL rights, so `connect` must not attempt `migrate()`

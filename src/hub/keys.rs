@@ -60,8 +60,34 @@ impl HubKeyStore {
         // no DDL rights) the pool skips `migrate()`; schema comes from the
         // `KURULTAI_MIGRATE_DATABASE_URL` path instead.
         if !crate::store::postgres::skip_migrate_enabled() {
-            store.migrate().await?;
-            HubActivityStore::migrate(store.pool()).await?;
+            // Same advisory lock `PostgresStore::migrate` holds — the hub
+            // key + activity DDL races on pg_class's relname index when a
+            // store migrate runs in parallel (observed as
+            // `pg_class_relname_nsp_index` duplicate key under nextest).
+            let mut conn = store
+                .pool
+                .acquire()
+                .await
+                .map_err(|e| KurultaiError::Store(format!("acquire for migrate: {e}")))?;
+            sqlx::query(&format!(
+                "SELECT pg_advisory_lock({})",
+                crate::store::postgres::PG_MIGRATE_LOCK_ID
+            ))
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| KurultaiError::Store(format!("advisory lock: {e}")))?;
+            let migrated = async {
+                store.migrate().await?;
+                HubActivityStore::migrate(store.pool()).await
+            }
+            .await;
+            let _ = sqlx::query(&format!(
+                "SELECT pg_advisory_unlock({})",
+                crate::store::postgres::PG_MIGRATE_LOCK_ID
+            ))
+            .execute(&mut *conn)
+            .await;
+            migrated?;
         }
         Ok(store)
     }
