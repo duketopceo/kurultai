@@ -35,6 +35,39 @@ impl MaybeHubPrincipal {
     pub fn agent_id(&self) -> Option<&str> {
         None
     }
+
+    /// Whether the resolved hub principal carries `hub_api_keys.is_admin`
+    /// (U4/R17). Member keys → `false`; operator-class credentials (static
+    /// hub key / verified CF Access) resolve no `HubPrincipal` at all and
+    /// also read `false` — use [`MaybeHubPrincipal::admin_permitted`] for
+    /// the admin-route gate, which passes operator credentials.
+    pub fn is_admin(&self) -> bool {
+        #[cfg(feature = "postgres")]
+        {
+            self.0.as_ref().map(|p| p.is_admin).unwrap_or(false)
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            false
+        }
+    }
+
+    /// Whether this request may reach `is_admin`-gated `/api/hub/*` admin
+    /// routes (U4/R17, KTD7): an admin hub key, or an operator-class
+    /// credential (static `KURULTAI_HUB_API_KEYS` entry / verified CF
+    /// Access — those authenticate without a `HubPrincipal`). Member keys
+    /// are the only refused class; the unauthenticated case is already
+    /// handled upstream by `hub_api_auth`.
+    pub fn admin_permitted(&self) -> bool {
+        #[cfg(feature = "postgres")]
+        {
+            self.0.as_ref().map(|p| p.is_admin).unwrap_or(true)
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            true
+        }
+    }
 }
 
 impl<S> FromRequestParts<S> for MaybeHubPrincipal
@@ -237,6 +270,42 @@ pub async fn hub_api_auth(
     Ok(unauthorized_response(
         "invalid or revoked credential — run `kurultai connect <instance-url>` to mint a fresh agent key",
     ))
+}
+
+/// Resolve the KTD1 [`crate::store::scope::PgScope`] for an authenticated
+/// request. Runs in the `pg_rls_scope` middleware **after** `hub_api_auth`
+/// inserted any `HubPrincipal`, which is the only source of truth — client
+/// input (body, query, metadata, headers) is never read.
+///
+/// * admin principal (`hub_api_keys.is_admin`, U4/R17) → `PgScope::admin()`
+///   — the `kurultai.is_admin` GUC lifts RLS scope for the request.
+/// * member principal → `PgScope::member(team_id)`. `is_admin` is never
+///   reachable from a member path — there is no code path that can OR it in.
+/// * `HubAuth::None` → [`PgScope::INTERNAL`]: trusted-local mode — no
+///   credential layer exists, every caller is the operator (same posture as
+///   CLI/stdio MCP).
+/// * `/api/hub/*` reached on operator-class credentials (static key /
+///   CF Access — member keys carry a `HubPrincipal` and take the branch
+///   above) → `PgScope::admin()` so the admin-only `hub_activity` SELECT
+///   keeps working.
+/// * anything else authenticated without a member principal → `closed()`:
+///   no GUCs, `company` rows only (fail closed — KTD1).
+#[cfg(feature = "postgres")]
+pub(crate) fn request_pg_scope(gate: &HubGate, req: &Request) -> crate::store::scope::PgScope {
+    use crate::store::scope::PgScope;
+    if let Some(p) = req.extensions().get::<HubPrincipal>() {
+        if p.is_admin {
+            return PgScope::admin();
+        }
+        return PgScope::member(p.team_id.clone());
+    }
+    if gate.auth == HubAuth::None {
+        return PgScope::INTERNAL;
+    }
+    if req.uri().path().starts_with("/api/hub/") {
+        return PgScope::admin();
+    }
+    PgScope::closed()
 }
 
 /// Check a bearer token against issued hub keys, static API keys, and

@@ -302,6 +302,9 @@ enum Commands {
         /// (default: $KURULTAI_INSTANCE_ID → hostname)
         #[arg(long)]
         instance_id: Option<String>,
+        /// Team prefill hint for a hub join — the approver's pick wins
+        #[arg(long)]
+        team: Option<String>,
         /// MCP clients to wire: cursor, claude, codex, hermes, all, or none
         #[arg(long, default_value = "all")]
         agent: AgentTarget,
@@ -408,6 +411,7 @@ enum HubCommands {
     },
     /// Read append-only hub write activity log
     Log {
+        /// Max entries to print (newest first)
         #[arg(long, default_value = "50")]
         limit: usize,
     },
@@ -418,15 +422,24 @@ enum HubCommands {
 enum HubKeyCommands {
     /// Issue a device key. Plaintext shown once; sha256 stored at rest.
     Issue {
+        /// Agent id the key is issued to (e.g. `devin` or `devin@laptop` for a
+        /// `connect` seat — the label recorded on `hub_api_keys.agent_id`)
         #[arg(long)]
         agent: String,
+        /// Team the key is scoped to — members see `company` + this team's
+        /// atoms only (validated; becomes the RLS `kurultai.team_id` GUC)
         #[arg(long)]
         team: String,
+        /// Mint an admin key — required on `/api/hub/*` admin routes (U4/R17)
+        #[arg(long)]
+        admin: bool,
     },
     /// Revoke by key prefix (first 12 chars shown at issue)
     Revoke {
+        /// First 12 chars of the key (printed at issue, shown by `list`)
         #[arg(long, conflicts_with = "id")]
         prefix: Option<String>,
+        /// Numeric key id (shown by `list`)
         #[arg(long, conflicts_with = "prefix")]
         id: Option<i64>,
     },
@@ -1141,6 +1154,7 @@ async fn main() -> Result<()> {
             ref url,
             ref codename,
             ref instance_id,
+            ref team,
             agent,
             no_open,
         } => {
@@ -1151,6 +1165,7 @@ async fn main() -> Result<()> {
                 agent,
                 no_open,
                 lane: env.as_str().to_string(),
+                team: team.clone(),
             })
             .await?;
         }
@@ -1296,9 +1311,12 @@ async fn main() -> Result<()> {
                 HubCommands::Key { command } => {
                     let key_store = kurultai::hub::HubKeyStore::connect(&url).await?;
                     match command {
-                        HubKeyCommands::Issue { agent, team } => {
-                            let (token, id) = key_store.issue(&agent, &team).await?;
-                            println!("Hub key issued (id={id}, agent={agent}, team={team}).");
+                        HubKeyCommands::Issue { agent, team, admin } => {
+                            let (token, id) = key_store.issue_admin(&agent, &team, admin).await?;
+                            let role = if admin { "admin" } else { "member" };
+                            println!(
+                                "Hub {role} key issued (id={id}, agent={agent}, team={team})."
+                            );
                             println!();
                             println!("  {token}");
                             println!();
@@ -1339,9 +1357,10 @@ async fn main() -> Result<()> {
                                     } else {
                                         "revoked"
                                     };
+                                    let role = if r.is_admin { " admin" } else { "" };
                                     println!(
-                                        "  id={} prefix={} agent={} team={} [{status}]",
-                                        r.id, r.key_prefix, r.agent_id, r.team_id
+                                        "  id={} prefix={} agent={} team={}{} [{status}]",
+                                        r.id, r.key_prefix, r.agent_id, r.team_id, role
                                     );
                                 }
                             }

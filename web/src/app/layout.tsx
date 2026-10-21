@@ -4,7 +4,6 @@ import {
   ClerkProvider,
   Show,
   SignInButton,
-  SignUpButton,
   UserButton,
 } from "@clerk/nextjs";
 import "./globals.css";
@@ -29,16 +28,14 @@ export default function RootLayout({
             </Link>
             <nav className="auth-nav">
               <Show when="signed-out">
+                {/* Admin console is invite-only — sign-up stays disabled in
+                    the Clerk dashboard; admins are allowlisted via
+                    WEB_ADMIN_EMAILS. */}
                 <SignInButton mode="modal">
                   <button type="button" className="btn">
                     Sign in
                   </button>
                 </SignInButton>
-                <SignUpButton mode="modal">
-                  <button type="button" className="btn btn-primary">
-                    Sign up
-                  </button>
-                </SignUpButton>
               </Show>
               <Show when="signed-in">
                 <Link href="/dashboard" className="nav-link">

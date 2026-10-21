@@ -1,0 +1,32 @@
+# Hub Kurultai image — Postgres store build (--features postgres), non-root user.
+# Same pattern as Dockerfile.solo; hub state lives in Postgres (kurultai-hub-db),
+# not on disk — /data is only HOME for config defaults, never a SQLite volume.
+FROM rust:bookworm AS builder
+WORKDIR /src
+COPY . .
+RUN cargo build --release --locked --features postgres --bin kurultai
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r kurultai -g 1000 \
+    && useradd -r -u 1000 -g kurultai -d /data -m kurultai \
+    && mkdir -p /data \
+    && chown -R kurultai:kurultai /data
+
+COPY --from=builder /src/target/release/kurultai /usr/local/bin/kurultai
+
+ENV HOME=/data
+ENV KURULTAI_ENV=prod
+ENV KURULTAI_HUB_BIND=all
+ENV PORT=8423
+
+USER kurultai
+WORKDIR /data
+
+EXPOSE 8423
+
+ENTRYPOINT ["kurultai"]
+CMD ["daemon", "--no-poll", "--no-watch"]

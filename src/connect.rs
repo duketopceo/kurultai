@@ -28,6 +28,9 @@ pub struct ConnectOptions {
     pub no_open: bool,
     /// Lane (`dev`/`staging`/`prod`) namespaced into the credential name.
     pub lane: String,
+    /// Hub connect-join (U3): team prefill hint sent with the device-code
+    /// request — the approver's picker choice always wins.
+    pub team: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,6 +47,9 @@ struct DeviceTokenResponse {
     agent_key: String,
     codename: String,
     instance_id: String,
+    /// Team scope the approver bound the hub key to (hub lane only).
+    #[serde(default)]
+    team_id: Option<String>,
 }
 
 /// Default seat id: `KURULTAI_INSTANCE_ID` → persistent `<config-dir>/seat-id`
@@ -167,6 +173,8 @@ pub async fn run(opts: ConnectOptions) -> Result<()> {
             "client_id": "kurultai-cli",
             "codename": opts.codename.as_deref().unwrap_or(""),
             "instance_id": &instance_id,
+            // Hub connect-join prefill hint — the approver's picker wins.
+            "team": opts.team.as_deref().unwrap_or(""),
         }))
         .send()
         .await
@@ -220,14 +228,48 @@ pub async fn run(opts: ConnectOptions) -> Result<()> {
                 );
                 let where_stored = store_agent_key(&name, &token.agent_key)?;
                 println!();
-                println!(
-                    "Connected as '{}' (seat '{}').",
-                    token.codename, token.instance_id
-                );
+                match &token.team_id {
+                    Some(team) => println!(
+                        "Connected as '{}' (seat '{}', team '{}').",
+                        token.codename, token.instance_id, team
+                    ),
+                    None => println!(
+                        "Connected as '{}' (seat '{}').",
+                        token.codename, token.instance_id
+                    ),
+                }
                 println!("Agent key stored in {where_stored}.");
-                let wired = crate::mcp::wire_agent(opts.agent)?;
-                for p in &wired {
-                    println!("MCP wired: {}", p.display());
+                let wired = if token.team_id.is_some() {
+                    // Hub lane (U5/R13): remote `{url, headers}` entries where
+                    // the client config format can carry a bearer; the local
+                    // `mcp --broker` bridge where it can't — the minted key
+                    // stays in the key store either way.
+                    let remote = crate::mcp::RemoteWire {
+                        mcp_url: format!("{base}/mcp"),
+                        upstream_url: base.clone(),
+                        token: token.agent_key.clone(),
+                        key_name: name.clone(),
+                    };
+                    crate::mcp::wire_agent_remote(opts.agent, &remote)?
+                } else {
+                    crate::mcp::wire_agent(opts.agent)?
+                        .into_iter()
+                        .map(crate::mcp::WireOutcome::Local)
+                        .collect()
+                };
+                for w in &wired {
+                    match w {
+                        crate::mcp::WireOutcome::Remote(p) => {
+                            println!("MCP wired (remote): {}", p.display());
+                        }
+                        crate::mcp::WireOutcome::Local(p) => {
+                            println!("MCP wired: {}", p.display());
+                        }
+                        crate::mcp::WireOutcome::Bridge { path, note } => {
+                            println!("MCP wired (bridge): {}", path.display());
+                            println!("  {note}");
+                        }
+                    }
                 }
                 println!("Done. If this key is ever revoked, run `kurultai connect` again.");
                 return Ok(());

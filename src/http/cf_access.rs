@@ -245,7 +245,9 @@ fn pick_key(cache: &CachedJwks, kid: Option<&str>) -> Option<DecodingKey> {
 
 #[cfg(test)]
 impl CfAccess {
-    fn seeded_for_test(
+    /// `pub(crate)` so sibling handler tests (`device.rs` U3 allowlist
+    /// coverage) can seed a verifier without hitting the real JWKS endpoint.
+    pub(crate) fn seeded_for_test(
         team_url: &str,
         auds: Vec<String>,
         keys: Vec<(Option<String>, DecodingKey)>,

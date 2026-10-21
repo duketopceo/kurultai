@@ -87,6 +87,65 @@ services:
       retries: 3
       start_period: 5s
 
+  # Shared brain (hub). KURULTAI_FEATURE_HUB swaps the entire store to Postgres —
+  # this is a separate container because there is no dual-lane mode (KTD2).
+  # hub.shippedit.dev (humans, admin-scoped Access) + api-hub.shippedit.dev
+  # (bearer hub keys) both point here — see docs/runbook-hub.md.
+  kurultai-hub:
+    image: kurultai:hub
+    container_name: kurultai-hub
+    restart: unless-stopped
+    depends_on:
+      kurultai-hub-db:
+        condition: service_healthy
+    environment:
+      KURULTAI_ENV: prod
+      KURULTAI_FEATURE_HUB: "1"
+      KURULTAI_HUB_BIND: all
+      KURULTAI_HUB_AUTH: api_key
+      # Runtime DSN — kurultai_app (non-owner); RLS applies. Compose-internal.
+      DATABASE_URL: postgres://kurultai_app:${KURULTAI_HUB_DB_PASSWORD:?missing KURULTAI_HUB_DB_PASSWORD — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}@kurultai-hub-db:5432/kurultai
+      # Admin/CLI DSN — kurultai_migrate (BYPASSRLS); used by `docker exec … kurultai hub …` runs (KTD8).
+      KURULTAI_MIGRATE_DATABASE_URL: postgres://kurultai_migrate:${KURULTAI_HUB_MIGRATE_DB_PASSWORD:?missing KURULTAI_HUB_MIGRATE_DB_PASSWORD — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}@kurultai-hub-db:5432/kurultai
+      # App role never runs DDL — migrations go through the migrate DSN.
+      KURULTAI_PG_SKIP_MIGRATE: "1"
+      # /connect approver gate: verified CF Access email must appear in this list.
+      KURULTAI_ADMIN_EMAILS: ${KURULTAI_ADMIN_EMAILS:?missing KURULTAI_ADMIN_EMAILS — add to <repo>/.env}
+      # Admin-scoped Access app AUD tag(s) for hub./api-hub. hostnames.
+      KURULTAI_CF_ACCESS_TEAM: duketopceo
+      KURULTAI_CF_ACCESS_AUDS: ${HUB_CF_ACCESS_AUDS:?missing HUB_CF_ACCESS_AUDS — add the Access app AUD tag to <repo>/.env}
+      PORT: "8423"
+      HOME: /data
+      RUST_LOG: "kurultai=info,error"
+    networks:
+      - kurultai
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8423/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Hub Postgres (pgvector). Compose-internal only — never published to the host.
+  kurultai-hub-db:
+    image: pgvector/pgvector:pg16
+    container_name: kurultai-hub-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kurultai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${KURULTAI_HUB_DB_SUPERPASSWORD:?missing KURULTAI_HUB_DB_SUPERPASSWORD — run deploy/server-001/redeploy.sh (it passes --env-file <repo>/.env)}
+    volumes:
+      - kurultai-hub-pgdata:/var/lib/postgresql/data
+    networks:
+      - kurultai
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kurultai"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
 
 networks:
   kurultai:
@@ -96,3 +155,4 @@ networks:
 volumes:
   kurultai-personal-data:
   kurultai-work-data:
+  kurultai-hub-pgdata:

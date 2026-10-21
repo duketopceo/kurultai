@@ -20,7 +20,7 @@ export default function HomePage() {
         </Show>
         <Show when="signed-in">
           <Link href="/dashboard" className="btn btn-primary">
-            Open account
+            Open console
           </Link>
         </Show>
         <a

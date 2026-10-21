@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-10-19
-version: 20
+updated: 2026-10-20
+version: 25
 ---
 
 # `.`
@@ -36,7 +36,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 - [`src/`](src/INDEX.md) — Rust CLI + daemon (main product)
 - [`tests/`](tests/INDEX.md) — Rust integration + acceptance tests
 - [`ui/`](ui/INDEX.md) — Built assets rust-embed serves at GET /ui/
-- [`web/`](web/INDEX.md) — Next.js + Clerk team app (optional)
+- [`web/`](web/INDEX.md) — Next.js + Clerk hub admin console (status, approvals, keys, scopes)
 - [`website/`](website/INDEX.md) — Brain UI source (Vite) — do not add a second dashboard
 
 ## Files
@@ -50,7 +50,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`.mailmap`](.mailmap) | Maps duketopceo@gmail.com commits to luke.k@bartlettroofs.com | — | — | 2026-10-07 | 1 | 2026-10-07 added (#423) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-05 | 3 | 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
+| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-10-20 | 4 | 2026-10-20 MCP wiring section: full 16-tool surface + per-credential HTTP surface; `connect` hosted-join step (hub adoption U6) · 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Prompt snippet for wiring agents to Kurultai | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-10-19 | 5 | 2026-10-19 v0.7.0 section backfill (was missing since release) · 2026-09-11 v0.6.0 release notes · 2026-09-01 v0.5.0 release notes · 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor covenant | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -64,7 +64,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report (historical v0.4.1) | — | — | 2026-10-19 | 2 | 2026-10-19 historical-verification banner (content stays v0.4.1 evidence) · 2026-08-16 indexed (v1 seed) |
 | [`LICENSE`](LICENSE) | AGPL-3.0-only license | — | — | 2026-10-15 | 2 | 2026-10-15 MIT → AGPL-3.0-only (#443) · 2026-08-16 indexed (v1 seed) |
 | [`DESIGN.md`](DESIGN.md) | Design direction proposal "Council Ring": tokens, glyphs, motion, surfaces | docs/design/bases/linear.DESIGN.md | website/src/next tokens | 2026-10-10 | 1 | 2026-10-10 created (repo program) |
-| [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-12 | 5 | 2026-09-12 link ROADMAP.md in Status · 2026-09-11 v0.6.0 release stack facts · 2026-09-01 v0.5.0 release stack facts |
+| [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-10-20 | 6 | 2026-10-20 hub track gets connect/`hub key` lines; CLI row completed (connect/login/agent/broker/webui/eval/review/hub key); link AGENT_CONNECTION_PROMPT (hub adoption U6) · 2026-09-12 link ROADMAP.md in Status · 2026-09-11 v0.6.0 release stack facts |
 | [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/2026-10-05-001-docs-program-roadmap-plan.md` · `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-10-05 | 2 | 2026-10-05 lists program roadmap plan first · 2026-09-12 created — issue #122 |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`argus-reviewer.config.ts`](argus-reviewer.config.ts) | Argus reviewer config — code-review-only (`run: 'false'`), OpenRouter BYOK, Jev secrets adjudication on | `.github/workflows/argus-reviewer.yml` · `package.json` | — | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
@@ -77,6 +77,13 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-10-21 — minted `hub_api_keys` on `POST /mcp` + remote MCP wiring (plan 2026-10-19-2053 U5): `http/mcp.rs` `McpAuth::Hub` resolves hub bearers → `HubPrincipal` extension → whole dispatch inside `PgScope::member`/`admin` (secret callers closed-scope on the hub lane; revoked/unknown 401); `mcp/server.rs` `handle_message_scoped` → member `ToolSurface::HubMember` denies `promote`/`ontology_promote`/`ontology_propose` + `hub_team` filters on search/ask/who-knows/cite; `mcp/init.rs` `wire_agent_remote` — cursor/claude remote `{url,Bearer}` entries (0600), codex/hermes `mcp --broker` bridges (token stays in omaseal); `connect.rs` routes `team_id` responses to remote wiring; `tests/hub_mcp.rs` 7 green on `kurultai_app`
+- 2026-10-21 — `kurultai connect` on Postgres hub (plan 2026-10-19-2053 U3, AE7): `migrations::PG_HUB_DEVICE_FLOWS` `hub_device_flows` (no RLS); `PostgresStore` device-flow impl — conditional UPDATEs make pending→approved and approved→exchanged exactly-once; `DeviceFlow` gains `team_hint`/`team_id`/`issued_key` (never serialized); `/connect` hub lane renders an authenticated team picker (datalist + free text, `--team` prefill — approver wins), `approve_hub` validates `team_id` + mints `HubKeyStore::issue` once + revokes losing races; `/api/device/token` hands the plaintext key out once; `KURULTAI_ADMIN_EMAILS` allowlist gates CF approvers; CLI `connect --team`; `tests/connect_hub.rs` 8 green on `kurultai_app`
+- 2026-10-20 — hub adoption U6 docs/CLI parity (plan 2026-10-19-2053): `docs/AGENT_CONNECTION_PROMPT.md` rewritten — `connect <api-hub>` easy path (`--team` prefill → admin team pick → mint-at-approve → keyring) + `hub key issue/list/revoke` + `/api/hub/*` admin surface documented; `AGENT_SETUP_PROMPT.md` fixes (AGPL, full MCP tool list, connect pointer); `runbook-hub.md` synced (solo `:?` vars, `web.` tunnel row, `KURULTAI_AUTH_HOST`, HTTP admin routes, `hub log`, RLS coverage); `deploy/server-001/.env.example` gains `PERSONAL_ADMIN_TOKEN` + `PERPLEXITY_API_KEY`; `main.rs` `hub key`/`hub log` flag help; README/AGENTS MCP sections updated
+- 2026-10-20 — session-GUC wiring + write stamping (plan 2026-10-19-2053 U2): `src/store/scope.rs` `PgScope` task-local (member/admin/closed/INTERNAL); `PostgresStore::begin_scope` wraps every op in a tx with `set_config(…,true)` GUCs under KTD1 `PathClass` member/internal split; `pg_rls_scope` middleware resolves scope from `HubPrincipal` after `hub_api_auth`; `remember_with` stamps `visibility=team`+`team_id` from scope (KTD5); `multi_hop_expand` re-enters scope across `JoinSet` spawns; `/api/hub/activity` member→403; `tests/hub_rls.rs` +5 (15 green on `kurultai_app`)
+- 2026-10-20 — hub RLS + roles (plan 2026-10-19-2053 U1): `migrations::PG_HUB_RLS` — FORCE RLS on `knowledge_atoms`/`atoms_vec`/`hub_activity` keyed on `kurultai.team_id`/`kurultai.is_admin` GUCs; `KURULTAI_PG_SKIP_MIGRATE` gate on `PostgresStore`/`HubKeyStore` connects (KTD8); `deploy/server-001/init-hub-db.sql` role+grant bootstrap; `tests/hub_rls.rs` self-provisioning coverage
+- 2026-10-20 — web/ hub admin console (plan 2026-10-19-2053 U8): `/dashboard` becomes 4 surfaces (status cards, device approvals w/ team pick, key issue/list/revoke, scope census + activity) behind Clerk + `WEB_ADMIN_EMAILS` allowlist; `src/lib/hub-admin.ts` server-only `/api/hub/*` client (`KURULTAI_ADMIN_KEY`, `HUB_ADMIN_KEY` fallback), `src/components/` console widgets, account page moved to `/dashboard/account`
+- 2026-10-20 — hub deploy recipe (plan 2026-10-19-2053 U7): `deploy/server-001/` gains `Dockerfile.hub` (`--features postgres`), `kurultai-hub`/`kurultai-hub-db` compose services + `kurultai-hub-pgdata`, hub `.env` placeholders, `redeploy.sh` hub build; `docs/runbook-hub.md` operator runbook
 - 2026-10-19 — repo cleanup: 10 dependabot PRs merged (cargo×5, web×4, website vite pending); issues #116/#117/#122/#132 closed as shipped, #137/#140 status-updated to current brain doctrine; 14 dead remote branches + 6 local deleted (mesh-schema kept — unique unmerged work); version refs reconciled to v0.7.0 (version.ts, INSTALL_GUIDE, AGENT_SETUP, mac-dev, skill readme), CHANGELOG gains missing 0.7.0 section, `.gitignore` `.worktrees/`, INSTALL_REPORT historical banner, LICENSE row → AGPL
 - 2026-10-07 — `docs/plans/2026-10-07-001`: multi-vector late-interaction embed plan (pplx-embed-v2-late rerank lane, `MultiVectorEmbedder` + `atoms_multivec` sidecar, fastembed/http backends, dense v1 primary untouched); tracking issue #424
 - 2026-10-06 — explainer film: `launch/src/videos/kurultai/explainer/` — "how does an agent remember between sessions?" (~80s, diagram-first, VO-timed draft); Diagram.tsx primitives

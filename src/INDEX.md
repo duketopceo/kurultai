@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src
 parent: INDEX.md
-updated: 2026-10-03
-version: 9
+updated: 2026-10-20
+version: 13
 ---
 
 # `src`
@@ -51,9 +51,9 @@ version: 9
 | [`hashutil.rs`](hashutil.rs) | Content hashing for incremental index skip | — | `src/connectors/dayflow.rs` · `src/connectors/github.rs` · `src/connectors/pond.rs` · `src/http/auth.rs` · `src/http/ingest.rs` | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`lib.rs`](lib.rs) | Crate root: module graph and public error/env re-exports | — | — | 2026-09-17 | 5 | 2026-09-17 `eval` + `web` module exports · 2026-09-16 `connect` module export · 2026-09-15 `webui` module export (#329) |
 | [`logging.rs`](logging.rs) | tracing-subscriber setup | `src/environment` · `src/error` | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`connect.rs`](connect.rs) | `kurultai connect` device-authorization CLI — code → poll → omaseal/key-file → `wire_agent`; persistent seat-id + seat-scoped credential names | `src/error` · `src/mcp` · `src/security` · `src/webui` · `reqwest` | — | 2026-09-19 | 2 | 2026-09-19 seat file `<config>/seat-id` (`{hostname}-{rand}`) + `{lane}-{codename}-{seat}-agent-token` cred names · 2026-09-16 added |
+| [`connect.rs`](connect.rs) | `kurultai connect` device-authorization CLI — code → poll → omaseal/key-file → `wire_agent`; persistent seat-id + seat-scoped credential names; sends `--team` prefill + parses `team_id` from the hub token response; team-bound hub tokens take `wire_agent_remote` (remote-URL MCP entry / broker bridge) | `src/error` · `src/mcp` · `src/security` · `src/webui` · `reqwest` | — | 2026-10-21 | 4 | 2026-10-21 hub adoption U5: hub token responses carrying `team_id` route to `mcp::wire_agent_remote` (RemoteWire: mcp_url + upstream + stored key name); solo tokens keep local `wire_agent` · 2026-10-21 hub adoption U3: `--team` prefill hint in `/api/device/code`; `team_id` field parsed + shown on success · 2026-09-19 seat file `<config>/seat-id` (`{hostname}-{rand}`) + `{lane}-{codename}-{seat}-agent-token` cred names · 2026-09-16 added |
 | [`login.rs`](login.rs) | `kurultai login` device-code flow for hosted agent tokens | `src/error` · `reqwest` · `dirs` | — | 2026-09-06 | 1 | 2026-09-06 added |
-| [`main.rs`](main.rs) |  CLI entry: init, index, search, ask [--web], eval, daemon [--demo], mcp [--broker], connect, login, export, broker, sweep  | — | — | 2026-10-04 | 17 | `sweep [--dry-run] [--no-report]` (U5) ·2026-10-03 search/ask `--as-of` + `--include-superseded` flags (U4) ·2026-10-02 ask CLI prints gaps |
+| [`main.rs`](main.rs) |  CLI entry: init, index, search, ask [--web], eval, daemon [--demo], mcp [--broker], connect [--team], login, export, broker, sweep; `hub key issue [--admin]` mints role-aware hub keys  | — | — | 2026-10-20 | 20 | 2026-10-20 `hub key`/`hub log` flag help strings — `--agent`/`--team`/`--prefix`/`--id`/`--limit` doc'd (hub adoption U6) · 2026-10-21 `hub key issue --admin` → `issue_admin` + `hub key list` role marker (hub adoption U4, R17) · 2026-10-21 `connect --team` flag → `ConnectOptions.team` (hub adoption U3) |
 | [`metrics.rs`](metrics.rs) | Prometheus text for GET /api/metrics + client-perf sample store | — | `src/http/mod.rs` | 2026-09-20 | 2 | 2026-09-20 client family: per-metric bounds (fps vs ms), `observe_client` + `ClientReport` for POST /api/metrics/client (#102) · 2026-08-16 indexed (v1 seed) |
 | [`project.rs`](project.rs) | project_id namespacing for shared-store sessions (#184) | — | `src/mcp/server.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`sweep.rs`](sweep.rs) | Consolidation sweep (U5): content-hash dedupe→supersede, stale ontology prune, tier/quarantine census, Hey report post | `src/memory` · `src/store` · `src/types` | `src/main.rs` · `src/daemon/mod.rs` | 2026-10-04 | 1 | 2026-10-04 added (U5) |
@@ -64,6 +64,11 @@ version: 9
 
 ## Recent
 
+- 2026-10-21 — hub adoption U4 member-vs-admin authorization (plan 2026-10-19-2053): `hub_api_keys.is_admin` (+ `PG_HUB_KEYS_ADMIN` self-heal both migrate paths); `HubKeyStore::issue_admin` + `HubPrincipal.is_admin`; `auth.rs` `admin_permitted` gate + `request_pg_scope` admin→`PgScope::admin()`; `http/mod.rs` `/api/hub/*` routes — keys GET/POST/DELETE, device pending/approve (reuses `approve_for_team`), scopes census — with `hub_activity` audit; `main.rs` `hub key issue --admin`
+- 2026-10-21 — hub adoption U5 `/mcp` hub keys + remote wiring (plan 2026-10-19-2053): `http/mcp.rs` resolves minted `hub_api_keys` bearers → `HubPrincipal` extension → dispatch wrapped in `PgScope::member`/`admin` (closed scope for secret callers on hub); `mcp/server.rs` `handle_message_scoped` threads hub team/admin → `SearchFilter::with_hub_team` + member deny on governance tools; `mcp/init.rs` `RemoteWire`/`wire_agent_remote` — Cursor/Claude direct remote-URL entries (0600), Codex/Hermes `mcp --broker` bridges (no bearer in config); `connect.rs` routes `team_id` responses to remote wiring
+- 2026-10-21 — hub adoption U3 `kurultai connect` on Postgres (plan 2026-10-19-2053): `store/` `hub_device_flows` + conditional-UPDATE transitions + `DeviceFlow` team fields; `http/device.rs` team picker + `KURULTAI_ADMIN_EMAILS` allowlist + mint-at-approve + once-only key handout; `hub/keys.rs` `list_teams` + mint-time `validate_team_id`; `connect.rs`/`main.rs` `--team` hint
+- 2026-10-20 — hub adoption U6 docs/CLI parity (plan 2026-10-19-2053): `main.rs` help strings for `hub key issue --agent/--team`, `revoke --prefix/--id`, `hub log --limit`
+- 2026-10-20 — hub adoption U2 session-GUC wiring + write stamping (plan 2026-10-19-2053): `store/scope.rs` `PgScope` task-local; `store/postgres.rs` `PathClass` + `begin_scope`/`apply_pg_scope` transaction-local `set_config`; `http/auth.rs` `request_pg_scope` classifier + `http/mod.rs` `pg_rls_scope` middleware + `/api/hub/activity` member→403; `mcp/brain.rs` `remember_with` member team stamping (KTD5) + `multi_hop_expand` scope re-entry across `JoinSet`; `hub/activity.rs` scoped `list`
 - 2026-10-04 — U5 consolidation sweep: `sweep.rs` (dedupe→`mark_superseded`, `prune_stale_ontology`, tier census, Hey `kurultai-sweep` post); `store/` `duplicate_content_groups` + `prune_stale_ontology`; `daemon/mod.rs` sweep after nightly full sync; `pipeline/mod.rs` `store()` accessor; `main.rs` `sweep` subcommand
 - 2026-10-03 — U4 bi-temporal-lite: `types.rs` superseded_at/by fields; `main.rs` search+ask `--as-of`/`--include-superseded`; `store/` schema v17 + `mark_superseded` + supersede predicates; `ingest/dump.rs` `fm_*` metadata; `ontology/extract.rs` resolve_supersede_targets
 

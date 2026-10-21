@@ -1,75 +1,124 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { getAdminIdentity } from "@/lib/admin-gate";
+import {
+  listActivity,
+  listDeviceFlows,
+  listKeys,
+  listScopes,
+  type HubResult,
+} from "@/lib/hub-admin";
+import HubError from "@/components/hub-error";
+import { fmtAge, fmtTime, isExpired } from "@/lib/format";
 
+function errOf<T>(r: HubResult<T>, label: string): string | null {
+  return r.ok ? null : `${label}: ${r.error}`;
+}
+
+/** Hub status — card overview + recent admin/write activity. */
 export default async function DashboardPage() {
-  const { userId, orgId, orgSlug } = await auth();
-  if (!userId) {
-    redirect("/sign-in");
-  }
+  const admin = await getAdminIdentity();
+  if (!admin) return null; // layout renders the 403 panel
 
-  const user = await currentUser();
-  const github =
-    user?.externalAccounts?.find((a) => a.provider === "oauth_github") ??
-    user?.externalAccounts?.find((a) => a.provider.includes("github"));
+  const [keys, flows, scopes, activity] = await Promise.all([
+    listKeys(),
+    listDeviceFlows(),
+    listScopes(),
+    listActivity(10),
+  ]);
+  const errors = [
+    errOf(keys, "keys"),
+    errOf(flows, "device flows"),
+    errOf(scopes, "scopes"),
+    errOf(activity, "activity"),
+  ].filter((e): e is string => Boolean(e));
+
+  const keyRows = keys.ok ? keys.data.keys : [];
+  const activeKeys = keyRows.filter((k) => !k.revoked_at);
+  const adminKeys = activeKeys.filter((k) => k.is_admin);
+  const flowRows = flows.ok ? flows.data.flows : [];
+  const pending = flowRows.filter(
+    (f) => f.status === "pending" && !isExpired(f.expires_at),
+  );
+  const scopeRows = scopes.ok ? scopes.data.scopes : [];
+  const atoms = scopeRows.reduce((n, s) => n + s.atoms, 0);
+  const teams = new Set(
+    scopeRows
+      .map((s) => s.team_id)
+      .filter((t): t is string => Boolean(t))
+      .concat(activeKeys.map((k) => k.team_id)),
+  );
+  const entries = activity.ok ? activity.data.entries : [];
 
   return (
     <div className="panel">
       <div className="panel-head">
         <div>
-          <p className="eyebrow">Account settings</p>
-          <h1>Human access</h1>
+          <p className="eyebrow">Hub admin console</p>
+          <h1>Hub status</h1>
         </div>
-        <UserButton
-          appearance={{ elements: { avatarBox: "clerk-avatar" } }}
-          showName
-        />
       </div>
-      <p className="lede">
-        You are signed in as a human via Clerk. Agent MCP keys are managed
-        separately with <code>kurultai agent add</code> — do not paste those
-        here.
-      </p>
-      <dl className="meta">
-        <dt>User</dt>
-        <dd>
-          {user?.primaryEmailAddress?.emailAddress ??
-            user?.username ??
-            userId}
-        </dd>
-        <dt>GitHub</dt>
-        <dd>{github?.username ?? github?.emailAddress ?? "— (link in Clerk profile)"}</dd>
-        <dt>Organization</dt>
-        <dd>
-          {orgId
-            ? `${orgSlug ?? orgId} — shared team brain`
-            : "Personal workspace (create a Clerk Organization for team aggregate)"}
-        </dd>
-      </dl>
-      <section className="settings-block">
-        <h2>What this controls</h2>
-        <ul>
-          <li>Team web app identity (this site)</li>
-          <li>Org membership for the shared tier</li>
-        </ul>
-        <h2>What stays elsewhere</h2>
-        <ul>
-          <li>
-            Brain UI on a locked daemon — paste a human owner/hub key from{" "}
-            <code>kurultai admin key issue</code>
-          </li>
-          <li>
-            Agents — API keys via <code>kurultai agent add</code> + MCP (unchanged)
-          </li>
-        </ul>
-      </section>
-      <p className="hint">
-        Multi-user model:{" "}
-        <Link href="https://github.com/duketopceo/kurultai/blob/main/docs/multi-user-kurultai.md">
-          docs/multi-user-kurultai.md
+
+      <HubError errors={errors} />
+
+      <div className="card-grid">
+        <Link href="/dashboard/keys" className="card">
+          <span className="stat-num">{activeKeys.length}</span>
+          <span className="stat-label">
+            active keys · {adminKeys.length} admin
+          </span>
         </Link>
-      </p>
+        <Link href="/dashboard/approvals" className="card">
+          <span className="stat-num">{pending.length}</span>
+          <span className="stat-label">pending approvals</span>
+        </Link>
+        <Link href="/dashboard/scopes" className="card">
+          <span className="stat-num">{teams.size}</span>
+          <span className="stat-label">teams</span>
+        </Link>
+        <Link href="/dashboard/scopes" className="card">
+          <span className="stat-num">{atoms}</span>
+          <span className="stat-label">shared atoms</span>
+        </Link>
+      </div>
+
+      <section className="settings-block">
+        <h2>Recent hub activity</h2>
+        {activity.ok && entries.length === 0 && (
+          <p className="hint">No hub activity recorded yet.</p>
+        )}
+        {entries.length > 0 && (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Agent</th>
+                <th>Team</th>
+                <th>Namespace</th>
+                <th>Via</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((e) => (
+                <tr key={e.id}>
+                  <td title={e.at}>{fmtAge(e.at)}</td>
+                  <td>{e.agent_id}</td>
+                  <td>{e.team_id}</td>
+                  <td>{e.namespace}</td>
+                  <td>{e.transport}</td>
+                  <td className="cell-ellipsis">{e.reason ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {entries.length > 0 && (
+          <p className="hint">
+            Last activity {fmtTime(entries[0]?.at)} — full feed under{" "}
+            <Link href="/dashboard/scopes">Scopes</Link>.
+          </p>
+        )}
+      </section>
     </div>
   );
 }

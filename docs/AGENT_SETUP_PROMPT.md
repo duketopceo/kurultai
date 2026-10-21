@@ -14,7 +14,7 @@ You are helping install and wire **Kurultai** — a local-first knowledge brain 
 ## Where to find it
 
 - **GitHub (source of truth):** https://github.com/duketopceo/kurultai
-- **License:** MIT (public open source)
+- **License:** AGPL-3.0-only (public open source)
 - **Docs in-repo:** README.md · CONCEPTS.md · docs/multi-user-kurultai.md · skills/kurultai-brain/SKILL.md
 - **This prompt lives at:** docs/AGENT_SETUP_PROMPT.md (or AGENT_SETUP_PROMPT.md at repo root)
 
@@ -85,7 +85,9 @@ kurultai init --agent all        # cursor + claude + codex + hermes
 
 That writes host MCP configs (`kurultai mcp` stdio). **Restart the agent** so tools reload. `--agent none` skips MCP.
 
-MCP tools: `search`, `cite`, `ask`, `who_knows`, `remember`, `promote`, `ontology_get`, `ontology_promote`.
+MCP tools (full stdio surface): `search`, `recall`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, `ontology_promote`, `ontology_propose`, `ontology_proposals`, plus the `hey_*` board tools (`hey_threads`, `hey_read`, `hey_post`, `hey_react`, `hey_poll`).
+
+Joining a **hosted** instance instead of running locally: `kurultai connect <api-url>` mints + stores the agent key and wires MCP in one step — see `docs/AGENT_CONNECTION_PROMPT.md`.
 
 Portable skill to teach agents tool discipline:
 
@@ -116,7 +118,7 @@ root_path = "/ABSOLUTE/PATH/TO/dumps"
 # optional: id_field = "url"  # stable source_id (default: id)
 ```
 
-Other kinds: `dayflow`, `pond`, `github` (local checkout). See README.
+Other kinds: `dayflow`, `pond`, `github` (local checkout), `inbox` (drop tray). See README.
 
 ## Index and verify
 

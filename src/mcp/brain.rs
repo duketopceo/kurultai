@@ -13,7 +13,7 @@ use crate::query::{expand_markdown_context, hybrid_search_filtered};
 use crate::rerank::Reranker;
 use crate::store::{SearchFilter, Store};
 use crate::synthesize::{who_knows_from_hits, Synthesizer, WhoKnowsEntry};
-use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult};
+use crate::types::{Answer, Citation, KnowledgeAtom, SearchResult, VisibilityScope};
 use crate::write_policy::{WriteContext, WriteTransport};
 use chrono::Utc;
 use std::collections::HashMap;
@@ -44,10 +44,18 @@ pub struct BrainService {
 }
 
 /// Second-hop expansion: search shared tags from primary hits, merge unique atoms (#74).
+///
+/// KTD1/U2: hops run in spawned tasks — task-locals do not propagate across
+/// `JoinSet::spawn`, so the request's [`crate::store::scope::PgScope`] is
+/// captured and re-entered inside each task, and `filter` (which carries the
+/// member `hub_team_id` on hub paths) scopes the hop query too. Before this,
+/// a member `ask` hop ran unscoped + unfiltered and could merge other teams'
+/// atoms into the synthesis context.
 async fn multi_hop_expand(
     brain: &BrainService,
     primary: Vec<SearchResult>,
     limit: usize,
+    filter: &SearchFilter,
 ) -> Result<Vec<SearchResult>> {
     if primary.is_empty() {
         return Ok(primary);
@@ -83,16 +91,28 @@ async fn multi_hop_expand(
         by_id.insert(r.atom.id.clone(), r);
     }
 
-    // Bounded second-hop searches — concurrent fan-out (≤4).
+    // Bounded second-hop searches — concurrent fan-out (≤4). The request's
+    // RLS scope is captured here and re-entered inside each spawned task —
+    // `tokio::task_local!` does not cross `spawn` (KTD1).
+    let scope = crate::store::scope::PgScope::current();
     let tags: Vec<String> = tags.into_iter().take(4).collect();
     let mut set = tokio::task::JoinSet::new();
     for tag in tags {
         let brain = brain.clone();
+        let scope = scope.clone();
+        let filter = filter.clone();
         set.spawn(async move {
-            let hits = brain.hybrid_hits(&tag, 4).await.unwrap_or_default();
-            let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
-            brain.activity.record("search_hop", &tag, ids, None);
-            hits
+            scope
+                .run(async move {
+                    let hits = brain
+                        .hybrid_hits_filtered(&tag, 4, filter)
+                        .await
+                        .unwrap_or_default();
+                    let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
+                    brain.activity.record("search_hop", &tag, ids, None);
+                    hits
+                })
+                .await
         });
     }
     while let Some(joined) = set.join_next().await {
@@ -258,11 +278,6 @@ impl BrainService {
     }
 
     /// Hybrid search + markdown context expand (no activity record).
-    async fn hybrid_hits(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        self.hybrid_hits_filtered(query, limit, SearchFilter::default())
-            .await
-    }
-
     async fn hybrid_hits_filtered(
         &self,
         query: &str,
@@ -303,8 +318,24 @@ impl BrainService {
         include_quarantine: bool,
         source: Option<&str>,
     ) -> Result<Vec<AgentAtomView>> {
+        self.search_views_scoped_hub(query, limit, include_quarantine, source, None)
+            .await
+    }
+
+    /// U5/R13: member-scoped MCP search. `hub_team_id` is resolved from the
+    /// request's `hub_api_keys` principal at the HTTP edge — never client
+    /// input — and pins the `company OR (team AND team_id = …)` predicate;
+    /// Postgres RLS re-checks the same boundary underneath.
+    pub async fn search_views_scoped_hub(
+        &self,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+        source: Option<&str>,
+        hub_team_id: Option<&str>,
+    ) -> Result<Vec<AgentAtomView>> {
         let results = self
-            .search_scoped(query, limit, include_quarantine, source)
+            .search_scoped_hub(query, limit, include_quarantine, source, hub_team_id)
             .await?;
         Ok(results
             .into_iter()
@@ -441,7 +472,7 @@ impl BrainService {
             .hybrid_hits_filtered(question, 16, filter.clone())
             .await?;
         let primary = self.apply_retrieval_policy(primary, 8, None);
-        let hits = multi_hop_expand(self, primary, 8).await?;
+        let hits = multi_hop_expand(self, primary, 8, &filter).await?;
         let hits = self.apply_retrieval_policy(hits, 8, None);
         let mut answer = self.synthesizer.synthesize(question, &hits).await?;
         if answer.graph_chain.is_empty() {
@@ -492,7 +523,7 @@ impl BrainService {
             .hybrid_hits_filtered(question, 16, filter.clone())
             .await?;
         let primary = self.apply_retrieval_policy(primary, 8, None);
-        let hits = multi_hop_expand(self, primary, 8).await?;
+        let hits = multi_hop_expand(self, primary, 8, &filter).await?;
         let hits = self.apply_retrieval_policy(hits, 8, None);
 
         let sufficient = self
@@ -613,8 +644,25 @@ impl BrainService {
         limit: usize,
         include_quarantine: bool,
     ) -> Result<Vec<AgentAtomView>> {
+        self.recall_for_agent_hub(project, query, limit, include_quarantine, None)
+            .await
+    }
+
+    /// U5/R13: `recall` under a hub member's resolved team — same project
+    /// namespacing, plus the `company OR team` visibility predicate RLS
+    /// re-checks underneath.
+    pub async fn recall_for_agent_hub(
+        &self,
+        project: &str,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+        hub_team_id: Option<&str>,
+    ) -> Result<Vec<AgentAtomView>> {
         let project = normalize_project(project);
-        let filter = SearchFilter::trusted(!include_quarantine).with_project(Some(&project));
+        let filter = SearchFilter::trusted(!include_quarantine)
+            .with_project(Some(&project))
+            .with_hub_team(hub_team_id);
         let limit = limit.max(1);
         let mut results = self
             .hybrid_hits_filtered(query, (limit * 4).min(40), filter)
@@ -798,6 +846,22 @@ impl BrainService {
         // Stamp last: caller-supplied agent_id / project_id must not forge provenance.
         ctx.stamp(&mut meta);
 
+        // KTD5 (U2): a member write — resolved request scope, never client
+        // input — is forced to `visibility=team` with the principal's
+        // `team_id`, overwriting any client-supplied value (RLS `WITH CHECK`
+        // rejects a wrong-team or `company` write underneath regardless).
+        // Internal/admin scopes — pipeline, CLI, /ingest, operator-local —
+        // leave the write untouched.
+        let scope = crate::store::scope::PgScope::current();
+        let member_team = if scope.is_admin {
+            None
+        } else {
+            scope.team_id.clone()
+        };
+        if let Some(team) = &member_team {
+            meta.insert("team_id".to_string(), team.clone());
+        }
+
         let source = "agent";
         let source_id = format!(
             "remember/{}_{}",
@@ -824,6 +888,9 @@ impl BrainService {
             metadata: meta,
             ..Default::default()
         };
+        if member_team.is_some() {
+            atom.visibility = VisibilityScope::Team;
+        }
 
         let outcome = evaluate(self.store.as_ref(), &atom).await?;
         apply_gate(&mut atom, outcome);

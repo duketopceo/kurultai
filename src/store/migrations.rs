@@ -625,3 +625,251 @@ pub fn meta_set(conn: &Connection, key: &str, value: &str) -> Result<()> {
     .map_err(|e| KurultaiError::Store(format!("meta_set failed: {e}")))?;
     Ok(())
 }
+
+/// Hub-adoption U1 (R11/KTD1): Postgres row-level security for the hub store.
+///
+/// Unlike the SQLite migrations above (one-shot, version-stamped), the Postgres
+/// path — `postgres::PostgresStore::migrate_locked` — re-runs idempotent DDL on
+/// every privileged connect. These are consumed there as `(sql, ctx)` pairs via
+/// `exec_ddl`. `CREATE POLICY` has no `IF NOT EXISTS`, so each policy follows a
+/// `DROP POLICY IF EXISTS` (self-healing reapply).
+///
+/// Scope model — three tiers, all keyed on transaction-local session GUCs set
+/// with `set_config(name, value, true)` (KTD1):
+///   * admin    — `kurultai.is_admin='on'` → all rows (admin + internal paths).
+///   * member   — `kurultai.team_id=<team>` → `company` + own-`team` rows.
+///   * no GUC   — `current_setting(…, true)` returns NULL → `company` only
+///     (fail closed: `team_id = NULL` is never true).
+///
+/// `visibility='personal'` can't reach the table at all — the
+/// `knowledge_atoms_visibility_check` CHECK only allows `team`/`company`
+/// (AE4). The DO block re-adds it (as NOT VALID — write enforcement only,
+/// never a migrate-time scan failure) to DBs created before the constraint.
+///
+/// Coverage verdicts:
+///   * `atoms_vec` — enforced: the policy is a bare `EXISTS` on the parent
+///     atom, which is itself RLS-filtered for the caller, so vector scope
+///     always equals atom scope with no denormalized `team_id` to maintain.
+///     Without it a member session could delete other teams' vectors and
+///     enumerate every atom id + embedding.
+///   * `hub_activity` — enforced as an append-only audit log: INSERT allowed
+///     for every scope (member traffic must still log), SELECT admin-only,
+///     and no UPDATE/DELETE policy (immutable under FORCE RLS;
+///     `kurultai_migrate` can still purge).
+///   * `hub_api_keys` — no policy: token resolution runs before any
+///     principal/GUC exists, so a scope policy would fail closed on the auth
+///     path itself.
+///   * `ingestion_jobs` / `quality_audit` / `merge_candidates` — no policy:
+///     internal-only tables with no member-reachable paths and no scope
+///     columns.
+///
+/// DELETE on `knowledge_atoms` is admin-only: deletes are internal paths
+/// (`apply_auto_merge`, `delete_source`, `delete_atom`) which run with the
+/// `is_admin` GUC (KTD1 classification), and member-facing API has no delete.
+pub const PG_HUB_RLS: &[(&str, &str)] = &[
+    (
+        "ALTER TABLE knowledge_atoms ENABLE ROW LEVEL SECURITY",
+        "enable atoms rls",
+    ),
+    (
+        "ALTER TABLE knowledge_atoms FORCE ROW LEVEL SECURITY",
+        "force atoms rls",
+    ),
+    (
+        r#"DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'knowledge_atoms_visibility_check'
+                  AND conrelid = 'knowledge_atoms'::regclass
+            ) THEN
+                ALTER TABLE knowledge_atoms
+                    ADD CONSTRAINT knowledge_atoms_visibility_check
+                    CHECK (visibility IN ('team', 'company')) NOT VALID;
+            END IF;
+        END $$"#,
+        "visibility check constraint",
+    ),
+    (
+        "DROP POLICY IF EXISTS kurultai_scope_select ON knowledge_atoms",
+        "drop select policy",
+    ),
+    (
+        r#"CREATE POLICY kurultai_scope_select ON knowledge_atoms
+        FOR SELECT USING (
+            current_setting('kurultai.is_admin', true) = 'on'
+            OR visibility = 'company'
+            OR (visibility = 'team'
+                AND team_id = current_setting('kurultai.team_id', true))
+        )"#,
+        "create select policy",
+    ),
+    (
+        "DROP POLICY IF EXISTS kurultai_scope_insert ON knowledge_atoms",
+        "drop insert policy",
+    ),
+    (
+        r#"CREATE POLICY kurultai_scope_insert ON knowledge_atoms
+        FOR INSERT WITH CHECK (
+            current_setting('kurultai.is_admin', true) = 'on'
+            OR (visibility = 'team'
+                AND team_id = current_setting('kurultai.team_id', true))
+        )"#,
+        "create insert policy",
+    ),
+    (
+        "DROP POLICY IF EXISTS kurultai_scope_update ON knowledge_atoms",
+        "drop update policy",
+    ),
+    (
+        // USING = select scope (can't update what you can't see); WITH CHECK =
+        // write posture (result stays admin-or-own-team — KTD5).
+        r#"CREATE POLICY kurultai_scope_update ON knowledge_atoms
+        FOR UPDATE USING (
+            current_setting('kurultai.is_admin', true) = 'on'
+            OR visibility = 'company'
+            OR (visibility = 'team'
+                AND team_id = current_setting('kurultai.team_id', true))
+        ) WITH CHECK (
+            current_setting('kurultai.is_admin', true) = 'on'
+            OR (visibility = 'team'
+                AND team_id = current_setting('kurultai.team_id', true))
+        )"#,
+        "create update policy",
+    ),
+    (
+        "DROP POLICY IF EXISTS kurultai_scope_delete ON knowledge_atoms",
+        "drop delete policy",
+    ),
+    (
+        r#"CREATE POLICY kurultai_scope_delete ON knowledge_atoms
+        FOR DELETE USING (current_setting('kurultai.is_admin', true) = 'on')"#,
+        "create delete policy",
+    ),
+    (
+        "ALTER TABLE atoms_vec ENABLE ROW LEVEL SECURITY",
+        "enable vec rls",
+    ),
+    (
+        "ALTER TABLE atoms_vec FORCE ROW LEVEL SECURITY",
+        "force vec rls",
+    ),
+    (
+        "DROP POLICY IF EXISTS kurultai_vec_scope ON atoms_vec",
+        "drop vec policy",
+    ),
+    (
+        // The EXISTS subquery is itself RLS-filtered on knowledge_atoms for
+        // the caller, so a vec row is in scope exactly when its parent atom is.
+        r#"CREATE POLICY kurultai_vec_scope ON atoms_vec
+        FOR ALL USING (
+            EXISTS (SELECT 1 FROM knowledge_atoms ka
+                    WHERE ka.id = atoms_vec.atom_id)
+        ) WITH CHECK (
+            EXISTS (SELECT 1 FROM knowledge_atoms ka
+                    WHERE ka.id = atoms_vec.atom_id)
+        )"#,
+        "create vec policy",
+    ),
+    (
+        "ALTER TABLE hub_activity ENABLE ROW LEVEL SECURITY",
+        "enable activity rls",
+    ),
+    (
+        "ALTER TABLE hub_activity FORCE ROW LEVEL SECURITY",
+        "force activity rls",
+    ),
+    (
+        "DROP POLICY IF EXISTS kurultai_activity_insert ON hub_activity",
+        "drop activity insert policy",
+    ),
+    (
+        r#"CREATE POLICY kurultai_activity_insert ON hub_activity
+        FOR INSERT WITH CHECK (true)"#,
+        "create activity insert policy",
+    ),
+    (
+        "DROP POLICY IF EXISTS kurultai_activity_select ON hub_activity",
+        "drop activity select policy",
+    ),
+    (
+        r#"CREATE POLICY kurultai_activity_select ON hub_activity
+        FOR SELECT USING (current_setting('kurultai.is_admin', true) = 'on')"#,
+        "create activity select policy",
+    ),
+];
+
+/// Hub-adoption U4 (R17/KTD7): `hub_api_keys.is_admin` — the member-vs-admin
+/// flag behind the `/api/hub/*` admin routes and `hub key issue --admin`.
+/// `NOT NULL DEFAULT false` backfills every already-issued key as a member, so
+/// existing deployments keep working with no data migration. Consumed by both
+/// migrate paths (`postgres::PostgresStore::migrate_locked`,
+/// `hub::keys::HubKeyStore::migrate`); `ADD COLUMN IF NOT EXISTS` keeps it
+/// idempotent like the rest of the Postgres DDL.
+///
+/// Deliberately **no RLS** on `hub_api_keys` (see `PG_HUB_RLS` coverage
+/// verdicts): `resolve_token` runs before any principal/GUC exists.
+pub const PG_HUB_KEYS_ADMIN: &str =
+    "ALTER TABLE hub_api_keys ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false";
+
+/// Hub-adoption U3 (R12/KTD3): `hub_device_flows` — the Postgres mirror of
+/// SQLite's `device_flows` (v14 + v16 `instance_id`), plus connect-join
+/// columns: `team_hint` (the CLI's `--team` prefill), `team_id` (the
+/// approver's pick — their choice always wins), and `issued_key` (the
+/// minted hub key held until the token poll hands it out; cleared at
+/// exchange so the plaintext never persists past delivery).
+///
+/// Deliberately **no RLS** on this table (same verdict as `hub_api_keys`
+/// above): `/api/device/*` and `/connect` are auth-exempt paths that run
+/// before any `HubPrincipal`/GUC exists, so a scope policy would fail
+/// closed on the flow itself. Every device-flow query runs on a
+/// `PathClass::Internal` transaction in `PostgresStore`.
+pub const PG_HUB_DEVICE_FLOWS: &[(&str, &str)] = &[
+    (
+        r#"CREATE TABLE IF NOT EXISTS hub_device_flows (
+            id TEXT PRIMARY KEY,
+            device_code TEXT NOT NULL UNIQUE,
+            user_code TEXT NOT NULL UNIQUE,
+            codename TEXT NOT NULL DEFAULT 'anonymous',
+            instance_id TEXT NOT NULL DEFAULT '',
+            client_id TEXT NOT NULL DEFAULT 'kurultai-cli',
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc'),
+            expires_at TEXT NOT NULL,
+            approved_at TEXT,
+            approved_by TEXT,
+            agent_id TEXT,
+            token_hash TEXT,
+            team_hint TEXT,
+            team_id TEXT,
+            issued_key TEXT
+        )"#,
+        "create hub_device_flows",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_hub_device_flows_device_code ON hub_device_flows(device_code)",
+        "idx flows device_code",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_hub_device_flows_user_code ON hub_device_flows(user_code)",
+        "idx flows user_code",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_hub_device_flows_status_expires ON hub_device_flows(status, expires_at)",
+        "idx flows status_expires",
+    ),
+    // Existing hub DBs (pre-U3) lack the connect-join columns even when the
+    // table was created early — self-heal each one independently.
+    (
+        "ALTER TABLE hub_device_flows ADD COLUMN IF NOT EXISTS team_hint TEXT",
+        "flows team_hint column",
+    ),
+    (
+        "ALTER TABLE hub_device_flows ADD COLUMN IF NOT EXISTS team_id TEXT",
+        "flows team_id column",
+    ),
+    (
+        "ALTER TABLE hub_device_flows ADD COLUMN IF NOT EXISTS issued_key TEXT",
+        "flows issued_key column",
+    ),
+];
