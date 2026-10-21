@@ -13,7 +13,7 @@ cd website && npm install && npm run dev
 Edit files under `website/src/`, then rebuild the embedded UI:
 
 ```bash
-./scripts/build-ui.sh
+./scripts/build-ui.sh   # node 22 required — see .nvmrc (script enforces it)
 ```
 
 This also cleans stale `ui/` hashed bundles and legacy landing-page assets so
