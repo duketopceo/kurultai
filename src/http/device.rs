@@ -37,6 +37,74 @@ const DEFAULT_INTERVAL: u64 = 5;
 /// mint a seat key that Hey PATCH/DELETE would treat as the admin identity.
 pub(crate) const RESERVED_CODENAMES: &[&str] = &["luke"];
 
+/// `KURULTAI_ADMIN_EMAILS` — comma-separated allowlist for `/connect`
+/// approvers on hub daemons (U3/KTD4). The Access application admits any
+/// org member; approval mints a team-bound credential, so hub mode
+/// requires a verified Access identity AND list membership.
+pub(crate) const ENV_ADMIN_EMAILS: &str = "KURULTAI_ADMIN_EMAILS";
+
+fn admin_emails() -> Vec<String> {
+    std::env::var(ENV_ADMIN_EMAILS)
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect()
+}
+
+fn admin_email_allowed(email: &str) -> bool {
+    let list = admin_emails();
+    !list.is_empty() && list.iter().any(|e| e == &email.trim().to_ascii_lowercase())
+}
+
+/// The hub key store when this daemon runs the Postgres hub lane (U3) —
+/// gates the team picker + mint-at-approve path. `None` on the solo lane.
+#[cfg(feature = "postgres")]
+fn hub_keys(state: &AppState) -> Option<std::sync::Arc<crate::hub::HubKeyStore>> {
+    state.hub.key_store.clone()
+}
+
+/// Distinct existing teams for the `/connect` picker (server-rendered —
+/// the roster must never reach the unauthenticated `/api/device/code`
+/// response, KTD4). Empty on the solo lane.
+async fn hub_teams(state: &AppState) -> Vec<String> {
+    #[cfg(feature = "postgres")]
+    {
+        if let Some(keys) = hub_keys(state) {
+            if let Ok(teams) = keys.list_teams().await {
+                return teams;
+            }
+        }
+    }
+    let _ = state;
+    Vec::new()
+}
+
+/// Whether this daemon mints team-bound hub keys — the `/connect` page
+/// renders the team picker and approve mints at decision time. `false`
+/// keeps the solo seat-token path byte-for-byte identical.
+#[cfg(feature = "postgres")]
+fn hub_lane(state: &AppState) -> bool {
+    state.hub.key_store.is_some()
+}
+
+/// Solo lane — no team picker, no mint-at-approve.
+#[cfg(not(feature = "postgres"))]
+fn hub_lane(_state: &AppState) -> bool {
+    false
+}
+
+/// `hub:` agent id minted into `hub_api_keys.agent_id` — `codename@seat`
+/// when a seat is requested, else the bare codename (KTD4: "codename+seat").
+fn hub_agent_label(codename: &str, instance_id: &str) -> String {
+    if instance_id.is_empty() {
+        codename.to_string()
+    } else {
+        format!("{codename}@{instance_id}")
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct DeviceCodeRequest {
     #[serde(default)]
@@ -45,6 +113,10 @@ struct DeviceCodeRequest {
     instance_id: String,
     #[serde(default)]
     client_id: String,
+    /// `--team` prefill hint for the hub picker — never authoritative;
+    /// the approver's choice wins (KTD4).
+    #[serde(default)]
+    team: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -68,6 +140,9 @@ struct DeviceTokenResponse {
     agent_key: String,
     codename: String,
     instance_id: String,
+    /// Team scope the approver bound the minted hub key to (hub lane only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    team_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,6 +155,10 @@ struct ConnectForm {
     code: String,
     #[serde(default)]
     action: String,
+    /// Approver's team pick (hub lane). Required on hub approve; ignored
+    /// on the solo lane where no picker renders.
+    #[serde(default)]
+    team: String,
 }
 
 /// What a token poll should do next, derived from flow status + expiry.
@@ -137,9 +216,22 @@ async fn approver_identity(
         ApproverGate::CfAccess => {
             let cf = state.hub.cf_access.as_ref().expect("gate checked");
             if let Some(identity) = cf.verify_headers(headers).await {
-                Ok(identity
+                let email = identity
                     .email
-                    .unwrap_or_else(|| format!("cf:{}", identity.sub)))
+                    .unwrap_or_else(|| format!("cf:{}", identity.sub));
+                // U3/KTD4: on a hub daemon the approver must also be on the
+                // `KURULTAI_ADMIN_EMAILS` allowlist — the Access app admits
+                // every org member, and approving mints a team-bound
+                // credential.
+                if crate::features::enabled("hub") && !admin_email_allowed(&email) {
+                    return Err((
+                        StatusCode::FORBIDDEN,
+                        Json(
+                            serde_json::json!({"ok": false, "error": "not on the /connect admin allowlist (KURULTAI_ADMIN_EMAILS)"}),
+                        ),
+                    ));
+                }
+                Ok(email)
             } else {
                 Err((
                     StatusCode::UNAUTHORIZED,
@@ -218,11 +310,29 @@ async fn device_code_post(
         body.client_id.trim().to_string()
     };
     let instance_id = body.instance_id.trim().to_string();
+    // `--team` is a picker prefill hint only — validated to the same shape
+    // mint enforces, but never authoritative (KTD4).
+    let team_hint = body.team.trim().to_string();
+    if !team_hint.is_empty() {
+        if let Err(e) = crate::store::scope::validate_team_id(&team_hint) {
+            return json_error(StatusCode::BAD_REQUEST, &e);
+        }
+    }
 
     let flow = match state
         .brain
         .store()
-        .create_device_flow(&codename, &client_id, &instance_id, DEFAULT_EXPIRES_IN)
+        .create_device_flow_with_hint(
+            &codename,
+            &client_id,
+            &instance_id,
+            if team_hint.is_empty() {
+                None
+            } else {
+                Some(team_hint.as_str())
+            },
+            DEFAULT_EXPIRES_IN,
+        )
         .await
     {
         Ok(f) => f,
@@ -278,6 +388,29 @@ async fn device_token_post(
         }
         PollDecision::Denied => json_error(StatusCode::FORBIDDEN, "access_denied"),
         PollDecision::Approved => {
+            // Hub lane (U3/KTD4): the key was minted at approve and sits on
+            // the flow — hand it out exactly once via the atomic exchange.
+            if let Some(key) = flow.issued_key.clone() {
+                let agent_label = hub_agent_label(&flow.codename, &flow.instance_id);
+                let token_hash = sha256_hex(&key);
+                if let Err(e) = state
+                    .brain
+                    .store()
+                    .exchange_device_flow(&flow.device_code, &token_hash, &agent_label)
+                    .await
+                {
+                    tracing::warn!(error = %e, "hub device exchange failed");
+                    return json_error(StatusCode::FORBIDDEN, "access_denied");
+                }
+                return Json(DeviceTokenResponse {
+                    agent_key: key,
+                    codename: flow.codename.clone(),
+                    instance_id: flow.instance_id.clone(),
+                    team_id: flow.team_id.clone(),
+                })
+                .into_response();
+            }
+
             let approver = flow.approved_by.as_deref().unwrap_or("unknown");
             let (agent, token) = match state
                 .brain
@@ -309,6 +442,7 @@ async fn device_token_post(
                 agent_key: token,
                 codename: agent.codename,
                 instance_id: flow.instance_id.clone(),
+                team_id: None,
             })
             .into_response()
         }
@@ -326,7 +460,7 @@ async fn connect_page_get(
         Err((st, body)) => return (st, body).into_response(),
     };
     let code = query.code.unwrap_or_default().trim().to_uppercase();
-    render_connect_page(&state, &code, None, &approver).await
+    render_connect_page(&state, &code, None, &approver, None).await
 }
 
 /// CSRF guard for the cookie-authenticated approve form: browsers always send
@@ -374,20 +508,116 @@ async fn connect_page_post(
     };
     let code = form.code.trim().to_uppercase();
     if code.is_empty() {
-        return render_connect_page(&state, &code, Some("Enter a code."), &approver).await;
+        return render_connect_page(&state, &code, Some("Enter a code."), &approver, None).await;
     }
     let result = if form.action == "deny" {
-        state.brain.store().deny_device_flow(&code, &approver).await
-    } else {
         state
             .brain
             .store()
-            .approve_device_flow(&code, &approver)
+            .deny_device_flow(&code, &approver)
             .await
+            .map(|_| None)
+    } else {
+        approve_for_team(&state, &code, &approver, &form.team).await
     };
     match result {
-        Ok(()) => Html(decision_page(&code, &approver, form.action != "deny")).into_response(),
-        Err(e) => render_connect_page(&state, &code, Some(&e.to_string()), &approver).await,
+        Ok(team) => Html(decision_page(
+            &code,
+            &approver,
+            form.action != "deny",
+            team.as_deref(),
+        ))
+        .into_response(),
+        Err(e) => {
+            render_connect_page(
+                &state,
+                &code,
+                Some(&e.to_string()),
+                &approver,
+                Some(&form.team),
+            )
+            .await
+        }
+    }
+}
+
+/// Approve a pending flow. Solo lane: mark approved — the seat key mints
+/// at token poll (unchanged). Hub lane: the approver's team pick is
+/// authoritative, the hub key mints NOW and rides on the flow until the
+/// single token-poll handout (KTD4 mint-at-approve — concurrent polls can
+/// never double-mint). Returns the team the key was bound to.
+async fn approve_for_team(
+    state: &AppState,
+    user_code: &str,
+    approver: &str,
+    form_team: &str,
+) -> crate::Result<Option<String>> {
+    #[cfg(feature = "postgres")]
+    {
+        if let Some(keys) = hub_keys(state) {
+            return approve_hub(state, &keys, user_code, approver, form_team).await;
+        }
+    }
+    #[cfg(not(feature = "postgres"))]
+    let _ = form_team;
+    state
+        .brain
+        .store()
+        .approve_device_flow(user_code, approver)
+        .await?;
+    Ok(None)
+}
+
+/// Hub-lane approve: validate the approver's team pick, mint the
+/// team-bound key once, then atomically stamp it onto the flow. If a
+/// racing approve wins the conditional update, the key we minted is
+/// revoked so exactly one key ever exists per flow.
+#[cfg(feature = "postgres")]
+async fn approve_hub(
+    state: &AppState,
+    keys: &std::sync::Arc<crate::hub::HubKeyStore>,
+    user_code: &str,
+    approver: &str,
+    form_team: &str,
+) -> crate::Result<Option<String>> {
+    let team = form_team.trim();
+    if team.is_empty() {
+        return Err(crate::KurultaiError::Store(
+            "pick a team for the new key".into(),
+        ));
+    }
+    crate::store::scope::validate_team_id(team).map_err(crate::KurultaiError::Store)?;
+
+    // Minting for a dead/expired flow would orphan a key — check first,
+    // though the conditional UPDATE below remains the authoritative gate.
+    let flow = state
+        .brain
+        .store()
+        .get_device_flow_by_user_code(user_code)
+        .await?
+        .ok_or_else(|| crate::KurultaiError::Store("device flow not found".into()))?;
+    if flow.status != "pending" {
+        return Err(crate::KurultaiError::Store(
+            "device flow already decided".into(),
+        ));
+    }
+
+    let agent_label = hub_agent_label(&flow.codename, &flow.instance_id);
+    let (key, key_id) = keys.issue(&agent_label, team).await?;
+    match state
+        .brain
+        .store()
+        .approve_device_flow_hub(user_code, approver, team, &key)
+        .await
+    {
+        Ok(()) => Ok(Some(team.to_string())),
+        Err(e) => {
+            // A racing approve won the flow — revoke the orphan we minted.
+            if let Err(rev) = keys.revoke_by_id(key_id).await {
+                tracing::warn!(error = %rev, "orphan hub key revoke failed");
+            }
+            Err(e)
+        }
     }
 }
 
@@ -396,6 +626,7 @@ async fn render_connect_page(
     code: &str,
     error: Option<&str>,
     approver: &str,
+    team_override: Option<&str>,
 ) -> Response {
     let flow = if code.is_empty() {
         None
@@ -432,6 +663,30 @@ async fn render_connect_page(
             html_escape(code)
         )
     };
+    // Hub lane (U3/KTD4): the approver picks the team — existing teams from
+    // `hub_api_keys` plus a free-text "new team". The CLI's `--team` only
+    // prefills; this choice is what the minted key is bound to. The roster
+    // lives only on this authenticated page, never in /api/device/code.
+    let team_block = if hub_lane(state) {
+        let teams = hub_teams(state).await;
+        let prefill = team_override
+            .map(str::to_string)
+            .or_else(|| flow.as_ref().and_then(|f| f.team_hint.clone()))
+            .unwrap_or_default();
+        let options = teams
+            .iter()
+            .map(|t| format!(r#"<option value="{}"></option>"#, html_escape(t)))
+            .collect::<String>();
+        format!(
+            r#"<label class="team-label" for="team">Team <span class="muted">pick one or type a new team</span></label>
+<input type="text" id="team" name="team" list="hub-teams" value="{}" placeholder="eng" autocomplete="off" required />
+<datalist id="hub-teams">{}</datalist>"#,
+            html_escape(&prefill),
+            options,
+        )
+    } else {
+        String::new()
+    };
     Html(format!(
         r#"<!DOCTYPE html>
 <html>
@@ -444,6 +699,9 @@ body {{ font-family: system-ui, -apple-system, sans-serif; background: #0a0a0a; 
 .card {{ background: #141414; border: 1px solid #2a2a2a; border-radius: 12px; padding: 2rem; max-width: 420px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }}
 h1 {{ margin-top: 0; font-size: 1.25rem; color: #fff; }}
 input {{ width: 100%; box-sizing: border-box; padding: 0.75rem; background: #0a0a0a; border: 1px solid #333; color: #fff; border-radius: 6px; font-family: monospace; font-size: 1.25rem; text-align: center; letter-spacing: 0.1em; }}
+.team-label {{ display: block; margin-top: 1rem; font-size: 0.85rem; color: #a3a3a3; }}
+.team-label .muted {{ color: #666; }}
+#team {{ margin-top: 0.35rem; font-size: 1rem; text-align: left; letter-spacing: 0; }}
 .row {{ display: flex; gap: 0.75rem; margin-top: 1rem; }}
 button {{ flex: 1; padding: 0.75rem; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; }}
 .approve {{ background: #7c3aed; color: #fff; }}
@@ -462,6 +720,7 @@ p {{ color: #a3a3a3; line-height: 1.5; }}
 {error_block}
 <form method="post" action="/connect">
 {code_field}
+{team_block}
 <div class="row">
 <button class="approve" type="submit" name="action" value="approve">Approve</button>
 <button class="deny" type="submit" name="action" value="deny">Deny</button>
@@ -475,13 +734,16 @@ p {{ color: #a3a3a3; line-height: 1.5; }}
     .into_response()
 }
 
-fn decision_page(code: &str, approver: &str, approved: bool) -> String {
+fn decision_page(code: &str, approver: &str, approved: bool, team: Option<&str>) -> String {
     let code = html_escape(code);
     let approver = html_escape(approver);
     let (title, body) = if approved {
+        let team_txt = team
+            .map(|t| format!(" for team <strong>{}</strong>", html_escape(t)))
+            .unwrap_or_default();
         (
             "Agent approved",
-            format!("Code <strong>{code}</strong> was approved by <strong>{approver}</strong> — the agent now holds a key."),
+            format!("Code <strong>{code}</strong> was approved by <strong>{approver}</strong>{team_txt} — the agent now holds a key."),
         )
     } else {
         (
@@ -545,6 +807,9 @@ mod tests {
             approved_by: None,
             agent_id: None,
             token_hash: None,
+            team_hint: None,
+            team_id: None,
+            issued_key: None,
         }
     }
 
@@ -646,5 +911,156 @@ mod tests {
         // Missing Host fails closed when an Origin is present.
         h.remove("host");
         assert!(!same_origin_form_post(&h));
+    }
+
+    #[test]
+    fn admin_email_allowlist_matches_case_and_csv() {
+        let _guard = crate::testutil::EnvGuard::set(ENV_ADMIN_EMAILS, "Luke@x.dev, second@x.dev ,");
+        assert!(admin_email_allowed("luke@x.dev"));
+        assert!(admin_email_allowed("SECOND@x.dev"));
+        assert!(!admin_email_allowed("intruder@x.dev"));
+        assert!(!admin_email_allowed(""));
+    }
+
+    #[test]
+    fn admin_email_allowlist_unset_fails_closed() {
+        let _guard = crate::testutil::EnvGuard::remove(ENV_ADMIN_EMAILS);
+        assert!(!admin_email_allowed("luke@x.dev"));
+    }
+
+    #[test]
+    fn hub_agent_label_seat_suffix() {
+        assert_eq!(hub_agent_label("devin", "seat-1"), "devin@seat-1");
+        assert_eq!(hub_agent_label("devin", ""), "devin");
+    }
+
+    /// U3/KTD4: under `KURULTAI_FEATURE_HUB=1` a verified Access identity
+    /// must ALSO appear in `KURULTAI_ADMIN_EMAILS` — the Access app admits
+    /// every org member, but approval mints a team-bound credential. The
+    /// seeded verifier mirrors `cf_access` tests (ephemeral RSA, no JWKS fetch).
+    #[cfg(feature = "postgres")]
+    #[tokio::test]
+    async fn cf_access_allowlist_gates_hub_approvers() {
+        use jsonwebtoken::{encode, Algorithm, DecodingKey, EncodingKey, Header as JwtHeader};
+
+        const TEAM: &str = "https://duketopceo.cloudflareaccess.com";
+        const AUD: &str = "u3-test-aud";
+
+        let dir = std::env::temp_dir().join(format!(
+            "kurultai-devcf-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let priv_path = dir.join("k.pem");
+        let pub_path = dir.join("k.pub.pem");
+        let run = |args: &[&str]| {
+            let out = std::process::Command::new("openssl")
+                .args(args)
+                .output()
+                .expect("openssl not found");
+            assert!(out.status.success(), "openssl {args:?} failed");
+        };
+        run(&["genrsa", "-out", priv_path.to_str().unwrap(), "2048"]);
+        run(&[
+            "rsa",
+            "-in",
+            priv_path.to_str().unwrap(),
+            "-pubout",
+            "-out",
+            pub_path.to_str().unwrap(),
+        ]);
+        let enc = EncodingKey::from_rsa_pem(&std::fs::read(&priv_path).unwrap()).unwrap();
+        let dec = DecodingKey::from_rsa_pem(&std::fs::read(&pub_path).unwrap()).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+
+        let cf = std::sync::Arc::new(crate::http::cf_access::CfAccess::seeded_for_test(
+            TEAM,
+            vec![AUD.to_string()],
+            vec![(Some("test-kid".to_string()), dec)],
+        ));
+
+        let sign = |email: &str| {
+            #[derive(serde::Serialize)]
+            struct Claims<'a> {
+                sub: &'a str,
+                email: &'a str,
+                aud: &'a str,
+                iss: &'a str,
+                exp: usize,
+            }
+            let mut header = JwtHeader::new(Algorithm::RS256);
+            header.kid = Some("test-kid".to_string());
+            encode(
+                &header,
+                &Claims {
+                    sub: "u1",
+                    email,
+                    aud: AUD,
+                    iss: TEAM,
+                    exp: (chrono::Utc::now().timestamp() + 3600) as usize,
+                },
+                &enc,
+            )
+            .unwrap()
+        };
+
+        // Minimal AppState — the store is never touched by the gate.
+        let dir =
+            std::env::temp_dir().join(format!("kurultai-devcf-store-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store =
+            std::sync::Arc::new(crate::store::SqliteVecStore::open(dir.join("s.db"), 4).unwrap());
+        let brain = std::sync::Arc::new(crate::mcp::brain::BrainService::new(
+            store,
+            std::sync::Arc::new(crate::embed::NullEmbedder::new(4)),
+            std::sync::Arc::new(crate::rerank::NullReranker::new()),
+            std::sync::Arc::new(crate::synthesize::ExtractiveSynthesizer::new()),
+        ));
+        let gate = crate::http::auth::HubGate {
+            auth: HubAuth::ApiKey,
+            api_keys: vec![],
+            agent_store: None,
+            cf_access: Some(cf),
+            key_store: Some(std::sync::Arc::new(crate::hub::HubKeyStore::lazy_for_test())),
+        };
+        let state = crate::http::app_state(
+            brain,
+            std::sync::Arc::new(crate::daemon::DaemonStatus::default()),
+            crate::metrics::MetricsRegistry::shared(),
+            gate,
+        );
+
+        let _env = crate::testutil::EnvGuard::apply(&[
+            ("KURULTAI_FEATURE_HUB", Some("1")),
+            (ENV_ADMIN_EMAILS, Some("admin@x.dev")),
+        ]);
+
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            "cf-access-jwt-assertion",
+            sign("admin@x.dev").parse().unwrap(),
+        );
+        assert_eq!(
+            approver_identity(&state, &headers, None).await.unwrap(),
+            "admin@x.dev"
+        );
+
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            "cf-access-jwt-assertion",
+            sign("intruder@x.dev").parse().unwrap(),
+        );
+        let err = approver_identity(&state, &headers, None).await.unwrap_err();
+        assert_eq!(err.0, StatusCode::FORBIDDEN);
+
+        // No assertion at all → 401 (sign-in prompt, not an allowlist error).
+        let err = approver_identity(&state, &axum::http::HeaderMap::new(), None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.0, StatusCode::UNAUTHORIZED);
     }
 }

@@ -302,6 +302,9 @@ enum Commands {
         /// (default: $KURULTAI_INSTANCE_ID → hostname)
         #[arg(long)]
         instance_id: Option<String>,
+        /// Team prefill hint for a hub join — the approver's pick wins
+        #[arg(long)]
+        team: Option<String>,
         /// MCP clients to wire: cursor, claude, codex, hermes, all, or none
         #[arg(long, default_value = "all")]
         agent: AgentTarget,
@@ -1141,6 +1144,7 @@ async fn main() -> Result<()> {
             ref url,
             ref codename,
             ref instance_id,
+            ref team,
             agent,
             no_open,
         } => {
@@ -1151,6 +1155,7 @@ async fn main() -> Result<()> {
                 agent,
                 no_open,
                 lane: env.as_str().to_string(),
+                team: team.clone(),
             })
             .await?;
         }

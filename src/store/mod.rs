@@ -47,6 +47,20 @@ pub struct DeviceFlow {
     pub approved_by: Option<String>,
     pub agent_id: Option<String>,
     pub token_hash: Option<String>,
+    /// Hub connect-join (U3): the `--team` prefill hint sent with the
+    /// device-code request; shown in the approver's picker — their choice
+    /// wins. Always `None` on the SQLite lane.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_hint: Option<String>,
+    /// Hub connect-join (U3): the team the approver picked — the minted
+    /// hub key's scope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
+    /// Hub connect-join (U3/KTD4): the plaintext hub key minted at approve
+    /// and handed to the polling CLI once; cleared at exchange. Never
+    /// serialized — `list_device_flows` feeds admin surfaces.
+    #[serde(skip)]
+    pub issued_key: Option<String>,
 }
 
 /// Message board thread.
@@ -702,6 +716,51 @@ pub trait Store: Send + Sync {
         agent_id: &str,
     ) -> Result<()> {
         let _ = (device_code, token_hash, agent_id);
+        Err(KurultaiError::Store(
+            "device authorization not implemented for this store".into(),
+        ))
+    }
+
+    /// Create a device flow carrying a `--team` prefill hint (hub
+    /// connect-join, U3). The hint only feeds the approver's picker — the
+    /// approver's choice wins. Default drops the hint (stores without
+    /// team columns).
+    async fn create_device_flow_with_hint(
+        &self,
+        codename: &str,
+        client_id: &str,
+        instance_id: &str,
+        team_hint: Option<&str>,
+        expires_in_seconds: u64,
+    ) -> Result<DeviceFlow> {
+        let _ = team_hint;
+        self.create_device_flow(codename, client_id, instance_id, expires_in_seconds)
+            .await
+    }
+
+    /// Hub-mode approval (U3/KTD4): atomically mark pending → approved,
+    /// recording the approver's team pick and the hub key already minted
+    /// for it via `HubKeyStore::issue`. Mint-at-approve means concurrent
+    /// token polls can never double-mint — and a losing concurrent approve
+    /// gets an error so its orphan key can be revoked.
+    async fn approve_device_flow_hub(
+        &self,
+        user_code: &str,
+        approved_by: &str,
+        team_id: &str,
+        issued_key: &str,
+    ) -> Result<()> {
+        let _ = (user_code, approved_by, team_id, issued_key);
+        Err(KurultaiError::Store(
+            "hub device approval not implemented for this store".into(),
+        ))
+    }
+
+    /// List device flows newest-first for approval surfaces (U4). Rows
+    /// carry decision fields; `issued_key` never serializes and is cleared
+    /// at exchange.
+    async fn list_device_flows(&self, limit: usize) -> Result<Vec<DeviceFlow>> {
+        let _ = limit;
         Err(KurultaiError::Store(
             "device authorization not implemented for this store".into(),
         ))
@@ -2995,6 +3054,9 @@ impl Store for SqliteVecStore {
             approved_by: None,
             agent_id: None,
             token_hash: None,
+            team_hint: None,
+            team_id: None,
+            issued_key: None,
         })
     }
 
@@ -3028,6 +3090,9 @@ impl Store for SqliteVecStore {
                     approved_by: row.get(10)?,
                     agent_id: row.get(11)?,
                     token_hash: row.get(12)?,
+                    team_hint: None,
+                    team_id: None,
+                    issued_key: None,
                 })
             })
             .optional()
@@ -3064,6 +3129,9 @@ impl Store for SqliteVecStore {
                     approved_by: row.get(10)?,
                     agent_id: row.get(11)?,
                     token_hash: row.get(12)?,
+                    team_hint: None,
+                    team_id: None,
+                    issued_key: None,
                 })
             })
             .optional()
@@ -3132,6 +3200,47 @@ impl Store for SqliteVecStore {
             ));
         }
         Ok(())
+    }
+
+    async fn list_device_flows(&self, limit: usize) -> Result<Vec<DeviceFlow>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, device_code, user_code, codename, instance_id, client_id, status, created_at, \
+                 expires_at, approved_at, approved_by, agent_id, token_hash \
+                 FROM device_flows \
+                 ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, \
+                          created_at DESC \
+                 LIMIT ?1",
+            )
+            .map_err(|e| KurultaiError::Store(format!("list_device_flows prepare: {e}")))?;
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                Ok(DeviceFlow {
+                    id: row.get(0)?,
+                    device_code: row.get(1)?,
+                    user_code: row.get(2)?,
+                    codename: row.get(3)?,
+                    instance_id: row.get(4)?,
+                    client_id: row.get(5)?,
+                    status: row.get(6)?,
+                    created_at: row.get(7)?,
+                    expires_at: row.get(8)?,
+                    approved_at: row.get(9)?,
+                    approved_by: row.get(10)?,
+                    agent_id: row.get(11)?,
+                    token_hash: row.get(12)?,
+                    team_hint: None,
+                    team_id: None,
+                    issued_key: None,
+                })
+            })
+            .map_err(|e| KurultaiError::Store(format!("list_device_flows query: {e}")))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| KurultaiError::Store(format!("list_device_flows row: {e}")))?);
+        }
+        Ok(out)
     }
 
     // ── Message board implementations ─────────────────────────────────────────

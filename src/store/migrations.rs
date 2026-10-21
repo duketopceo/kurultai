@@ -798,3 +798,65 @@ pub const PG_HUB_RLS: &[(&str, &str)] = &[
         "create activity select policy",
     ),
 ];
+
+/// Hub-adoption U3 (R12/KTD3): `hub_device_flows` — the Postgres mirror of
+/// SQLite's `device_flows` (v14 + v16 `instance_id`), plus connect-join
+/// columns: `team_hint` (the CLI's `--team` prefill), `team_id` (the
+/// approver's pick — their choice always wins), and `issued_key` (the
+/// minted hub key held until the token poll hands it out; cleared at
+/// exchange so the plaintext never persists past delivery).
+///
+/// Deliberately **no RLS** on this table (same verdict as `hub_api_keys`
+/// above): `/api/device/*` and `/connect` are auth-exempt paths that run
+/// before any `HubPrincipal`/GUC exists, so a scope policy would fail
+/// closed on the flow itself. Every device-flow query runs on a
+/// `PathClass::Internal` transaction in `PostgresStore`.
+pub const PG_HUB_DEVICE_FLOWS: &[(&str, &str)] = &[
+    (
+        r#"CREATE TABLE IF NOT EXISTS hub_device_flows (
+            id TEXT PRIMARY KEY,
+            device_code TEXT NOT NULL UNIQUE,
+            user_code TEXT NOT NULL UNIQUE,
+            codename TEXT NOT NULL DEFAULT 'anonymous',
+            instance_id TEXT NOT NULL DEFAULT '',
+            client_id TEXT NOT NULL DEFAULT 'kurultai-cli',
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc'),
+            expires_at TEXT NOT NULL,
+            approved_at TEXT,
+            approved_by TEXT,
+            agent_id TEXT,
+            token_hash TEXT,
+            team_hint TEXT,
+            team_id TEXT,
+            issued_key TEXT
+        )"#,
+        "create hub_device_flows",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_hub_device_flows_device_code ON hub_device_flows(device_code)",
+        "idx flows device_code",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_hub_device_flows_user_code ON hub_device_flows(user_code)",
+        "idx flows user_code",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_hub_device_flows_status_expires ON hub_device_flows(status, expires_at)",
+        "idx flows status_expires",
+    ),
+    // Existing hub DBs (pre-U3) lack the connect-join columns even when the
+    // table was created early — self-heal each one independently.
+    (
+        "ALTER TABLE hub_device_flows ADD COLUMN IF NOT EXISTS team_hint TEXT",
+        "flows team_hint column",
+    ),
+    (
+        "ALTER TABLE hub_device_flows ADD COLUMN IF NOT EXISTS team_id TEXT",
+        "flows team_id column",
+    ),
+    (
+        "ALTER TABLE hub_device_flows ADD COLUMN IF NOT EXISTS issued_key TEXT",
+        "flows issued_key column",
+    ),
+];

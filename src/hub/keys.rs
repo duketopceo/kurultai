@@ -90,8 +90,11 @@ impl HubKeyStore {
         Ok(row.0 > 0)
     }
 
-    /// Issue a key; returns `(plaintext_token, record_id)`.
+    /// Issue a key; returns `(plaintext_token, record_id)`. `team_id` is
+    /// validated at mint (`store::scope::validate_team_id`, U3/KTD1) — it
+    /// later becomes SQL-visible via the `kurultai.team_id` session GUC.
     pub async fn issue(&self, agent_id: &str, team_id: &str) -> Result<(String, i64)> {
+        crate::store::scope::validate_team_id(team_id).map_err(KurultaiError::Store)?;
         let token = format!("krt_{}", Uuid::new_v4().simple());
         let hash = sha256_hex(&token);
         let prefix = token.chars().take(12).collect::<String>();
@@ -178,6 +181,30 @@ impl HubKeyStore {
                 })
             })
             .collect()
+    }
+
+    /// Distinct `team_id`s ever minted — the `/connect` picker's existing-
+    /// team suggestions (U3). Revoked keys' teams stay listed: a team
+    /// doesn't disappear when a key does.
+    pub async fn list_teams(&self) -> Result<Vec<String>> {
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT DISTINCT team_id FROM hub_api_keys ORDER BY team_id")
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| KurultaiError::Store(format!("hub list_teams: {e}")))?;
+        Ok(rows.into_iter().map(|r| r.0).collect())
+    }
+
+    /// `connect_lazy` pool for handler unit tests — lets tests construct a
+    /// `HubGate` with `key_store = Some(..)` without a live Postgres (any
+    /// query still fails fast if reached).
+    #[cfg(test)]
+    pub(crate) fn lazy_for_test() -> Self {
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy("postgres://kurultai:unused@127.0.0.1:1/kurultai_test")
+            .expect("lazy pool does not connect");
+        Self { pool }
     }
 
     pub async fn resolve_token(&self, token: &str) -> Result<Option<HubPrincipal>> {

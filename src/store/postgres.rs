@@ -3,7 +3,7 @@
 //! Solo [`super::open_store`] stays SQLite. Personal atoms are refused (AE4).
 
 use super::scope::PgScope;
-use super::{IngestionJob, SearchFilter, Store, DEFAULT_PROJECT, MIN_EMBEDDING_NORM};
+use super::{DeviceFlow, IngestionJob, SearchFilter, Store, DEFAULT_PROJECT, MIN_EMBEDDING_NORM};
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::hub::HubActivityStore;
@@ -21,6 +21,12 @@ const ATOM_SELECT: &str = "id, source, source_id, title, summary, content, quest
      tags_json, source_updated_at, indexed_at, metadata_json, trust_lane, quarantine_reason, \
      last_accessed_at, visibility, team_id, content_hash, soft_labels_json, \
      corpus_tier, visibility_labels_json";
+
+/// `hub_device_flows` read shape — mirrors SQLite `device_flows` plus the
+/// U3 connect-join columns (`team_hint`, `team_id`, `issued_key`).
+const DEVICE_FLOW_SELECT: &str = "id, device_code, user_code, codename, instance_id, client_id, \
+     status, created_at, expires_at, approved_at, approved_by, agent_id, token_hash, \
+     team_hint, team_id, issued_key";
 
 /// KTD1 path classification for scope resolution.
 ///
@@ -334,6 +340,13 @@ impl PostgresStore {
 
         HubActivityStore::migrate_conn(conn).await?;
 
+        // U3/KTD3 — `hub_device_flows` (connect-join). Deliberately outside
+        // `PG_HUB_RLS`: `/api/device/*` + `/connect` run before any
+        // principal/GUC exists (same verdict as `hub_api_keys`).
+        for (sql, ctx) in super::migrations::PG_HUB_DEVICE_FLOWS {
+            exec_ddl(conn, sql, ctx).await?;
+        }
+
         // R11/KTD1 — ENABLE + FORCE row-level security and the GUC-keyed scope
         // policies (defense-in-depth under `hub_visibility_sql`). Statement
         // bodies live with the rest of the schema DDL in
@@ -472,6 +485,45 @@ impl PostgresStore {
                 .as_deref()
                 .map(parse_dt),
             superseded_by: row.try_get("superseded_by").unwrap_or(None),
+        })
+    }
+
+    fn device_flow_from_row(row: &PgRow) -> Result<DeviceFlow> {
+        Ok(DeviceFlow {
+            id: row
+                .try_get("id")
+                .map_err(|e| KurultaiError::Store(format!("flow id: {e}")))?,
+            device_code: row
+                .try_get("device_code")
+                .map_err(|e| KurultaiError::Store(format!("flow device_code: {e}")))?,
+            user_code: row
+                .try_get("user_code")
+                .map_err(|e| KurultaiError::Store(format!("flow user_code: {e}")))?,
+            codename: row
+                .try_get("codename")
+                .map_err(|e| KurultaiError::Store(format!("flow codename: {e}")))?,
+            instance_id: row
+                .try_get("instance_id")
+                .map_err(|e| KurultaiError::Store(format!("flow instance_id: {e}")))?,
+            client_id: row
+                .try_get("client_id")
+                .map_err(|e| KurultaiError::Store(format!("flow client_id: {e}")))?,
+            status: row
+                .try_get("status")
+                .map_err(|e| KurultaiError::Store(format!("flow status: {e}")))?,
+            created_at: row
+                .try_get("created_at")
+                .map_err(|e| KurultaiError::Store(format!("flow created_at: {e}")))?,
+            expires_at: row
+                .try_get("expires_at")
+                .map_err(|e| KurultaiError::Store(format!("flow expires_at: {e}")))?,
+            approved_at: row.try_get("approved_at").unwrap_or(None),
+            approved_by: row.try_get("approved_by").unwrap_or(None),
+            agent_id: row.try_get("agent_id").unwrap_or(None),
+            token_hash: row.try_get("token_hash").unwrap_or(None),
+            team_hint: row.try_get("team_hint").unwrap_or(None),
+            team_id: row.try_get("team_id").unwrap_or(None),
+            issued_key: row.try_get("issued_key").unwrap_or(None),
         })
     }
 
@@ -1493,6 +1545,237 @@ impl Store for PostgresStore {
         }
         Self::commit_scope(tx, "list_pending_ingestion_jobs").await?;
         Ok(out)
+    }
+
+    // ── Device authorization implementations (U3/KTD3) ─────────────────────
+    //
+    // `hub_device_flows` carries no RLS (the auth-exempt endpoints run before
+    // any principal/GUC exists), so every op still runs inside a scoped
+    // transaction — `PathClass::Internal`, matching ingestion jobs.
+
+    async fn create_device_flow(
+        &self,
+        codename: &str,
+        client_id: &str,
+        instance_id: &str,
+        expires_in_seconds: u64,
+    ) -> Result<DeviceFlow> {
+        self.create_device_flow_with_hint(
+            codename,
+            client_id,
+            instance_id,
+            None,
+            expires_in_seconds,
+        )
+        .await
+    }
+
+    async fn create_device_flow_with_hint(
+        &self,
+        codename: &str,
+        client_id: &str,
+        instance_id: &str,
+        team_hint: Option<&str>,
+        expires_in_seconds: u64,
+    ) -> Result<DeviceFlow> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let device_code = format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        );
+        let user_code = uuid::Uuid::new_v4().simple().to_string().to_uppercase()[..8].to_string();
+        let now = Utc::now();
+        let created_at = now.to_rfc3339();
+        let expires_at = (now + chrono::Duration::seconds(expires_in_seconds as i64)).to_rfc3339();
+
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
+        sqlx::query(
+            "INSERT INTO hub_device_flows (id, device_code, user_code, codename, instance_id, client_id, status, created_at, expires_at, team_hint) \
+             VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9)",
+        )
+        .bind(&id)
+        .bind(&device_code)
+        .bind(&user_code)
+        .bind(codename)
+        .bind(instance_id)
+        .bind(client_id)
+        .bind(&created_at)
+        .bind(&expires_at)
+        .bind(team_hint)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("create_device_flow insert: {e}")))?;
+        Self::commit_scope(tx, "create_device_flow").await?;
+
+        Ok(DeviceFlow {
+            id,
+            device_code,
+            user_code,
+            codename: codename.to_string(),
+            instance_id: instance_id.to_string(),
+            client_id: client_id.to_string(),
+            status: "pending".to_string(),
+            created_at,
+            expires_at,
+            approved_at: None,
+            approved_by: None,
+            agent_id: None,
+            token_hash: None,
+            team_hint: team_hint.map(str::to_string),
+            team_id: None,
+            issued_key: None,
+        })
+    }
+
+    async fn get_device_flow_by_device_code(
+        &self,
+        device_code: &str,
+    ) -> Result<Option<DeviceFlow>> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
+        let row = sqlx::query(&format!(
+            "SELECT {DEVICE_FLOW_SELECT} FROM hub_device_flows WHERE device_code = $1"
+        ))
+        .bind(device_code)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("get_device_flow_by_device_code: {e}")))?;
+        Self::commit_scope(tx, "get_device_flow_by_device_code").await?;
+        row.map(|r| Self::device_flow_from_row(&r)).transpose()
+    }
+
+    async fn get_device_flow_by_user_code(&self, user_code: &str) -> Result<Option<DeviceFlow>> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
+        let row = sqlx::query(&format!(
+            "SELECT {DEVICE_FLOW_SELECT} FROM hub_device_flows WHERE user_code = $1"
+        ))
+        .bind(user_code)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("get_device_flow_by_user_code: {e}")))?;
+        Self::commit_scope(tx, "get_device_flow_by_user_code").await?;
+        row.map(|r| Self::device_flow_from_row(&r)).transpose()
+    }
+
+    async fn approve_device_flow(&self, user_code: &str, approved_by: &str) -> Result<()> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
+        let updated = sqlx::query(
+            "UPDATE hub_device_flows \
+             SET status = 'approved', approved_at = $1, approved_by = $2 \
+             WHERE user_code = $3 AND status = 'pending' AND expires_at > $1",
+        )
+        .bind(Utc::now().to_rfc3339())
+        .bind(approved_by)
+        .bind(user_code)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("approve_device_flow update: {e}")))?
+        .rows_affected();
+        if updated == 0 {
+            return Err(KurultaiError::Store(
+                "device flow not found, already approved, or expired".into(),
+            ));
+        }
+        Self::commit_scope(tx, "approve_device_flow").await
+    }
+
+    async fn approve_device_flow_hub(
+        &self,
+        user_code: &str,
+        approved_by: &str,
+        team_id: &str,
+        issued_key: &str,
+    ) -> Result<()> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
+        let updated = sqlx::query(
+            "UPDATE hub_device_flows \
+             SET status = 'approved', approved_at = $1, approved_by = $2, \
+                 team_id = $3, issued_key = $4 \
+             WHERE user_code = $5 AND status = 'pending' AND expires_at > $1",
+        )
+        .bind(Utc::now().to_rfc3339())
+        .bind(approved_by)
+        .bind(team_id)
+        .bind(issued_key)
+        .bind(user_code)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("approve_device_flow_hub update: {e}")))?
+        .rows_affected();
+        if updated == 0 {
+            return Err(KurultaiError::Store(
+                "device flow not found, already approved, or expired".into(),
+            ));
+        }
+        Self::commit_scope(tx, "approve_device_flow_hub").await
+    }
+
+    async fn deny_device_flow(&self, user_code: &str, denied_by: &str) -> Result<()> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
+        let updated = sqlx::query(
+            "UPDATE hub_device_flows \
+             SET status = 'denied', approved_at = $1, approved_by = $2 \
+             WHERE user_code = $3 AND status = 'pending' AND expires_at > $1",
+        )
+        .bind(Utc::now().to_rfc3339())
+        .bind(denied_by)
+        .bind(user_code)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("deny_device_flow update: {e}")))?
+        .rows_affected();
+        if updated == 0 {
+            return Err(KurultaiError::Store(
+                "device flow not found, already decided, or expired".into(),
+            ));
+        }
+        Self::commit_scope(tx, "deny_device_flow").await
+    }
+
+    async fn exchange_device_flow(
+        &self,
+        device_code: &str,
+        token_hash: &str,
+        agent_id: &str,
+    ) -> Result<()> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
+        // `issued_key = NULL` — the minted hub key exists at most once:
+        // between approve and the first successful token poll.
+        let updated = sqlx::query(
+            "UPDATE hub_device_flows \
+             SET status = 'exchanged', token_hash = $1, agent_id = $2, issued_key = NULL \
+             WHERE device_code = $3 AND status = 'approved' AND expires_at > $4",
+        )
+        .bind(token_hash)
+        .bind(agent_id)
+        .bind(device_code)
+        .bind(Utc::now().to_rfc3339())
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("exchange_device_flow update: {e}")))?
+        .rows_affected();
+        if updated == 0 {
+            return Err(KurultaiError::Store(
+                "device flow not approved, not found, or expired".into(),
+            ));
+        }
+        Self::commit_scope(tx, "exchange_device_flow").await
+    }
+
+    async fn list_device_flows(&self, limit: usize) -> Result<Vec<DeviceFlow>> {
+        let mut tx = self.begin_scope(PathClass::Internal).await?;
+        let rows = sqlx::query(&format!(
+            "SELECT {DEVICE_FLOW_SELECT} FROM hub_device_flows \
+             ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, \
+                      created_at DESC \
+             LIMIT $1"
+        ))
+        .bind(limit as i64)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|e| KurultaiError::Store(format!("list_device_flows: {e}")))?;
+        Self::commit_scope(tx, "list_device_flows").await?;
+        rows.iter().map(Self::device_flow_from_row).collect()
     }
 
     async fn upsert_ontology_entity(&self, _e: &OntologyEntity) -> Result<()> {

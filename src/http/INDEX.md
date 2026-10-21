@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src/http
 parent: src/INDEX.md
-updated: 2026-10-20
-version: 9
+updated: 2026-10-21
+version: 10
 ---
 
 # `src/http`
@@ -20,8 +20,8 @@ _None._
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`auth.rs`](auth.rs) | Hub API-key / admin token gate + CF Access fallback; `request_pg_scope` classifies member/admin/closed `PgScope` from the resolved `HubPrincipal` (KTD1) | `src/hashutil` · `src/hub/keys.rs` · `src/http/cf_access.rs` · `src/store/scope.rs` | `src/daemon/mod.rs` | 2026-10-20 | 9 | 2026-10-20 hub adoption U2: `request_pg_scope` — member principal → `PgScope::member(team_id)`, `/api/hub/*` operator creds → admin, else closed; `MaybeHubPrincipal::is_admin()` accessor (false until U4 flag) · 2026-09-16 exempt `/api/device/*` + `/connect` (self-gated); 401 JSON hint `run kurultai connect` · 2026-09-14 `/api/ontology/entity` + `/link` join WRITE_ROUTES (#316) · 2026-09-11 proposals decide route joins SharedClosed write guard (#118) · 2026-09-06 CF Access JWT fallback in `hub_api_auth` · 2026-09-06 exempt `/auth/*` from hub API-key middleware · 2026-08-31 resolve token first; 500 on DB errors · 2026-08-16 indexed (v1 seed) |
-| [`cf_access.rs`](cf_access.rs) | Verify Cloudflare Access JWTs (`CF_Authorization` cookie / `Cf-Access-Jwt-Assertion`) for human browser auth | `jsonwebtoken` · `reqwest` | `src/http/auth.rs` | 2026-09-06 | 1 | 2026-09-06 added — Google/OTP Access login satisfies `/api/*` auth |
-| [`device.rs`](device.rs) | `kurultai connect` endpoints: `POST /api/device/code`, `/api/device/token`, `GET/POST /connect` approval page (CF Access → hub key → loopback gate) | `src/http` · `src/store` · `src/hashutil` | `src/http/mod.rs` | 2026-09-16 | 1 | 2026-09-16 added — seat-scoped agent keys |
+| [`cf_access.rs`](cf_access.rs) | Verify Cloudflare Access JWTs (`CF_Authorization` cookie / `Cf-Access-Jwt-Assertion`) for human browser auth | `jsonwebtoken` · `reqwest` | `src/http/auth.rs` · `src/http/device.rs` (tests) | 2026-10-21 | 2 | 2026-10-21 `seeded_for_test` → pub(crate) for device.rs allowlist unit tests · 2026-09-06 added — Google/OTP Access login satisfies `/api/*` auth |
+| [`device.rs`](device.rs) | `kurultai connect` endpoints: `POST /api/device/code` (+`--team` hint), `/api/device/token` (hub key handout), `GET/POST /connect` approval page — hub lane renders a server-side team picker and mints at approve; `KURULTAI_ADMIN_EMAILS` allowlist gates CF approvers | `src/http` · `src/store` · `src/hashutil` · `src/store/scope.rs` · `src/hub/keys.rs` | `src/http/mod.rs` | 2026-10-21 | 2 | 2026-10-21 hub adoption U3: team picker (datalist + free text, `--team` prefill), `approve_hub` mint-at-approve + orphan revoke, hub token handout via atomic exchange, `KURULTAI_ADMIN_EMAILS` gate under `feature:hub`, roster kept out of `/api/device/code` · 2026-09-16 added — seat-scoped agent keys |
 | [`device_auth.rs`](device_auth.rs) | Device-code login endpoints (`/auth/device/*`) for hosted agent tokens | `src/http` · `src/store` · `src/hashutil` | `src/http/mod.rs` | 2026-09-16 | 2 | 2026-09-16 `create_device_flow` gains `instance_id`; `human_base_url` shared with `device.rs` · 2026-09-06 added |
 | [`hey.rs`](hey.rs) | Multi-agent message board REST (`/api/hey/...`) | `src/store` · `src/brain` · `src/error` | `src/daemon/mod.rs` · `src/http/mod.rs` · `src/http/proposals.rs` · `src/http/ontology_write.rs` | 2026-09-19 | 5 | 2026-09-19 `resolve_thread_id` prefers `get_thread(id)` over name — path ids no longer hop to threads named with that UUID · 2026-09-17 zero-auth solo path: `require_writer` posts as `luke`/local when no auth surface configured · 2026-09-14 `require_agent` reused by ontology_write agent-refusal (#316) · 2026-09-11 `require_agent` now pub(crate) for proposal submit auth (#118) 2026-09-11 `require_agent` now pub(crate) for proposal submit auth (#118) · 2026-09-04 message board endpoints + clamp cleanup |
 | [`proposals.rs`](proposals.rs) | O3 ontology proposal queue REST (`/api/ontology/proposals`, decide) — agent bearer submits, humans decide | `src/http/hey.rs` · `src/http/auth.rs` · `src/ontology` | `src/http/mod.rs` | 2026-09-11 | 1 | 2026-09-11 added (#118) |
@@ -34,6 +34,7 @@ _None._
 
 ## Recent
 
+- 2026-10-21 — `device.rs`/`cf_access.rs` (hub adoption U3, KTD4): `/connect` on the hub lane renders an authenticated team picker (existing teams datalist + free text, `--team` prefill — approver wins), `approve_hub` validates `team_id`, mints `HubKeyStore::issue` once and revokes on a lost race; `/api/device/token` hands the flow's `issued_key` out exactly once; `KURULTAI_ADMIN_EMAILS` allowlist gates CF approvers under `feature:hub`; roster never leaves the authenticated page
 - 2026-10-20 — `auth.rs`/`mod.rs` (hub adoption U2, KTD1): `request_pg_scope` resolves `PgScope` from the server-side `HubPrincipal` only; `pg_rls_scope` middleware wraps the request stack inside `hub_api_auth`; `/api/hub/activity` 403s member principals (admin-only write log)
 - 2026-09-30 — `mcp.rs`: `/mcp` accepts registered agent seat tokens (full write surface, `X-Kurultai-{agent,chat}` stamps → WriteContext) alongside shared-secret read-only — the broker relay's upstream auth path
 - 2026-09-23 — `mod.rs`: `/api/graph` serves prepared per-request-shape snapshots — `graph_cache` keyed by (tier, limit, quarantine, source filters), validated against `Store::atom_epoch`, nodes array spliced byte-for-byte into the response; `graph_epoch` field added (#324)

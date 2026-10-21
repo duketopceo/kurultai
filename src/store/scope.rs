@@ -24,6 +24,28 @@
 
 use std::future::Future;
 
+/// Mint-time `team_id` shape (U3/KTD1): a short lowercase slug —
+/// `[a-z0-9._-]{1,64}`. The value later rides a
+/// `set_config('kurultai.team_id', $1, true)` bind parameter (never SQL
+/// interpolation), so this is a footgun rejection, not an injection
+/// defense — but a strict shape keeps the picker + scope logs sane.
+/// Defined here (not inside `hub::keys`) so the `/api/device/code`
+/// `--team` hint check compiles on non-postgres builds too.
+pub fn validate_team_id(team_id: &str) -> Result<(), String> {
+    let ok = !team_id.is_empty()
+        && team_id.len() <= 64
+        && team_id
+            .bytes()
+            .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'.' | b'_' | b'-'));
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "invalid team_id '{team_id}' — use 1-64 chars from [a-z0-9._-]"
+        ))
+    }
+}
+
 tokio::task_local! {
     /// The current request's RLS scope. Unset outside HTTP member handling —
     /// internal callers read [`PgScope::INTERNAL`] via [`PgScope::current`].

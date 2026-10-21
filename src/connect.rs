@@ -28,6 +28,9 @@ pub struct ConnectOptions {
     pub no_open: bool,
     /// Lane (`dev`/`staging`/`prod`) namespaced into the credential name.
     pub lane: String,
+    /// Hub connect-join (U3): team prefill hint sent with the device-code
+    /// request — the approver's picker choice always wins.
+    pub team: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,6 +47,9 @@ struct DeviceTokenResponse {
     agent_key: String,
     codename: String,
     instance_id: String,
+    /// Team scope the approver bound the hub key to (hub lane only).
+    #[serde(default)]
+    team_id: Option<String>,
 }
 
 /// Default seat id: `KURULTAI_INSTANCE_ID` → persistent `<config-dir>/seat-id`
@@ -167,6 +173,8 @@ pub async fn run(opts: ConnectOptions) -> Result<()> {
             "client_id": "kurultai-cli",
             "codename": opts.codename.as_deref().unwrap_or(""),
             "instance_id": &instance_id,
+            // Hub connect-join prefill hint — the approver's picker wins.
+            "team": opts.team.as_deref().unwrap_or(""),
         }))
         .send()
         .await
@@ -220,10 +228,16 @@ pub async fn run(opts: ConnectOptions) -> Result<()> {
                 );
                 let where_stored = store_agent_key(&name, &token.agent_key)?;
                 println!();
-                println!(
-                    "Connected as '{}' (seat '{}').",
-                    token.codename, token.instance_id
-                );
+                match &token.team_id {
+                    Some(team) => println!(
+                        "Connected as '{}' (seat '{}', team '{}').",
+                        token.codename, token.instance_id, team
+                    ),
+                    None => println!(
+                        "Connected as '{}' (seat '{}').",
+                        token.codename, token.instance_id
+                    ),
+                }
                 println!("Agent key stored in {where_stored}.");
                 let wired = crate::mcp::wire_agent(opts.agent)?;
                 for p in &wired {
