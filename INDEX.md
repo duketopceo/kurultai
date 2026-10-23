@@ -56,7 +56,7 @@ Live product queue: [`ROADMAP.md`](ROADMAP.md) · program units [`docs/plans/202
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor covenant | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CONCEPTS.md`](CONCEPTS.md) | Shared domain vocabulary (atoms, hub, FTS-first, ontology, golden set, judge, web augmentation) | — | — | 2026-09-17 | 3 | 2026-09-17 golden set / judge / web augmentation terms · 2026-08-29 Hub paragraph points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup, tests, PR and architecture guidelines | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-15 | 4 | 2026-09-15 FEATURE_MATRIX sync-contract note (#329) |
-| [`Cargo.lock`](Cargo.lock) | Locked Rust dependency graph for reproducible CI | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`Cargo.lock`](Cargo.lock) | Locked Rust dependency graph for reproducible CI | — | — | 2026-10-23 | 2 | 2026-10-23 bump rustls-webpki/webpki-roots (RUSTSEC-2026-0381/0382/0383) · 2026-08-16 indexed (v1 seed) |
 | [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.7.0) and optional features | — | — | 2026-10-06 | 6 | 2026-10-06 bump to v0.7.0 (#415) · 2026-09-11 bump to v0.6.0 · 2026-09-01 bump to v0.5.0 · 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-16 indexed (v1 seed) |
 | [`Dockerfile`](Dockerfile) | Multi-stage hub image (`--features postgres`) | `docs/deploy/railway-hub.md` | `docker-compose.hub.yml` | 2026-08-29 | 1 | 2026-08-29 HUB-3 Railway/compose image |
 | [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | Kurultai Feature Matrix (KHAN-251) | — | — | 2026-09-15 | 2 | 2026-09-15 ported from kurultai-private + sync-contract note (#329) |
