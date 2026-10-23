@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-10-19
-version: 10
+updated: 2026-10-23
+version: 11
 ---
 
 # `docs`
@@ -41,6 +41,7 @@ version: 10
 
 ## Recent
 
+- 2026-10-23 — plans/ added `2026-10-23-001` U3 docs drift correction plan (ROADMAP/AGENTS/SECURITY/README)
 - 2026-10-19 — `AGENT_SETUP_PROMPT.md` + `mac-dev.md`: cargo install tag refs bumped v0.4.x → v0.7.0 (stale since release)
 - 2026-10-05 — plans/ added 2026-10-05-001 program roadmap plan (U1-U21, plan classification)
 - 2026-09-30 — plans/ added 2026-09-30-001 load + chaos harness plan (scripts/hammer.mjs + tests/chaos.rs); hosted write-hammer evidence: ~133 wps, zero errors
