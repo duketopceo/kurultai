@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Currently this is an active development project (v0.1.0). Security patches will be applied to the main branch and included in future releases.
+Currently this is an active development project. The supported release line is **v0.7.0** (see `Cargo.toml` / GitHub Releases). Security patches are applied to the `main` branch and included in future releases.
 
 ## Reporting a Vulnerability
 

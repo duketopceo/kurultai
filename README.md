@@ -90,7 +90,7 @@ CLI · axum daemon (/api/*) · MCP stdio · Brain UI (embedded)
 | **Store (default)** | SQLite + FTS5 + [sqlite-vec](https://github.com/asg017/sqlite-vec) |
 | **Search** | FTS ∥ vector → reciprocal rank fusion → soft-label boost → optional rerank |
 | **OpenRouter** | One `OPENROUTER_API_KEY` (or `KURULTAI_API_KEY`) — embed `openai/text-embedding-3-large`, rerank + LLM `ask` `openai/gpt-4o-mini`. FTS-only without a key; optional local ONNX via `--features local-embed` |
-| **Agents** | MCP stdio — `search`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, `ontology_promote`, `recall` |
+| **Agents** | MCP stdio — 16 tools: `search`, `recall`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_*` (get/promote/propose/proposals), `hey_*` (threads/read/post/react/poll) |
 | **Brain UI** | Vite + React + Three.js (`website/` → built `ui/`, rust-embedded at `GET /ui/`) |
 
 **Optional hub track (off by default):** `--features postgres` + `KURULTAI_FEATURE_HUB=1` adds a Postgres/pgvector store for shared `team` / `company` atoms. Default installs stay SQLite-only.
@@ -106,7 +106,7 @@ Config templates: [`config.example.toml`](config.example.toml) · [`.env.example
 | **CLI** | `init`, `index`, `search`, `ask`, `who-knows`, `status`, `promote`, `export`, `import`, `mcp`, `daemon`, `sweep`, `prune`, `doctor`, `admin key` |
 | **Embeddings** | OpenRouter (default) · **Perplexity `pplx-embed-v1`** (0.6b @1024d / 4b @2560d, ~30× cheaper) · local ONNX (feature `local-embed`) |
 | **Ask** | Cited synthesis + **gap report** — answers name what the brain *doesn't* know |
-| **Ontology** | O1 class tree + `ontology_get` / `ontology_promote` MCP tools + **zero-LLM edge extraction** (`[[links]]`, `@mentions`, frontmatter rels → typed `references` edges at index time) |
+| **Ontology** | O1 class tree + `ontology_get` / `ontology_promote` / `ontology_propose` / `ontology_proposals` MCP tools + Flowsint board + **zero-LLM edge extraction** (`[[links]]`, `@mentions`, frontmatter rels → typed `references` edges at index time) |
 | **Memory lifecycle** | Hot/warm/cold tiers · `supersedes:` frontmatter corrections · `--as-of` time-travel queries · `kurultai sweep` nightly consolidation (dedupe, stale-link prune, Hey report) |
 | **Connectors** | Markdown · JSON · inbox tray · Dayflow · Pond · GitHub (local checkout). AppFlowy is not implemented ([#4](https://github.com/duketopceo/kurultai/issues/4)) |
 | **Daemon API** | `/api/status`, `/api/atoms`, `/api/graph`, `/api/search`, `/api/ask`, `/api/recall`, `/api/ontology`, `/api/metrics`, … |

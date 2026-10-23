@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-10-19
-version: 20
+updated: 2026-10-23
+version: 21
 ---
 
 # `.`
@@ -17,7 +17,7 @@ version: 20
 3. Open the file. Use [`CONCEPTS.md`](CONCEPTS.md) for domain words only.
 4. After you edit a file: bump its row (ver / stamp / 3-line changelog) and prepend **Recent** here and on every parent. Then `python3 scripts/audit-agent-index.py`.
 
-Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md) — HUB-5 ✅ (#250) · HUB-6 ✅; next LFG: final stretch to v0.5.0. [`docs/plans/YEAR-1-MILESTONES.md`](docs/plans/YEAR-1-MILESTONES.md) updated 2026-09-01.
+Live product queue: [`ROADMAP.md`](ROADMAP.md) · program units [`docs/plans/2026-10-05-001-docs-program-roadmap-plan.md`](docs/plans/2026-10-05-001-docs-program-roadmap-plan.md) (U3 docs drift · U1 Wave H #323/#326 · U2 broker). Phase-6 history: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-6-next-work-orders.md).
 
 ## Children
 
@@ -50,13 +50,13 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`.mailmap`](.mailmap) | Maps duketopceo@gmail.com commits to luke.k@bartlettroofs.com | — | — | 2026-10-07 | 1 | 2026-10-07 added (#423) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md) | Acceptance Report — KHAN-251 | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-10-19 | 4 | 2026-10-19 ui rebuilds require node 22 (hash parity w/ CI) · 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
+| [`AGENTS.md`](AGENTS.md) | Agent start-here: preferences, daemon/UI facts, MCP wiring | `INDEX.md` · `docs/agent-index.md` | — | 2026-10-23 | 5 | 2026-10-23 MCP tool count 8→16 (U3 drift) · 2026-10-19 ui rebuilds require node 22 (hash parity w/ CI) · 2026-09-05 hosted brain + ontology promote notes · 2026-08-16 point agents at INDEX.md · 2026-08-16 indexed (v1 seed) |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Prompt snippet for wiring agents to Kurultai | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CHANGELOG.md`](CHANGELOG.md) | Shipped crate versions and unreleased hub notes | — | — | 2026-10-19 | 5 | 2026-10-19 v0.7.0 section backfill (was missing since release) · 2026-09-11 v0.6.0 release notes · 2026-09-01 v0.5.0 release notes · 2026-08-29 HUB-3 unreleased notes · 2026-08-16 indexed (v1 seed) |
 | [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | Contributor covenant | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`CONCEPTS.md`](CONCEPTS.md) | Shared domain vocabulary (atoms, hub, FTS-first, ontology, golden set, judge, web augmentation) | — | — | 2026-09-17 | 3 | 2026-09-17 golden set / judge / web augmentation terms · 2026-08-29 Hub paragraph points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Dev setup, tests, PR and architecture guidelines | `INDEX.md` · `docs/agent-index.md` | — | 2026-09-15 | 4 | 2026-09-15 FEATURE_MATRIX sync-contract note (#329) |
-| [`Cargo.lock`](Cargo.lock) | Locked Rust dependency graph for reproducible CI | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`Cargo.lock`](Cargo.lock) | Locked Rust dependency graph for reproducible CI | — | — | 2026-10-23 | 2 | 2026-10-23 bump rustls-webpki/webpki-roots (RUSTSEC-2026-0381/0382/0383) · 2026-08-16 indexed (v1 seed) |
 | [`Cargo.toml`](Cargo.toml) | Rust crate manifest (v0.7.0) and optional features | — | — | 2026-10-06 | 6 | 2026-10-06 bump to v0.7.0 (#415) · 2026-09-11 bump to v0.6.0 · 2026-09-01 bump to v0.5.0 · 2026-08-31 release profile: thin LTO + strip symbols · 2026-08-16 indexed (v1 seed) |
 | [`Dockerfile`](Dockerfile) | Multi-stage hub image (`--features postgres`) | `docs/deploy/railway-hub.md` | `docker-compose.hub.yml` | 2026-08-29 | 1 | 2026-08-29 HUB-3 Railway/compose image |
 | [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) | Kurultai Feature Matrix (KHAN-251) | — | — | 2026-09-15 | 2 | 2026-09-15 ported from kurultai-private + sync-contract note (#329) |
@@ -64,9 +64,9 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`INSTALL_REPORT.md`](INSTALL_REPORT.md) | Kurultai Install Verification Report (historical v0.4.1) | — | — | 2026-10-19 | 2 | 2026-10-19 historical-verification banner (content stays v0.4.1 evidence) · 2026-08-16 indexed (v1 seed) |
 | [`LICENSE`](LICENSE) | AGPL-3.0-only license | — | — | 2026-10-15 | 2 | 2026-10-15 MIT → AGPL-3.0-only (#443) · 2026-08-16 indexed (v1 seed) |
 | [`DESIGN.md`](DESIGN.md) | Design direction proposal "Council Ring": tokens, glyphs, motion, surfaces | docs/design/bases/linear.DESIGN.md | website/src/next tokens | 2026-10-10 | 1 | 2026-10-10 created (repo program) |
-| [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-09-12 | 5 | 2026-09-12 link ROADMAP.md in Status · 2026-09-11 v0.6.0 release stack facts · 2026-09-01 v0.5.0 release stack facts |
-| [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/2026-10-05-001-docs-program-roadmap-plan.md` · `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-10-05 | 2 | 2026-10-05 lists program roadmap plan first · 2026-09-12 created — issue #122 |
-| [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`README.md`](README.md) | Recruiter-clean product README: what/why/run/architecture/status | — | — | 2026-10-23 | 6 | 2026-10-23 MCP Agents row → 16 tools (U3) · 2026-09-12 link ROADMAP.md in Status · 2026-09-11 v0.6.0 release stack facts · 2026-09-01 v0.5.0 release stack facts |
+| [`ROADMAP.md`](ROADMAP.md) | Living audience roadmap: solo → team → company stages, exit criteria, non-goals | `docs/plans/2026-10-05-001-docs-program-roadmap-plan.md` · `docs/plans/phase-6-next-work-orders.md` · `docs/plans/YEAR-1-MILESTONES.md` | `README.md` | 2026-10-23 | 3 | 2026-10-23 U3: drop closed issues from open tables, 16 MCP tools, Flowsint brain gate · 2026-10-05 lists program roadmap plan first · 2026-09-12 created — issue #122 |
+| [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-10-23 | 2 | 2026-10-23 supported version v0.1.0 → v0.7.0 (U3) · 2026-08-16 indexed (v1 seed) |
 | [`argus-reviewer.config.ts`](argus-reviewer.config.ts) | Argus reviewer config — code-review-only (`run: 'false'`), OpenRouter BYOK, Jev secrets adjudication on | `.github/workflows/argus-reviewer.yml` · `package.json` | — | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
 | [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-18 | 3 | 2026-09-18 [judge] section docs · 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
 | [`docker-compose.hub.yml`](docker-compose.hub.yml) | Local pgvector + hub daemon proof of Railway recipe | `Dockerfile` · `docs/deploy/railway-hub.md` | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 compose proof |
@@ -77,6 +77,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-10-23 — U3 docs drift: `ROADMAP.md` / `AGENTS.md` / `SECURITY.md` / `README.md` — 16 MCP tools, closed issues removed from open tables, Flowsint brain gate, SECURITY v0.7.0; plan `docs/plans/2026-10-23-001-docs-u3-drift-correction-plan.md`
 - 2026-10-19 — repo cleanup: 10 dependabot PRs merged (cargo×5, web×4, website vite pending); issues #116/#117/#122/#132 closed as shipped, #137/#140 status-updated to current brain doctrine; 14 dead remote branches + 6 local deleted (mesh-schema kept — unique unmerged work); version refs reconciled to v0.7.0 (version.ts, INSTALL_GUIDE, AGENT_SETUP, mac-dev, skill readme), CHANGELOG gains missing 0.7.0 section, `.gitignore` `.worktrees/`, INSTALL_REPORT historical banner, LICENSE row → AGPL
 - 2026-10-07 — `docs/plans/2026-10-07-001`: multi-vector late-interaction embed plan (pplx-embed-v2-late rerank lane, `MultiVectorEmbedder` + `atoms_multivec` sidecar, fastembed/http backends, dense v1 primary untouched); tracking issue #424
 - 2026-10-06 — explainer film: `launch/src/videos/kurultai/explainer/` — "how does an agent remember between sessions?" (~80s, diagram-first, VO-timed draft); Diagram.tsx primitives

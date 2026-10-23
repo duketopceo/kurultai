@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-10-05
-version: 10
+updated: 2026-10-23
+version: 11
 ---
 
 # `docs/plans`
@@ -19,6 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
+| [`2026-10-23-001-docs-u3-drift-correction-plan.md`](2026-10-23-001-docs-u3-drift-correction-plan.md) | U3 docs drift: align ROADMAP/AGENTS/SECURITY/README with 16 MCP tools, closed-issue tables, Flowsint brain gate, SECURITY v0.7.0 | program U3 · overlay U3-first | ROADMAP · AGENTS · SECURITY · README · INDEX | 2026-10-23 | 1 | LFG pipeline plan → implement |
 | [`2026-10-07-001-feat-multi-vector-late-interaction-embed-plan.md`](2026-10-07-001-feat-multi-vector-late-interaction-embed-plan.md) | Late-interaction rerank lane for `pplx-embed-v2-late` (ColBERT, 128-dim/token, MaxSim): `MultiVectorEmbedder` trait, `atoms_multivec` sidecar table (schema v18), fastembed/`http` backends, dense+late blend rerank — dense v1 primary untouched | #424 | src/embed · src/store · src/search · evals | 2026-10-07 | 1 | HF pplx-embed-v2 drop → plan |
 | [`2026-10-10-001-docs-program-overlay-plan.md`](2026-10-10-001-docs-program-overlay-plan.md) | Overlay on PR #420: difficulty/feasibility/simpler alternative per unit, new units U22-U28, embed_dim owner decision | PR #420 roadmap plan | ROADMAP.md | 2026-10-10 | 1 | 2026-10-10 created (repo program) |
 | [`2026-10-06-001-feat-agent-shared-brain-wiring-plan.md`](2026-10-06-001-feat-agent-shared-brain-wiring-plan.md) | Remote shared-brain wiring: per-codename seat tokens over `api-*` hostnames, omaseal pickup, `instance_id` via `X-Kurultai-Chat`, shared_write containment | luke-agents bridge | deploy · docs · ~/.config/kurultai | 2026-10-06 | 1 | session plan → implementation |
@@ -111,6 +112,7 @@ _None._
 
 ## Recent
 
+- 2026-10-23 — `2026-10-23-001`: U3 docs drift correction plan (ROADMAP/AGENTS/SECURITY/README ↔ 16 MCP tools + closed-issue tables)
 - 2026-10-05 — `2026-10-05-001`: program roadmap plan (U1-U21) classifying every dated plan; `ROADMAP.md` links it first
 - 2026-10-03 — `2026-10-02-001`: supersede/bi-temporal-lite plan (U4) — written and implemented in one pass
 
