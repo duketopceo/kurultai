@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src/http
 parent: src/INDEX.md
-updated: 2026-09-30
-version: 8
+updated: 2026-10-27
+version: 9
 ---
 
 # `src/http`
@@ -25,6 +25,7 @@ _None._
 | [`device_auth.rs`](device_auth.rs) | Device-code login endpoints (`/auth/device/*`) for hosted agent tokens | `src/http` · `src/store` · `src/hashutil` | `src/http/mod.rs` | 2026-09-16 | 2 | 2026-09-16 `create_device_flow` gains `instance_id`; `human_base_url` shared with `device.rs` · 2026-09-06 added |
 | [`hey.rs`](hey.rs) | Multi-agent message board REST (`/api/hey/...`) | `src/store` · `src/brain` · `src/error` | `src/daemon/mod.rs` · `src/http/mod.rs` · `src/http/proposals.rs` · `src/http/ontology_write.rs` | 2026-09-19 | 5 | 2026-09-19 `resolve_thread_id` prefers `get_thread(id)` over name — path ids no longer hop to threads named with that UUID · 2026-09-17 zero-auth solo path: `require_writer` posts as `luke`/local when no auth surface configured · 2026-09-14 `require_agent` reused by ontology_write agent-refusal (#316) · 2026-09-11 `require_agent` now pub(crate) for proposal submit auth (#118) 2026-09-11 `require_agent` now pub(crate) for proposal submit auth (#118) · 2026-09-04 message board endpoints + clamp cleanup |
 | [`proposals.rs`](proposals.rs) | O3 ontology proposal queue REST (`/api/ontology/proposals`, decide) — agent bearer submits, humans decide | `src/http/hey.rs` · `src/http/auth.rs` · `src/ontology` | `src/http/mod.rs` | 2026-09-11 | 1 | 2026-09-11 added (#118) |
+| [`open.rs`](open.rs) | `GET /api/open` reveal-in-OS for the Brain UI — solo loopback only, path confined to indexed roots, document types only, no shell | `src/security/paths.rs` | `src/http/mod.rs` | 2026-10-27 | 1 | 2026-10-27 added — was reachable by any caller |
 | [`ontology_write.rs`](ontology_write.rs) | Human-lane ontology board writes (`POST /api/ontology/entity`, `/link`) — agents refused | `src/http/hey.rs` · `src/http/auth.rs` · `src/ontology` | `src/http/mod.rs` | 2026-09-14 | 1 | 2026-09-14 added (#316) |
 | [`hub_listen.rs`](hub_listen.rs) | Pure bind × auth start-fail (HUB-3) | `src/http/auth.rs` · `src/error` | `src/http/mod.rs` · `src/main.rs` | 2026-09-15 | 2 | 2026-09-15 `resolve_listen_socket_flag` + `resolve_tailscale_ip` for `--bind` (#329) |
 | [`ingest.rs`](ingest.rs) | Opt-in POST /ingest dump; `remote_ingest` flag admits secret-authenticated non-loopback callers | `src/embed` · `src/hashutil` · `src/ingest` · `src/quality` · `src/store` · `src/features` | `src/daemon/mod.rs` · `src/connectors/inbox.rs` · `src/connectors/json.rs` · `src/connectors/markdown.rs` · `src/query/hybrid.rs` | 2026-10-03 | 2 | 2026-10-03 remote_ingest flag + peer audit log · 2026-08-16 indexed (v1 seed) |
@@ -34,6 +35,7 @@ _None._
 
 ## Recent
 
+- 2026-10-27 — `open.rs`: `/api/open` locked down (loopback peer + host, no proxy/cross-site, confined to indexed roots, openable extensions only); mounted only for solo loopback daemons, `ServeOptions.open_roots` from watch roots
 - 2026-09-30 — `mcp.rs`: `/mcp` accepts registered agent seat tokens (full write surface, `X-Kurultai-{agent,chat}` stamps → WriteContext) alongside shared-secret read-only — the broker relay's upstream auth path
 - 2026-09-23 — `mod.rs`: `/api/graph` serves prepared per-request-shape snapshots — `graph_cache` keyed by (tier, limit, quarantine, source filters), validated against `Store::atom_epoch`, nodes array spliced byte-for-byte into the response; `graph_epoch` field added (#324)
 - 2026-09-20 — `POST /api/metrics/client` (mod.rs): Brain UI perf samples (nav/tier-load/fps/long-tasks/heap) validated into the client metric family; numbers + enum labels only (#102)

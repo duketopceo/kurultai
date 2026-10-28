@@ -14,6 +14,7 @@ mod hey;
 mod hub_listen;
 mod mcp;
 mod ontology_write;
+mod open;
 mod proposals;
 mod ui;
 
@@ -97,6 +98,8 @@ pub struct ServeOptions {
     /// `daemon --bind` override — wins over env when set.
     pub bind: Option<String>,
     pub hub: HubGate,
+    /// Indexed source roots `GET /api/open` may reveal (solo loopback only).
+    pub open_roots: Vec<std::path::PathBuf>,
 }
 
 fn json_error(
@@ -125,6 +128,7 @@ pub async fn serve(brain: BrainService, status: Arc<DaemonStatus>, port: u16) ->
             bind_all: false,
             bind: None,
             hub: HubGate::default(),
+            open_roots: Vec::new(),
         },
     )
     .await
@@ -183,6 +187,17 @@ pub async fn serve_with(
         state
     };
     let mut app = router(state);
+    // `/api/open` launches an OS opener on this host: solo, loopback-bound,
+    // unauthenticated daemons only — never hub mode, never behind CF Access.
+    if addr.ip().is_loopback()
+        && hub.auth == HubAuth::None
+        && hub.cf_access.is_none()
+        && !crate::features::enabled("hub")
+    {
+        app = app.merge(open::routes(open::OpenState::new(opts.open_roots)));
+    } else {
+        tracing::info!("/api/open disabled (hub mode or non-loopback bind)");
+    }
     if let Some(secret) = mcp::resolve_mcp_http_secret(opts.mcp_http_secret.as_deref()) {
         tracing::info!("mcp HTTP/SSE enabled at POST /mcp and GET /mcp/sse (bearer auth)");
         app = app.merge(mcp::routes(mcp::McpHttpState::new(
@@ -247,7 +262,6 @@ fn router(state: AppState) -> Router {
         .route("/api/search", get(search_get).post(search_post))
         .route("/api/recall", post(recall_post))
         .route("/api/ask", get(ask_get).post(ask_post))
-        .route("/api/open", get(api_open))
         .route("/search", get(search_get).post(search_post))
         .route("/ask", get(ask_get).post(ask_post))
         .route("/cite", post(cite_post))
@@ -1272,17 +1286,6 @@ async fn who_knows_post(
             ))
         }
     }
-}
-
-async fn api_open(
-    Query(params): Query<std::collections::HashMap<String, String>>,
-) -> impl IntoResponse {
-    if let Some(file) = params.get("file") {
-        if let Ok(path) = crate::security::resolve_allowed_path(file) {
-            let _ = std::process::Command::new("open").arg(&path).status();
-        }
-    }
-    StatusCode::OK
 }
 
 #[cfg(test)]

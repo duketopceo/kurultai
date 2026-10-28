@@ -238,6 +238,8 @@ pub async fn run(
     let connectors = Arc::new(connectors);
     let flight = Arc::new(Mutex::new(()));
     let mut bg = AbortOnDrop(Vec::new());
+    // Indexed source roots, kept for `GET /api/open` containment.
+    let open_roots = opts.watch_roots.clone();
 
     let status = Arc::new(DaemonStatus::default());
     {
@@ -323,6 +325,7 @@ pub async fn run(
             bind_all: http::resolve_bind_all_from_env(),
             bind: opts.bind,
             hub: http::resolve_hub_gate_from_env(),
+            open_roots,
         },
     )
     .await;
