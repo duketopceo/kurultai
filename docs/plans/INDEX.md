@@ -108,6 +108,7 @@ _None._
 | [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md) | Phase 6 — next work orders (post–Wave B) | — | — | 2026-09-15 | 7 | 2026-09-15 Wave H serve-path milestone (#323-#326) + board v2 shipped · 2026-09-14 Slice C renderer replaced: Flowsint 2D board (#316) · 2026-09-01 v0.5.0 released; next LFG v0.6.0+ |
 | [`phase-6-work-orders.md`](phase-6-work-orders.md) | Phase 6 — work orders (post–v0.4.0) | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-09-28-001-feat-device-broker-agent-onboarding-plan.md`](2026-09-28-001-feat-device-broker-agent-onboarding-plan.md) | Device broker + per-chat minted agent keys (local broker holds upstream session; agents board over loopback) | — | `src/broker` · `src/http/mcp.rs` · `src/mcp` | 2026-09-30 | 1 | U1–U3 implemented 2026-09-30 (daemon + registry + relay + seat auth) |
+| [`2026-10-27-001-feat-hub-rbac-search-ask-plan.md`](2026-10-27-001-feat-hub-rbac-search-ask-plan.md) | feat: Hub RBAC on search/ask — roles + lane scoping (slice 1 of #115) | — | — | 2026-10-27 | 1 | 2026-10-27 added |
 
 ## Recent
 

@@ -103,11 +103,23 @@ impl HubActivityStore {
     }
 
     pub async fn list(&self, limit: usize) -> Result<Vec<HubActivityEntry>> {
+        self.list_scoped(None, limit).await
+    }
+
+    /// Activity limited to one team (`Some`), or every team (`None`, operator CLI).
+    pub async fn list_scoped(
+        &self,
+        team_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<HubActivityEntry>> {
         let rows = sqlx::query(
             "SELECT id, at, agent_id, team_id, namespace, transport, reason, atom_id
-             FROM hub_activity ORDER BY at DESC, id DESC LIMIT $1",
+             FROM hub_activity
+             WHERE ($2::text IS NULL OR team_id = $2)
+             ORDER BY at DESC, id DESC LIMIT $1",
         )
         .bind(limit as i64)
+        .bind(team_id)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| KurultaiError::Store(format!("hub activity list: {e}")))?;

@@ -14,7 +14,8 @@ Related: GitHub login [#81](https://github.com/duketopceo/kurultai/issues/81) ·
 | One team deploy + one Clerk Organization | **Design + partial UI** — auth only; shared store/API enforcement not in this PR |
 | Promote-to-shared-index, device sync (#80) | **Partial** — offline `.kurultai` export/import shipped; encrypted/live sync still roadmap |
 | Hosted hub (Tailscale or public + device API keys) | **HUB-3** — bind policy + Postgres hub daemon; recipe [`docs/deploy/railway-hub.md`](deploy/railway-hub.md). Flag still default **off**. |
-| Multi-tenant / VPC, many Orgs / RBAC, audit, retention | **Roadmap / design only** — not shipped |
+| Hub RBAC on search/ask — roles (viewer/contributor/admin) + lane scoping on every read path | **Shipped (slice 1 of [#115](https://github.com/duketopceo/kurultai/issues/115))** — see [Hub RBAC](#hub-rbac-115). Personal→shared promote API still open |
+| Multi-tenant / VPC, many Orgs, retention | **Roadmap / design only** — not shipped |
 
 ## Visibility scopes (HUB-1)
 
@@ -45,6 +46,27 @@ Every `KnowledgeAtom` carries a visibility field:
 Tests against Postgres skip unless `KURULTAI_TEST_DATABASE_URL` is set (CI job **Postgres store** provides it).
 
 Next: hub transport — see [phase-6-next-work-orders.md](plans/phase-6-next-work-orders.md).
+
+## Hub RBAC (#115)
+
+Applies only to callers that present an **issued hub key** (`kurultai hub key issue`, Postgres hub). Solo/loopback callers, static `KURULTAI_HUB_API_KEYS`, agent keys and Cloudflare Access carry no role and see no ACL — the solo path is unchanged.
+
+```bash
+kurultai hub key issue --agent alice --team eng --role contributor   # viewer | contributor | admin
+kurultai hub key list                                                 # shows role per key
+```
+
+| Role | Can |
+|------|-----|
+| `viewer` | search, ask, who_knows, recall, cite, list atoms |
+| `contributor` | viewer + durable writes: message board, touch, ontology proposal submit |
+| `admin` | contributor + `POST /api/promote`, ontology human-lane writes (`entity`, `link`, `promote`), proposal decide, `GET /api/hub/activity` |
+
+Keys issued before roles existed keep their old all-access behavior (migrated as `admin`); new keys default to `contributor`. Unknown stored roles resolve to `viewer`. Any new mutating route defaults to `contributor`.
+
+**Lane scoping.** A key's reads are limited to `company` atoms plus `team` atoms whose `team_id` matches the key's team; `personal` atoms are never returned. This is enforced in SQL (Postgres) **and** re-checked in Rust on every hit, including ask's multi-hop second pass, list, recall, cite and who_knows. By-id mutations (`touch`, `promote`, `ontology/promote`) treat out-of-lane ids as `404`. `/api/graph` and `/api/db/*` are not team-aware yet and return `403` for issued keys. `/api/hub/activity` shows only the caller's team.
+
+**Not yet (tracked on #115):** personal→shared promote API with actor audit, company-tier org boundaries, `/mcp` scoping for hub keys, team-aware graph/db browse, ontology read scoping.
 
 ## Three layers
 

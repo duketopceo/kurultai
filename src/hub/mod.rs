@@ -4,8 +4,11 @@
 pub mod activity;
 #[cfg(feature = "postgres")]
 pub mod keys;
+pub mod role;
 
 #[cfg(feature = "postgres")]
 pub use activity::{HubActivityEntry, HubActivityStore};
 #[cfg(feature = "postgres")]
 pub use keys::{HubKeyRecord, HubKeyStore, HubPrincipal};
+
+pub use role::{required_role, HubRole};

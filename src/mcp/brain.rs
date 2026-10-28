@@ -48,6 +48,7 @@ async fn multi_hop_expand(
     brain: &BrainService,
     primary: Vec<SearchResult>,
     limit: usize,
+    hub_team_id: Option<&str>,
 ) -> Result<Vec<SearchResult>> {
     if primary.is_empty() {
         return Ok(primary);
@@ -85,11 +86,19 @@ async fn multi_hop_expand(
 
     // Bounded second-hop searches — concurrent fan-out (≤4).
     let tags: Vec<String> = tags.into_iter().take(4).collect();
+    // Hop queries must carry the caller's hub team scope (#115): a second-hop
+    // search with the default filter would pull other teams' atoms into the
+    // synthesized answer. Solo callers have no scope, so this stays the default.
+    let hop_filter = SearchFilter::default().with_hub_team(hub_team_id);
     let mut set = tokio::task::JoinSet::new();
     for tag in tags {
         let brain = brain.clone();
+        let hop_filter = hop_filter.clone();
         set.spawn(async move {
-            let hits = brain.hybrid_hits(&tag, 4).await.unwrap_or_default();
+            let hits = brain
+                .hybrid_hits_filtered(&tag, 4, hop_filter)
+                .await
+                .unwrap_or_default();
             let ids: Vec<String> = hits.iter().map(|r| r.atom.id.clone()).collect();
             brain.activity.record("search_hop", &tag, ids, None);
             hits
@@ -258,18 +267,14 @@ impl BrainService {
     }
 
     /// Hybrid search + markdown context expand (no activity record).
-    async fn hybrid_hits(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        self.hybrid_hits_filtered(query, limit, SearchFilter::default())
-            .await
-    }
-
     async fn hybrid_hits_filtered(
         &self,
         query: &str,
         limit: usize,
         filter: SearchFilter,
     ) -> Result<Vec<SearchResult>> {
-        let results = hybrid_search_filtered(
+        let hub_filter = filter.clone();
+        let mut results = hybrid_search_filtered(
             &self.store,
             &self.embedder,
             &self.reranker,
@@ -278,7 +283,12 @@ impl BrainService {
             filter,
         )
         .await?;
-        expand_markdown_context(&self.store, results).await
+        // Hub RBAC (#115): enforce the caller's lane in Rust as well as in the
+        // store's SQL. No-op without a hub team scope.
+        results.retain(|r| hub_filter.admits(&r.atom));
+        let mut results = expand_markdown_context(&self.store, results).await?;
+        results.retain(|r| hub_filter.admits(&r.atom));
+        Ok(results)
     }
 
     /// Search returning token-capped views (primary MCP payload).
@@ -340,9 +350,21 @@ impl BrainService {
         limit: usize,
         include_quarantine: bool,
     ) -> Result<Vec<KnowledgeAtom>> {
-        self.store
-            .list_atoms(limit, SearchFilter::trusted(!include_quarantine))
+        self.list_atoms_scoped(limit, include_quarantine, None)
             .await
+    }
+
+    /// [`Self::list_atoms_filtered`] limited to a hub caller's lane (#115).
+    pub async fn list_atoms_scoped(
+        &self,
+        limit: usize,
+        include_quarantine: bool,
+        hub_team_id: Option<&str>,
+    ) -> Result<Vec<KnowledgeAtom>> {
+        let filter = SearchFilter::trusted(!include_quarantine).with_hub_team(hub_team_id);
+        let mut atoms = self.store.list_atoms(limit, filter.clone()).await?;
+        atoms.retain(|a| filter.admits(a));
+        Ok(atoms)
     }
 
     /// Explicit promote (never called from remember).
@@ -441,7 +463,7 @@ impl BrainService {
             .hybrid_hits_filtered(question, 16, filter.clone())
             .await?;
         let primary = self.apply_retrieval_policy(primary, 8, None);
-        let hits = multi_hop_expand(self, primary, 8).await?;
+        let hits = multi_hop_expand(self, primary, 8, filter.hub_team_scope()).await?;
         let hits = self.apply_retrieval_policy(hits, 8, None);
         let mut answer = self.synthesizer.synthesize(question, &hits).await?;
         if answer.graph_chain.is_empty() {
@@ -492,7 +514,7 @@ impl BrainService {
             .hybrid_hits_filtered(question, 16, filter.clone())
             .await?;
         let primary = self.apply_retrieval_policy(primary, 8, None);
-        let hits = multi_hop_expand(self, primary, 8).await?;
+        let hits = multi_hop_expand(self, primary, 8, filter.hub_team_scope()).await?;
         let hits = self.apply_retrieval_policy(hits, 8, None);
 
         let sufficient = self
@@ -613,8 +635,23 @@ impl BrainService {
         limit: usize,
         include_quarantine: bool,
     ) -> Result<Vec<AgentAtomView>> {
+        self.recall_for_agent_scoped(project, query, limit, include_quarantine, None)
+            .await
+    }
+
+    /// [`Self::recall_for_agent`] limited to a hub caller's lane (#115).
+    pub async fn recall_for_agent_scoped(
+        &self,
+        project: &str,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+        hub_team_id: Option<&str>,
+    ) -> Result<Vec<AgentAtomView>> {
         let project = normalize_project(project);
-        let filter = SearchFilter::trusted(!include_quarantine).with_project(Some(&project));
+        let filter = SearchFilter::trusted(!include_quarantine)
+            .with_project(Some(&project))
+            .with_hub_team(hub_team_id);
         let limit = limit.max(1);
         let mut results = self
             .hybrid_hits_filtered(query, (limit * 4).min(40), filter)
@@ -656,6 +693,46 @@ impl BrainService {
                 self.tier_policy.clone(),
             )
             .await
+    }
+
+    /// One citation, limited to a hub caller's lane (#115). An atom outside the
+    /// lane is reported as a miss, indistinguishable from a missing atom.
+    pub async fn cite_scoped(
+        &self,
+        source: &str,
+        source_id: &str,
+        hub_team_id: Option<&str>,
+    ) -> Result<Option<Citation>> {
+        let filter = SearchFilter::default().with_hub_team(hub_team_id);
+        let found = self
+            .store
+            .get_by_source_id(source, source_id)
+            .await?
+            .filter(|atom| filter.admits(atom));
+        let Some(atom) = found else {
+            self.activity.record(
+                "cite",
+                &format!("{source}/{source_id}"),
+                vec![],
+                Some("miss".into()),
+            );
+            return Ok(None);
+        };
+        let id = atom.id.clone();
+        let _ = self.store.touch_access(&id).await;
+        self.activity
+            .record("cite", &format!("{source}/{source_id}"), vec![id], None);
+        Ok(Some(citation_from_atom(&atom, 1.0, true)))
+    }
+
+    /// Fetch an atom only if it is inside a hub caller's lane (#115).
+    pub async fn get_in_scope(
+        &self,
+        id: &str,
+        hub_team_id: Option<&str>,
+    ) -> Result<Option<KnowledgeAtom>> {
+        let filter = SearchFilter::default().with_hub_team(hub_team_id);
+        Ok(self.store.get(id).await?.filter(|a| filter.admits(a)))
     }
 
     /// Bump access timestamp (UI focus / explicit touch).
@@ -715,20 +792,7 @@ impl AgentRead for BrainService {
     }
 
     async fn cite(&self, source: &str, source_id: &str) -> Result<Option<Citation>> {
-        let Some(atom) = self.store.get_by_source_id(source, source_id).await? else {
-            self.activity.record(
-                "cite",
-                &format!("{source}/{source_id}"),
-                vec![],
-                Some("miss".into()),
-            );
-            return Ok(None);
-        };
-        let id = atom.id.clone();
-        let _ = self.store.touch_access(&id).await;
-        self.activity
-            .record("cite", &format!("{source}/{source_id}"), vec![id], None);
-        Ok(Some(citation_from_atom(&atom, 1.0, true)))
+        self.cite_scoped(source, source_id, None).await
     }
 
     async fn ask(&self, question: &str) -> Result<Answer> {

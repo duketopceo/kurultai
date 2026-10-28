@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+**Hub RBAC (#115, slice 1):**
+
+- Roles for issued hub keys — `viewer < contributor < admin`, `kurultai hub key issue --role`; per-route role guard (promote, ontology writes, proposal decide, activity log are admin-only). Existing keys migrate as `admin`; new keys default to `contributor`.
+- **Security:** ask's multi-hop second pass searched with an unscoped filter, so a team-scoped caller could receive other teams' atoms in an answer. Hop queries now carry the caller's lane, and every hit is re-checked in Rust (`SearchFilter::admits`).
+- Lane scoping on list, recall, cite, touch, promote and ontology promote; `/api/graph` and `/api/db/*` return 403 for issued keys; `/api/hub/activity` is per-team.
+
 ## [0.7.0] — 2026-10-06
 
 Shared agent memory — embeds, honesty, lifecycle. Competitive feature sweep (U1–U5) shipped.

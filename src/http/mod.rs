@@ -34,7 +34,6 @@ use crate::brain::AgentAtomView;
 use crate::daemon::DaemonStatus;
 use crate::error::KurultaiError;
 use crate::mcp::brain::BrainService;
-use crate::mcp::interface::AgentRead;
 use crate::metrics::{MetricOp, MetricsRegistry, TimedObserve};
 use crate::synthesize::WhoKnowsEntry;
 use crate::types::{Answer, Citation, SearchResult};
@@ -258,6 +257,8 @@ fn router(state: AppState) -> Router {
         .merge(ui::routes())
         .merge(device_auth::routes(state.clone()))
         .merge(device::routes(state.clone()))
+        // Innermost: runs after `hub_api_auth` resolved the principal (#115).
+        .layer(middleware::from_fn(auth::hub_role_guard))
         .layer(middleware::from_fn_with_state(
             state.hub.clone(),
             hub_api_auth,
@@ -474,6 +475,7 @@ fn parse_graph_limit(raw: Option<&str>) -> usize {
 
 async fn api_atoms(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<Vec<crate::types::SearchResult>>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
@@ -486,7 +488,7 @@ async fn api_atoms(
         .unwrap_or(false);
     state
         .brain
-        .list_atoms_filtered(limit, include_quarantine)
+        .list_atoms_scoped(limit, include_quarantine, principal.team_id())
         .await
         .map(|atoms| {
             Json(
@@ -515,12 +517,14 @@ async fn api_atoms(
 /// `store.db_rows_sync`; there is no write path behind this endpoint.
 async fn api_db_table(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Path(table): Path<String>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("api_db_table", request_id=%request_id, table=%table);
     state.status.touch_client_activity();
+    refuse_hub_key_unscoped(&principal, "db browse", &request_id)?;
     let sort = params.get("sort").cloned().unwrap_or_default();
     let desc = params.get("dir").map(|d| d == "desc").unwrap_or(false);
     let browse = crate::store::DbBrowse {
@@ -615,6 +619,7 @@ async fn api_ontology_promote(
             &request_id,
         ));
     }
+    ensure_atom_in_scope(&state, &principal, atom_id, &request_id).await?;
     let actor = http_actor(&principal);
     match crate::ontology::promote_atom_to_entity(
         state.brain.store().as_ref(),
@@ -669,11 +674,13 @@ async fn api_ontology_promote(
 
 async fn api_graph(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("api_graph", request_id=%request_id);
     state.status.touch_client_activity();
+    refuse_hub_key_unscoped(&principal, "graph", &request_id)?;
     let limit = parse_graph_limit(params.get("limit").map(String::as_str));
     let tier = params
         .get("tier")
@@ -796,11 +803,13 @@ struct TouchBody {
 
 async fn api_touch(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Json(body): Json<TouchBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("api_touch", request_id=%request_id);
     state.status.touch_client_activity();
+    ensure_atom_in_scope(&state, &principal, &body.atom_id, &request_id).await?;
     match state.brain.touch_access(&body.atom_id).await {
         Ok(Some(atom)) => {
             let file_path = atom
@@ -862,6 +871,7 @@ async fn api_promote(
             ));
         }
     }
+    ensure_atom_in_scope(&state, &principal, &body.atom_id, &request_id).await?;
     let actor = http_actor(&principal);
     match state
         .brain
@@ -912,6 +922,7 @@ async fn api_activity(
 #[cfg(feature = "postgres")]
 async fn api_hub_activity(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
@@ -927,7 +938,9 @@ async fn api_hub_activity(
             &request_id,
         ));
     };
-    match store.list(limit).await {
+    // An issued key sees only its own team's writes (#115); operators without a
+    // key principal (loopback / CF Access / CLI) see everything.
+    match store.list_scoped(principal.team_id(), limit).await {
         Ok(entries) => Ok(Json(serde_json::json!({ "ok": true, "entries": entries }))),
         Err(e) => Err(json_error(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -948,6 +961,49 @@ async fn api_hub_activity(
         "hub activity log requires postgres feature",
         &request_id,
     ))
+}
+
+/// Surfaces that are not team-aware yet (graph, raw table browse) fail closed
+/// for issued hub keys rather than leaking other teams' rows (#115).
+fn refuse_hub_key_unscoped(
+    principal: &MaybeHubPrincipal,
+    surface: &str,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    if principal.is_hub_key() {
+        return Err(json_error(
+            StatusCode::FORBIDDEN,
+            format!("{surface} is not available to team-scoped hub keys"),
+            request_id,
+        ));
+    }
+    Ok(())
+}
+
+/// By-id mutations must not reach atoms outside the caller's lane. Out-of-lane
+/// ids look exactly like missing ones (404) so ids cannot be probed.
+async fn ensure_atom_in_scope(
+    state: &AppState,
+    principal: &MaybeHubPrincipal,
+    atom_id: &str,
+    request_id: &str,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    let Some(team) = principal.team_id() else {
+        return Ok(());
+    };
+    match state.brain.get_in_scope(atom_id.trim(), Some(team)).await {
+        Ok(Some(_)) => Ok(()),
+        Ok(None) => Err(json_error(
+            StatusCode::NOT_FOUND,
+            "atom not found",
+            request_id,
+        )),
+        Err(e) => Err(json_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            e.to_string(),
+            request_id,
+        )),
+    }
 }
 
 fn http_actor(principal: &MaybeHubPrincipal) -> String {
@@ -1070,6 +1126,7 @@ async fn search_post(
 
 async fn recall_post(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Json(body): Json<RecallBody>,
 ) -> Result<Json<Vec<AgentAtomView>>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
@@ -1077,11 +1134,12 @@ async fn recall_post(
     state.status.touch_client_activity();
     match state
         .brain
-        .recall_for_agent(
+        .recall_for_agent_scoped(
             &crate::project::resolve_project(body.project.as_deref()),
             &body.query,
             body.limit,
             body.include_quarantine,
+            principal.team_id(),
         )
         .await
     {
@@ -1218,12 +1276,17 @@ struct CiteBody {
 
 async fn cite_post(
     State(state): State<AppState>,
+    principal: MaybeHubPrincipal,
     Json(body): Json<CiteBody>,
 ) -> Result<Json<Option<Citation>>, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("cite_post", request_id=%request_id);
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Cite);
-    match state.brain.cite(&body.source, &body.source_id).await {
+    match state
+        .brain
+        .cite_scoped(&body.source, &body.source_id, principal.team_id())
+        .await
+    {
         Ok(citation) => {
             timer.success(u64::from(citation.is_some()));
             Ok(Json(citation))
@@ -1291,6 +1354,7 @@ mod tests {
     use crate::connectors::markdown::MarkdownConnector;
     use crate::connectors::Connector;
     use crate::embed::{Embedder, NullEmbedder};
+    use crate::mcp::interface::AgentRead;
     use crate::pipeline::IndexPipeline;
     use crate::rerank::NullReranker;
     use crate::store::{SqliteVecStore, Store};
