@@ -560,7 +560,7 @@ async fn exec_ddl(conn: &mut sqlx::postgres::PgConnection, sql: &str, ctx: &str)
     }
 }
 
-fn is_benign_catalog_race(err: &sqlx::Error) -> bool {
+pub(crate) fn is_benign_catalog_race(err: &sqlx::Error) -> bool {
     match err {
         sqlx::Error::Database(db) => {
             matches!(db.code().as_deref(), Some("23505" | "42710"))

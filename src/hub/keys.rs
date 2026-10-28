@@ -13,6 +13,16 @@ use uuid::Uuid;
 pub(crate) const HUB_KEYS_ADD_ROLE_SQL: &str =
     "ALTER TABLE hub_api_keys ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin'";
 
+/// Concurrent first-time DDL (parallel test processes, multiple daemons booting
+/// together) can lose a catalog race that is harmless: the other side created it.
+fn tolerate_catalog_race(err: sqlx::Error) -> std::result::Result<(), sqlx::Error> {
+    if crate::store::postgres::is_benign_catalog_race(&err) {
+        Ok(())
+    } else {
+        Err(err)
+    }
+}
+
 /// Authenticated hub caller resolved from a bearer token.
 #[derive(Debug, Clone)]
 pub struct HubPrincipal {
@@ -73,6 +83,8 @@ impl HubKeyStore {
         )
         .execute(&self.pool)
         .await
+        .map(|_| ())
+        .or_else(tolerate_catalog_race)
         .map_err(|e| KurultaiError::Store(format!("hub_api_keys ddl: {e}")))?;
 
         // #115: keys issued before roles existed could do everything, so they
@@ -80,6 +92,8 @@ impl HubKeyStore {
         sqlx::query(HUB_KEYS_ADD_ROLE_SQL)
             .execute(&self.pool)
             .await
+            .map(|_| ())
+            .or_else(tolerate_catalog_race)
             .map_err(|e| KurultaiError::Store(format!("hub_api_keys role ddl: {e}")))?;
 
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_hub_api_keys_hash ON hub_api_keys(key_hash)")
@@ -241,7 +255,7 @@ mod tests {
         let Some(store) = test_keys().await else {
             return;
         };
-        let (token, _id) = store
+        let (token, key_id) = store
             .issue("alice", "eng", HubRole::Contributor)
             .await
             .unwrap();
@@ -249,29 +263,18 @@ mod tests {
         assert_eq!(principal.agent_id, "alice");
         assert_eq!(principal.team_id, "eng");
         assert_eq!(principal.role, HubRole::Contributor);
-        assert!(store
-            .revoke_by_prefix(&token.chars().take(12).collect::<String>())
-            .await
-            .unwrap());
-        assert!(store.resolve_token(&token).await.unwrap().is_none());
-    }
-
-    #[tokio::test]
-    async fn issued_role_round_trips_through_list() {
-        let Some(store) = test_keys().await else {
-            return;
-        };
-        let (token, id) = store.issue("bob", "eng", HubRole::Viewer).await.unwrap();
-        let principal = store.resolve_token(&token).await.unwrap().unwrap();
-        assert_eq!(principal.role, HubRole::Viewer);
         let rec = store
             .list()
             .await
             .unwrap()
             .into_iter()
-            .find(|r| r.id == id)
+            .find(|r| r.id == key_id)
             .expect("issued key listed");
-        assert_eq!(rec.role, HubRole::Viewer);
-        store.revoke_by_id(id).await.unwrap();
+        assert_eq!(rec.role, HubRole::Contributor);
+        assert!(store
+            .revoke_by_prefix(&token.chars().take(12).collect::<String>())
+            .await
+            .unwrap());
+        assert!(store.resolve_token(&token).await.unwrap().is_none());
     }
 }
