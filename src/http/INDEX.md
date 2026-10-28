@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src/http
 parent: src/INDEX.md
-updated: 2026-09-30
-version: 8
+updated: 2026-10-27
+version: 9
 ---
 
 # `src/http`
@@ -19,7 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`auth.rs`](auth.rs) | Hub API-key / admin token gate + CF Access fallback | `src/hashutil` · `src/hub/keys.rs` · `src/http/cf_access.rs` | `src/daemon/mod.rs` | 2026-09-16 | 8 | 2026-09-16 exempt `/api/device/*` + `/connect` (self-gated); 401 JSON hint `run kurultai connect` · 2026-09-14 `/api/ontology/entity` + `/link` join WRITE_ROUTES (#316) · 2026-09-11 proposals decide route joins SharedClosed write guard (#118) · 2026-09-06 CF Access JWT fallback in `hub_api_auth` · 2026-09-06 exempt `/auth/*` from hub API-key middleware · 2026-08-31 resolve token first; 500 on DB errors · 2026-08-16 indexed (v1 seed) |
+| [`auth.rs`](auth.rs) | Hub API-key / admin token gate + CF Access fallback | `src/hashutil` · `src/hub/keys.rs` · `src/http/cf_access.rs` | `src/daemon/mod.rs` | 2026-10-27 | 9 | 2026-10-27 `hub_role_guard` per-route role check for issued keys; `MaybeHubPrincipal::{role,is_hub_key}` (#115) · 2026-09-16 exempt `/api/device/*` + `/connect` (self-gated); 401 JSON hint `run kurultai connect` · 2026-09-14 `/api/ontology/entity` + `/link` join WRITE_ROUTES (#316) · 2026-09-11 proposals decide route joins SharedClosed write guard (#118) · 2026-09-06 CF Access JWT fallback in `hub_api_auth` · 2026-09-06 exempt `/auth/*` from hub API-key middleware · 2026-08-31 resolve token first; 500 on DB errors · 2026-08-16 indexed (v1 seed) |
 | [`cf_access.rs`](cf_access.rs) | Verify Cloudflare Access JWTs (`CF_Authorization` cookie / `Cf-Access-Jwt-Assertion`) for human browser auth | `jsonwebtoken` · `reqwest` | `src/http/auth.rs` | 2026-09-06 | 1 | 2026-09-06 added — Google/OTP Access login satisfies `/api/*` auth |
 | [`device.rs`](device.rs) | `kurultai connect` endpoints: `POST /api/device/code`, `/api/device/token`, `GET/POST /connect` approval page (CF Access → hub key → loopback gate) | `src/http` · `src/store` · `src/hashutil` | `src/http/mod.rs` | 2026-09-16 | 1 | 2026-09-16 added — seat-scoped agent keys |
 | [`device_auth.rs`](device_auth.rs) | Device-code login endpoints (`/auth/device/*`) for hosted agent tokens | `src/http` · `src/store` · `src/hashutil` | `src/http/mod.rs` | 2026-09-16 | 2 | 2026-09-16 `create_device_flow` gains `instance_id`; `human_base_url` shared with `device.rs` · 2026-09-06 added |
@@ -29,11 +29,12 @@ _None._
 | [`hub_listen.rs`](hub_listen.rs) | Pure bind × auth start-fail (HUB-3) | `src/http/auth.rs` · `src/error` | `src/http/mod.rs` · `src/main.rs` | 2026-09-15 | 2 | 2026-09-15 `resolve_listen_socket_flag` + `resolve_tailscale_ip` for `--bind` (#329) |
 | [`ingest.rs`](ingest.rs) | Opt-in POST /ingest dump; `remote_ingest` flag admits secret-authenticated non-loopback callers | `src/embed` · `src/hashutil` · `src/ingest` · `src/quality` · `src/store` · `src/features` | `src/daemon/mod.rs` · `src/connectors/inbox.rs` · `src/connectors/json.rs` · `src/connectors/markdown.rs` · `src/query/hybrid.rs` | 2026-10-03 | 2 | 2026-10-03 remote_ingest flag + peer audit log · 2026-08-16 indexed (v1 seed) |
 | [`mcp.rs`](mcp.rs) | MCP HTTP/SSE transport — shared secret → read-only; seat token → full surface + stamped WriteContext | `src/mcp` · `src/write_policy` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-09-30 | 2 | 2026-09-30 `McpAuth` seat-token auth via `resolve_agent_by_key_hash` + `X-Kurultai-*` stamp headers (plan 2026-09-28-001 U4) · 2026-08-16 indexed (v1 seed) |
-| [`mod.rs`](mod.rs) | Axum daemon: /api/*, /ui/, /auth/*, /connect, optional /mcp SSE | `src/brain` · `src/daemon` · `src/error` · `src/mcp` · `src/metrics` · `src/http/hub_listen.rs` · `src/http/device_auth.rs` · `src/http/device.rs` | `src/daemon/mod.rs` | 2026-10-03 | 6 | 2026-10-03 `remote` flag plumbed into IngestState + warn log · 2026-09-23 `/api/graph` prepared payload — `graph_cache` keyed by params, invalidated via `Store::atom_epoch`, nodes spliced byte-for-byte (#324) · 2026-09-20 `POST /api/metrics/client` — browser perf samples → client metric family (#102) · 2026-09-18 `/api/ask` `web` flag → ask_with_web (GET+POST) · 2026-09-16 merge `device::routes` (`/api/device/*`, `/connect`) · 2026-09-15 `ServeOptions.bind` plumbed to flag resolver (#329) |
+| [`mod.rs`](mod.rs) | Axum daemon: /api/*, /ui/, /auth/*, /connect, optional /mcp SSE | `src/brain` · `src/daemon` · `src/error` · `src/mcp` · `src/metrics` · `src/http/hub_listen.rs` · `src/http/device_auth.rs` · `src/http/device.rs` | `src/daemon/mod.rs` | 2026-10-27 | 7 | 2026-10-27 lane scoping on list/recall/cite/touch/promote, graph+db fail closed for hub keys, per-team hub activity (#115) · 2026-10-03 `remote` flag plumbed into IngestState + warn log · 2026-09-23 `/api/graph` prepared payload — `graph_cache` keyed by params, invalidated via `Store::atom_epoch`, nodes spliced byte-for-byte (#324) · 2026-09-20 `POST /api/metrics/client` — browser perf samples → client metric family (#102) · 2026-09-18 `/api/ask` `web` flag → ask_with_web (GET+POST) · 2026-09-16 merge `device::routes` (`/api/device/*`, `/connect`) · 2026-09-15 `ServeOptions.bind` plumbed to flag resolver (#329) |
 | [`ui.rs`](ui.rs) | Embedded ui/ static; `/ui/` serves ui-next (new surface), `brain.html` still reachable | — | `src/daemon/mod.rs` | 2026-09-30 | 2 | 2026-09-30 default route → ui-next.html · 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-10-27 — #115: `auth.rs` `hub_role_guard`; `mod.rs` scopes `/api/atoms`, `/api/recall`, `/cite`, `/api/touch`, `/api/promote`, `/api/ontology/promote` to the caller's lane; `/api/graph` + `/api/db/*` return 403 for issued keys; `/api/hub/activity` admin-only and per-team
 - 2026-09-30 — `mcp.rs`: `/mcp` accepts registered agent seat tokens (full write surface, `X-Kurultai-{agent,chat}` stamps → WriteContext) alongside shared-secret read-only — the broker relay's upstream auth path
 - 2026-09-23 — `mod.rs`: `/api/graph` serves prepared per-request-shape snapshots — `graph_cache` keyed by (tier, limit, quarantine, source filters), validated against `Store::atom_epoch`, nodes array spliced byte-for-byte into the response; `graph_epoch` field added (#324)
 - 2026-09-20 — `POST /api/metrics/client` (mod.rs): Brain UI perf samples (nav/tier-load/fps/long-tasks/heap) validated into the client metric family; numbers + enum labels only (#102)

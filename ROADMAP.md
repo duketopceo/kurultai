@@ -40,7 +40,7 @@ Update this file when a stage flips or a scope decision changes — not per PR.
 
 | Issue | Item |
 |-------|------|
-| [#115](https://github.com/duketopceo/kurultai/issues/115) | RBAC on search/ask: personal vs promoted-shared vs company |
+| [#115](https://github.com/duketopceo/kurultai/issues/115) | RBAC on search/ask: personal vs promoted-shared vs company — **slice 1 shipped** (roles + lane scoping on read paths, see [`docs/multi-user-kurultai.md`](docs/multi-user-kurultai.md#hub-rbac-115)); open: personal→shared promote API, company org boundaries, `/mcp` scoping |
 | [#114](https://github.com/duketopceo/kurultai/issues/114) · [#134](https://github.com/duketopceo/kurultai/issues/134) · [#135](https://github.com/duketopceo/kurultai/issues/135) | Connectors: Slack channel allowlist, webhook runtime, Notion sync |
 | [#133](https://github.com/duketopceo/kurultai/issues/133) · [#130](https://github.com/duketopceo/kurultai/issues/130) | Structured source contract (objects+edges+atoms); schema/lineage catalog ingest |
 | [#112](https://github.com/duketopceo/kurultai/issues/112) · [#131](https://github.com/duketopceo/kurultai/issues/131) | Store: Redis L2 hot cache; typed edge index + bulk import |

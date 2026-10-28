@@ -19,7 +19,7 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`brain.rs`](brain.rs) | BrainService implementing AgentRead; `ask_with_web` ephemeral web augmentation + Jev sufficiency gate | `src/activity` · `src/brain` · `src/embed` · `src/eval` · `src/web` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-10-02 | 4 | 2026-10-02 ask paths set `answer.gaps` |
+| [`brain.rs`](brain.rs) | BrainService implementing AgentRead; `ask_with_web` ephemeral web augmentation + Jev sufficiency gate | `src/activity` · `src/brain` · `src/embed` · `src/eval` · `src/web` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-10-27 | 5 | 2026-10-27 hub lane enforcement in `hybrid_hits_filtered`; multi-hop carries team scope; `list_atoms_scoped`/`recall_for_agent_scoped`/`cite_scoped`/`get_in_scope` (#115) · 2026-10-02 ask paths set `answer.gaps` |
 | [`broker_stdio.rs`](broker_stdio.rs) | `mcp --broker` stdio↔broker relay: frames → `POST /mcp` with `X-Kurultai-Session` | `src/mcp/server.rs` · `reqwest` | `src/main.rs` | 2026-09-30 | 1 | 2026-09-30 added — agent lane holds no upstream credentials (plan 2026-09-28-001 U3) |
 | [`init.rs`](init.rs) | kurultai init --agent cursor/claude/codex/hermes | `src/config` · `src/error` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`interface.rs`](interface.rs) | AgentRead trait | `src/synthesize` · `src/types` | `src/daemon/mod.rs` · `src/doctor.rs` · `src/http/mcp.rs` · `src/http/mod.rs` · `src/mcp/server.rs` | 2026-07-23 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -28,6 +28,7 @@ _None._
 
 ## Recent
 
+- 2026-10-27 — #115: ask multi-hop second pass no longer searches unscoped (cross-team leak); lane post-filter on every hit; scoped list/recall/cite helpers
 - 2026-10-02 — `brain.rs`: `ask_with_team`/`ask_with_web` populate `Answer.gaps` (local hits only)
 
 - 2026-09-30 — `broker_stdio.rs` (U3): `mcp --broker` relays JSON-RPC frames to the device broker `POST /mcp` with `X-Kurultai-Session`; `server.rs` frame helpers → pub(crate)

@@ -3,10 +3,25 @@
 use crate::error::{KurultaiError, Result};
 use crate::hashutil::sha256_hex;
 use crate::hub::activity::HubActivityStore;
+use crate::hub::role::HubRole;
 use chrono::Utc;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
+
+/// Idempotent upgrade for `hub_api_keys` tables created before roles (#115).
+pub(crate) const HUB_KEYS_ADD_ROLE_SQL: &str =
+    "ALTER TABLE hub_api_keys ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin'";
+
+/// Concurrent first-time DDL (parallel test processes, multiple daemons booting
+/// together) can lose a catalog race that is harmless: the other side created it.
+fn tolerate_catalog_race(err: sqlx::Error) -> std::result::Result<(), sqlx::Error> {
+    if crate::store::postgres::is_benign_catalog_race(&err) {
+        Ok(())
+    } else {
+        Err(err)
+    }
+}
 
 /// Authenticated hub caller resolved from a bearer token.
 #[derive(Debug, Clone)]
@@ -15,6 +30,7 @@ pub struct HubPrincipal {
     pub agent_id: String,
     pub team_id: String,
     pub key_prefix: String,
+    pub role: HubRole,
 }
 
 /// Key metadata returned by list — never includes hash or plaintext.
@@ -24,6 +40,7 @@ pub struct HubKeyRecord {
     pub key_prefix: String,
     pub agent_id: String,
     pub team_id: String,
+    pub role: HubRole,
     pub created_at: String,
     pub revoked_at: Option<String>,
 }
@@ -58,6 +75,7 @@ impl HubKeyStore {
                 key_prefix TEXT NOT NULL,
                 agent_id TEXT NOT NULL,
                 team_id TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'admin',
                 created_at TEXT NOT NULL,
                 revoked_at TEXT
             )
@@ -65,7 +83,18 @@ impl HubKeyStore {
         )
         .execute(&self.pool)
         .await
+        .map(|_| ())
+        .or_else(tolerate_catalog_race)
         .map_err(|e| KurultaiError::Store(format!("hub_api_keys ddl: {e}")))?;
+
+        // #115: keys issued before roles existed could do everything, so they
+        // backfill as `admin`; `issue` always sets the role explicitly.
+        sqlx::query(HUB_KEYS_ADD_ROLE_SQL)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .or_else(tolerate_catalog_race)
+            .map_err(|e| KurultaiError::Store(format!("hub_api_keys role ddl: {e}")))?;
 
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_hub_api_keys_hash ON hub_api_keys(key_hash)")
             .execute(&self.pool)
@@ -85,15 +114,20 @@ impl HubKeyStore {
     }
 
     /// Issue a key; returns `(plaintext_token, record_id)`.
-    pub async fn issue(&self, agent_id: &str, team_id: &str) -> Result<(String, i64)> {
+    pub async fn issue(
+        &self,
+        agent_id: &str,
+        team_id: &str,
+        role: HubRole,
+    ) -> Result<(String, i64)> {
         let token = format!("krt_{}", Uuid::new_v4().simple());
         let hash = sha256_hex(&token);
         let prefix = token.chars().take(12).collect::<String>();
         let created_at = Utc::now().to_rfc3339();
         let row: (i64,) = sqlx::query_as(
             r#"
-            INSERT INTO hub_api_keys (key_hash, key_prefix, agent_id, team_id, created_at)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO hub_api_keys (key_hash, key_prefix, agent_id, team_id, role, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id
             "#,
         )
@@ -101,6 +135,7 @@ impl HubKeyStore {
         .bind(&prefix)
         .bind(agent_id)
         .bind(team_id)
+        .bind(role.as_str())
         .bind(&created_at)
         .fetch_one(&self.pool)
         .await
@@ -143,7 +178,7 @@ impl HubKeyStore {
 
     pub async fn list(&self) -> Result<Vec<HubKeyRecord>> {
         let rows = sqlx::query(
-            "SELECT id, key_prefix, agent_id, team_id, created_at, revoked_at
+            "SELECT id, key_prefix, agent_id, team_id, role, created_at, revoked_at
              FROM hub_api_keys ORDER BY created_at ASC",
         )
         .fetch_all(&self.pool)
@@ -165,6 +200,10 @@ impl HubKeyStore {
                     team_id: row
                         .try_get("team_id")
                         .map_err(|e| KurultaiError::Store(e.to_string()))?,
+                    role: HubRole::from_stored(
+                        &row.try_get::<String, _>("role")
+                            .map_err(|e| KurultaiError::Store(e.to_string()))?,
+                    ),
                     created_at: row
                         .try_get("created_at")
                         .map_err(|e| KurultaiError::Store(e.to_string()))?,
@@ -177,7 +216,7 @@ impl HubKeyStore {
     pub async fn resolve_token(&self, token: &str) -> Result<Option<HubPrincipal>> {
         let hash = sha256_hex(token);
         let row = sqlx::query(
-            "SELECT id, key_prefix, agent_id, team_id FROM hub_api_keys
+            "SELECT id, key_prefix, agent_id, team_id, role FROM hub_api_keys
              WHERE key_hash = $1 AND revoked_at IS NULL",
         )
         .bind(&hash)
@@ -190,6 +229,7 @@ impl HubKeyStore {
             key_prefix: row.try_get("key_prefix").expect("key_prefix column"),
             agent_id: row.try_get("agent_id").expect("agent_id column"),
             team_id: row.try_get("team_id").expect("team_id column"),
+            role: HubRole::from_stored(&row.try_get::<String, _>("role").expect("role column")),
         }))
     }
 }
@@ -215,10 +255,22 @@ mod tests {
         let Some(store) = test_keys().await else {
             return;
         };
-        let (token, _id) = store.issue("alice", "eng").await.unwrap();
+        let (token, key_id) = store
+            .issue("alice", "eng", HubRole::Contributor)
+            .await
+            .unwrap();
         let principal = store.resolve_token(&token).await.unwrap().unwrap();
         assert_eq!(principal.agent_id, "alice");
         assert_eq!(principal.team_id, "eng");
+        assert_eq!(principal.role, HubRole::Contributor);
+        let rec = store
+            .list()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|r| r.id == key_id)
+            .expect("issued key listed");
+        assert_eq!(rec.role, HubRole::Contributor);
         assert!(store
             .revoke_by_prefix(&token.chars().take(12).collect::<String>())
             .await

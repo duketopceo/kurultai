@@ -257,11 +257,18 @@ impl PostgresStore {
                 key_prefix TEXT NOT NULL,
                 agent_id TEXT NOT NULL,
                 team_id TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'admin',
                 created_at TEXT NOT NULL,
                 revoked_at TEXT
             )
             "#,
             "hub_api_keys",
+        )
+        .await?;
+        exec_ddl(
+            conn,
+            crate::hub::keys::HUB_KEYS_ADD_ROLE_SQL,
+            "hub_api_keys role",
         )
         .await?;
         exec_ddl(
@@ -553,7 +560,7 @@ async fn exec_ddl(conn: &mut sqlx::postgres::PgConnection, sql: &str, ctx: &str)
     }
 }
 
-fn is_benign_catalog_race(err: &sqlx::Error) -> bool {
+pub(crate) fn is_benign_catalog_race(err: &sqlx::Error) -> bool {
     match err {
         sqlx::Error::Database(db) => {
             matches!(db.code().as_deref(), Some("23505" | "42710"))

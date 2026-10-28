@@ -26,6 +26,16 @@ impl MaybeHubPrincipal {
         self.0.as_ref().map(|p| p.agent_id.as_str())
     }
 
+    #[cfg(feature = "postgres")]
+    pub fn role(&self) -> Option<crate::hub::HubRole> {
+        self.0.as_ref().map(|p| p.role)
+    }
+
+    /// `true` when the caller is an issued hub key (has a team + role).
+    pub fn is_hub_key(&self) -> bool {
+        self.team_id().is_some()
+    }
+
     #[cfg(not(feature = "postgres"))]
     pub fn team_id(&self) -> Option<&str> {
         None
@@ -237,6 +247,38 @@ pub async fn hub_api_auth(
     Ok(unauthorized_response(
         "invalid or revoked credential — run `kurultai connect <instance-url>` to mint a fresh agent key",
     ))
+}
+
+/// Per-route role check for issued hub keys (#115).
+///
+/// Runs after [`hub_api_auth`] has resolved the bearer into a [`HubPrincipal`].
+/// Callers without a principal (solo/no-auth, static keys, agent keys, CF
+/// Access) pass through untouched, so the solo path pays no ACL tax.
+pub async fn hub_role_guard(req: Request, next: Next) -> Response {
+    #[cfg(feature = "postgres")]
+    if let Some(principal) = req.extensions().get::<HubPrincipal>() {
+        let needed = crate::hub::required_role(req.method(), req.uri().path());
+        if principal.role < needed {
+            tracing::warn!(
+                agent = %principal.agent_id,
+                role = %principal.role,
+                required = %needed,
+                path = %req.uri().path(),
+                "hub role guard refused request"
+            );
+            return (
+                StatusCode::FORBIDDEN,
+                axum::Json(serde_json::json!({
+                    "ok": false,
+                    "error": "forbidden",
+                    "role": principal.role.as_str(),
+                    "required_role": needed.as_str(),
+                })),
+            )
+                .into_response();
+        }
+    }
+    next.run(req).await
 }
 
 /// Check a bearer token against issued hub keys, static API keys, and

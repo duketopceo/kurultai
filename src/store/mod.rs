@@ -282,6 +282,24 @@ impl SearchFilter {
         self
     }
 
+    /// Rust-side mirror of the hub AE5 SQL predicate: with a hub team scope an
+    /// atom is admitted iff it is `company`, or `team` with `metadata.team_id`
+    /// equal to the caller's team. `personal` atoms are never admitted. With no
+    /// team scope (solo / no hub) every atom is admitted — no ACL tax.
+    ///
+    /// Applied on top of the SQL filter so the invariant holds for every
+    /// [`Store`] (SQLite ignores `hub_team_id`) and for second-hop reads.
+    pub fn admits(&self, atom: &KnowledgeAtom) -> bool {
+        let Some(team) = self.hub_team_scope() else {
+            return true;
+        };
+        match atom.visibility {
+            VisibilityScope::Company => true,
+            VisibilityScope::Team => atom.metadata.get("team_id").map(String::as_str) == Some(team),
+            VisibilityScope::Personal => false,
+        }
+    }
+
     /// Project scope as a SQL bind value, if any.
     pub fn project_scope(&self) -> Option<&str> {
         self.project.as_deref()
@@ -4697,6 +4715,39 @@ mod tests {
         let la = store.get("a").await.unwrap().unwrap();
         let lb = store.get("b").await.unwrap().unwrap();
         assert_eq!(la.soft_labels[0].label_id, lb.soft_labels[0].label_id);
+    }
+
+    #[test]
+    fn hub_scope_admits_company_and_own_team_only() {
+        let mk = |vis: VisibilityScope, team: Option<&str>| {
+            let mut a = sample_atom("admits", "t", "c", None);
+            a.visibility = vis;
+            if let Some(t) = team {
+                a.metadata.insert("team_id".into(), t.into());
+            }
+            a
+        };
+        let eng = SearchFilter::default().with_hub_team(Some("eng"));
+        assert!(eng.admits(&mk(VisibilityScope::Company, None)));
+        assert!(eng.admits(&mk(VisibilityScope::Team, Some("eng"))));
+        assert!(!eng.admits(&mk(VisibilityScope::Team, Some("sales"))));
+        assert!(!eng.admits(&mk(VisibilityScope::Team, None)));
+        assert!(!eng.admits(&mk(VisibilityScope::Personal, None)));
+        assert!(!eng.admits(&mk(VisibilityScope::Personal, Some("eng"))));
+    }
+
+    #[test]
+    fn no_hub_scope_admits_everything() {
+        let solo = SearchFilter::default();
+        for vis in [
+            VisibilityScope::Personal,
+            VisibilityScope::Team,
+            VisibilityScope::Company,
+        ] {
+            let mut a = sample_atom("solo", "t", "c", None);
+            a.visibility = vis;
+            assert!(solo.admits(&a), "{vis:?}");
+        }
     }
 
     #[tokio::test]

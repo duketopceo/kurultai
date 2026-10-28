@@ -25,6 +25,7 @@ _None._
 
 ## Recent
 
+- 2026-10-27 — `mod.rs`: `SearchFilter::admits` Rust-side hub lane predicate (#115); `postgres.rs`: `hub_api_keys.role` DDL
 - 2026-10-07 — `mod.rs`/`migrations.rs`: `atoms_multivec` sidecar — `Store::upsert_multivecs`/`get_multivecs` (defaults for other stores), lazy table, cascade delete; roundtrip+cascade tests
 
 - 2026-10-03 — `mod.rs`/`postgres.rs`/`migrations.rs`: bi-temporal-lite (U4) — schema v17 superseded_at/by, SearchFilter as_of+include_superseded, mark_superseded, supersede predicates in fts+vector search

@@ -422,6 +422,9 @@ enum HubKeyCommands {
         agent: String,
         #[arg(long)]
         team: String,
+        /// viewer (read-only) | contributor (read + write) | admin (+ promote, decide, activity log)
+        #[arg(long, default_value = "contributor")]
+        role: String,
     },
     /// Revoke by key prefix (first 12 chars shown at issue)
     Revoke {
@@ -1296,9 +1299,16 @@ async fn main() -> Result<()> {
                 HubCommands::Key { command } => {
                     let key_store = kurultai::hub::HubKeyStore::connect(&url).await?;
                     match command {
-                        HubKeyCommands::Issue { agent, team } => {
-                            let (token, id) = key_store.issue(&agent, &team).await?;
-                            println!("Hub key issued (id={id}, agent={agent}, team={team}).");
+                        HubKeyCommands::Issue { agent, team, role } => {
+                            let role = kurultai::hub::HubRole::parse(&role).ok_or_else(|| {
+                                kurultai::KurultaiError::config(
+                                    "--role must be one of: viewer, contributor, admin",
+                                )
+                            })?;
+                            let (token, id) = key_store.issue(&agent, &team, role).await?;
+                            println!(
+                                "Hub key issued (id={id}, agent={agent}, team={team}, role={role})."
+                            );
                             println!();
                             println!("  {token}");
                             println!();
@@ -1340,8 +1350,8 @@ async fn main() -> Result<()> {
                                         "revoked"
                                     };
                                     println!(
-                                        "  id={} prefix={} agent={} team={} [{status}]",
-                                        r.id, r.key_prefix, r.agent_id, r.team_id
+                                        "  id={} prefix={} agent={} team={} role={} [{status}]",
+                                        r.id, r.key_prefix, r.agent_id, r.team_id, r.role
                                     );
                                 }
                             }

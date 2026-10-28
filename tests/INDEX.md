@@ -20,6 +20,7 @@ version: 6
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`acceptance_concurrency.rs`](acceptance_concurrency.rs) | Acceptance tests — multi-process SQLite safety (Track A: shared crew brain). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`acceptance_hub_rbac.rs`](acceptance_hub_rbac.rs) | Acceptance tests — hub RBAC roles + lane scoping on search/ask/list/recall/cite (#115). | — | — | 2026-10-27 | 1 | 2026-10-27 added (#115) |
 | [`acceptance_http.rs`](acceptance_http.rs) | Acceptance tests — HTTP API surface (KHAN-251). | — | — | 2026-08-29 | 2 | 2026-08-29 unprefixed alias auth tests · 2026-08-16 indexed (v1 seed) |
 | [`acceptance_ingest.rs`](acceptance_ingest.rs) | Acceptance tests — ingest surface (KHAN-251). | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`acceptance_mcp.rs`](acceptance_mcp.rs) | Acceptance tests — MCP tool surface (KHAN-251). | — | — | 2026-09-11 | 3 | 2026-09-11 `ontology_proposals` in read-only surface list (#118) · 2026-09-04 include hey_* tools in read-only surface list · 2026-08-14 indexed (v1 seed) |
