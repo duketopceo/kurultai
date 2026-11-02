@@ -77,6 +77,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-11-02 — `.github/workflows/argus-reviewer.yml`: check out PR head for reliable review binding
 - 2026-10-19 — repo cleanup: 10 dependabot PRs merged (cargo×5, web×4, website vite pending); issues #116/#117/#122/#132 closed as shipped, #137/#140 status-updated to current brain doctrine; 14 dead remote branches + 6 local deleted (mesh-schema kept — unique unmerged work); version refs reconciled to v0.7.0 (version.ts, INSTALL_GUIDE, AGENT_SETUP, mac-dev, skill readme), CHANGELOG gains missing 0.7.0 section, `.gitignore` `.worktrees/`, INSTALL_REPORT historical banner, LICENSE row → AGPL
 - 2026-10-07 — `docs/plans/2026-10-07-001`: multi-vector late-interaction embed plan (pplx-embed-v2-late rerank lane, `MultiVectorEmbedder` + `atoms_multivec` sidecar, fastembed/http backends, dense v1 primary untouched); tracking issue #424
 - 2026-10-06 — explainer film: `launch/src/videos/kurultai/explainer/` — "how does an agent remember between sessions?" (~80s, diagram-first, VO-timed draft); Diagram.tsx primitives

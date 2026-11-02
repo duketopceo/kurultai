@@ -22,6 +22,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # Argus binds findings to the PR head, not GitHub's merge commit.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           # Full history so the secrets lane diffs against the merge base
           # locally (it falls back to fetching the base SHA when absent).
           fetch-depth: 0
