@@ -26,8 +26,8 @@ version: 2
 
 ## Recent
 
+- 2026-11-02 — `workflows/argus-reviewer.yml`: bind reviews to the checked-out PR head
 - 2026-09-18 — `workflows/argus-reviewer.yml` new: Argus review-only PR lane (needs `OPENROUTER_API_KEY` secret)
 - 2026-08-31 — `CODEOWNERS`: require @duketopceo approval for all changes
 - 2026-08-16 — `workflows/ci.yml`: Agent index audit job
 - 2026-08-16 — indexed this folder (v1 seed)
-
