@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-10-05
-version: 10
+updated: 2026-11-03
+version: 11
 ---
 
 # `docs/plans`
@@ -20,6 +20,7 @@ _None._
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`2026-10-19-2053-feat-hub-adoption-easy-connect-plan.md`](2026-10-19-2053-feat-hub-adoption-easy-connect-plan.md) | First team/company adoption: dedicated `kurultai-hub` container on knowledge deployment (hub./api-hub.), Postgres RLS (session-GUC), `connect`→hub team-bound join, web/ admin console | tiered-access + device-broker brainstorms | src/store · src/http · src/connect · deploy · web | 2026-10-19 | 1 | user session → ce-plan + 3-reviewer doc review |
+| [`2026-11-03-0142-feat-hub-ontology-parity-traverse-plan.md`](2026-11-03-0142-feat-hub-ontology-parity-traverse-plan.md) | Hub ontology parity: PG DDL+RLS+seeds, 11 store impls w/ writer-team stamping, member propose/admin decide, `traverse` rel-path on both stores; Hey dropped | Auto Ontology comparison + U5 stub gap | src/store · src/mcp · src/ontology | 2026-11-03 | 1 | user session → ce-plan + 4-reviewer doc review |
 | [`2026-10-07-001-feat-multi-vector-late-interaction-embed-plan.md`](2026-10-07-001-feat-multi-vector-late-interaction-embed-plan.md) | Late-interaction rerank lane for `pplx-embed-v2-late` (ColBERT, 128-dim/token, MaxSim): `MultiVectorEmbedder` trait, `atoms_multivec` sidecar table (schema v18), fastembed/`http` backends, dense+late blend rerank — dense v1 primary untouched | #424 | src/embed · src/store · src/search · evals | 2026-10-07 | 1 | HF pplx-embed-v2 drop → plan |
 | [`2026-10-10-001-docs-program-overlay-plan.md`](2026-10-10-001-docs-program-overlay-plan.md) | Overlay on PR #420: difficulty/feasibility/simpler alternative per unit, new units U22-U28, embed_dim owner decision | PR #420 roadmap plan | ROADMAP.md | 2026-10-10 | 1 | 2026-10-10 created (repo program) |
 | [`2026-10-06-001-feat-agent-shared-brain-wiring-plan.md`](2026-10-06-001-feat-agent-shared-brain-wiring-plan.md) | Remote shared-brain wiring: per-codename seat tokens over `api-*` hostnames, omaseal pickup, `instance_id` via `X-Kurultai-Chat`, shared_write containment | luke-agents bridge | deploy · docs · ~/.config/kurultai | 2026-10-06 | 1 | session plan → implementation |
@@ -111,6 +112,8 @@ _None._
 | [`2026-09-28-001-feat-device-broker-agent-onboarding-plan.md`](2026-09-28-001-feat-device-broker-agent-onboarding-plan.md) | Device broker + per-chat minted agent keys (local broker holds upstream session; agents board over loopback) | — | `src/broker` · `src/http/mcp.rs` · `src/mcp` | 2026-09-30 | 1 | U1–U3 implemented 2026-09-30 (daemon + registry + relay + seat auth) |
 
 ## Recent
+
+- 2026-11-03 — `2026-11-03-0142` hub ontology parity + `traverse` plan (ce-plan-bootstrap, 4-reviewer doc review applied: KTD3 Internal-scope escalation, proposals RLS, proposer-team stamping)
 
 - 2026-10-05 — `2026-10-05-001`: program roadmap plan (U1-U21) classifying every dated plan; `ROADMAP.md` links it first
 - 2026-10-03 — `2026-10-02-001`: supersede/bi-temporal-lite plan (U4) — written and implemented in one pass
