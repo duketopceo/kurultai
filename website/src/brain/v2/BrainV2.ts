@@ -65,7 +65,7 @@ float bayer(vec2 p) {
 void main() {
   vec3 c = texture2D(tDiffuse, vUv).rgb * uBoost;
   float d = bayer(vUv * uRes);
-  vec3 lv = vec3(7.0, 7.0, 3.0); // 8x8x4 = 256 colours
+  vec3 lv = vec3(5.0, 6.0, 5.0); // 6x7x6 = 252 colours, neutral greys
   c = floor(c * lv + 0.5 + d * uDither) / lv;
   gl_FragColor = vec4(c, 1.0);
 }`;
@@ -88,8 +88,8 @@ float fbm(vec2 p) { return 0.55 * vn(p) + 0.3 * vn(p * 2.03 + 7.1) + 0.15 * vn(p
 void main() {
   vec2 p = vUv * uAspect;
   float t = uTime / 30.0; // ~30 s per unit of drift
-  vec2 q = vec2(fbm(p * 1.4 + vec2(t, -0.7 * t)), fbm(p * 1.4 + vec2(5.2 - 0.6 * t, 1.3 + 0.9 * t)));
-  float n = fbm(p * 1.1 + 2.2 * q + 0.5 * t);
+  vec2 q = vec2(vn(p * 1.4 + vec2(t, -0.7 * t)), vn(p * 1.4 + vec2(5.2 - 0.6 * t, 1.3 + 0.9 * t)));
+  float n = fbm(p * 1.1 + 1.8 * q + 0.5 * t);
   float breath = 0.5 + 0.5 * sin(uTime * 0.45); // same phase as the scene breathing field
   float v = n * uAmp * (0.8 + 0.2 * breath);
   vec3 c = uLight > 0.5 ? uBg - vec3(v) : uBg + vec3(v);
@@ -215,6 +215,7 @@ void main() {
   vec3 hot = uInk;
   vec3 col = mix(dim, hot, vFill);
   float a = (0.17 + 0.42 * vFill + 0.22 * vEdge * (0.5 + vFill) + 0.12 * vFill * vShim) * vFace;
+  if (uLight > 0.5) a *= 0.8;
   gl_FragColor = vec4(col * a, a);
 }`;
 const FRESNEL_VERT = /* glsl */ `
@@ -234,6 +235,7 @@ varying float vRim;
 void main() {
   vec3 col = mix(uMute, uInk, vFill);
   float a = vRim * (0.10 + 0.45 * vFill) + 0.008 + 0.025 * vFill;
+  if (uLight > 0.5) a *= 0.4;
   gl_FragColor = vec4(col * a, a);
 }`;
 
@@ -514,7 +516,7 @@ export class BrainV2 {
     this.bgMat.uniforms.uBg.value.set(pal.bg[0], pal.bg[1], pal.bg[2]);
     this.bgMat.uniforms.uAmp.value = this.effects ? (lightNow ? 0.02 : 0.025) : 0;
     this.renderer.setClearColor(new Color(pal.bg[0], pal.bg[1], pal.bg[2]), 1);
-    if (this.postMat) { this.postMat.uniforms.uBoost.value = lightNow ? 1.0 : 1.35; this.postMat.uniforms.uDither.value = lightNow ? 0.55 : 0.9; }
+    if (this.postMat) { this.postMat.uniforms.uBoost.value = lightNow ? 1.0 : 1.35; this.postMat.uniforms.uDither.value = lightNow ? 0.3 : 0.9; }
     this.scene.traverse((o) => {
       const m = (o as unknown as { material?: ShaderMaterial }).material;
       if (m && m.uniforms && m.uniforms.uInk) {
@@ -534,6 +536,7 @@ export class BrainV2 {
   setEffects(on: boolean) {
     this.effects = on;
     this.bgMat.uniforms.uAmp.value = on ? (lightNow ? 0.02 : 0.025) : 0;
+    this.bg.visible = on; // flat clear colour when off: no full-screen pass at all
   }
 
   /** 32-bit mode: low-res nearest-upscaled, dithered 256-colour render with PS1 vertex snap and stepped animation. */
@@ -546,7 +549,7 @@ export class BrainV2 {
       this.rt = new WebGLRenderTarget(2, 2, { minFilter: NearestFilter, magFilter: NearestFilter });
       this.postMat = new ShaderMaterial({
         vertexShader: POST_VERT, fragmentShader: POST_FRAG, depthTest: false, depthWrite: false,
-        uniforms: { tDiffuse: { value: this.rt.texture }, uRes: { value: new Vector2(2, 2) }, uBoost: { value: lightNow ? 1.0 : 1.35 }, uDither: { value: lightNow ? 0.55 : 0.9 } },
+        uniforms: { tDiffuse: { value: this.rt.texture }, uRes: { value: new Vector2(2, 2) }, uBoost: { value: lightNow ? 1.0 : 1.35 }, uDither: { value: lightNow ? 0.3 : 0.9 } },
       });
       this.postScene.add(new Mesh(new PlaneGeometry(2, 2), this.postMat));
     }
