@@ -1,3 +1,8 @@
+---
+
+status: completed
+---
+
 # Phase 1 closeout — tracker hygiene
 
 **Product Phase 1 is already shipped** on `main` ([phase-1-complete.md](phase-1-complete.md)).  

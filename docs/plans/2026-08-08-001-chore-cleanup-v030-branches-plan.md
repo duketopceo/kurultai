@@ -1,9 +1,10 @@
 ---
 title: "Plan: Clean up stale v0.3.0 feature branches and worktrees"
 date: 2026-08-08
-status: implementation-ready
 author: Agent Zero
 origin: user request /ce-plan
+status: completed
+merged_prs: [183]
 ---
 
 # Plan: Clean up stale v0.3.0 feature branches and worktrees

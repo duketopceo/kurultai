@@ -1,0 +1,41 @@
+# Self-host Kurultai in one command. Works with zero API keys (keyword search).
+#
+#   docker compose up -d
+#   docker compose logs kurultai | rg -A1 "ACCESS KEY"     # first start prints your key once
+#   open http://127.0.0.1:8421/ui/                          # onboarding starts here
+#
+# Guide: docs/self-host.md. Optional settings live in .env (copy .env.example).
+name: kurultai
+
+services:
+  kurultai:
+    image: ghcr.io/duketopceo/kurultai:${KURULTAI_TAG:-latest}
+    container_name: kurultai
+    restart: unless-stopped
+    # Full daemon: background poll + filesystem watch of /data/notes.
+    command: ["daemon"]
+    # Loopback only. Put a reverse proxy or tunnel in front for remote access.
+    ports:
+      - "127.0.0.1:${KURULTAI_PORT:-8421}:8421"
+    environment:
+      # Mints an access key on first start and writes the first-run config.
+      KURULTAI_SELFHOST: "1"
+      # local | openrouter | perplexity; empty = keywords only.
+      KURULTAI_EMBED_BACKEND: ${KURULTAI_EMBED_BACKEND:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      KURULTAI_MCP_HTTP_SECRET: ${KURULTAI_MCP_HTTP_SECRET:-}
+      RUST_LOG: ${RUST_LOG:-kurultai=info,error}
+    volumes:
+      - kurultai-data:/data
+      # Import a folder of Markdown notes (indexed on start, watched after):
+      # - ${KURULTAI_NOTES:-./notes}:/data/notes:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8421/health >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  kurultai-data:

@@ -2,13 +2,13 @@
 // Plan docs/plans/2026-09-25-001 U4. No new backend surface: every adapter maps
 // onto existing /api calls.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as api from '../api';
 import { useAuthMode } from '../auth';
 import { describeProposal } from '../proposals';
 import { BrainStage, type BrainStageHandle } from '../components/BrainStage';
 import { laneBody, laneOf, withLane } from '../components/hey-kanban/kanbanMapping';
-import { initPerf, reportPerf, setPerfTier } from '../perf';
+import { initPerf, perfTierOf, reportPerf, setPerfTier } from '../perf';
 import {
   LOAD_TIER_CAPS,
   type Atom,
@@ -16,6 +16,13 @@ import {
   type OntologyResponse,
 } from '../types';
 import { UI_VERSION } from '../version';
+import { brainVersion } from '../brain/v2/flag';
+import { describeChain, type ChainStep } from '../brain/v2/why';
+import { V2Shell } from './V2Shell';
+import { computeWhatsNew, readLastVisit, safeLocalStorage, writeLastVisit } from '../brain/v2/whatsNew';
+import { RepoFloorplan } from '../repos/RepoFloorplan';
+import { useMode32 } from '../brain/v2/mode32';
+import { useReduceEffects, useTheme } from '../brain/v2/theme';
 
 import { TopBar, CommandStrip, type NavKey, type SearchResult, type SearchState } from './gen/chrome/chrome';
 import { BrainHero } from './gen/brain-hero/brain-hero';
@@ -67,14 +74,62 @@ export function NextApp() {
   const [daemon, setDaemon] = useState<{ status: 'online' | 'connecting' | 'offline'; apiVersion?: string | null }>({ status: 'connecting' });
   const [nav, setNav] = useState<NavKey>('brain');
   const [layout, setLayout] = useState<'brain' | 'ontology'>('brain');
-  const [tier, setTier] = useState<LoadTier>('low');
+  const [tier, setTier] = useState<LoadTier>(brainVersion() === 'v2' ? 'mid' : 'low');
   const [atoms, setAtoms] = useState<Atom[]>([]);
   const [atomTotal, setAtomTotal] = useState(0);
   const [graphLoaded, setGraphLoaded] = useState(false);
   const [ontology, setOntology] = useState<OntologyResponse>({ ok: true, entities: [], links: [] });
   const [selected, setSelected] = useState<Atom | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [mode32, setMode32] = useMode32();
+  const themeCtl = useTheme();
+  const [panelInset, setPanelInset] = useState(0);
+  const [reduceFx, setReduceFx] = useReduceEffects();
   const brainRef = useRef<BrainStageHandle | null>(null);
+  // ── v2: trace-to-another-node state ───────────────────────────────
+  const [tracing, setTracing] = useState(false);
+  // What's new since the last visit (marker is read once, written on load + pagehide).
+  const [lastVisit] = useState(() => readLastVisit(safeLocalStorage()));
+  const [newOpen, setNewOpen] = useState(false);
+  const [newLit, setNewLit] = useState(false);
+  useEffect(() => {
+    if (brainVersion() !== 'v2') return;
+    const mark = () => writeLastVisit(safeLocalStorage());
+    mark();
+    window.addEventListener('pagehide', mark);
+    return () => window.removeEventListener('pagehide', mark);
+  }, []);
+  // Tiered load: first paint at 'mid' (2k), then widen to the server ceiling (50k) in the background.
+  useEffect(() => {
+    if (brainVersion() === 'v2' && graphLoaded && tier === 'mid') setTier('all');
+  }, [graphLoaded, tier]);
+  const [chain, setChain] = useState<ChainStep[] | null>(null);
+  const [chainMissing, setChainMissing] = useState(false);
+  const tracingFrom = useRef<Atom | null>(null);
+  const selectRef = useRef<(a: Atom) => void>(() => undefined);
+  selectRef.current = (a: Atom) => {
+    const from = tracingFrom.current;
+    if (from && from.id !== a.id) {
+      const path = brainRef.current?.findPath(from.id, a.id) ?? null;
+      tracingFrom.current = null;
+      setTracing(false);
+      if (path) {
+        brainRef.current?.setPath(path);
+        setChain(describeChain(path, new Map(atoms.map((x) => [x.id, x]))));
+        setChainMissing(false);
+      } else {
+        brainRef.current?.setPath([]);
+        setChain(null);
+        setChainMissing(true);
+      }
+      setSelected(a);
+      return;
+    }
+    brainRef.current?.setPath([]);
+    setChain(null);
+    setChainMissing(false);
+    setSelected(a);
+  };
   const graphAbort = useRef<AbortController | null>(null);
 
   // ── search state ──────────────────────────────────────────────────
@@ -117,7 +172,7 @@ export function NextApp() {
         api.fetchOntology(ac.signal).catch(() => ({ ok: true, entities: [], links: [] })),
       ]);
       if (ac.signal.aborted) return;
-      reportPerf('tier_load_ms', performance.now() - t0, t);
+      reportPerf('tier_load_ms', performance.now() - t0, perfTierOf(t));
       setAtoms(graphAtoms.slice(0, cap));
       setAtomTotal(graphAtoms.length);
       setOntology(onto);
@@ -240,7 +295,7 @@ export function NextApp() {
     return () => clearInterval(id);
   }, [loadStatus]);
 
-  useEffect(() => { setPerfTier(tier); void loadGraph(tier); }, [tier, loadGraph]);
+  useEffect(() => { setPerfTier(perfTierOf(tier)); void loadGraph(tier); }, [tier, loadGraph]);
 
   useEffect(() => {
     void loadThreads(); void loadPresence(); void loadOntologyClasses(); void loadProposals(); void loadStore();
@@ -368,6 +423,135 @@ export function NextApp() {
     .filter((e) => e.kind === 'class')
     .map((e) => ({ id: e.id, label: e.name }));
 
+  const whatsNew = useMemo(() => computeWhatsNew(atoms, lastVisit), [atoms, lastVisit]);
+  const workSurface = (tab: 'hey' | 'pulse' | 'ontology' | 'ask' | 'store') => (
+            <WorkSurface
+              hey={heyProps}
+              pulse={{
+                data: pulse,
+                onRetry: () => void loadPulse(),
+                subscribe: (onSnapshot) => {
+                  const id = setInterval(() => void loadPulse().then(() => {
+                    setPulse((cur) => { if (cur.status === 'ready') onSnapshot(cur.data); return cur; });
+                  }), 10_000);
+                  return () => clearInterval(id);
+                },
+              }}
+              ontology={ontologyProps}
+              ask={{ onAsk: (q, signal) => api.askBrain(q, signal) }}
+              store={storeProps}
+              defaultTab={tab}
+            />
+          );
+
+  if (brainVersion() === 'v2') {
+    return (
+      <>
+        <V2Shell
+          daemonStatus={daemon.status}
+          query={query}
+          onQueryChange={setQuery}
+          results={results}
+          searchState={searchState}
+          onSelectResult={(r) => {
+            const atom = atoms.find((a) => a.id === r.id);
+            if (atom) { setSelected(atom); brainRef.current?.focusAtom(atom); }
+          }}
+          onReset={() => {
+            setQuery(''); setResults(null); setSearchState('idle');
+            setSelected(null); setChain(null); setChainMissing(false); setTracing(false);
+            tracingFrom.current = null;
+            brainRef.current?.resetView();
+          }}
+          onOpenSettings={() => setSettingsOpen(true)}
+          newBadge={whatsNew.items.length > 0 ? (
+            <>
+              <button
+                type="button"
+                aria-pressed={newLit}
+                onClick={() => {
+                  const next = !newLit;
+                  setNewLit(next);
+                  setNewOpen(next);
+                  brainRef.current?.setFresh(next ? whatsNew.items.map((i) => i.id) : []);
+                }}
+              >
+                {whatsNew.items.length} new
+              </button>
+              {newOpen && (
+                <div className="v2-menu-pop v2-new-list" role="list" aria-label="New since your last visit">
+                  {whatsNew.newSources.length > 0 && <span className="v2-meta">new sources: {whatsNew.newSources.join(', ')}</span>}
+                  {whatsNew.items.slice(0, 30).map((i) => (
+                    <button key={i.id} type="button" role="listitem" onClick={() => {
+                      const atom = atoms.find((a) => a.id === i.id);
+                      if (atom) { setSelected(atom); brainRef.current?.focusAtom(atom); }
+                    }}>{i.title}</button>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : undefined}
+          selected={selected}
+          onCloseSelected={() => { setSelected(null); setChain(null); setChainMissing(false); brainRef.current?.setPath([]); }}
+          tracing={tracing}
+          onStartTrace={() => { tracingFrom.current = selected; setTracing(true); setChain(null); setChainMissing(false); }}
+          onCancelTrace={() => { tracingFrom.current = null; setTracing(false); }}
+          chain={chain}
+          chainMissing={chainMissing}
+          onAsk={(a, signal) => api.askBrain(`What is "${a.title}" and how does it relate to the rest of the brain?`, signal)}
+          brain={(
+            <BrainStage
+              ref={brainRef}
+              atoms={atoms}
+              renderCap={LOAD_TIER_CAPS[tier]}
+              layout="brain"
+              ontology={ontology}
+              atomTotal={atomTotal}
+              onSelect={(a) => selectRef.current(a)}
+              onHover={() => undefined}
+              onOntologyChanged={setOntology}
+              caption=""
+              pixel={mode32}
+              theme={themeCtl.theme}
+              effects={!reduceFx}
+              rightInset={panelInset}
+            />
+          )}
+          mode32={mode32}
+          onMode32={setMode32}
+          availableViews={['repos', 'ontology']}
+          renderView={(v) => (v === 'ontology' ? workSurface('ontology') : <RepoFloorplan onClose={() => undefined} />)}
+          themePref={themeCtl.pref}
+          onThemePref={themeCtl.setPref}
+          reduceEffects={reduceFx}
+          onReduceEffects={setReduceFx}
+          onPanelInset={setPanelInset}
+          renderSurface={workSurface}
+        />
+        {settingsOpen && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onKeyDown={(e) => { if (e.key === 'Escape') setSettingsOpen(false); }}
+            ref={(el) => el?.focus()}
+            tabIndex={-1}
+            style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'var(--scrim)' }}
+            onClick={(e) => { if (e.target === e.currentTarget) setSettingsOpen(false); }}
+          >
+            <div style={{ maxWidth: 720, margin: '8vh auto', maxHeight: '84vh', overflow: 'auto' }}>
+              <SettingsPanel
+                daemon={{ online: daemon.status === 'online', version: daemon.apiVersion ?? null }}
+                presence={null}
+                mode={(authMode === 'locked' ? 'token' : 'open') as AccessMode}
+                onLogin={async () => setSettingsOpen(false)}
+              />
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="next-app">
       <a className="skip-link" href="#ws">Skip to workspace</a>
@@ -389,7 +573,7 @@ export function NextApp() {
           if (atom) { setSelected(atom); brainRef.current?.focusAtom(atom); }
         }}
         onResetSearch={() => { setQuery(''); setResults(null); setSearchState('idle'); }}
-        tier={tier}
+        tier={perfTierOf(tier)}
         onTierChange={setTier}
         layout={layout}
         onLayoutChange={setLayout}

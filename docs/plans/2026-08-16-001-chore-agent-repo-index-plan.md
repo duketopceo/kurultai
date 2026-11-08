@@ -9,6 +9,8 @@ product_contract_source: ce-plan-bootstrap
 authority: "User /lfg — every folder indexed sequentially; per-file does/needs/touches/stamp/version/3-line changelog; rollup to main index; audited; lower tokens for new agents"
 origin: "User /lfg 2026-08-16 — huge repo work, full repo in-dev"
 depth: standard
+status: completed
+merged_prs: [224]
 ---
 
 # chore: hierarchical agent INDEX.md tree

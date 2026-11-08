@@ -2,8 +2,9 @@
 index: kurultai/v1
 folder: scripts
 parent: INDEX.md
-updated: 2026-10-19
-version: 5
+updated: 2026-11-08
+updated: 2026-11-07
+version: 7
 ---
 
 # `scripts`
@@ -21,18 +22,22 @@ version: 5
 |------|------|-------|---------|-------|-----|-----------|
 | [`late-embed-server.py`](late-embed-server.py) | Late-interaction embed sidecar: `MultiVectorEncoder` (pplx-embed-v2-late-*) → `/embed_query`+`/embed_document` for `[embed.late] backend = "http"` | sentence-transformers ≥6 | `src/embed/late.rs` | 2026-10-07 | 1 | pplx-embed-v2 drop → sidecar (#424) |
 | [`audit-agent-index.py`](audit-agent-index.py) | CI audit: INDEX.md coverage vs git ls-files | — | — | 2026-09-13 | 2 | 2026-09-13 skip `website/public/` — Vite public assets are cataloged in `website/INDEX.md` · 2026-08-16 indexed (v1 seed) |
-| [`audit-ui.py`](audit-ui.py) | Audit built `ui/` for stale/dead assets and outdated deps | — | `website/` · `ui/` | 2026-09-04 | 1 | 2026-09-04 add dead-code/old-version UI audit · 2026-08-16 indexed (v1 seed) |
 | [`recall-harness.py`](recall-harness.py) | Randomized recall/search load + correctness suite (volume, deep, same/mixed-path concurrency, failover, p50/95/99) | `/api/search` · `/api/recall` · `/api/atoms` | — | 2026-09-08 | 1 | 2026-09-08 added |
 | [`hammer.mjs`](hammer.mjs) | Load/chaos harness — read/adversarial/payload/write/race/turn-cap/consistency/soak suites w/ p50–p99 + RSS watch | `/api/*` HTTP surface | `artifacts/` | 2026-09-30 | 1 | plan 2026-09-30-001 U1–U3+U6 |
 | [`hammer-mcp.mjs`](hammer-mcp.mjs) | MCP stdio lane hammer — concurrent `tools/call` through real `kurultai mcp` subprocess | MCP JSON-RPC stdio | — | 2026-09-30 | 1 | plan 2026-09-30-001 U5 |
 | [`build-ui.sh`](build-ui.sh) | website/ → ui/ production copy for rust-embed | — | `website/` · `ui/` | 2026-10-19 | 3 | 2026-10-19 enforce node 22 (fail closed + mise/nvm hint) — ui-next hashes differ across node majors, CI check builds with 22 · 2026-09-04 prune legacy files and stale hashed bundles before rebuild · 2026-08-16 indexed (v1 seed) |
 | [`ui-batch.mjs`](ui-batch.mjs) | Batch UI design generator — OpenRouter chat completions over `design-lab/prompts/` → gitignored `design-lab/out/` variants | OPENROUTER_API_KEY · `--model` (Kimi/GPT) | `design-lab/` | 2026-10-02 | 2 | add HTTP-Referer/X-Title app attribution headers ·plan 2026-09-25-001 U3 scaffold |
+| [`bake-cortex.mjs`](bake-cortex.mjs) | Bake `website/src/assets/brain.glb` into `website/src/brain/v2/cortexData.ts` (meshoptimizer decimate, interior mask, k-means lobes); run from `website/` | `website/node_modules/meshoptimizer` · `website/src/brain/layout/sdf.ts` | `website/src/brain/v2/cortexData.ts` | 2026-11-08 | 1 | 2026-11-08 added |
 | [`ui-smoke.mjs`](ui-smoke.mjs) | Bounded headless UI smoke check (hard timeout, `--disable-gpu`, tab/aria probe) | daemon on :8421 | `ui/` | 2026-09-27 | 1 | 2026-09-27 added — replaces ad-hoc Playwright heredocs after a hung one orphaned a 700% CPU SwiftShader proc |
 | [`install.ps1`](install.ps1) | Windows installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`install.sh`](install.sh) | Unix installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-11-08 — `bake-cortex.mjs`: bake the brain v2 cortex (decimated mesh + lobes) from brain.glb
+- 2026-11-07 — `ui-smoke.mjs` defaults to v2 (`--brain v1` for the legacy tab probe); checks the new badge
+- 2026-11-07 — `ui-smoke.mjs` v2 mode also probes palette, drawer and clear control
+- 2026-11-07 — `ui-smoke.mjs`: `--brain v2 --synthetic N` loads `?brain=v2` (SwiftShader, still bounded) and prints fps/nodes/draw calls
 - 2026-10-19 — `build-ui.sh`: header note — build under node 22 (.nvmrc); ui-next-* hashes differ across node majors, CI embedded-asset check uses node 22
 - 2026-10-07 — `late-embed-server.py`: multi-vector sidecar for `[embed.late] backend="http"` (#424)
 

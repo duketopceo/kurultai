@@ -1,3 +1,8 @@
+---
+
+status: reference
+---
+
 # Phase 6 — Ontology / Atlas / connector gaps
 
 **Date:** 2026-07-31  

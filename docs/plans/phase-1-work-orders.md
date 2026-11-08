@@ -1,3 +1,8 @@
+---
+
+status: reference
+---
+
 # CE Plan: Phase 1 Work Orders
 
 **Status:** ✅ Complete — wrap-up [phase-1-complete.md](phase-1-complete.md)  

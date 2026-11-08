@@ -1,30 +1,65 @@
-# Solo Kurultai image — SQLite, no Postgres, non-root user, persistent /data.
-FROM rust:bookworm AS builder
-WORKDIR /src
-COPY . .
-RUN cargo build --release --locked --bin kurultai
+# syntax=docker/dockerfile:1.7
+# Solo Kurultai image: SQLite, no Postgres, non-root user, persistent /data.
+#
+# Stages: chef (plan deps) -> builder (cached deps + app) -> slim runtime.
+# Dependency compilation is cached by cargo-chef, so source-only changes
+# rebuild in about a minute instead of ten. Base images are pinned by digest
+# (multi-arch index digests); bump them deliberately, see docs/deploy.md.
+#
+# Build (context = repo root):
+#   docker build -f deploy/server-001/Dockerfile.solo -t kurultai:solo .
+# Optional local ONNX embeddings (bigger image, needs network on first run):
+#   docker build -f deploy/server-001/Dockerfile.solo --build-arg FEATURES=local-embed .
 
-FROM debian:bookworm-slim
+# rust:1.99-bookworm + cargo-chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.99-bookworm@sha256:022ee6109960abe8e3e34588f5ce1ba03d5005b03a489f7534dba9bc0c1fae76 AS chef
+WORKDIR /src
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+ARG FEATURES=""
+COPY --from=planner /src/recipe.json recipe.json
+RUN cargo chef cook --release --locked ${FEATURES:+--features "$FEATURES"} --recipe-path recipe.json
+COPY . .
+RUN cargo build --release --locked ${FEATURES:+--features "$FEATURES"} --bin kurultai
+
+# debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS runtime
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="kurultai" \
+      org.opencontainers.image.description="Kurultai solo knowledge brain (SQLite)" \
+      org.opencontainers.image.source="https://github.com/duketopceo/kurultai" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.licenses="AGPL-3.0-only"
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN groupadd -r kurultai -g 1000 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r kurultai -g 1000 \
     && useradd -r -u 1000 -g kurultai -d /data -m kurultai \
-    && mkdir -p /data \
     && chown -R kurultai:kurultai /data
 
 COPY --from=builder /src/target/release/kurultai /usr/local/bin/kurultai
 
-ENV HOME=/data
-ENV KURULTAI_ENV=prod
-ENV KURULTAI_HUB_BIND=all
-ENV PORT=8421
+ENV HOME=/data \
+    KURULTAI_ENV=prod \
+    KURULTAI_HUB_BIND=all \
+    PORT=8421
 
 USER kurultai
 WORKDIR /data
-
+VOLUME ["/data"]
 EXPOSE 8421
+
+# Compose files override this per service (different ports); $PORT keeps the
+# default correct for plain `docker run -e PORT=...` too.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null || exit 1
 
 ENTRYPOINT ["kurultai"]
 CMD ["daemon", "--no-poll", "--no-watch"]

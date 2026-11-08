@@ -7,6 +7,8 @@ artifact_readiness: implementation-ready
 product_contract_source: ce-plan-bootstrap
 execution: code
 origin: "User /lfg phase 4 — solo connectors shipped (#62/#63); remaining = tracker hygiene"
+status: completed
+merged_prs: [64]
 ---
 
 # Phase 4 LFG Closeout - Plan

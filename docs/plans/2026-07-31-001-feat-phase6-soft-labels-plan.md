@@ -1,3 +1,9 @@
+---
+
+status: completed
+merged_prs: [127]
+---
+
 # Phase 6 P6-3 — Soft multi-label scores (thin slice)
 
 **Date:** 2026-07-31  

@@ -1,3 +1,8 @@
+---
+
+status: completed
+---
+
 # Phase 2 complete — wrap-up
 
 **Status:** ✅ Product on `main` (2026-07-21, #51) · Testing gates landed via closeout (from [#53](https://github.com/duketopceo/kurultai/pull/53))  

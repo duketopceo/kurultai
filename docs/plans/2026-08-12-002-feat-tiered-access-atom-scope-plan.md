@@ -8,6 +8,8 @@ execution: code
 authority: "Phase 6 next queue HUB-1 · GitHub #178 · brainstorm R1–R3/R8/AE1"
 depth: standard
 origin: "phase-6-next-work-orders.md Wave G; docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md"
+status: completed
+merged_prs: [192]
 ---
 
 # feat: Tiered access — atom visibility scope (HUB-1)

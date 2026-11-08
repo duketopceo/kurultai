@@ -6,6 +6,8 @@ artifact_contract: ce-unified-plan/v1
 product_contract_source: ce-plan-bootstrap
 execution: code
 depth: deep
+status: completed
+merged_prs: [420]
 ---
 
 # Kurultai Program Roadmap - Plan

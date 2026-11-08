@@ -1,9 +1,10 @@
 ---
 plan: feat-supersede-bitemporal
 date: 2026-10-02
-status: draft
 execution: code
 parent: docs/plans/2026-10-01-001-feat-competitive-feature-sweep-plan.md
+status: completed
+merged_prs: [405]
 ---
 
 # Plan: Supersede / Bi-Temporal-Lite (sweep U4)

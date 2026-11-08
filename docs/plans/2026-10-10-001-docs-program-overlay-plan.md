@@ -5,7 +5,8 @@ date: 2026-10-10
 artifact_contract: ce-unified-plan/v1
 execution: docs
 depth: standard
-status: proposal
+status: completed
+merged_prs: [440]
 ---
 
 # Kurultai Program Roadmap Overlay

@@ -8,6 +8,8 @@ execution: code
 authority: "User — 'replace ontology with that' (reconurge/flowsint sketch board); mode keeps the name 'ontology'"
 origin: "session dialogue 2026-09-14 (flowsint UI reference)"
 depth: standard
+status: completed
+merged_prs: [319]
 ---
 
 # feat: Flowsint-style ontology board

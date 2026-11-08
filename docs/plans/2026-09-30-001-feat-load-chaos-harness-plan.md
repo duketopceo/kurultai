@@ -1,6 +1,7 @@
 ---
 artifact_contract: ce-unified-plan/v1
 execution: code
+status: unverified
 ---
 
 # Load + chaos harness for the daemon and store — plan

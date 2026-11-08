@@ -307,6 +307,7 @@ const WRITE_ROUTES: &[&str] = &[
     "/api/ontology/link",
     "/api/ontology/promote",
     "/api/touch",
+    "/api/onboarding/note",
     // Mints/stores an OpenRouter key; the callback is state-gated, not listed.
     "/api/openrouter/connect",
 ];

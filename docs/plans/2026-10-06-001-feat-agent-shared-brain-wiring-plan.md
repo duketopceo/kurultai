@@ -1,3 +1,8 @@
+---
+
+status: unverified
+---
+
 # Plan: Remote agent wiring to the shared personal brain
 
 ## Problem

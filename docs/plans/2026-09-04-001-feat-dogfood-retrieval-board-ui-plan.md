@@ -9,6 +9,8 @@ execution: code
 authority: "LFG 2026-09-04 — sequester pond from hot retrieval, ship agent message board MCP/REST slice, clean non-Brain chrome; preserve Brain; do not break dogfood"
 origin: "Conversation audit of duketopceo/kurultai + kurultai-private; requirements-only docs/plans/2026-09-03-001-feat-agent-message-board-plan.md; live MCP flood evidence"
 depth: standard
+status: completed
+merged_prs: [268]
 ---
 
 # feat: dogfood retrieval sequester, agent board slice, non-Brain UI cleanup

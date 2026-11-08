@@ -1,3 +1,9 @@
+---
+
+status: completed
+merged_prs: [425]
+---
+
 # Plan: Multi-vector late-interaction embed lane (pplx-embed-v2-late)
 
 ## Problem

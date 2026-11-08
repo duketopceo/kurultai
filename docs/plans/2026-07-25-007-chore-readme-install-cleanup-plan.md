@@ -9,6 +9,8 @@ execution: code
 authority: "User /lfg those — install cleanup + README design; no v* cut"
 depth: standard
 origin: "User asked to clean terminal install, /ce-plan design README, package release?/v#?; then /lfg those"
+status: completed
+merged_prs: [70]
 ---
 
 # chore: clean terminal install + README redesign

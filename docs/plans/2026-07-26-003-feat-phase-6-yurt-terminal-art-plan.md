@@ -9,6 +9,8 @@ execution: code
 authority: "User /lfg — Phase 6 Open Source Launch first product slice; Milestone 6 · #10 · #22"
 depth: lightweight
 origin: "User /lfg final phase — Phase 6; settled brief: yurt art (#22) + README Phase 6 signal; not full Launch epic"
+status: completed
+merged_prs: [100]
 ---
 
 # feat: Phase 6 first slice — Yurt terminal art + Launch signal

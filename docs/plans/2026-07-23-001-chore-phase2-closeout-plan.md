@@ -8,6 +8,8 @@ artifact_readiness: implementation-ready
 product_contract_source: ce-plan-bootstrap
 execution: code
 origin: "User /ce-plan assumed Phase 2 — search already shipped (#51); remaining = testing #53 + tracker hygiene"
+status: completed
+merged_prs: [58]
 ---
 
 # Phase 2 Closeout - Plan

@@ -8,6 +8,8 @@ execution: docs
 authority: "User — git pull; plan next phase work orders then LFG"
 depth: standard
 origin: "Post Brain UI v0.4.0; scale/ontology discussion; Devin Year-1 PR #123; issues #104/#111–#122"
+status: completed
+merged_prs: [124]
 ---
 
 # chore: Phase 6 next work orders (post–v0.4.0)

@@ -14,6 +14,7 @@ version: 11
 ## Children
 
 - [`agent-zero/`](agent-zero/INDEX.md) — v1 Agent Zero issue pack (historical)
+- [`archive/`](archive/INDEX.md) — Historical reports (superseded)
 - [`brainstorms/`](brainstorms/INDEX.md) — Requirements / research notes
 - [`design/`](design/INDEX.md) — UI/UX rebuild definitions + research bases (plan 2026-09-25-001)
 - [`deploy/`](deploy/INDEX.md) — Hub / Railway operator recipes
@@ -30,6 +31,8 @@ version: 11
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
 | [`AGENT_CONNECTION_PROMPT.md`](AGENT_CONNECTION_PROMPT.md) | Copy-paste agent prompt for reading/writing the Kurultai brain (local MCP + hosted instances) | — | — | 2026-10-06 | 2 | 2026-10-06 §B corrected: seat-token bearer on /mcp grants full write surface, `api-*` hostnames bearer-only · 2026-09-29 ported from archived kurultai-private |
+| [`self-host.md`](self-host.md) | One-page self-host guide: Docker, TLS/tunnels, embeddings, backup, upgrade | `docker-compose.yml` | — | 2026-11-07 | 1 | 2026-11-07 added |
+| [`deploy.md`](deploy.md) | Hosted deploy flow: topology, redeploy, health, backup, rollback | `deploy/server-001/` | — | 2026-11-07 | 1 | 2026-11-07 added |
 | [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md) | Copy-paste agent setup prompt | — | — | 2026-10-19 | 2 | 2026-10-19 install tag v0.4.0 → v0.7.0 · 2026-08-16 indexed (v1 seed) |
 | [`PROJECT_SCOPING.md`](PROJECT_SCOPING.md) | Project scoping notes | — | — | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`agent-index.md`](agent-index.md) | Agent INDEX.md schema, skip list, update ritual | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -42,7 +45,7 @@ version: 11
 
 ## Recent
 
-- 2026-11-07 — `openrouter-connect.md` added (OpenRouter OAuth PKCE Connect)
+- 2026-11-07 — new `archive/` for root-level historical reports
 - 2026-10-19 — `AGENT_SETUP_PROMPT.md` + `mac-dev.md`: cargo install tag refs bumped v0.4.x → v0.7.0 (stale since release)
 - 2026-10-05 — plans/ added 2026-10-05-001 program roadmap plan (U1-U21, plan classification)
 - 2026-09-30 — plans/ added 2026-09-30-001 load + chaos harness plan (scripts/hammer.mjs + tests/chaos.rs); hosted write-hammer evidence: ~133 wps, zero errors

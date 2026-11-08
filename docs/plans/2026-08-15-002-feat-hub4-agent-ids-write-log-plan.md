@@ -9,6 +9,8 @@ execution: code
 authority: "User /ce-plan 2026-08-15 — Wave G sequence 002; GitHub #179; depends on 001 merged"
 depth: standard
 origin: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md R10 / AE5; docs/plans/2026-08-15-000-chore-wave-g-railway-sequence-plan.md; write-policy #221"
+status: completed
+merged_prs: [247]
 ---
 
 # feat: HUB-4 agent IDs + write log — issued keys, team_id filter, activity

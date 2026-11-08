@@ -8,6 +8,7 @@ execution: code
 product_contract_source: session
 depth: standard
 origin: "session 2026-09-05 (this run) · docs/plans/2026-09-05-001-feat-brain-ux-ontology-dashboard-plan.md (adjacent program) · docs/plans/2026-08-13-004 (foundation) · AGENTS.md Brain doctrine"
+status: unverified
 ---
 
 # feat: Brain 0→100 first-principles showcase + A2A chatboard (Astra-executed)

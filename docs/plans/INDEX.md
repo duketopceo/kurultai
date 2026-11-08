@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-10-05
+updated: 2026-11-07
 version: 10
 ---
 
@@ -83,6 +83,7 @@ _None._
 | [`2026-08-13-002-feat-v041-production-release-plan.md`](2026-08-13-002-feat-v041-production-release-plan.md) | feat: v0.4.1 production release prep | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-08-13-003-feat-hub2-postgres-store-plan.md`](2026-08-13-003-feat-hub2-postgres-store-plan.md) | feat: Postgres+pgvector Store for shared hub (HUB-2) | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md`](2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md) | feat: brain-shape FDG + algorithmic ontology | — | — | 2026-08-16 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`2026-11-07-001-feat-brain-v2-explorable-wireframe-plan.md`](2026-11-07-001-feat-brain-v2-explorable-wireframe-plan.md) | feat: Brain v2 explorable wireframe cortex (tag regions, 50k atoms, path/whats-new) | `website/src/brain/v2/INDEX.md` | — | 2026-11-07 | 1 | 2026-11-07 added |
 | [`2026-08-15-000-chore-wave-g-railway-sequence-plan.md`](2026-08-15-000-chore-wave-g-railway-sequence-plan.md) | Wave G sequence — Railway hub, then agent IDs, then desktop wrap | — | — | 2026-08-15 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`2026-08-15-001-feat-hub3-railway-transport-plan.md`](2026-08-15-001-feat-hub3-railway-transport-plan.md) | feat: HUB-3 Railway transport — public/Tailscale bind + Postgres hub daemon | — | — | 2026-08-29 | 2 | 2026-08-29 LFG pin: ship U1–U4 only · 2026-08-16 indexed (v1 seed) |
 | [`2026-08-15-002-feat-hub4-agent-ids-write-log-plan.md`](2026-08-15-002-feat-hub4-agent-ids-write-log-plan.md) | feat: HUB-4 agent IDs + write log — issued keys, team_id filter, activity | — | — | 2026-08-15 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -111,6 +112,7 @@ _None._
 
 ## Recent
 
+- 2026-11-07 — every plan now carries `status:` front matter (`completed` with `merged_prs`, `superseded`, `reference`, or `unverified` where no merged PR was found)
 - 2026-10-05 — `2026-10-05-001`: program roadmap plan (U1-U21) classifying every dated plan; `ROADMAP.md` links it first
 - 2026-10-03 — `2026-10-02-001`: supersede/bi-temporal-lite plan (U4) — written and implemented in one pass
 

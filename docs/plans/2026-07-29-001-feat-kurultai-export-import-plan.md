@@ -13,6 +13,8 @@ tags:
   - import
   - plan
   - feat
+status: completed
+merged_prs: [103]
 ---
 
 # Kurultai Export Import Pack - Plan

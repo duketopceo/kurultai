@@ -3,15 +3,13 @@
 Comprehensive inventory of every feature the acceptance/integration suite
 covers. Each row maps to one or more tests under `tests/acceptance_*.rs`.
 
-> Sync contract: this file is authoritative in the private repo
-> (`kurultai-private`). After each release tag, private merges public `main`
-> and re-checks the matrix — features sync downstream, data never does.
+> Maintained in this repository. Update rows when a feature or its acceptance test changes.
 
 Status legend:
 
 - ✅ **working** — exercised by a passing acceptance test.
 - ⚠️ **partial** — core path works but a documented gap remains (see
-  `ACCEPTANCE_REPORT.md` (kurultai-private)).
+  [docs/archive/ACCEPTANCE_REPORT.md](docs/archive/ACCEPTANCE_REPORT.md)).
 - ❌ **broken** — declared in the milestone but not implemented / not
   wired; covered by an `#[ignore]`'d test plus a report entry.
 
@@ -60,7 +58,7 @@ Status legend:
 
 ## Summary
 
-_Last verified against HEAD (`110f371`, PR #217) — see `ACCEPTANCE_REPORT.md` (kurultai-private) for detail._
+_Last verified against HEAD (`110f371`, PR #217) — see [docs/archive/ACCEPTANCE_REPORT.md](docs/archive/ACCEPTANCE_REPORT.md) for detail._
 
 - **Working features exercised by passing tests:** 30
 - **Partial features:** 1 (Postgres/pgvector hub store gated behind a
@@ -71,6 +69,6 @@ _Last verified against HEAD (`110f371`, PR #217) — see `ACCEPTANCE_REPORT.md` 
 Corpus-tier persistence, visibility-labels persistence, hashtag-line ingest,
 and SourceConfig tier/label defaults at ingest (TA-2 through TA-6) were all
 fixed in commit `110f371` (#217), which landed after the acceptance suite in
-`7cdeb36` (#216) first surfaced them as broken. See `ACCEPTANCE_REPORT.md` (kurultai-private)
+`7cdeb36` (#216) first surfaced them as broken. See [docs/archive/ACCEPTANCE_REPORT.md](docs/archive/ACCEPTANCE_REPORT.md)
 for the broken-feature detail as it stood before that fix, and the "Fixed"
 notes added to each section for where the fix actually lives.

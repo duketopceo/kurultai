@@ -1,3 +1,9 @@
+---
+
+status: completed
+merged_prs: [350]
+---
+
 # feat: retrieval quality evals + opt-in web augmentation (`ask --web`)
 
 ## Summary

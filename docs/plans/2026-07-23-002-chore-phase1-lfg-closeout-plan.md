@@ -8,6 +8,8 @@ artifact_readiness: implementation-ready
 product_contract_source: ce-plan-bootstrap
 execution: code
 origin: "User /lfg phase 1 — product already shipped; remaining tracker hygiene"
+status: completed
+merged_prs: [56]
 ---
 
 # Phase 1 LFG Closeout - Plan
