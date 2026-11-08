@@ -21,6 +21,7 @@ export interface BrainLike {
   setPath?(ids: string[]): void;
   resetView?(): void;
   setFresh?(ids: Iterable<string>): void;
+  setPixelMode?(on: boolean): void;
   metrics(): { fps: number; nodes: number; renderedEdges: number };
   dispose(): void;
 }
@@ -51,9 +52,11 @@ interface Props {
   onHover: (atom: Atom | null) => void;
   onOntologyChanged: (onto: OntologyResponse) => void;
   caption: string;
+  /** v2: 32-bit render mode. */
+  pixel?: boolean;
 }
 
-export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, onOntologyChanged, caption }, ref) {
+export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, onOntologyChanged, caption, pixel }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const brainRef = useRef<BrainLike | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -119,6 +122,10 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
       brainRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (ready) brainRef.current?.setPixelMode?.(!!pixel);
+  }, [pixel, ready]);
 
   useEffect(() => {
     if (!brainRef.current || !ready) return;
