@@ -2,6 +2,8 @@
 .v2-app { position: fixed; inset: 0; background: var(--v2-bg); color: var(--text-1); font: 14px/20px ui-sans-serif, Inter, system-ui, sans-serif; }
 .v2-brain, .v2-brain .brain-stage, .v2-brain #brain-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .v2-brain .brain-overlay, .v2-brain .brain-caption, .v2-brain .brain-hud { display: none; }
+/* The v1 amber lattice placeholder clashes with the ink themes; v2 shows the empty cortex instead. */
+.v2-brain .lattice-fallback { display: none; }
 .v2-top { position: absolute; top: 12px; left: 16px; right: 16px; display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; pointer-events: none; }
 .v2-top > * { pointer-events: auto; }
 .v2-search { position: relative; display: flex; gap: 8px; align-items: center; }
