@@ -16,6 +16,11 @@ export interface BrainLike {
   focusAtom(atom: Atom): void;
   zoomToAtom(atom: Atom): void;
   randomConnection(): void;
+  /** v2 only */
+  findPath?(from: string, to: string): string[] | null;
+  setPath?(ids: string[]): void;
+  resetView?(): void;
+  setFresh?(ids: Iterable<string>): void;
   metrics(): { fps: number; nodes: number; renderedEdges: number };
   dispose(): void;
 }
@@ -23,6 +28,11 @@ export interface BrainLike {
 export interface BrainStageHandle {
   focusAtom: (atom: Atom) => void;
   randomConnection: () => void;
+  /** v2: client-side shortest path over loaded edges (no server traverse API yet). */
+  findPath: (from: string, to: string) => string[] | null;
+  setPath: (ids: string[]) => void;
+  resetView: () => void;
+  setFresh: (ids: Iterable<string>) => void;
 }
 
 interface TooltipState {
@@ -60,6 +70,10 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
       if (!brainRef.current) return;
       brainRef.current.randomConnection();
     },
+    findPath: (from, to) => brainRef.current?.findPath?.(from, to) ?? null,
+    setPath: (ids) => brainRef.current?.setPath?.(ids),
+    resetView: () => brainRef.current?.resetView?.(),
+    setFresh: (ids) => brainRef.current?.setFresh?.(ids),
   }));
 
   const handleTooltip = useCallback((atom: Atom | null, x: number, y: number) => {

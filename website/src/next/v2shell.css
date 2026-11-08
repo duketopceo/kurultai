@@ -1,0 +1,38 @@
+/* Brain v2 minimal chrome. Tokens from tokens.css (DESIGN.md "Council Ring"). */
+.v2-app { position: fixed; inset: 0; background: #000; color: var(--text-1); font: 14px/20px ui-sans-serif, Inter, system-ui, sans-serif; }
+.v2-brain, .v2-brain .brain-stage, .v2-brain #brain-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.v2-brain .brain-overlay, .v2-brain .brain-caption, .v2-brain .brain-hud { display: none; }
+.v2-top { position: absolute; top: 12px; left: 16px; right: 16px; display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; pointer-events: none; }
+.v2-top > * { pointer-events: auto; }
+.v2-search { position: relative; display: flex; gap: 8px; align-items: center; }
+.v2-search input, .v2-palette input { background: var(--canvas-3); color: var(--text-1); border: 1px solid #262932; border-radius: 6px; padding: 6px 10px; min-width: 220px; font: inherit; }
+.v2-search input:focus-visible, .v2-palette input:focus-visible, .v2-app button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.v2-app button { background: transparent; color: var(--text-2); border: 1px solid #262932; border-radius: 6px; padding: 4px 10px; font: 12px/16px ui-monospace, "JetBrains Mono", monospace; cursor: pointer; }
+.v2-app button:hover { color: var(--text-1); border-color: var(--text-4); }
+.v2-results { position: absolute; top: 36px; left: 0; width: 100%; margin: 0; padding: 4px; list-style: none; background: var(--canvas-3); border: 1px solid #262932; border-radius: 8px; z-index: 5; }
+.v2-results button { width: 100%; text-align: left; border: 0; font: inherit; color: var(--text-1); }
+.v2-right { position: relative; display: flex; gap: 10px; align-items: center; }
+.v2-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--neutral-state); }
+.v2-dot-online { background: var(--ok); }
+.v2-dot-offline { background: var(--danger); }
+.v2-meta { color: var(--text-3); font: 12px/16px ui-monospace, "JetBrains Mono", monospace; }
+.v2-menu-pop { position: absolute; top: 32px; right: 0; display: flex; flex-direction: column; gap: 4px; padding: 8px; background: var(--canvas-3); border: 1px solid #262932; border-radius: 8px; min-width: 160px; z-index: 6; }
+.v2-menu-pop button { text-align: left; border: 0; }
+.v2-panel { position: absolute; right: 16px; top: 56px; bottom: 16px; width: min(360px, calc(100% - 32px)); overflow: auto; padding: 14px; background: var(--canvas-3); border: 1px solid #262932; border-radius: 8px; }
+.v2-panel header, .v2-drawer header { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.v2-sum { color: var(--text-2); }
+.v2-actions { display: flex; gap: 8px; margin: 10px 0; }
+.v2-answer { border-top: 1px solid #262932; padding-top: 8px; }
+.v2-err { color: var(--danger); }
+.v2-chain h3 { font: 12px/16px ui-monospace, monospace; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; margin: 12px 0 4px; }
+.v2-chain ol { margin: 0; padding-left: 18px; }
+.v2-chain li { color: var(--accent-strong); } /* ember: the selected path only */
+.v2-via { display: block; color: var(--text-3); font: 11px/14px ui-monospace, monospace; }
+.v2-drawer { position: absolute; left: 0; right: 0; bottom: 0; height: min(60vh, 560px); overflow: auto; padding: 12px 16px; background: var(--canvas-2); border-top: 1px solid #262932; z-index: 20; }
+.v2-scrim { position: absolute; inset: 0; background: var(--scrim, rgba(0,0,0,.6)); display: flex; justify-content: center; align-items: flex-start; padding-top: 16vh; z-index: 30; }
+.v2-palette { width: min(480px, calc(100% - 32px)); background: var(--canvas-3); border: 1px solid #262932; border-radius: 8px; padding: 8px; }
+.v2-palette input { width: 100%; box-sizing: border-box; }
+.v2-palette ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.v2-palette li button { width: 100%; display: flex; justify-content: space-between; border: 0; font: 14px/20px ui-sans-serif, system-ui, sans-serif; }
+@media (prefers-reduced-motion: reduce) { .v2-app * { transition: none !important; animation: none !important; } }
+@media (max-width: 640px) { .v2-search input { min-width: 140px; } .v2-panel { top: auto; height: 50%; } }

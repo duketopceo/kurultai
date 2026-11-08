@@ -16,6 +16,9 @@ import {
   type OntologyResponse,
 } from '../types';
 import { UI_VERSION } from '../version';
+import { brainVersion } from '../brain/v2/flag';
+import { describeChain, type ChainStep } from '../brain/v2/why';
+import { V2Shell } from './V2Shell';
 
 import { TopBar, CommandStrip, type NavKey, type SearchResult, type SearchState } from './gen/chrome/chrome';
 import { BrainHero } from './gen/brain-hero/brain-hero';
@@ -75,6 +78,35 @@ export function NextApp() {
   const [selected, setSelected] = useState<Atom | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const brainRef = useRef<BrainStageHandle | null>(null);
+  // ── v2: trace-to-another-node state ───────────────────────────────
+  const [tracing, setTracing] = useState(false);
+  const [chain, setChain] = useState<ChainStep[] | null>(null);
+  const [chainMissing, setChainMissing] = useState(false);
+  const tracingFrom = useRef<Atom | null>(null);
+  const selectRef = useRef<(a: Atom) => void>(() => undefined);
+  selectRef.current = (a: Atom) => {
+    const from = tracingFrom.current;
+    if (from && from.id !== a.id) {
+      const path = brainRef.current?.findPath(from.id, a.id) ?? null;
+      tracingFrom.current = null;
+      setTracing(false);
+      if (path) {
+        brainRef.current?.setPath(path);
+        setChain(describeChain(path, new Map(atoms.map((x) => [x.id, x]))));
+        setChainMissing(false);
+      } else {
+        brainRef.current?.setPath([]);
+        setChain(null);
+        setChainMissing(true);
+      }
+      setSelected(a);
+      return;
+    }
+    brainRef.current?.setPath([]);
+    setChain(null);
+    setChainMissing(false);
+    setSelected(a);
+  };
   const graphAbort = useRef<AbortController | null>(null);
 
   // ── search state ──────────────────────────────────────────────────
@@ -367,6 +399,92 @@ export function NextApp() {
   const inspectorClasses: InspectorClass[] = ontology.entities
     .filter((e) => e.kind === 'class')
     .map((e) => ({ id: e.id, label: e.name }));
+
+  if (brainVersion() === 'v2') {
+    return (
+      <>
+        <V2Shell
+          daemonStatus={daemon.status}
+          query={query}
+          onQueryChange={setQuery}
+          results={results}
+          searchState={searchState}
+          onSelectResult={(r) => {
+            const atom = atoms.find((a) => a.id === r.id);
+            if (atom) { setSelected(atom); brainRef.current?.focusAtom(atom); }
+          }}
+          onReset={() => {
+            setQuery(''); setResults(null); setSearchState('idle');
+            setSelected(null); setChain(null); setChainMissing(false); setTracing(false);
+            tracingFrom.current = null;
+            brainRef.current?.resetView();
+          }}
+          onOpenSettings={() => setSettingsOpen(true)}
+          selected={selected}
+          onCloseSelected={() => { setSelected(null); setChain(null); setChainMissing(false); brainRef.current?.setPath([]); }}
+          tracing={tracing}
+          onStartTrace={() => { tracingFrom.current = selected; setTracing(true); setChain(null); setChainMissing(false); }}
+          onCancelTrace={() => { tracingFrom.current = null; setTracing(false); }}
+          chain={chain}
+          chainMissing={chainMissing}
+          onAsk={(a, signal) => api.askBrain(`What is "${a.title}" and how does it relate to the rest of the brain?`, signal)}
+          brain={(
+            <BrainStage
+              ref={brainRef}
+              atoms={atoms}
+              renderCap={LOAD_TIER_CAPS[tier]}
+              layout="brain"
+              ontology={ontology}
+              atomTotal={atomTotal}
+              onSelect={(a) => selectRef.current(a)}
+              onHover={() => undefined}
+              onOntologyChanged={setOntology}
+              caption=""
+            />
+          )}
+          renderSurface={(tab) => (
+            <WorkSurface
+              hey={heyProps}
+              pulse={{
+                data: pulse,
+                onRetry: () => void loadPulse(),
+                subscribe: (onSnapshot) => {
+                  const id = setInterval(() => void loadPulse().then(() => {
+                    setPulse((cur) => { if (cur.status === 'ready') onSnapshot(cur.data); return cur; });
+                  }), 10_000);
+                  return () => clearInterval(id);
+                },
+              }}
+              ontology={ontologyProps}
+              ask={{ onAsk: (q, signal) => api.askBrain(q, signal) }}
+              store={storeProps}
+              defaultTab={tab}
+            />
+          )}
+        />
+        {settingsOpen && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onKeyDown={(e) => { if (e.key === 'Escape') setSettingsOpen(false); }}
+            ref={(el) => el?.focus()}
+            tabIndex={-1}
+            style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'var(--scrim)' }}
+            onClick={(e) => { if (e.target === e.currentTarget) setSettingsOpen(false); }}
+          >
+            <div style={{ maxWidth: 720, margin: '8vh auto', maxHeight: '84vh', overflow: 'auto' }}>
+              <SettingsPanel
+                daemon={{ online: daemon.status === 'online', version: daemon.apiVersion ?? null }}
+                presence={null}
+                mode={(authMode === 'locked' ? 'token' : 'open') as AccessMode}
+                onLogin={async () => setSettingsOpen(false)}
+              />
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="next-app">

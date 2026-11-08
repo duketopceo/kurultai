@@ -33,6 +33,7 @@ version: 6
 
 ## Recent
 
+- 2026-11-07 — `ui-smoke.mjs` v2 mode also probes palette, drawer and clear control
 - 2026-11-07 — `ui-smoke.mjs`: `--brain v2 --synthetic N` loads `?brain=v2` (SwiftShader, still bounded) and prints fps/nodes/draw calls
 - 2026-10-19 — `build-ui.sh`: header note — build under node 22 (.nvmrc); ui-next-* hashes differ across node majors, CI embedded-asset check uses node 22
 - 2026-10-07 — `late-embed-server.py`: multi-vector sidecar for `[embed.late] backend="http"` (#424)

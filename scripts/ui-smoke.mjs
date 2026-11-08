@@ -86,11 +86,31 @@ try {
     }
   }
 
-  for (const tab of ['pulse', 'ontology', 'ask', 'store', 'hey']) {
-    const el = page.getByRole('tab', { name: tab, exact: true }).first();
-    await el.click().catch(() => console.log('click-fail', tab));
-    const sel = await el.getAttribute('aria-selected').catch(() => null);
-    console.log('tab', tab, 'selected=' + sel);
+  if (BRAIN === 'v2') {
+    // v2 chrome: search + status dot + menu; surfaces behind the palette/drawer.
+    const dot = await page.locator('.v2-dot').count();
+    console.log('v2 status-dot', dot);
+    await page.keyboard.press('Control+k');
+    const palette = await page.getByRole('dialog', { name: 'Command palette' }).count();
+    console.log('v2 palette-open', palette);
+    if (SHOT) await page.screenshot({ path: SHOT.replace(/\.png$/, '-palette.png') });
+    await page.keyboard.type('pulse');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    const drawer = await page.locator('.v2-drawer').count();
+    console.log('v2 drawer-open', drawer);
+    if (SHOT) await page.screenshot({ path: SHOT.replace(/\.png$/, '-drawer.png') });
+    await page.keyboard.press('Escape');
+    await page.fill('input[aria-label="Search memory"]', 'x');
+    const clear = await page.getByRole('button', { name: /Clear search/ }).count();
+    console.log('v2 clear-control', clear);
+  } else {
+    for (const tab of ['pulse', 'ontology', 'ask', 'store', 'hey']) {
+      const el = page.getByRole('tab', { name: tab, exact: true }).first();
+      await el.click().catch(() => console.log('click-fail', tab));
+      const sel = await el.getAttribute('aria-selected').catch(() => null);
+      console.log('tab', tab, 'selected=' + sel);
+    }
   }
 
   if (SHOT && !(BRAIN && SYNTH > 0)) {

@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: website/src/brain/v2
 parent: website/src/brain/INDEX.md
 updated: 2026-11-07
-version: 1
+version: 2
 ---
 
 # `website/src/brain/v2`
@@ -26,7 +26,11 @@ _None._
 | [`links.ts`](links.ts) | Shared-tag synapse derivation (moved from BrainStage) | `website/src/brain/linkSelect.ts` | `website/src/components/BrainStage.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`flag.ts`](flag.ts) | `?brain=v2` / `?brain=v1` selector | — | `website/src/components/BrainStage.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`flag.test.ts`](flag.test.ts) | node:test for the selector | `website/src/brain/v2/flag.ts` | — | 2026-11-07 | 1 | 2026-11-07 added |
+| [`palette.ts`](palette.ts) | Command-palette model: surfaces + filter (prefix then substring) | — | `website/src/next/V2Shell.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
+| [`why.ts`](why.ts) | Path ids to a why-connected chain (shared tags per hop) | `website/src/types` | `website/src/next/App.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
+| [`palette.test.ts`](palette.test.ts) | node:test for palette filter + chain | `website/src/brain/v2/palette.ts` · `website/src/brain/v2/why.ts` | — | 2026-11-07 | 1 | 2026-11-07 added |
 
 ## Recent
 
+- 2026-11-07 — palette + why-connected helpers for the minimal chrome (U2)
 - 2026-11-07 — brain v2 core: wireframe cortex + tag regions + one-draw atom cloud, 50k synthetic atoms (plan 2026-11-07-001 U1)
