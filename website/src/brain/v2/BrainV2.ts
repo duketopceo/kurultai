@@ -10,19 +10,23 @@
  * ONLY for the selected path and the search target (DESIGN.md accent rule).
  */
 import {
-  AdditiveBlending, BufferAttribute, BufferGeometry, Color, IcosahedronGeometry, LineSegments,
-  LineBasicMaterial, PerspectiveCamera, Points, Scene, ShaderMaterial, Vector3, WebGLRenderer,
+  AdditiveBlending, BufferAttribute, BufferGeometry, DoubleSide, LineSegments, Mesh,
+  PerspectiveCamera, Points, Scene, ShaderMaterial, Vector3, WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { Atom, Link } from '../../types.ts';
 import { buildAdjacency, shortestPath, type Adjacency } from './path.ts';
-import { HULL, lodTier, parcellate, placeAll, type LodTier, type Parcellation, nearestCenter } from './regions.ts';
+import { LOBES, MESH_IDX, MESH_POS, MESH_VERTEX_LOBE } from './cortex.ts';
+import { lodTier, parcellate, placeAll, type LodTier, type Parcellation } from './regions.ts';
 
-const EMBER = 0xe8a33d;
-const PURPLE = 0x8b6cf0;
 const FOV = 45;
-const START_DISTANCE = 3.1;
+const START_DISTANCE = 2.85;
+const START_DIR = new Vector3(-0.42, 0.5, 1).normalize(); // front-lateral, slightly above: lobes + both hemispheres read
 const PICK_RADIUS_PX = 12;
+const MAX_LABELS = 10;
+const AMBIENT_SYNAPSES = 900;
+const SEG = 8; // sub-segments per highlighted synapse (electric jitter)
+const LINE_CAP = 1024;
 
 export const FLAG = { none: 0, hover: 1, path: 2, fresh: 3, target: 4 } as const;
 
@@ -44,21 +48,27 @@ export interface BrainV2Metrics {
   drawCalls: number;
 }
 
+/* ── atoms: one draw call. Bright additive sprite + 4-ray sparkle, time-based shimmer + spike flashes ── */
 const VERT = /* glsl */ `
 attribute float aFlag;
 attribute float aPhase;
+attribute float aImp;
 uniform float uSize;
 uniform float uLod;
 uniform float uTime;
 varying float vFlag;
 varying float vTw;
+varying float vSpike;
 void main() {
   vFlag = aFlag;
-  vTw = 0.5 + 0.5 * sin(uTime * 2.1 + aPhase * 6.2831);
+  vTw = 0.5 + 0.5 * sin(uTime * (1.6 + 2.2 * aPhase) + aPhase * 40.0);
+  // occasional spike: a short bright flash a few times a minute per atom
+  float g = sin(uTime * (0.35 + 0.5 * aPhase) + aPhase * 91.0);
+  vSpike = pow(max(0.0, g), 28.0);
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  float base = mix(1.1, 2.4, uLod);
+  float base = mix(1.0, 2.4, uLod) * (0.6 + 0.9 * aImp);
   float boost = aFlag > 0.5 ? 2.2 : 1.0;
-  gl_PointSize = clamp(uSize * base * boost / -mv.z, 1.0, 48.0);
+  gl_PointSize = clamp(uSize * base * boost * (1.0 + 1.2 * vSpike) / -mv.z, 2.0, 56.0);
   gl_Position = projectionMatrix * mv;
 }`;
 
@@ -66,22 +76,26 @@ const FRAG = /* glsl */ `
 uniform float uLod;
 varying float vFlag;
 varying float vTw;
+varying float vSpike;
 void main() {
   vec2 c = gl_PointCoord - 0.5;
-  float d = length(c);
-  if (d > 0.5) discard;
-  float core = smoothstep(0.5, 0.0, d);
-  vec3 white = vec3(0.92, 0.9, 0.96);
-  vec3 purple = vec3(0.545, 0.424, 0.941);
-  vec3 col = mix(purple, white, 0.35 + 0.5 * vTw);
-  float a = core * mix(0.30, 0.95, uLod);
-  if (vFlag > 0.5 && vFlag < 1.5) { col = white; a = core; }
-  if (vFlag > 1.5 && vFlag < 2.5) { col = vec3(0.91, 0.64, 0.24); a = core; }
-  if (vFlag > 2.5 && vFlag < 3.5) { col = mix(white, purple, 1.0 - vTw); a = core; }
-  if (vFlag > 3.5) { col = vec3(0.91, 0.64, 0.24); a = core; }
+  float d = length(c) * 2.0;
+  if (d > 1.0) discard;
+  float core = exp(-d * d * 14.0);
+  float halo = pow(1.0 - d, 2.2) * 0.55;
+  float rays = (exp(-abs(c.x) * 70.0) + exp(-abs(c.y) * 70.0)) * pow(1.0 - d, 1.5) * (0.25 + 0.9 * vSpike);
+  vec3 white = vec3(0.96, 0.94, 1.0);
+  vec3 purple = vec3(0.60, 0.46, 1.0);
+  vec3 col = mix(purple, white, 0.25 + 0.6 * vTw + 0.5 * vSpike);
+  float a = (core * 1.2 + halo * (0.5 + 0.5 * vTw) + rays) * mix(0.8, 1.0, uLod);
+  if (vFlag > 0.5 && vFlag < 1.5) { col = white; a = core * 1.4 + halo + rays; }
+  if (vFlag > 1.5 && vFlag < 2.5) { col = vec3(0.91, 0.64, 0.24); a = core * 1.4 + halo + rays; }
+  if (vFlag > 2.5 && vFlag < 3.5) { col = mix(white, purple, 1.0 - vTw); a = core * 1.3 + halo + rays; }
+  if (vFlag > 3.5) { col = vec3(0.91, 0.64, 0.24); a = core * 1.4 + halo + rays; }
   gl_FragColor = vec4(col * a, a);
 }`;
 
+/* ── far-zoom region glow ── */
 const GLOW_VERT = /* glsl */ `
 attribute float aStrength;
 uniform float uFar;
@@ -89,7 +103,7 @@ varying float vS;
 void main() {
   vS = aStrength;
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = clamp((24.0 + 150.0 * aStrength) * uFar / -mv.z, 0.0, 220.0);
+  gl_PointSize = clamp((20.0 + 110.0 * aStrength) * uFar / -mv.z, 0.0, 190.0);
   gl_Position = projectionMatrix * mv;
 }`;
 const GLOW_FRAG = /* glsl */ `
@@ -98,49 +112,130 @@ varying float vS;
 void main() {
   float d = length(gl_PointCoord - 0.5);
   if (d > 0.5) discard;
-  float a = pow(1.0 - d * 2.0, 2.0) * (0.10 + 0.32 * vS) * uFar;
+  float a = pow(1.0 - d * 2.0, 2.0) * (0.04 + 0.22 * vS) * uFar;
   gl_FragColor = vec4(vec3(0.545, 0.424, 0.941) * a, a);
 }`;
 
-/** Low-poly brain shell: deformed icosphere with a longitudinal fissure + gyri ripple. */
-export function brainShellSegments(detail = 2): Float32Array {
-  const geo = new IcosahedronGeometry(1, detail);
-  const pos = geo.getAttribute('position');
-  const p = new Vector3();
-  const warp = (v: Vector3) => {
-    const x = v.x * HULL.x;
-    const y = v.y * HULL.y;
-    const z = v.z * HULL.z;
-    const ripple = 1 + 0.035 * Math.sin(7 * v.x + 1) * Math.sin(6 * v.y) * Math.sin(5 * v.z + 2);
-    let wx = x * ripple;
-    const wy = y * ripple;
-    const wz = z * ripple;
-    if (wy > 0.15) wx += (wx >= 0 ? 1 : -1) * 0.05 * Math.min(1, (wy - 0.15) * 4);
-    v.set(wx, wy, wz);
-  };
-  const seen = new Set<string>();
-  const out: number[] = [];
-  const key = (v: Vector3) => `${Math.round(v.x * 1e4)},${Math.round(v.y * 1e4)},${Math.round(v.z * 1e4)}`;
-  const tri = [new Vector3(), new Vector3(), new Vector3()];
-  for (let f = 0; f < pos.count; f += 3) {
+/* ── wire shell: thin edges coloured by the owning region's fill; lobe boundaries drawn brighter ── */
+const SHELL_VERT = /* glsl */ `
+attribute float aFill;
+attribute float aEdge;
+attribute vec3 aNormal;
+uniform float uTime;
+varying float vFill;
+varying float vEdge;
+varying float vShim;
+varying float vFace;
+void main() {
+  vFill = aFill;
+  vEdge = aEdge;
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  // near-side edges read bright, far-side edges recede: kills the wire tangle, keeps the silhouette
+  vFace = mix(0.14, 1.0, smoothstep(-0.15, 0.35, dot(normalize(normalMatrix * aNormal), normalize(-mv.xyz))));
+  vShim = 0.5 + 0.5 * sin(uTime * 1.3 + position.x * 5.0 + position.y * 4.0 + position.z * 6.0);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+const SHELL_FRAG = /* glsl */ `
+varying float vFill;
+varying float vEdge;
+varying float vShim;
+varying float vFace;
+void main() {
+  vec3 dim = vec3(0.24, 0.20, 0.38);
+  vec3 hot = vec3(0.78, 0.70, 1.0);
+  vec3 col = mix(dim, hot, vFill);
+  float a = (0.17 + 0.42 * vFill + 0.22 * vEdge * (0.5 + vFill) + 0.12 * vFill * vShim) * vFace;
+  gl_FragColor = vec4(col * a, a);
+}`;
+const FRESNEL_VERT = /* glsl */ `
+attribute float aFill;
+varying float vFill;
+varying float vRim;
+void main() {
+  vFill = aFill;
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vec3 n = normalize(normalMatrix * normal);
+  vRim = pow(1.0 - abs(dot(n, normalize(-mv.xyz))), 2.4);
+  gl_Position = projectionMatrix * mv;
+}`;
+const FRESNEL_FRAG = /* glsl */ `
+varying float vFill;
+varying float vRim;
+void main() {
+  vec3 col = mix(vec3(0.30, 0.22, 0.60), vec3(0.72, 0.62, 1.0), vFill);
+  float a = vRim * (0.10 + 0.45 * vFill) + 0.008 + 0.025 * vFill;
+  gl_FragColor = vec4(col * a, a);
+}`;
+
+/* ── synapses: electric zig-zag + traveling spike pulses ── */
+const SYN_VERT = /* glsl */ `
+attribute float aT;
+attribute float aSeed;
+uniform float uTime;
+uniform float uJitter;
+varying float vT;
+varying float vSeed;
+float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vT = aT;
+  vSeed = aSeed;
+  vec3 p = position;
+  float env = sin(3.14159 * aT);
+  float tick = floor(uTime * 14.0);
+  p += (vec3(h(vec2(aSeed, aT * 9.0 + tick)), h(vec2(aSeed + 1.3, aT * 9.0 + tick)), h(vec2(aSeed + 2.7, aT * 9.0 + tick))) - 0.5) * uJitter * env;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+}`;
+const SYN_FRAG = /* glsl */ `
+uniform float uTime;
+uniform vec3 uColor;
+uniform float uBase;
+uniform float uPulse;
+varying float vT;
+varying float vSeed;
+void main() {
+  float flick = 0.55 + 0.45 * sin(uTime * (3.0 + 5.0 * vSeed) + vSeed * 60.0 + vT * 6.0);
+  // a pulse runs along the synapse every few seconds, per-synapse phase
+  float cyc = fract(uTime * (0.16 + 0.2 * vSeed) + vSeed * 7.0);
+  float spike = exp(-pow((vT - cyc * 1.4 + 0.2) / 0.07, 2.0)) * uPulse;
+  float a = uBase * flick + spike;
+  vec3 col = mix(uColor, vec3(0.97, 0.95, 1.0), clamp(spike, 0.0, 1.0));
+  gl_FragColor = vec4(col * a, a);
+}`;
+
+function synapseMaterial(color: [number, number, number], base: number, pulse: number, jitter: number): ShaderMaterial {
+  return new ShaderMaterial({
+    vertexShader: SYN_VERT, fragmentShader: SYN_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 }, uJitter: { value: jitter }, uBase: { value: base }, uPulse: { value: pulse },
+      uColor: { value: new Vector3(...color) },
+    },
+  });
+}
+
+/** Unique triangle edges of the baked cortex as line positions, plus the lobe of each endpoint. */
+export function cortexEdges(): { segs: Float32Array; lobeA: Uint8Array; lobeB: Uint8Array; va: Uint16Array; vb: Uint16Array } {
+  const seen = new Set<number>();
+  const pts: number[] = [];
+  const la: number[] = [];
+  const lb: number[] = [];
+  const va: number[] = [];
+  const vb: number[] = [];
+  const n = MESH_POS.length / 3;
+  for (let f = 0; f < MESH_IDX.length; f += 3) {
     for (let k = 0; k < 3; k++) {
-      p.fromBufferAttribute(pos, f + k);
-      warp(p);
-      tri[k].copy(p);
-    }
-    for (let k = 0; k < 3; k++) {
-      const a = tri[k];
-      const b = tri[(k + 1) % 3];
-      const ka = key(a);
-      const kb = key(b);
-      const ek = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
-      if (seen.has(ek)) continue;
-      seen.add(ek);
-      out.push(a.x, a.y, a.z, b.x, b.y, b.z);
+      const a = MESH_IDX[f + k];
+      const b = MESH_IDX[f + ((k + 1) % 3)];
+      const key = a < b ? a * n + b : b * n + a;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pts.push(MESH_POS[a * 3], MESH_POS[a * 3 + 1], MESH_POS[a * 3 + 2], MESH_POS[b * 3], MESH_POS[b * 3 + 1], MESH_POS[b * 3 + 2]);
+      va.push(a);
+      vb.push(b);
+      la.push(MESH_VERTEX_LOBE[a]);
+      lb.push(MESH_VERTEX_LOBE[b]);
     }
   }
-  geo.dispose();
-  return new Float32Array(out);
+  return { segs: new Float32Array(pts), lobeA: Uint8Array.from(la), lobeB: Uint8Array.from(lb), va: Uint16Array.from(va), vb: Uint16Array.from(vb) };
 }
 
 export class BrainV2 {
@@ -151,13 +246,17 @@ export class BrainV2 {
   private camera = new PerspectiveCamera(FOV, 1, 0.05, 50);
   private controls!: OrbitControls;
   private shell!: LineSegments;
-  private shellSegs: Float32Array;
+  private shellLobes: { a: Uint8Array; b: Uint8Array };
+  private fresnel!: Mesh;
+  private ambient: LineSegments | null = null;
+  private labelRects: Array<{ x: number; y: number; w: number; h: number }> = [];
   private cloud: Points | null = null;
   private glow: Points | null = null;
   private hoverLines: LineSegments;
   private pathLines: LineSegments;
   private labelLayer: HTMLDivElement;
   private labels: HTMLSpanElement[] = [];
+  private labelOrder: number[] = [];
   private ro: ResizeObserver;
   private raf = 0;
   private disposed = false;
@@ -196,26 +295,49 @@ export class BrainV2 {
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.dataset.brain = 'v2';
 
-    this.camera.position.set(0.9, 0.7, START_DISTANCE);
+    this.camera.position.copy(START_DIR).multiplyScalar(START_DISTANCE);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = !opts.reducedMotion;
     this.controls.minDistance = 0.35;
     this.controls.maxDistance = 6;
     this.controls.enablePan = true;
 
-    this.shellSegs = brainShellSegments(2);
+    const edges = cortexEdges();
+    const fg = new BufferGeometry();
+    fg.setAttribute('position', new BufferAttribute(MESH_POS, 3));
+    fg.setIndex(new BufferAttribute(MESH_IDX, 1));
+    fg.computeVertexNormals();
+    fg.setAttribute('aFill', new BufferAttribute(new Float32Array(MESH_POS.length / 3), 1));
+    this.shellLobes = { a: edges.lobeA, b: edges.lobeB };
+    const nrm = fg.getAttribute('normal') as BufferAttribute;
+    const en = new Float32Array(edges.va.length * 6);
+    for (let e = 0; e < edges.va.length; e++) {
+      en.set((nrm.array as Float32Array).subarray(edges.va[e] * 3, edges.va[e] * 3 + 3), e * 6);
+      en.set((nrm.array as Float32Array).subarray(edges.vb[e] * 3, edges.vb[e] * 3 + 3), e * 6 + 3);
+    }
     const shellGeo = new BufferGeometry();
-    shellGeo.setAttribute('position', new BufferAttribute(this.shellSegs, 3));
-    shellGeo.setAttribute('color', new BufferAttribute(new Float32Array(this.shellSegs.length), 3));
-    this.shell = new LineSegments(
-      shellGeo,
-      new LineBasicMaterial({ vertexColors: true, blending: AdditiveBlending, depthWrite: false, transparent: true }),
-    );
+    shellGeo.setAttribute('position', new BufferAttribute(edges.segs, 3));
+    shellGeo.setAttribute('aFill', new BufferAttribute(new Float32Array(edges.lobeA.length * 2), 1));
+    const boundary = new Float32Array(edges.lobeA.length * 2);
+    for (let e = 0; e < edges.lobeA.length; e++) if (edges.lobeA[e] !== edges.lobeB[e]) boundary[e * 2] = boundary[e * 2 + 1] = 1;
+    shellGeo.setAttribute('aNormal', new BufferAttribute(en, 3));
+    shellGeo.setAttribute('aEdge', new BufferAttribute(boundary, 1));
+    this.shell = new LineSegments(shellGeo, new ShaderMaterial({
+      vertexShader: SHELL_VERT, fragmentShader: SHELL_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
+      uniforms: { uTime: { value: 0 } },
+    }));
+    this.shell.frustumCulled = false;
     this.scene.add(this.shell);
+
+    this.fresnel = new Mesh(fg, new ShaderMaterial({
+      vertexShader: FRESNEL_VERT, fragmentShader: FRESNEL_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide,
+    }));
+    this.fresnel.frustumCulled = false;
+    this.scene.add(this.fresnel);
     this.paintShell(null);
 
-    this.hoverLines = this.makeLines(PURPLE, 0.8);
-    this.pathLines = this.makeLines(EMBER, 1);
+    this.hoverLines = this.makeLines([0.62, 0.5, 1.0], 0.55, 1.4, 0.014);
+    this.pathLines = this.makeLines([0.91, 0.64, 0.24], 0.9, 1.6, 0.012);
     this.scene.add(this.hoverLines, this.pathLines);
 
     this.labelLayer = document.createElement('div');
@@ -259,11 +381,15 @@ export class BrainV2 {
     queueMicrotask(() => { if (!this.disposed) opts.onReady(); });
   }
 
-  private makeLines(color: number, opacity: number): LineSegments {
+  /** Electric highlight lines: each synapse is SEG sub-segments so the shader can zig-zag it. */
+  private makeLines(color: [number, number, number], base: number, pulse: number, jitter: number): LineSegments {
     const g = new BufferGeometry();
-    g.setAttribute('position', new BufferAttribute(new Float32Array(4096 * 6), 3));
+    const verts = LINE_CAP * SEG * 2;
+    g.setAttribute('position', new BufferAttribute(new Float32Array(verts * 3), 3));
+    g.setAttribute('aT', new BufferAttribute(new Float32Array(verts), 1));
+    g.setAttribute('aSeed', new BufferAttribute(new Float32Array(verts), 1));
     g.setDrawRange(0, 0);
-    const l = new LineSegments(g, new LineBasicMaterial({ color, transparent: true, opacity, blending: AdditiveBlending, depthWrite: false }));
+    const l = new LineSegments(g, synapseMaterial(color, base, pulse, jitter));
     l.frustumCulled = false;
     return l;
   }
@@ -278,26 +404,20 @@ export class BrainV2 {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Wire chunks: each shell edge takes its region's brightness; fuller regions glow more. */
+  /** Each region's fill drives its wire edges + fresnel shell; unassigned lobes stay dim chunks. */
   private paintShell(p: Parcellation | null) {
-    const segs = this.shellSegs;
-    const col = this.shell.geometry.getAttribute('color') as BufferAttribute;
-    const base = new Color(0x2a2540);
-    const hot = new Color(0xb8a6ff);
-    const centers = p?.regions.map((r) => r.center) ?? [];
-    const c = new Color();
-    for (let s = 0; s < segs.length; s += 6) {
-      let fill = 0;
-      if (p && centers.length) {
-        const mx = (segs[s] + segs[s + 3]) / 2;
-        const my = (segs[s + 1] + segs[s + 4]) / 2;
-        const mz = (segs[s + 2] + segs[s + 5]) / 2;
-        fill = p.regions[nearestCenter(mx, my, mz, centers)].fill;
-      }
-      c.copy(base).lerp(hot, 0.1 + 0.5 * fill * fill).multiplyScalar(0.1 + 0.3 * fill);
-      for (let k = 0; k < 2; k++) col.setXYZ(s / 3 + k, c.r, c.g, c.b);
+    const fillOfLobe = new Float32Array(LOBES);
+    p?.regions.forEach((r) => { fillOfLobe[r.lobe] = r.fill; });
+    const sf = this.shell.geometry.getAttribute('aFill') as BufferAttribute;
+    const { a, b } = this.shellLobes;
+    for (let e = 0; e < a.length; e++) {
+      sf.setX(e * 2, fillOfLobe[a[e]]);
+      sf.setX(e * 2 + 1, fillOfLobe[b[e]]);
     }
-    col.needsUpdate = true;
+    sf.needsUpdate = true;
+    const ff = this.fresnel.geometry.getAttribute('aFill') as BufferAttribute;
+    for (let v = 0; v < MESH_VERTEX_LOBE.length; v++) ff.setX(v, fillOfLobe[MESH_VERTEX_LOBE[v]]);
+    ff.needsUpdate = true;
   }
 
   setData(atoms: Atom[], links: Link[]) {
@@ -317,12 +437,20 @@ export class BrainV2 {
     const phase = new Float32Array(atoms.length);
     for (let i = 0; i < phase.length; i++) phase[i] = ((i * 2654435761) >>> 0) / 4294967296;
     g.setAttribute('aPhase', new BufferAttribute(phase, 1));
+    const imp = new Float32Array(atoms.length);
+    for (let i = 0; i < imp.length; i++) {
+      const a = atoms[i];
+      const tier = a.tier === 'hot' ? 1 : a.tier === 'warm' ? 0.6 : 0.3;
+      imp[i] = Math.min(1, tier * (0.65 + 0.35 * Math.max(0, Math.min(1, a.score || 0))));
+    }
+    g.setAttribute('aImp', new BufferAttribute(imp, 1));
     this.cloud = new Points(g, new ShaderMaterial({
       vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
       uniforms: { uSize: { value: 0 }, uLod: { value: 0 }, uTime: { value: 0 } },
     }));
     this.cloud.frustumCulled = false;
     this.scene.add(this.cloud);
+    this.buildAmbient(links);
 
     if (this.glow) { this.scene.remove(this.glow); this.glow.geometry.dispose(); (this.glow.material as ShaderMaterial).dispose(); }
     const regs = this.parc.regions;
@@ -345,19 +473,57 @@ export class BrainV2 {
 
     this.labelLayer.replaceChildren();
     this.labels = regs.map((r) => {
-      const s = document.createElement('span');
-      s.textContent = `${r.key} ${r.count.toLocaleString()}`;
-      Object.assign(s.style, {
+      const el = document.createElement('span');
+      el.textContent = `${r.key} \u00b7 ${r.count.toLocaleString()}`;
+      Object.assign(el.style, {
         position: 'absolute', left: '0', top: '0', font: '11px ui-monospace, "JetBrains Mono", monospace',
-        color: '#9a968c', whiteSpace: 'nowrap', transform: 'translate(-50%,-50%)', opacity: '0',
+        color: '#d9d2f3', whiteSpace: 'nowrap', transform: 'translate(-50%,-50%)', opacity: '0',
+        textShadow: '0 0 6px #000, 0 0 2px #000', letterSpacing: '0.02em',
       });
-      this.labelLayer.appendChild(s);
-      return s;
+      this.labelLayer.appendChild(el);
+      return el;
     });
+    this.labelOrder = regs.map((_, i) => i).filter((i) => regs[i].count > 0).sort((a, b) => regs[b].count - regs[a].count).slice(0, MAX_LABELS);
     this.hovered = -1;
     this.applyFlags();
     this.clearLines(this.hoverLines);
     this.resetView(true);
+  }
+
+  /** Faint always-on synapses (strongest links, capped): one draw call, shimmer + spike pulses in the shader. */
+  private buildAmbient(links: Link[]) {
+    if (this.ambient) { this.scene.remove(this.ambient); this.ambient.geometry.dispose(); (this.ambient.material as ShaderMaterial).dispose(); this.ambient = null; }
+    const picked: Array<[number, number]> = [];
+    const stride = Math.max(1, Math.ceil(links.length / (AMBIENT_SYNAPSES * 2)));
+    const cand = links.filter((_, i) => i % stride === 0).sort((x, y) => (y.strength ?? 0) - (x.strength ?? 0));
+    for (const l of cand) {
+      const a = this.idIndex.get(l.a);
+      const b = this.idIndex.get(l.b);
+      if (a === undefined || b === undefined) continue;
+      const d = Math.hypot(this.xyz[a * 3] - this.xyz[b * 3], this.xyz[a * 3 + 1] - this.xyz[b * 3 + 1], this.xyz[a * 3 + 2] - this.xyz[b * 3 + 2]);
+      if (d > 0.7) continue; // keep synapses local: no long spaghetti across the brain
+      picked.push([a, b]);
+      if (picked.length >= AMBIENT_SYNAPSES) break;
+    }
+    if (!picked.length) return;
+    const n = picked.length;
+    const pos = new Float32Array(n * 6);
+    const tt = new Float32Array(n * 2);
+    const sd = new Float32Array(n * 2);
+    picked.forEach(([a, b], k) => {
+      pos.set(this.xyz.subarray(a * 3, a * 3 + 3), k * 6);
+      pos.set(this.xyz.subarray(b * 3, b * 3 + 3), k * 6 + 3);
+      tt[k * 2] = 0;
+      tt[k * 2 + 1] = 1;
+      sd[k * 2] = sd[k * 2 + 1] = (((a * 73856093) ^ (b * 19349663)) >>> 0) % 997 / 997;
+    });
+    const g = new BufferGeometry();
+    g.setAttribute('position', new BufferAttribute(pos, 3));
+    g.setAttribute('aT', new BufferAttribute(tt, 1));
+    g.setAttribute('aSeed', new BufferAttribute(sd, 1));
+    this.ambient = new LineSegments(g, synapseMaterial([0.55, 0.45, 1.0], 0.12, 0.9, 0.0));
+    this.ambient.frustumCulled = false;
+    this.scene.add(this.ambient);
   }
 
   /* ── flags / highlights ───────────────────────────────────── */
@@ -378,16 +544,29 @@ export class BrainV2 {
   }
 
   private fillLines(lines: LineSegments, pairs: Array<[number, number]>) {
-    const attr = lines.geometry.getAttribute('position') as BufferAttribute;
-    const arr = attr.array as Float32Array;
-    const n = Math.min(pairs.length, 4096);
+    const g = lines.geometry;
+    const pos = (g.getAttribute('position') as BufferAttribute).array as Float32Array;
+    const tt = (g.getAttribute('aT') as BufferAttribute).array as Float32Array;
+    const sd = (g.getAttribute('aSeed') as BufferAttribute).array as Float32Array;
+    const n = Math.min(pairs.length, LINE_CAP);
+    let v = 0;
     for (let k = 0; k < n; k++) {
       const [a, b] = pairs[k];
-      arr.set(this.xyz.subarray(a * 3, a * 3 + 3), k * 6);
-      arr.set(this.xyz.subarray(b * 3, b * 3 + 3), k * 6 + 3);
+      const seed = ((a * 73856093) ^ (b * 19349663)) % 997 / 997;
+      for (let q = 0; q < SEG; q++) {
+        for (let e = 0; e < 2; e++) {
+          const t = (q + e) / SEG;
+          for (let c = 0; c < 3; c++) pos[v * 3 + c] = this.xyz[a * 3 + c] + (this.xyz[b * 3 + c] - this.xyz[a * 3 + c]) * t;
+          tt[v] = t;
+          sd[v] = Math.abs(seed);
+          v++;
+        }
+      }
     }
-    attr.needsUpdate = true;
-    lines.geometry.setDrawRange(0, n * 2);
+    (g.getAttribute('position') as BufferAttribute).needsUpdate = true;
+    (g.getAttribute('aT') as BufferAttribute).needsUpdate = true;
+    (g.getAttribute('aSeed') as BufferAttribute).needsUpdate = true;
+    g.setDrawRange(0, v);
   }
   private clearLines(lines: LineSegments) { lines.geometry.setDrawRange(0, 0); }
 
@@ -456,7 +635,7 @@ export class BrainV2 {
   resetView(instant = false) {
     this.setTarget(null);
     this.setPath([]);
-    const pos = new Vector3(0.9, 0.7, START_DISTANCE).setLength(START_DISTANCE);
+    const pos = START_DIR.clone().multiplyScalar(START_DISTANCE);
     if (instant) { this.camera.position.copy(pos); this.controls.target.set(0, 0, 0); this.controls.update(); this.tween = null; }
     else this.flyTo(pos, new Vector3(0, 0, 0));
   }
@@ -531,16 +710,20 @@ export class BrainV2 {
     const h = this.host.clientHeight || 1;
     if (this.cloud) {
       const u = (this.cloud.material as ShaderMaterial).uniforms;
-      u.uSize.value = h * 0.012;
+      u.uSize.value = h * 0.017;
       u.uLod.value = lodU;
       u.uTime.value = this.time;
     }
+    for (const o of [this.shell, this.ambient, this.hoverLines, this.pathLines]) {
+      if (o) (o.material as ShaderMaterial).uniforms.uTime.value = this.time;
+    }
+    this.fresnel.visible = this.lod !== 'near';
     if (this.glow) {
       const far = this.lod === 'far' ? 1 : this.lod === 'mid' ? 0.45 : 0;
       (this.glow.material as ShaderMaterial).uniforms.uFar.value = far * (h / 700);
       this.glow.visible = far > 0;
     }
-    this.updateLabels(this.lod === 'far');
+    this.updateLabels(this.lod !== 'near');
 
     if (this.pointer.dirty && this.pointer.inside) {
       this.pointer.dirty = false;
@@ -549,21 +732,40 @@ export class BrainV2 {
     this.renderer.render(this.scene, this.camera);
   }
 
+  /** Top-N region labels only; greedy screen-space collision (largest region wins); fade with depth + facing. */
   private updateLabels(show: boolean) {
     if (!this.parc) return;
     const w = this.host.clientWidth;
     const h = this.host.clientHeight;
-    this.parc.regions.forEach((r, i) => {
-      const el = this.labels[i];
-      if (!el) return;
-      if (!show) { el.style.opacity = '0'; return; }
-      const c = new Vector3(...r.center);
-      const facing = c.dot(this.camera.position) > 0; // hide labels on the far side of the hull
-      const v = c.project(this.camera);
-      el.style.opacity = v.z > 1 || !facing || i >= 14 ? '0' : '0.85';
-      el.style.left = `${(v.x * 0.5 + 0.5) * w}px`;
-      el.style.top = `${(-v.y * 0.5 + 0.5) * h}px`;
-    });
+    const regs = this.parc.regions;
+    const shown = new Set<number>();
+    this.labelRects.length = 0;
+    const cam = this.camera.position;
+    const camLen = cam.length() || 1;
+    if (show) {
+      for (const i of this.labelOrder) {
+        const r = regs[i];
+        const c = new Vector3(...r.center);
+        const facing = (c.x * cam.x + c.y * cam.y + c.z * cam.z) / ((c.length() || 1) * camLen);
+        const fade = Math.max(0, Math.min(1, (facing + 0.1) / 0.5));
+        if (fade <= 0.02) continue;
+        const v = c.project(this.camera);
+        if (v.z > 1) continue;
+        const x = (v.x * 0.5 + 0.5) * w;
+        const y = (-v.y * 0.5 + 0.5) * h;
+        const tw = this.labels[i].textContent!.length * 6.6 + 10;
+        const rect = { x: x - tw / 2, y: y - 9, w: tw, h: 18 };
+        if (rect.x < 4 || rect.x + rect.w > w - 4 || rect.y < 4 || rect.y + rect.h > h - 4) continue;
+        if (this.labelRects.some((o) => rect.x < o.x + o.w + 6 && rect.x + rect.w + 6 > o.x && rect.y < o.y + o.h + 4 && rect.y + rect.h + 4 > o.y)) continue;
+        this.labelRects.push(rect);
+        const el = this.labels[i];
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.opacity = String(0.9 * fade * (this.lod === 'far' ? 1 : 0.6));
+        shown.add(i);
+      }
+    }
+    this.labels.forEach((el, i) => { if (!shown.has(i)) el.style.opacity = '0'; });
   }
 
   metrics(): BrainV2Metrics {

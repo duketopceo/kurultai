@@ -2,14 +2,17 @@
  * Tag-region parcellation of the cortex hull. Pure + deterministic so it is
  * unit-testable and O(n) at 50k+ atoms (no force layout).
  */
-export const HULL = { x: 0.78, y: 0.66, z: 1.0 } as const;
-export const MAX_REGIONS = 24;
+import { insideCortex, LOBES, LOBE_SEEDS, LOBE_VOXELS, nearestLobe, VOXEL_CELL } from './cortex.ts';
+
+export const MAX_REGIONS = LOBES;
 export const OTHER = 'other';
 export const UNTAGGED = 'untagged';
 
 export interface Region {
   key: string;
   count: number;
+  /** Index of the cortex lobe (contiguous volume chunk) this tag owns. */
+  lobe: number;
   center: [number, number, number];
   /** 0..1: how full the region is (drives wire-chunk brightness). */
   fill: number;
@@ -21,13 +24,8 @@ export interface Parcellation {
   regionOf: Uint16Array;
 }
 
-/** True when the point is inside the low-poly brain hull (ellipsoid + longitudinal fissure). */
-export function insideHull(x: number, y: number, z: number): boolean {
-  const e = (x / HULL.x) ** 2 + (y / HULL.y) ** 2 + (z / HULL.z) ** 2;
-  if (e > 1) return false;
-  if (Math.abs(x) < 0.03 && y > 0.18) return false;
-  return true;
-}
+/** True when the point is inside the cortex model (voxel mask baked from brain.glb). */
+export const insideHull = insideCortex;
 
 /** FNV-1a -> [0,1) stream, seeded by string. */
 export function hashStream(seed: string): () => number {
@@ -58,33 +56,6 @@ export function topTagOf(tags: string[], freq: Map<string, number>): string {
   return best || UNTAGGED;
 }
 
-/** Fibonacci points on a scaled ellipsoid shell (radius factor `r`). */
-export function regionCenters(n: number, r = 0.66): [number, number, number][] {
-  const out: [number, number, number][] = [];
-  const golden = Math.PI * (3 - Math.sqrt(5));
-  for (let i = 0; i < n; i++) {
-    const y = n === 1 ? 0 : 1 - (i / (n - 1)) * 2;
-    const rad = Math.sqrt(Math.max(0, 1 - y * y));
-    const th = golden * i;
-    out.push([Math.cos(th) * rad * HULL.x * r, y * HULL.y * r, Math.sin(th) * rad * HULL.z * r]);
-  }
-  return out;
-}
-
-export function nearestCenter(x: number, y: number, z: number, centers: [number, number, number][]): number {
-  let best = 0;
-  let bd = Infinity;
-  for (let i = 0; i < centers.length; i++) {
-    const c = centers[i];
-    const d = (x - c[0]) ** 2 + (y - c[1]) ** 2 + (z - c[2]) ** 2;
-    if (d < bd) {
-      bd = d;
-      best = i;
-    }
-  }
-  return best;
-}
-
 export function parcellate(atoms: { id: string; tags: string[] }[], maxRegions = MAX_REGIONS): Parcellation {
   const freq = new Map<string, number>();
   for (const a of atoms) for (const t of a.tags) freq.set(t, (freq.get(t) ?? 0) + 1);
@@ -104,50 +75,35 @@ export function parcellate(atoms: { id: string; tags: string[] }[], maxRegions =
     regionOf[i] = Math.max(0, r);
     counts[Math.max(0, r)]++;
   });
-  const centers = regionCenters(Math.max(1, kept.length));
-  const mean = atoms.length / Math.max(1, kept.length);
   const regions: Region[] = kept.map((key, i) => ({
     key,
     count: counts[i],
-    center: centers[i],
-    // a region "fills" as it approaches an even share; a lone dominant region reaches 1 fast
-    fill: Math.min(1, counts[i] / Math.max(8, mean)),
+    lobe: i,
+    center: LOBE_SEEDS[i],
+    // log-scaled saturation: a handful of atoms barely lights a lobe, ~150 fills it
+    fill: Math.min(1, Math.log2(1 + counts[i]) / Math.log2(151)),
   }));
   return { regions, regionOf };
 }
 
-/** Deterministic position of an atom inside its region (Voronoi cell of the hull). */
-export function placeAtom(id: string, region: number, centers: [number, number, number][]): [number, number, number] {
+/** Deterministic position of an atom: a random interior voxel of its lobe plus sub-voxel jitter. */
+export function placeAtom(id: string, lobe: number): [number, number, number] {
   const rnd = hashStream(id);
-  const c = centers[region] ?? [0, 0, 0];
-  let fallback: [number, number, number] = [c[0], c[1], c[2]];
-  for (let t = 0; t < 48; t++) {
-    // sample a box around the region centre, not the whole hull: cells are ~1/24 of the volume
-    const x = c[0] + (rnd() * 2 - 1) * 0.42;
-    const y = c[1] + (rnd() * 2 - 1) * 0.42;
-    const z = c[2] + (rnd() * 2 - 1) * 0.5;
-    if (!insideHull(x, y, z)) continue;
-    if (nearestCenter(x, y, z, centers) !== region) continue;
-    return [x, y, z];
+  const v = LOBE_VOXELS[lobe];
+  if (!v.length) {
+    const s = LOBE_SEEDS[lobe] ?? [0, 0, 0];
+    return [s[0], s[1], s[2]];
   }
-  // fall back to a jittered point near the centre (always inside: centre is at 0.55 radius)
-  for (let t = 0; t < 8; t++) {
-    const x = c[0] + (rnd() - 0.5) * 0.12;
-    const y = c[1] + (rnd() - 0.5) * 0.12;
-    const z = c[2] + (rnd() - 0.5) * 0.12;
-    if (insideHull(x, y, z)) {
-      fallback = [x, y, z];
-      break;
-    }
-  }
-  return fallback;
+  const n = v.length / 3;
+  const k = Math.floor(rnd() * n) * 3;
+  const j = VOXEL_CELL * 0.95;
+  return [v[k] + (rnd() - 0.5) * j, v[k + 1] + (rnd() - 0.5) * j, v[k + 2] + (rnd() - 0.5) * j];
 }
 
 export function placeAll(atoms: { id: string }[], p: Parcellation): Float32Array {
-  const centers = p.regions.map((r) => r.center);
   const xyz = new Float32Array(atoms.length * 3);
   for (let i = 0; i < atoms.length; i++) {
-    const [x, y, z] = placeAtom(atoms[i].id, p.regionOf[i], centers);
+    const [x, y, z] = placeAtom(atoms[i].id, p.regions[p.regionOf[i]]?.lobe ?? 0);
     xyz[i * 3] = x;
     xyz[i * 3 + 1] = y;
     xyz[i * 3 + 2] = z;
@@ -155,10 +111,12 @@ export function placeAll(atoms: { id: string }[], p: Parcellation): Float32Array
   return xyz;
 }
 
+export { nearestLobe };
+
 export type LodTier = 'far' | 'mid' | 'near';
 /** Camera distance (hull units) -> LOD tier. Far: region glow + counts; near: atoms. */
 export function lodTier(distance: number): LodTier {
-  if (distance > 2.6) return 'far';
-  if (distance > 1.5) return 'mid';
+  if (distance > 2.3) return 'far';
+  if (distance > 1.4) return 'mid';
   return 'near';
 }

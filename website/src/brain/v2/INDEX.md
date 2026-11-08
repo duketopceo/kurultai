@@ -19,9 +19,11 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`BrainV2.ts`](BrainV2.ts) | Three.js scene: wireframe shell, Points cloud, region glow + labels, LOD, orbit, fly-to, hover edges, path highlight | `three` · `website/src/brain/v2/regions.ts` · `website/src/brain/v2/path.ts` | `website/src/components/BrainStage.tsx` | 2026-11-07 | 1 | 2026-11-07 added (plan 2026-11-07-001 U1) |
-| [`regions.ts`](regions.ts) | Pure tag-region parcellation, hull test, deterministic placement, LOD tiers | — | `website/src/brain/v2/BrainV2.ts` · `website/src/brain/v2/regions.test.ts` | 2026-11-07 | 1 | 2026-11-07 added |
-| [`regions.test.ts`](regions.test.ts) | node:test: hull containment, determinism, region cap/fill, LOD, path, links | `website/src/brain/v2/regions.ts` · `website/src/brain/v2/path.ts` · `website/src/brain/v2/links.ts` | — | 2026-11-07 | 1 | 2026-11-07 added |
+| [`BrainV2.ts`](BrainV2.ts) | Three.js scene: baked-cortex wire shell + fresnel, per-region fill, electric single-draw atom cloud, ambient + highlight synapses, collision-free top-N labels, LOD, orbit, fly-to | `three` · `website/src/brain/v2/regions.ts` · `website/src/brain/v2/cortex.ts` · `website/src/brain/v2/path.ts` | `website/src/components/BrainStage.tsx` | 2026-11-08 | 2 | 2026-11-08 real cortex wire (brain.glb) + lobe regions + shimmer/spike shaders + label collision · 2026-11-07 added (plan 2026-11-07-001 U1) |
+| [`regions.ts`](regions.ts) | Pure tag-region parcellation onto cortex lobes, deterministic voxel placement, fill curve, LOD tiers | `website/src/brain/v2/cortex.ts` | `website/src/brain/v2/BrainV2.ts` · `website/src/brain/v2/regions.test.ts` | 2026-11-08 | 2 | 2026-11-08 lobes replace ellipsoid Voronoi; log fill · 2026-11-07 added |
+| [`cortex.ts`](cortex.ts) | Decodes baked cortex: low-poly mesh, interior voxel mask, lobe seeds + per-lobe voxels | `website/src/brain/v2/cortexData.ts` | `website/src/brain/v2/regions.ts` · `website/src/brain/v2/BrainV2.ts` | 2026-11-08 | 1 | 2026-11-08 added |
+| [`cortexData.ts`](cortexData.ts) | GENERATED (scripts/bake-cortex.mjs): ~2k-tri decimated brain.glb, 40^3 mask, 24 k-means lobe seeds | — | `website/src/brain/v2/cortex.ts` | 2026-11-08 | 1 | 2026-11-08 added |
+| [`regions.test.ts`](regions.test.ts) | node:test: hull containment, determinism, region cap/fill, LOD, path, links | `website/src/brain/v2/regions.ts` · `website/src/brain/v2/path.ts` · `website/src/brain/v2/links.ts` | — | 2026-11-08 | 2 | 2026-11-08 lobe containment + fill monotonic tests · 2026-11-07 added |
 | [`path.ts`](path.ts) | Client-side BFS shortest path over loaded edges (stand-in for a traverse API) | `website/src/types` | `website/src/brain/v2/BrainV2.ts` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`links.ts`](links.ts) | Shared-tag synapse derivation (moved from BrainStage) | `website/src/brain/linkSelect.ts` | `website/src/components/BrainStage.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`flag.ts`](flag.ts) | `?brain=v2` / `?brain=v1` selector | — | `website/src/components/BrainStage.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
@@ -29,4 +31,5 @@ _None._
 
 ## Recent
 
+- 2026-11-08 — visual pass: wire from the real cortex (brain.glb decimated), tag regions = k-means lobes, electric atoms/synapses, collision-free labels
 - 2026-11-07 — brain v2 core: wireframe cortex + tag regions + one-draw atom cloud, 50k synthetic atoms (plan 2026-11-07-001 U1)

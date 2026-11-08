@@ -77,6 +77,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-11-08 — Brain v2 visual pass: wire from the real cortex (`scripts/bake-cortex.mjs` -> `website/src/brain/v2/cortexData.ts`), lobe regions, electric atoms, label collision
 - 2026-11-07 — Brain v2 (`?brain=v2`): wireframe cortex + tag regions + single-draw atom cloud (`website/src/brain/v2/`), plan `docs/plans/2026-11-07-001-feat-brain-v2-explorable-wireframe-plan.md`
 - 2026-10-19 — repo cleanup: 10 dependabot PRs merged (cargo×5, web×4, website vite pending); issues #116/#117/#122/#132 closed as shipped, #137/#140 status-updated to current brain doctrine; 14 dead remote branches + 6 local deleted (mesh-schema kept — unique unmerged work); version refs reconciled to v0.7.0 (version.ts, INSTALL_GUIDE, AGENT_SETUP, mac-dev, skill readme), CHANGELOG gains missing 0.7.0 section, `.gitignore` `.worktrees/`, INSTALL_REPORT historical banner, LICENSE row → AGPL
 - 2026-10-07 — `docs/plans/2026-10-07-001`: multi-vector late-interaction embed plan (pplx-embed-v2-late rerank lane, `MultiVectorEmbedder` + `atoms_multivec` sidecar, fastembed/http backends, dense v1 primary untouched); tracking issue #424

@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src/brain
 parent: website/src/INDEX.md
-updated: 2026-11-07
-version: 13
+updated: 2026-11-08
+version: 14
 ---
 
 # `website/src/brain`
@@ -32,6 +32,7 @@ version: 13
 
 ## Recent
 
+- 2026-11-08 — `v2/` visual pass: real cortex wire, lobe regions, electric shaders, label collision
 - 2026-11-07 — `v2/` child added: wireframe cortex, tag regions, single-draw atom cloud behind `?brain=v2`
 - 2026-09-14 — `layout/ontoBoard.ts`: 2D ontology board layout helpers consumed by `components/OntologyBoard` (#316)
 - 2026-09-12 — `linkSelect.ts` intentional-synapse sparsifier wired into BrainStage `buildLinks`: union top-K nominations + unconditional low-degree survivors (replaced arbitrary strength-sort cap)
