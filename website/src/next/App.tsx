@@ -82,6 +82,7 @@ export function NextApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mode32, setMode32] = useMode32();
   const themeCtl = useTheme();
+  const [panelInset, setPanelInset] = useState(0);
   const [reduceFx, setReduceFx] = useReduceEffects();
   const brainRef = useRef<BrainStageHandle | null>(null);
   // ── v2: trace-to-another-node state ───────────────────────────────
@@ -469,6 +470,7 @@ export function NextApp() {
               pixel={mode32}
               theme={themeCtl.theme}
               effects={!reduceFx}
+              rightInset={panelInset}
             />
           )}
           mode32={mode32}
@@ -479,6 +481,9 @@ export function NextApp() {
           onThemePref={themeCtl.setPref}
           reduceEffects={reduceFx}
           onReduceEffects={setReduceFx}
+          onPanelInset={setPanelInset}
+          availableViews={['ontology']}
+          renderView={(v) => (v === 'ontology' ? workSurface('ontology') : null)}
           renderSurface={workSurface}
         />
         {settingsOpen && (

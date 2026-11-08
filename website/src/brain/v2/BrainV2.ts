@@ -341,6 +341,8 @@ export class BrainV2 {
   private postCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private postMat: ShaderMaterial | null = null;
   private pixelH = 270;
+  private inset = 0; // px of canvas covered on the right by the side panel
+  private insetNow = 0;
   private disposed = false;
   private atoms: Atom[] = [];
   private idIndex = new Map<string, number>();
@@ -494,6 +496,7 @@ export class BrainV2 {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.bgMat.uniforms.uAspect.value.set(w / h, 1);
+    if (this.insetNow) this.applyInset();
     this.sizeTarget();
   }
 
@@ -530,6 +533,20 @@ export class BrainV2 {
     hs.setProperty('--v2-label-fg', lightNow ? '#0a0a0a' : '#f2f2f2');
     hs.setProperty('--v2-label-bg', lightNow ? 'rgba(245,245,243,0.82)' : 'rgba(5,5,5,0.72)');
     hs.setProperty('--v2-label-bd', lightNow ? 'rgba(10,10,10,0.35)' : 'rgba(255,255,255,0.28)');
+  }
+
+  /** Re-centre the brain in the canvas left of the side panel (eased in the loop; instant under reduced motion). */
+  setRightInset(px: number) {
+    this.inset = Math.max(0, px);
+    if (this.opts.reducedMotion) { this.insetNow = this.inset; this.applyInset(); }
+  }
+
+  private applyInset() {
+    const w = Math.max(1, this.host.clientWidth);
+    const h = Math.max(1, this.host.clientHeight);
+    if (Math.abs(this.insetNow) < 0.5) this.camera.clearViewOffset();
+    else this.camera.setViewOffset(w, h, this.insetNow / 2, 0, w, h); // window slides right => content slides left by inset/2
+    this.camera.updateProjectionMatrix();
   }
 
   /** "Reduce effects": freezes the background flow and breathing field (also implied by reduced motion). */
@@ -856,6 +873,10 @@ export class BrainV2 {
       this.camera.position.lerpVectors(this.tween.fromP, this.tween.toP, e);
       this.controls.target.lerpVectors(this.tween.fromT, this.tween.toT, e);
       if (k >= 1) this.tween = null;
+    }
+    if (Math.abs(this.insetNow - this.inset) > 0.3) {
+      this.insetNow += (this.inset - this.insetNow) * Math.min(1, dt / 140);
+      this.applyInset();
     }
     this.controls.update();
 

@@ -50,6 +50,8 @@ export interface V2ShellProps {
   onThemePref: (p: ThemePref) => void;
   reduceEffects: boolean;
   onReduceEffects: (on: boolean) => void;
+  /** Reports how many px the open side panel covers (0 when closed / on narrow screens). */
+  onPanelInset?: (px: number) => void;
   selected: Atom | null;
   onCloseSelected: () => void;
   tracing: boolean;
@@ -124,6 +126,12 @@ export function V2Shell(p: V2ShellProps) {
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   }, []);
+
+  const { onPanelInset } = p;
+  useEffect(() => {
+    const narrow = typeof window !== 'undefined' && window.innerWidth <= 640;
+    onPanelInset?.(panel && !narrow ? width : 0);
+  }, [panel, width, onPanelInset]);
 
   const statusLabel = p.daemonStatus === 'online' ? 'online' : p.daemonStatus === 'connecting' ? 'connecting' : 'offline';
   const sel = p.selected;
