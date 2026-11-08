@@ -36,3 +36,13 @@
 .v2-palette li button { width: 100%; display: flex; justify-content: space-between; border: 0; font: 14px/20px ui-sans-serif, system-ui, sans-serif; }
 @media (prefers-reduced-motion: reduce) { .v2-app * { transition: none !important; animation: none !important; } }
 @media (max-width: 640px) { .v2-search input { min-width: 140px; } .v2-panel { top: auto; height: 50%; } }
+
+/* Repos floorplan (separate from the brain) */
+.v2-repos { position: absolute; inset: 0; z-index: 40; background: var(--canvas-1); padding: 12px 16px; overflow: auto; }
+.v2-repos header { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+.v2-repos select { background: var(--canvas-3); color: var(--text-1); border: 1px solid #262932; border-radius: 6px; padding: 4px 8px; }
+.v2-repos svg { width: 100%; max-height: calc(100vh - 80px); }
+.fp-room { fill: none; stroke: #262932; stroke-width: 1; }
+.fp-label { fill: var(--text-3); font: 10px ui-monospace, monospace; }
+.fp-tile { fill: #8b6cf0; stroke: #15171d; stroke-width: 0.5; }
+.fp-tile:hover { fill-opacity: 1 !important; fill: var(--text-1); }

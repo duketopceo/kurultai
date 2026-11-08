@@ -19,6 +19,7 @@ import { UI_VERSION } from '../version';
 import { brainVersion } from '../brain/v2/flag';
 import { describeChain, type ChainStep } from '../brain/v2/why';
 import { V2Shell } from './V2Shell';
+import { RepoFloorplan } from '../repos/RepoFloorplan';
 
 import { TopBar, CommandStrip, type NavKey, type SearchResult, type SearchState } from './gen/chrome/chrome';
 import { BrainHero } from './gen/brain-hero/brain-hero';
@@ -80,6 +81,7 @@ export function NextApp() {
   const brainRef = useRef<BrainStageHandle | null>(null);
   // ── v2: trace-to-another-node state ───────────────────────────────
   const [tracing, setTracing] = useState(false);
+  const [reposOpen, setReposOpen] = useState(false);
   const [chain, setChain] = useState<ChainStep[] | null>(null);
   const [chainMissing, setChainMissing] = useState(false);
   const tracingFrom = useRef<Atom | null>(null);
@@ -420,6 +422,7 @@ export function NextApp() {
             brainRef.current?.resetView();
           }}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenRepos={() => setReposOpen(true)}
           selected={selected}
           onCloseSelected={() => { setSelected(null); setChain(null); setChainMissing(false); brainRef.current?.setPath([]); }}
           tracing={tracing}
@@ -462,6 +465,7 @@ export function NextApp() {
             />
           )}
         />
+        {reposOpen && <div className="v2-app v2-repos-host"><RepoFloorplan onClose={() => setReposOpen(false)} /></div>}
         {settingsOpen && (
           <div
             role="dialog"

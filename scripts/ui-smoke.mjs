@@ -104,6 +104,12 @@ try {
     await page.fill('input[aria-label="Search memory"]', 'x');
     const clear = await page.getByRole('button', { name: /Clear search/ }).count();
     console.log('v2 clear-control', clear);
+    await page.keyboard.press('Control+k');
+    await page.keyboard.type('repos');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(800);
+    console.log('v2 repos-view', await page.locator('.v2-repos').count());
+    if (SHOT) await page.screenshot({ path: SHOT.replace(/\.png$/, '-repos.png') });
   } else {
     for (const tab of ['pulse', 'ontology', 'ask', 'store', 'hey']) {
       const el = page.getByRole('tab', { name: tab, exact: true }).first();

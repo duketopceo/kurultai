@@ -28,4 +28,5 @@ version: 2
 
 ## Recent
 
+- 2026-11-07 — App mounts `repos/RepoFloorplan` from the v2 palette
 - 2026-11-07 — `V2Shell` minimal chrome behind `?brain=v2` (App.tsx early-returns it)
