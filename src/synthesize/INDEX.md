@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src/synthesize
 parent: src/INDEX.md
-updated: 2026-08-16
-version: 1
+updated: 2026-11-07
+version: 2
 ---
 
 # `src/synthesize`
@@ -19,10 +19,11 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`mod.rs`](mod.rs) | ask / who-knows synthesis | `src/error` · `src/security` · `src/types` | `src/mcp/interface.rs` · `src/query/mod.rs` | 2026-10-02 | 2 | 2026-10-02 `Answer` literals gain `gaps: vec![]` |
+| [`mod.rs`](mod.rs) | ask / who-knows synthesis | `src/error` · `src/security` · `src/types` | `src/mcp/interface.rs` · `src/query/mod.rs` | 2026-11-07 | 3 | 2026-11-07 401 expiring-key warn via `explain_openrouter_error` · 2026-10-02 `Answer` literals gain `gaps: vec![]` |
 
 ## Recent
 
+- 2026-11-07 — `mod.rs`: 401 expiring-key warn via `explain_openrouter_error`
 - 2026-10-02 — `mod.rs`: `gaps` field on Answer constructors
 
 - 2026-08-16 — indexed this folder (v1 seed)

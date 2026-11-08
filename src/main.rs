@@ -293,7 +293,8 @@ enum Commands {
     /// Connect this machine to a Kurultai instance — browser-approved device
     /// authorization (RFC 8628) that mints + stores an agent key and wires MCP
     Connect {
-        /// Instance URL, e.g. https://knowledge.shippedit.dev or http://127.0.0.1:8421
+        /// Instance URL, e.g. https://knowledge.shippedit.dev or http://127.0.0.1:8421.
+        /// The literal `openrouter` runs the OpenRouter OAuth PKCE flow instead
         url: String,
         /// Codename for this agent (product family, e.g. cursor, claude, devin)
         #[arg(long, short = 'n')]
@@ -308,6 +309,9 @@ enum Commands {
         /// Print the approval URL instead of opening a browser
         #[arg(long)]
         no_open: bool,
+        /// Loopback callback port for `connect openrouter` (default: ephemeral)
+        #[arg(long)]
+        port: Option<u16>,
     },
     /// Sign in to a hosted Kurultai instance and store a long-lived agent token locally
     Login {
@@ -1143,7 +1147,26 @@ async fn main() -> Result<()> {
             ref instance_id,
             agent,
             no_open,
+            port,
         } => {
+            if url == "openrouter" {
+                let store = kurultai::openrouter_connect::FileKeyStore::default_location()?;
+                let opts = kurultai::openrouter_connect::CliOptions {
+                    port: port.unwrap_or(0),
+                    no_open,
+                    ..Default::default()
+                };
+                let loc = kurultai::openrouter_connect::run_cli(opts, &store).await?;
+                // Best-effort extra copy in the local omaseal keyring.
+                if let Some(k) = kurultai::security::api_key_from_keyfile() {
+                    if kurultai::openrouter_connect::store_in_omaseal(k.expose()) {
+                        println!("Also saved to omaseal `kurultai/openrouter`.");
+                    }
+                }
+                println!("OpenRouter connected — stored in {loc}.");
+                println!("Restart a running daemon to pick it up (OPENROUTER_API_KEY still wins).");
+                return Ok(());
+            }
             kurultai::connect::run(kurultai::connect::ConnectOptions {
                 url: url.clone(),
                 codename: codename.clone(),

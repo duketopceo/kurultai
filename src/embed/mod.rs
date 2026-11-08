@@ -99,6 +99,12 @@ impl OpenRouterEmbedder {
                     }
                     if !status.is_success() {
                         let body = resp.text().await.unwrap_or_default();
+                        if let Some(msg) = crate::openrouter_connect::explain_openrouter_error(
+                            status.as_u16(),
+                            &body,
+                        ) {
+                            return Err(KurultaiError::Embed(msg));
+                        }
                         return Err(KurultaiError::Embed(format!(
                             "OpenRouter {status}: {}",
                             body.chars().take(200).collect::<String>()

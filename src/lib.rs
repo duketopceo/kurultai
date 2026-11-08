@@ -24,6 +24,7 @@ pub mod mcp;
 pub mod memory;
 pub mod metrics;
 pub mod ontology;
+pub mod openrouter_connect;
 pub mod pipeline;
 pub mod project;
 pub mod quality;

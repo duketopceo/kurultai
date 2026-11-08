@@ -190,6 +190,10 @@ pub fn path_requires_hub_auth(path: &str) -> bool {
     if path == "/connect" {
         return false;
     }
+    // OpenRouter redirect target: browser has no bearer; gated by single-use `state`.
+    if path == "/api/openrouter/callback" {
+        return false;
+    }
     true
 }
 
@@ -303,6 +307,8 @@ const WRITE_ROUTES: &[&str] = &[
     "/api/ontology/link",
     "/api/ontology/promote",
     "/api/touch",
+    // Mints/stores an OpenRouter key; the callback is state-gated, not listed.
+    "/api/openrouter/connect",
 ];
 
 /// `/api/ontology/entity[/{id}]` and `/api/ontology/link[/{id}]` are the
@@ -440,6 +446,8 @@ mod tests {
         assert!(!path_requires_hub_auth("/api/device/code"));
         assert!(!path_requires_hub_auth("/api/device/token"));
         assert!(!path_requires_hub_auth("/connect"));
+        assert!(!path_requires_hub_auth("/api/openrouter/callback"));
+        assert!(path_requires_hub_auth("/api/openrouter/connect"));
 
         assert!(path_requires_hub_auth("/api/status"));
         assert!(path_requires_hub_auth("/api/search"));

@@ -148,6 +148,12 @@ If excerpts are insufficient, say so briefly. Keep the answer concise.";
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
+            if let Some(msg) =
+                crate::openrouter_connect::explain_openrouter_error(status.as_u16(), &text)
+            {
+                tracing::warn!(%status, "{msg}");
+                return Ok(extractive_answer(question, hits));
+            }
             tracing::warn!(%status, body = %text, "synthesize HTTP error — falling back extractive");
             return Ok(extractive_answer(question, hits));
         }
