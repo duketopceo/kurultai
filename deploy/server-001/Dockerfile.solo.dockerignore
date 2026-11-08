@@ -1,0 +1,24 @@
+# Used instead of the root .dockerignore when building Dockerfile.solo
+# (BuildKit prefers <Dockerfile>.dockerignore). Keeps the context small and
+# secrets out of every layer. The Rust build only needs src/, ui/ (embedded),
+# Cargo.*, rust-toolchain.toml and tests/.
+.git
+.github
+target
+**/node_modules
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+deploy
+docs
+plans
+launch
+design-lab
+evals
+website
+web
+plugin
+demo
