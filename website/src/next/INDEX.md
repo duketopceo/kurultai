@@ -28,5 +28,6 @@ version: 2
 
 ## Recent
 
+- 2026-11-08 — panel re-centres the brain (inset); worksurface buttons keep their own colours; Light is the default theme
 - 2026-11-08 — Light/Dark/System theme + reduce-effects in the menu; shell restyled monochrome
 - 2026-11-07 — `V2Shell` minimal chrome behind `?brain=v2` (App.tsx early-returns it)
