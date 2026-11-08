@@ -6,6 +6,11 @@ import { authHeaders } from './auth';
 
 export type PerfTier = 'low' | 'mid' | 'high' | 'max';
 
+/** The 'all' load tier (50k, v2) reports as 'max': telemetry tiers stay a closed set. */
+export function perfTierOf(t: 'low' | 'mid' | 'high' | 'max' | 'all'): PerfTier {
+  return t === 'all' ? 'max' : t;
+}
+
 type Sample = { metric: string; tier?: PerfTier; value: number };
 
 const FLUSH_MS = 30_000;

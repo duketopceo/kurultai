@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src
 parent: website/INDEX.md
-updated: 2026-10-19
-version: 11
+updated: 2026-11-07
+version: 12
 ---
 
 # `website/src`
@@ -13,6 +13,7 @@ version: 11
 
 ## Children
 
+- [`repos/`](repos/INDEX.md) — optional Repos floorplan view (v2)
 - [`assets/`](assets/INDEX.md) — Static source assets (GLB etc.)
 - [`brain/`](brain/INDEX.md) — 3D view
 - [`components/`](components/INDEX.md) — Dashboard panels
@@ -39,6 +40,7 @@ version: 11
 
 ## Recent
 
+- 2026-11-07 — `repos/` child: Repos floorplan view
 - 2026-10-19 — `version.ts` UI_VERSION 0.6.0 → 0.7.0 (was stale since the v0.7.0 release)
 - 2026-09-20 — client perf telemetry (#102): `perf.ts` reporter (nav_ms, tier_load_ms, fps, long_tasks, heap_mb → `POST /api/metrics/client`); `App.tsx` inits + tags tier + reports per-load ms; `BrainStage` BrainHud feeds FPS samples
 - 2026-09-19 — mobile overflow fix (`styles.css`): dead `.nav-links` selector replaced with `.topbar-nav`; command-strip/mission wrap rules moved into the ≤960px block *after* their base rules — equal-specificity cascade had silently dropped them

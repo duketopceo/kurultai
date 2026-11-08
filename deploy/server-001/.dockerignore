@@ -1,8 +1,0 @@
-.git
-.github
-.env
-*.env
-deploy
-docs
-target
-node_modules
