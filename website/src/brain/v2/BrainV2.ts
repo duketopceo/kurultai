@@ -10,7 +10,7 @@
  * ONLY for the selected path and the search target (DESIGN.md accent rule).
  */
 import {
-  AdditiveBlending, BufferAttribute, BufferGeometry, DoubleSide, LineSegments, Mesh,
+  AdditiveBlending, BufferAttribute, NearestFilter, OrthographicCamera, PlaneGeometry, Vector2, WebGLRenderTarget, BufferGeometry, DoubleSide, LineSegments, Mesh,
   PerspectiveCamera, Points, Scene, ShaderMaterial, Vector3, WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -27,6 +27,31 @@ const MAX_LABELS = 10;
 const AMBIENT_SYNAPSES = 900;
 const SEG = 8; // sub-segments per highlighted synapse (electric jitter)
 const LINE_CAP = 1024;
+
+/* ── 32-bit mode: PS1 vertex snap (shared uniform, 0 = off) + low-res target with Bayer dither / 8-8-4 palette ── */
+const SNAP = { value: 0 };
+const withSnap = (src: string) =>
+  `uniform float uSnap;\nvec4 snapPos(vec4 p) { if (uSnap > 0.5) { vec2 g = floor(p.xy / p.w * uSnap + 0.5) / uSnap; p.xy = g * p.w; } return p; }\n` +
+  src.replace(/gl_Position = ([^;]+);/, 'gl_Position = snapPos($1);');
+const POST_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+const POST_FRAG = /* glsl */ `
+uniform sampler2D tDiffuse;
+uniform vec2 uRes;
+varying vec2 vUv;
+float bayer(vec2 p) {
+  vec2 q = mod(floor(p), 4.0);
+  float a = mod(q.x + q.y, 2.0);          // (x ^ y) & 1 for 0..3 equals parity of x + y
+  float a1 = mod(floor(q.x / 2.0) + floor(q.y / 2.0), 2.0); // (x ^ y) >> 1 & 1
+  float idx = a * 8.0 + mod(q.y, 2.0) * 4.0 + a1 * 2.0 + mod(floor(q.y / 2.0), 2.0);
+  return idx / 16.0 - 0.47;
+}
+void main() {
+  vec3 c = texture2D(tDiffuse, vUv).rgb * 1.35;
+  float d = bayer(vUv * uRes);
+  vec3 lv = vec3(7.0, 7.0, 3.0); // 8x8x4 = 256 colours
+  c = floor(c * lv + 0.5 + d * 0.9) / lv;
+  gl_FragColor = vec4(c, 1.0);
+}`;
 
 export const FLAG = { none: 0, hover: 1, path: 2, fresh: 3, target: 4 } as const;
 
@@ -204,9 +229,9 @@ void main() {
 
 function synapseMaterial(color: [number, number, number], base: number, pulse: number, jitter: number): ShaderMaterial {
   return new ShaderMaterial({
-    vertexShader: SYN_VERT, fragmentShader: SYN_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
+    vertexShader: withSnap(SYN_VERT), fragmentShader: SYN_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
     uniforms: {
-      uTime: { value: 0 }, uJitter: { value: jitter }, uBase: { value: base }, uPulse: { value: pulse },
+      uSnap: SNAP, uTime: { value: 0 }, uJitter: { value: jitter }, uBase: { value: base }, uPulse: { value: pulse },
       uColor: { value: new Vector3(...color) },
     },
   });
@@ -259,6 +284,12 @@ export class BrainV2 {
   private labelOrder: number[] = [];
   private ro: ResizeObserver;
   private raf = 0;
+  private pixel = false;
+  private rt: WebGLRenderTarget | null = null;
+  private postScene = new Scene();
+  private postCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  private postMat: ShaderMaterial | null = null;
+  private pixelH = 270;
   private disposed = false;
   private atoms: Atom[] = [];
   private idIndex = new Map<string, number>();
@@ -323,14 +354,14 @@ export class BrainV2 {
     shellGeo.setAttribute('aNormal', new BufferAttribute(en, 3));
     shellGeo.setAttribute('aEdge', new BufferAttribute(boundary, 1));
     this.shell = new LineSegments(shellGeo, new ShaderMaterial({
-      vertexShader: SHELL_VERT, fragmentShader: SHELL_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
-      uniforms: { uTime: { value: 0 } },
+      vertexShader: withSnap(SHELL_VERT), fragmentShader: SHELL_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
+      uniforms: { uSnap: SNAP, uTime: { value: 0 } },
     }));
     this.shell.frustumCulled = false;
     this.scene.add(this.shell);
 
     this.fresnel = new Mesh(fg, new ShaderMaterial({
-      vertexShader: FRESNEL_VERT, fragmentShader: FRESNEL_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide,
+      vertexShader: withSnap(FRESNEL_VERT), fragmentShader: FRESNEL_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide, uniforms: { uSnap: SNAP },
     }));
     this.fresnel.frustumCulled = false;
     this.scene.add(this.fresnel);
@@ -402,7 +433,34 @@ export class BrainV2 {
     this.renderer.domElement.style.height = '100%';
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.sizeTarget();
   }
+
+  private sizeTarget() {
+    if (!this.pixel || !this.rt || !this.postMat) return;
+    const h = this.pixelH;
+    const w = Math.max(1, Math.round(h * (this.host.clientWidth / Math.max(1, this.host.clientHeight))));
+    this.rt.setSize(w, h);
+    (this.postMat.uniforms.uRes.value as Vector2).set(w, h);
+  }
+
+  /** 32-bit mode: low-res nearest-upscaled, dithered 256-colour render with PS1 vertex snap and stepped animation. */
+  setPixelMode(on: boolean) {
+    if (on === this.pixel) return;
+    this.pixel = on;
+    SNAP.value = on ? 160 : 0;
+    this.renderer.domElement.style.imageRendering = on ? 'pixelated' : '';
+    if (on && !this.rt) {
+      this.rt = new WebGLRenderTarget(2, 2, { minFilter: NearestFilter, magFilter: NearestFilter });
+      this.postMat = new ShaderMaterial({
+        vertexShader: POST_VERT, fragmentShader: POST_FRAG, depthTest: false, depthWrite: false,
+        uniforms: { tDiffuse: { value: this.rt.texture }, uRes: { value: new Vector2(2, 2) } },
+      });
+      this.postScene.add(new Mesh(new PlaneGeometry(2, 2), this.postMat));
+    }
+    this.sizeTarget();
+  }
+
 
   /** Each region's fill drives its wire edges + fresnel shell; unassigned lobes stay dim chunks. */
   private paintShell(p: Parcellation | null) {
@@ -445,8 +503,8 @@ export class BrainV2 {
     }
     g.setAttribute('aImp', new BufferAttribute(imp, 1));
     this.cloud = new Points(g, new ShaderMaterial({
-      vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
-      uniforms: { uSize: { value: 0 }, uLod: { value: 0 }, uTime: { value: 0 } },
+      vertexShader: withSnap(VERT), fragmentShader: FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
+      uniforms: { uSnap: SNAP, uSize: { value: 0 }, uLod: { value: 0 }, uTime: { value: 0 } },
     }));
     this.cloud.frustumCulled = false;
     this.scene.add(this.cloud);
@@ -465,8 +523,8 @@ export class BrainV2 {
     gg.setAttribute('position', new BufferAttribute(gp, 3));
     gg.setAttribute('aStrength', new BufferAttribute(gs, 1));
     this.glow = new Points(gg, new ShaderMaterial({
-      vertexShader: GLOW_VERT, fragmentShader: GLOW_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
-      uniforms: { uFar: { value: 1 } },
+      vertexShader: withSnap(GLOW_VERT), fragmentShader: GLOW_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
+      uniforms: { uSnap: SNAP, uFar: { value: 1 } },
     }));
     this.glow.frustumCulled = false;
     this.scene.add(this.glow);
@@ -708,15 +766,16 @@ export class BrainV2 {
 
     this.lod = lodTier(this.camera.position.distanceTo(this.controls.target));
     const lodU = this.lod === 'far' ? 0 : this.lod === 'mid' ? 0.55 : 1;
-    const h = this.host.clientHeight || 1;
+    const h = (this.pixel ? this.pixelH : this.host.clientHeight) || 1;
+    const st = this.pixel ? Math.floor(this.time * 8) / 8 : this.time; // stepped animation in 32-bit
     if (this.cloud) {
       const u = (this.cloud.material as ShaderMaterial).uniforms;
       u.uSize.value = h * 0.02;
       u.uLod.value = lodU;
-      u.uTime.value = this.time;
+      u.uTime.value = st;
     }
     for (const o of [this.shell, this.ambient, this.hoverLines, this.pathLines]) {
-      if (o) (o.material as ShaderMaterial).uniforms.uTime.value = this.time;
+      if (o) (o.material as ShaderMaterial).uniforms.uTime.value = st;
     }
     this.fresnel.visible = this.lod !== 'near';
     if (this.glow) {
@@ -730,7 +789,14 @@ export class BrainV2 {
       this.pointer.dirty = false;
       this.setHover(this.pick(this.pointer.x, this.pointer.y));
     }
-    this.renderer.render(this.scene, this.camera);
+    if (this.pixel && this.rt && this.postMat) {
+      this.renderer.setRenderTarget(this.rt);
+      this.renderer.render(this.scene, this.camera);
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.postScene, this.postCam);
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   /** Top-N region labels only; greedy screen-space collision (largest region wins); fade with depth + facing. */
