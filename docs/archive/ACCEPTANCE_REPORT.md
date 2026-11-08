@@ -1,3 +1,4 @@
+<!-- Archived 2026-11-07: historical record, superseded by current docs. See docs/archive/INDEX.md. -->
 # Acceptance Report — KHAN-251
 
 Findings from building the comprehensive acceptance/integration test suite

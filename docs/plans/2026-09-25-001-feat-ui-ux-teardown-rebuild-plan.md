@@ -2,6 +2,8 @@
 artifact_contract: ce-unified-plan/v1
 product_contract_source: ce-plan-bootstrap
 execution: code
+status: completed
+merged_prs: [372, 374, 387]
 ---
 
 # UI/UX teardown + rebuild — plan

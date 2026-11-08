@@ -1,3 +1,8 @@
+---
+
+status: reference
+---
+
 # Phase 2 note: Graph orchestration (not linear agent chains)
 
 **Tracking:** [#6](https://github.com/duketopceo/kurultai/issues/6) Search & Retrieval · [#7](https://github.com/duketopceo/kurultai/issues/7) Synthesis  

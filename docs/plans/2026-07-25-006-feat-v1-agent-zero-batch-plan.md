@@ -9,6 +9,8 @@ execution: code
 authority: "GitHub #72 #73 #74 #75 #76 · docs/agent-zero · master #27"
 depth: deep
 origin: "User /lfg for all those issues at once; op CLI SSH for push/PR"
+status: completed
+merged_prs: [77]
 ---
 
 # feat: v1 Agent Zero batch (#72–#76)

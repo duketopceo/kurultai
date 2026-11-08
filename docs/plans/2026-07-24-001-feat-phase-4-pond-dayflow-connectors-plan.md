@@ -8,6 +8,8 @@ product_contract_source: ce-plan-bootstrap
 execution: code
 authority: "GitHub #27 Phase 4 · #8 umbrella · #21 Dayflow; builds on Phase 1–3 main"
 depth: standard
+status: completed
+merged_prs: [62]
 ---
 
 # feat: Phase 4 Pond + Dayflow connectors

@@ -1,3 +1,8 @@
+---
+
+status: reference
+---
+
 # Phase 6 — work orders (post–v0.4.0)
 
 **Status:** Wave B foundation ✅ · next queue → [`phase-6-next-work-orders.md`](phase-6-next-work-orders.md)  

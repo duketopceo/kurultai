@@ -1,3 +1,8 @@
+---
+
+status: completed
+---
+
 # Phase 1 complete — wrap-up
 
 **Status:** ✅ Shipped on `main` (2026-07-21) · **Tracker closeout:** [phase-1-closeout.md](phase-1-closeout.md)  

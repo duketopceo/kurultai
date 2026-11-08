@@ -1,3 +1,9 @@
+---
+
+status: completed
+merged_prs: [328]
+---
+
 # feat(store): declarative tier policy for hot/medium/cold membership
 
 Issue: [#325](https://github.com/duketopceo/kurultai/issues/325) · Milestone: Wave H (Serve-path hardening, CobbleDB-inspired)

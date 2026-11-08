@@ -9,6 +9,7 @@ execution: code
 depth: deep
 authority: "User assessment 2026-08-04 (revalidated 2026-08-12) · #111 #115 #176–#181 · docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md · docs/multi-user-kurultai.md · Nimrod/brain-worker GlenEnv isolation"
 origin: "ce-plan: personal retrieval → multi-employee network-exposed brain for Nimrod"
+status: unverified
 ---
 
 # feat: Nimrod shared brain path — hub kernel around Kurultai retrieval

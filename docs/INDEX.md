@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: docs
 parent: INDEX.md
-updated: 2026-10-19
-version: 10
+updated: 2026-11-07
+version: 11
 ---
 
 # `docs`
@@ -14,6 +14,7 @@ version: 10
 ## Children
 
 - [`agent-zero/`](agent-zero/INDEX.md) — v1 Agent Zero issue pack (historical)
+- [`archive/`](archive/INDEX.md) — Historical reports (superseded)
 - [`brainstorms/`](brainstorms/INDEX.md) — Requirements / research notes
 - [`design/`](design/INDEX.md) — UI/UX rebuild definitions + research bases (plan 2026-09-25-001)
 - [`deploy/`](deploy/INDEX.md) — Hub / Railway operator recipes
@@ -43,6 +44,7 @@ version: 10
 
 ## Recent
 
+- 2026-11-07 — new `archive/` for root-level historical reports
 - 2026-10-19 — `AGENT_SETUP_PROMPT.md` + `mac-dev.md`: cargo install tag refs bumped v0.4.x → v0.7.0 (stale since release)
 - 2026-10-05 — plans/ added 2026-10-05-001 program roadmap plan (U1-U21, plan classification)
 - 2026-09-30 — plans/ added 2026-09-30-001 load + chaos harness plan (scripts/hammer.mjs + tests/chaos.rs); hosted write-hammer evidence: ~133 wps, zero errors

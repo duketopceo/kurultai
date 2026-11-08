@@ -9,6 +9,7 @@ execution: code
 depth: deep
 authority: "User design-pattern list (GBrain → Rust, not code) · parent docs/plans/2026-08-12-001-feat-nimrod-shared-brain-path-plan.md · #111 #115 #176–#181 · gbrain RLS/scope/doctor patterns"
 origin: "ce-plan: port approach from garrytan/gbrain for hub isolation + doctor + retrieval polish"
+status: unverified
 ---
 
 # feat: GBrain design patterns → Kurultai (Rust approach port)

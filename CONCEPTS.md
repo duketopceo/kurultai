@@ -46,13 +46,9 @@ A directed typed edge between entities: `is_a`, `instance_of`, `associates_with`
 
 ### Visibility scope
 
-Tiered access field on every atom (HUB-1 / [#178](https://github.com/duketopceo/kurultai/issues/178)). Solo / no-hub installs leave atoms at `personal` and search/ask behave as before. Shared hub slices (HUB-2+) will honor `team` / `company`; local search does **not** filter by scope until a hub is configured.
+Tiered access field on every atom (HUB-1 / [#178](https://github.com/duketopceo/kurultai/issues/178)). Solo / no-hub installs leave atoms at `personal` and search/ask behave as before. Shared hub slices (HUB-2+) will honor `team` / `company`; local search does **not** filter by scope until a hub is configured. Values: `personal` (never leaves the originating device), `team`, `company`; team and company live on an optional shared hub, and a deployment may enable zero, one, or two shared tiers.
 
 See: [docs/plans/phase-6-next-work-orders.md](docs/plans/phase-6-next-work-orders.md) · [docs/multi-user-kurultai.md](docs/multi-user-kurultai.md)
-
-### Visibility scope
-
-Atom visibility: `personal`, `team`, or `company`. Personal never leaves the originating device. Team and company live on an optional shared hub. A deployment may enable zero, one, or two shared tiers.
 
 ### Hub
 

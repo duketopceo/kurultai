@@ -1,3 +1,8 @@
+---
+
+status: completed
+---
+
 # Phase 4 closeout — tracker hygiene
 
 **Product Phase 4 solo expansion is shipped** (#62 Dayflow+Pond, #63 GitHub FS).  

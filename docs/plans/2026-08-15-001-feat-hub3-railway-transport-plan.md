@@ -9,6 +9,8 @@ execution: code
 authority: "User /ce-plan 2026-08-15 — Wave G sequence 001; GitHub #177 · Linear KHAN-255 / PRO-763"
 depth: standard
 origin: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md R4–R6; docs/plans/2026-08-15-000-chore-wave-g-railway-sequence-plan.md; #190 hub API-key scaffold; #176 PostgresStore"
+status: completed
+merged_prs: [246]
 ---
 
 # feat: HUB-3 Railway transport — public/Tailscale bind + Postgres hub daemon

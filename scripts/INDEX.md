@@ -22,7 +22,6 @@ version: 7
 |------|------|-------|---------|-------|-----|-----------|
 | [`late-embed-server.py`](late-embed-server.py) | Late-interaction embed sidecar: `MultiVectorEncoder` (pplx-embed-v2-late-*) → `/embed_query`+`/embed_document` for `[embed.late] backend = "http"` | sentence-transformers ≥6 | `src/embed/late.rs` | 2026-10-07 | 1 | pplx-embed-v2 drop → sidecar (#424) |
 | [`audit-agent-index.py`](audit-agent-index.py) | CI audit: INDEX.md coverage vs git ls-files | — | — | 2026-09-13 | 2 | 2026-09-13 skip `website/public/` — Vite public assets are cataloged in `website/INDEX.md` · 2026-08-16 indexed (v1 seed) |
-| [`audit-ui.py`](audit-ui.py) | Audit built `ui/` for stale/dead assets and outdated deps | — | `website/` · `ui/` | 2026-09-04 | 1 | 2026-09-04 add dead-code/old-version UI audit · 2026-08-16 indexed (v1 seed) |
 | [`recall-harness.py`](recall-harness.py) | Randomized recall/search load + correctness suite (volume, deep, same/mixed-path concurrency, failover, p50/95/99) | `/api/search` · `/api/recall` · `/api/atoms` | — | 2026-09-08 | 1 | 2026-09-08 added |
 | [`hammer.mjs`](hammer.mjs) | Load/chaos harness — read/adversarial/payload/write/race/turn-cap/consistency/soak suites w/ p50–p99 + RSS watch | `/api/*` HTTP surface | `artifacts/` | 2026-09-30 | 1 | plan 2026-09-30-001 U1–U3+U6 |
 | [`hammer-mcp.mjs`](hammer-mcp.mjs) | MCP stdio lane hammer — concurrent `tools/call` through real `kurultai mcp` subprocess | MCP JSON-RPC stdio | — | 2026-09-30 | 1 | plan 2026-09-30-001 U5 |

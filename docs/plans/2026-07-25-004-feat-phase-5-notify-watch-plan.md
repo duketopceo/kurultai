@@ -9,6 +9,8 @@ execution: code
 authority: "GitHub Milestone 5 · closed #9 remaining notify item; builds on daemon poll (#65)"
 depth: standard
 origin: "User /lfg on phase 5 after daemon poll merged — next production-readiness slice"
+status: completed
+merged_prs: [66]
 ---
 
 # feat: Phase 5 notify filesystem watch

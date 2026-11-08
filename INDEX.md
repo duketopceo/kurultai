@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-10-19
-version: 20
+updated: 2026-11-07
+version: 21
 ---
 
 # `.`
@@ -79,14 +79,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
-- 2026-11-08 — Brain v2: Light default theme, panel re-centres the brain, light-theme contrast fix
-- 2026-11-08 — Brain v2 monochrome Light/Dark themes (no purple), ink-wash background flow, breathing field
-- 2026-11-08 — Brain v2 unified shell (one top bar, view switch, one right panel) + 32-bit mode (pixel render + pixel UI)
-- 2026-11-08 — Brain v2 visual pass: wire from the real cortex (`scripts/bake-cortex.mjs` -> `website/src/brain/v2/cortexData.ts`), lobe regions, electric atoms, label collision
-- 2026-11-07 — Brain v2 is now the default (`?brain=v1` keeps v1); what's-new badge; 50k tiered load
-- 2026-11-07 — Brain v2 Repos floorplan view (`website/src/repos/`), optional, separate from the brain
-- 2026-11-07 — Brain v2 minimal chrome: search + status dot + menu, Ctrl+K palette, drawer, selected-atom panel (`website/src/next/V2Shell.tsx`)
-- 2026-11-07 — Brain v2 (`?brain=v2`): wireframe cortex + tag regions + single-draw atom cloud (`website/src/brain/v2/`), plan `docs/plans/2026-11-07-001-feat-brain-v2-explorable-wireframe-plan.md`
+- 2026-11-07 — repo cleanup: ACCEPTANCE_REPORT/INSTALL_REPORT/hey.md moved to `docs/archive/`; root AGENT_SETUP_PROMPT.md removed (use `docs/AGENT_SETUP_PROMPT.md`); plan statuses stamped; FEATURE_MATRIX de-privatized
 - 2026-10-19 — repo cleanup: 10 dependabot PRs merged (cargo×5, web×4, website vite pending); issues #116/#117/#122/#132 closed as shipped, #137/#140 status-updated to current brain doctrine; 14 dead remote branches + 6 local deleted (mesh-schema kept — unique unmerged work); version refs reconciled to v0.7.0 (version.ts, INSTALL_GUIDE, AGENT_SETUP, mac-dev, skill readme), CHANGELOG gains missing 0.7.0 section, `.gitignore` `.worktrees/`, INSTALL_REPORT historical banner, LICENSE row → AGPL
 - 2026-10-07 — `docs/plans/2026-10-07-001`: multi-vector late-interaction embed plan (pplx-embed-v2-late rerank lane, `MultiVectorEmbedder` + `atoms_multivec` sidecar, fastembed/http backends, dense v1 primary untouched); tracking issue #424
 - 2026-10-06 — explainer film: `launch/src/videos/kurultai/explainer/` — "how does an agent remember between sessions?" (~80s, diagram-first, VO-timed draft); Diagram.tsx primitives

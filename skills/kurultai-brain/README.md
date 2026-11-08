@@ -39,7 +39,7 @@ kurultai daemon --port 8421       # optional: HTTP + poll + watch, Brain UI at /
 ```
 
 For a **copy-paste prompt** any agent can follow (repo location, usage, dumping memory):  
-[`../../docs/AGENT_SETUP_PROMPT.md`](../../docs/AGENT_SETUP_PROMPT.md) · shortcut [`../../AGENT_SETUP_PROMPT.md`](../../AGENT_SETUP_PROMPT.md).
+[`../../docs/AGENT_SETUP_PROMPT.md`](../../docs/AGENT_SETUP_PROMPT.md).
 
 Then point your agent at this `SKILL.md` (e.g. Hermes loads skills from
 `~/.hermes/skills/`; copy or symlink this directory there, or add it via your

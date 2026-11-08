@@ -9,6 +9,8 @@ execution: code
 authority: "Phase 5 production readiness · audience #25 developer → solo · upstream #11 MCP installer residual"
 depth: standard
 origin: "LFG after status inventory: MCP server ships; only Cursor auto-wire exists; Claude/Codex init is the 1.0 agent-surface gap"
+status: completed
+merged_prs: [83]
 ---
 
 # feat: Phase 5 multi-agent MCP init (Cursor / Claude Code / Codex)

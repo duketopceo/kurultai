@@ -1,3 +1,9 @@
+---
+status_note: "105; galaxy/solar layout removed in 200"
+status: superseded
+status_note: "105; galaxy/solar layout removed in 200"
+---
+
 # feat: Brain memories solar-system layout toggle
 
 **Date:** 2026-07-29  

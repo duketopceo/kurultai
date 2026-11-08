@@ -9,6 +9,8 @@ execution: code
 authority: "User /lfg — one-click (or close) on-device markdown ingest for solo"
 depth: standard
 origin: "User: easy setup so docs can be stored in the brain; CLI walkthrough; with/without API key & agents; UI matches CLI"
+status: completed
+merged_prs: [195]
 ---
 
 # feat: solo on-device docs setup (`init --docs`)

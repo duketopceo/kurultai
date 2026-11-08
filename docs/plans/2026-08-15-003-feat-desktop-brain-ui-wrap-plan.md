@@ -9,6 +9,7 @@ execution: code
 authority: "User /ce-plan 2026-08-15 — Wave G sequence 003; LAST after 001; stop-if-out-of-hand"
 depth: standard
 origin: "docs/plans/2026-08-15-000-chore-wave-g-railway-sequence-plan.md; embedded /ui/; GBrain thin-client honesty"
+status: unverified
 ---
 
 # feat: desktop Brain UI wrap — thin Tauri window over /ui/

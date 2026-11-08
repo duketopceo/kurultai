@@ -8,6 +8,8 @@ execution: docs
 authority: "User /lfg — next phase and new plan docs"
 depth: standard
 origin: "Wave B shipped (P6-1/2/3); docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md; milestone Tiered Access + Hosted Hub (#176–#181); phase-6-work-orders.md"
+status: completed
+merged_prs: [191]
 ---
 
 # chore: Phase 6 next queue — Wave B complete + Tiered Hub plans

@@ -9,6 +9,8 @@ execution: code
 authority: "GitHub #72 · Agent Zero ISSUE-004 · master plan #27"
 depth: standard
 origin: "User /lfg on kurultai new issues (#72–#76); headless = first P0 slice"
+status: completed
+merged_prs: [70, 93]
 ---
 
 # feat: v1 personal agent installer (#72)

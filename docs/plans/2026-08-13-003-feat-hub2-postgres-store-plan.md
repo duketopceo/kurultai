@@ -9,6 +9,8 @@ product_contract_source: legacy-requirements
 authority: "User /lfg — Wave G HUB-2 · GitHub #176 · Linear PRO-760"
 depth: standard
 origin: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md R7/AE4; docs/plans/phase-6-next-work-orders.md; GitHub #176"
+status: completed
+merged_prs: [197]
 ---
 
 # feat: Postgres+pgvector Store for shared hub (HUB-2)

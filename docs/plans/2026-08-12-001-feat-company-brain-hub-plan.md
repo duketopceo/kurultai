@@ -9,6 +9,8 @@ execution: code
 authority: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md · help-dashboard ideation 2026-08-12 · session-settled gates"
 depth: deep
 origin: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md"
+status: completed
+merged_prs: [190, 192]
 ---
 
 # feat: Company brain hub — beat-live, then Postgres scopes, then Workers

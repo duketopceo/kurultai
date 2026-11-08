@@ -1,3 +1,9 @@
+---
+
+status: completed
+merged_prs: [364, 365]
+---
+
 # Wave H + client perf telemetry — phase plan
 
 **Date:** 2026-09-20 · **Status:** active · **Milestone:** Wave H serve-path hardening

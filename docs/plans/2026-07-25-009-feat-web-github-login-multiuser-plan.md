@@ -9,6 +9,8 @@ execution: code
 authority: "User /lfg — fork vs smart add + GitHub login + users in one kurultai"
 depth: standard
 origin: "Fast path Clerk+Kiranism pattern; #81 GitHub login; #80 sync deferred design"
+status: completed
+merged_prs: [82]
 ---
 
 # feat: web GitHub login + multi-user single Kurultai model

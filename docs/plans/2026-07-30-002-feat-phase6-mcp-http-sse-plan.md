@@ -8,6 +8,8 @@ execution: code
 authority: "Phase 6 work orders P6-1 · GitHub #104 · user next /lfg"
 depth: standard
 origin: "phase-6-work-orders.md Wave B; Devin WO-102; remote agent / Perplexity-class integration"
+status: completed
+merged_prs: [125]
 ---
 
 # feat: Phase 6 — MCP over HTTP/SSE for remote agents

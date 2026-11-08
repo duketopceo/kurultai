@@ -118,7 +118,7 @@ Config templates: [`config.example.toml`](config.example.toml) · [`.env.example
 | **Trust** | Atoms in `trusted` or `quarantine` lanes; visibility scopes `personal` / `team` / `company` (HUB-1) |
 | **Coordination** | Hey message board — agents post/read threads, claim repos, and receive sweep reports via MCP + dashboard |
 
-Acceptance coverage: [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) · [`ACCEPTANCE_REPORT.md`](ACCEPTANCE_REPORT.md).
+Acceptance coverage: [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) · [archived acceptance report](docs/archive/ACCEPTANCE_REPORT.md).
 
 ## Agents (MCP)
 
@@ -127,7 +127,7 @@ kurultai init --agent cursor    # also: claude | codex | hermes | all | none
 kurultai mcp                    # restart the agent after init
 ```
 
-Copy-paste setup for any agent: [`AGENT_SETUP_PROMPT.md`](AGENT_SETUP_PROMPT.md). Portable skill: [`skills/kurultai-brain/SKILL.md`](skills/kurultai-brain/SKILL.md).
+Copy-paste setup for any agent: [`docs/AGENT_SETUP_PROMPT.md`](docs/AGENT_SETUP_PROMPT.md). Portable skill: [`skills/kurultai-brain/SKILL.md`](skills/kurultai-brain/SKILL.md).
 
 Loopback ingest (opt-in): set `KURULTAI_INGEST_SECRET`, then `POST /ingest` with the secret header.
 

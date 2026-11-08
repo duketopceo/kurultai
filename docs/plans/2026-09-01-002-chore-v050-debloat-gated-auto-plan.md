@@ -8,6 +8,8 @@ execution: code
 authority: "v0.4.1→v0.5.0 code review · user scope lock 2026-09-01"
 depth: standard
 origin: "Perplexity Kurultai project review 2026-09-01-v041-to-v050-code-review.md"
+status: completed
+merged_prs: [377]
 ---
 
 # chore: v0.5.0 first-cut debloat + gated-auto auth nits

@@ -1,3 +1,8 @@
+---
+
+status: reference
+---
+
 # CE Plan: Phase 2 Testing Work Orders
 
 **Status:** Implementation in progress on `cursor/phase-2-testing-impl-1c5e` — [2026-07-21-002-feat-phase2-testing-gates-plan.md](2026-07-21-002-feat-phase2-testing-gates-plan.md)  
