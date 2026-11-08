@@ -28,6 +28,8 @@ _None._
 | [`links.ts`](links.ts) | Shared-tag synapse derivation (moved from BrainStage) | `website/src/brain/linkSelect.ts` | `website/src/components/BrainStage.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`flag.ts`](flag.ts) | v2 default; `?brain=v1` selects legacy | — | `website/src/components/BrainStage.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`flag.test.ts`](flag.test.ts) | node:test for the selector | `website/src/brain/v2/flag.ts` | — | 2026-11-07 | 1 | 2026-11-07 added |
+| [`mode32.ts`](mode32.ts) | 32-bit mode state: `?mode=32bit`, localStorage (try/catch), `useMode32` hook mirrors to `<html data-mode>` | `react` | `website/src/next/App.tsx` | 2026-11-08 | 1 | 2026-11-08 added |
+| [`mode32.test.ts`](mode32.test.ts) | node:test: URL param, throwing storage | `website/src/brain/v2/mode32.ts` | — | 2026-11-08 | 1 | 2026-11-08 added |
 | [`palette.ts`](palette.ts) | Command-palette model: surfaces + filter (prefix then substring) | — | `website/src/next/V2Shell.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`why.ts`](why.ts) | Path ids to a why-connected chain (shared tags per hop) | `website/src/types` | `website/src/next/App.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`palette.test.ts`](palette.test.ts) | node:test for palette filter + chain | `website/src/brain/v2/palette.ts` · `website/src/brain/v2/why.ts` | — | 2026-11-07 | 1 | 2026-11-07 added |
@@ -36,6 +38,7 @@ _None._
 
 ## Recent
 
+- 2026-11-08 — 32-bit mode: `BrainV2.setPixelMode` (low-res dithered 256-colour, vertex snap, stepped time) + `mode32.ts`; palette gains view/32-bit commands
 - 2026-11-08 — visual pass: wire from the real cortex (brain.glb decimated), tag regions = k-means lobes, electric atoms/synapses, collision-free labels
 - 2026-11-07 — v2 is the default renderer (`?brain=v1` keeps v1); what's-new badge (U4)
 - 2026-11-07 — palette + why-connected helpers for the minimal chrome (U2)

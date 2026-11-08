@@ -6,7 +6,7 @@ import { describeChain } from './why.ts';
 test('palette: empty query lists all, prefix beats substring', () => {
   assert.equal(filterCommands(PALETTE_COMMANDS, '').length, PALETTE_COMMANDS.length);
   const r = filterCommands(PALETTE_COMMANDS, 'o');
-  assert.equal(r[0].id, 'ontology');
+  assert.equal(r[0].id, 'ontology'); // label starts with 'o'
   assert.ok(r.some((c) => c.id === 'store'));
 });
 

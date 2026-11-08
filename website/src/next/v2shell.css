@@ -18,8 +18,6 @@
 .v2-meta { color: var(--text-3); font: 12px/16px ui-monospace, "JetBrains Mono", monospace; }
 .v2-menu-pop { position: absolute; top: 32px; right: 0; display: flex; flex-direction: column; gap: 4px; padding: 8px; background: var(--canvas-3); border: 1px solid #262932; border-radius: 8px; min-width: 160px; z-index: 6; }
 .v2-menu-pop button { text-align: left; border: 0; }
-.v2-panel { position: absolute; right: 16px; top: 56px; bottom: 16px; width: min(360px, calc(100% - 32px)); overflow: auto; padding: 14px; background: var(--canvas-3); border: 1px solid #262932; border-radius: 8px; }
-.v2-panel header, .v2-drawer header { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .v2-sum { color: var(--text-2); }
 .v2-actions { display: flex; gap: 8px; margin: 10px 0; }
 .v2-answer { border-top: 1px solid #262932; padding-top: 8px; }
@@ -28,14 +26,12 @@
 .v2-chain ol { margin: 0; padding-left: 18px; }
 .v2-chain li { color: var(--accent-strong); } /* ember: the selected path only */
 .v2-via { display: block; color: var(--text-3); font: 11px/14px ui-monospace, monospace; }
-.v2-drawer { position: absolute; left: 0; right: 0; bottom: 0; height: min(60vh, 560px); overflow: auto; padding: 12px 16px; background: var(--canvas-2); border-top: 1px solid #262932; z-index: 20; }
 .v2-scrim { position: absolute; inset: 0; background: var(--scrim, rgba(0,0,0,.6)); display: flex; justify-content: center; align-items: flex-start; padding-top: 16vh; z-index: 30; }
 .v2-palette { width: min(480px, calc(100% - 32px)); background: var(--canvas-3); border: 1px solid #262932; border-radius: 8px; padding: 8px; }
 .v2-palette input { width: 100%; box-sizing: border-box; }
 .v2-palette ul { list-style: none; margin: 6px 0 0; padding: 0; }
 .v2-palette li button { width: 100%; display: flex; justify-content: space-between; border: 0; font: 14px/20px ui-sans-serif, system-ui, sans-serif; }
 @media (prefers-reduced-motion: reduce) { .v2-app * { transition: none !important; animation: none !important; } }
-@media (max-width: 640px) { .v2-search input { min-width: 140px; } .v2-panel { top: auto; height: 50%; } }
 
 /* Repos floorplan (separate from the brain) */
 .v2-repos { position: absolute; inset: 0; z-index: 40; background: var(--canvas-1); padding: 12px 16px; overflow: auto; }
@@ -48,3 +44,45 @@
 .fp-tile:hover { fill-opacity: 1 !important; fill: var(--text-1); }
 
 .v2-new-list { top: 32px; right: 90px; max-height: 50vh; overflow: auto; min-width: 220px; }
+@media (max-width: 640px) { .v2-search input { min-width: 140px; } .v2-panel { top: auto !important; height: 55%; width: 100% !important; max-width: 100%; } .v2-seg button { padding: 4px 6px; } }
+/* unified shell: segmented view switch + one right-hand slide-over panel */
+@font-face { font-family: 'Pixelify Sans'; font-weight: 400; font-display: swap; src: url('../assets/fonts/pixelify-sans-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Pixelify Sans'; font-weight: 600; font-display: swap; src: url('../assets/fonts/pixelify-sans-latin-600-normal.woff2') format('woff2'); }
+.v2-top { align-items: center; z-index: 40; }
+.v2-seg { display: flex; border: 1px solid #262932; border-radius: 6px; overflow: hidden; background: var(--canvas-3); }
+.v2-seg button { border: 0; border-radius: 0; }
+.v2-seg button.on { color: var(--text-1); background: #1b1d27; box-shadow: inset 0 -2px 0 #8b6cf0; }
+.v2-view { position: absolute; inset: 52px 0 0 0; overflow: auto; background: #000; }
+.v2-app[data-view="repos"] .v2-view, .v2-app[data-view="ontology"] .v2-view { padding: 0; }
+.v2-panel { position: absolute; right: 0; top: 52px; bottom: 0; max-width: calc(100% - 80px); display: flex; flex-direction: column; background: var(--canvas-2); border-left: 1px solid #262932; z-index: 20; animation: v2-slide .16s ease-out; }
+@keyframes v2-slide { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.v2-grip { position: absolute; left: -3px; top: 0; bottom: 0; width: 7px; cursor: col-resize; z-index: 2; }
+.v2-grip:hover, .v2-grip:active { background: #8b6cf055; }
+.v2-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #262932; }
+.v2-tabs { display: flex; gap: 2px; flex-wrap: wrap; }
+.v2-tabs button { border-color: transparent; text-transform: capitalize; }
+.v2-tabs button.on { color: var(--text-1); border-color: #8b6cf0; }
+.v2-panel-body { flex: 1; overflow: auto; padding: 12px; min-height: 0; }
+.v2-panel-body .ws-chrome, .v2-panel-body .ws-tab-scroll { display: none; }
+.v2-inspect { display: flex; flex-direction: column; gap: 4px; }
+.v2-switch { display: flex; gap: 8px; align-items: center; padding: 4px 10px; color: var(--text-2); font: 12px/16px ui-monospace, "JetBrains Mono", monospace; cursor: pointer; }
+.v2-switch input { accent-color: #8b6cf0; }
+
+/* 32-bit mode: pixel font, chunky 2px square borders, pixel buttons (instant; plain attribute switch) */
+:root[data-mode="32bit"] .v2-app, :root[data-mode="32bit"] .v2-app * { font-family: 'Pixelify Sans', ui-monospace, monospace !important; border-radius: 0 !important; letter-spacing: 0; -webkit-font-smoothing: none; }
+:root[data-mode="32bit"] .v2-app { font-size: 15px; }
+:root[data-mode="32bit"] .v2-app button, :root[data-mode="32bit"] .v2-search input, :root[data-mode="32bit"] .v2-palette input,
+:root[data-mode="32bit"] .v2-menu-pop, :root[data-mode="32bit"] .v2-palette, :root[data-mode="32bit"] .v2-results, :root[data-mode="32bit"] .v2-seg { border: 2px solid #5a4aa8 !important; }
+:root[data-mode="32bit"] .v2-app button { box-shadow: 2px 2px 0 #1a1440; text-transform: lowercase; }
+:root[data-mode="32bit"] .v2-app button:active { box-shadow: none; transform: translate(2px, 2px); }
+:root[data-mode="32bit"] .v2-app button:hover { border-color: #b8a6ff !important; color: #fff; }
+:root[data-mode="32bit"] .v2-panel { border-left: 2px solid #5a4aa8; }
+:root[data-mode="32bit"] .v2-panel-head { border-bottom: 2px solid #5a4aa8; }
+:root[data-mode="32bit"] .v2-seg button { box-shadow: none; border: 0 !important; }
+:root[data-mode="32bit"] .v2-dot { border-radius: 0 !important; width: 10px; height: 10px; }
+:root[data-mode="32bit"] .v2-app *, :root[data-mode="32bit"] .v2-panel { animation-timing-function: steps(4) !important; }
+:root[data-mode="32bit"] .v2-brain canvas { image-rendering: pixelated; }
+
+/* Repos floorplan lives inside the unified shell's canvas view, under the single top bar */
+.v2-view .v2-repos { position: static; inset: auto; z-index: auto; min-height: 100%; box-sizing: border-box; }
+.v2-view .v2-repos header button { display: none; }
