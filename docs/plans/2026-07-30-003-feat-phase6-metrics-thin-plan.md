@@ -1,3 +1,9 @@
+---
+
+status: completed
+merged_prs: [126]
+---
+
 # Phase 6 P6-2 — Built-in metrics (thin slice)
 
 **Date:** 2026-07-30  

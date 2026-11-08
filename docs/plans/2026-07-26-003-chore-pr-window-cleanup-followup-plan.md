@@ -8,6 +8,8 @@ product_contract_source: ce-plan-bootstrap
 execution: code
 origin: "LFG pipeline — audit PRs created/merged/closed 2026-07-25..2026-07-26; ship surgical follow-up (ce-simplify + still-valid review leftovers)"
 authority: "Settled-decisions brief (user-directed) · AGENTS.md Brain UI prefs · origin/main@v0.3.0 (#96) · open #97/#98 coordination"
+status: completed
+merged_prs: [99]
 ---
 
 # chore: Jul 25–26 PR window cleanup + review leftovers

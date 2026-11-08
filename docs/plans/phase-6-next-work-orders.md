@@ -1,3 +1,8 @@
+---
+
+status: reference
+---
+
 # Phase 6 — next work orders (post–Wave B)
 
 **Status:** Current release **v0.7.0** (2026-10-06) · v0.6.0 (2026-09-11) · v0.5.0 Team/hub (2026-09-01) · v0.4.1 solo kernel (2026-08-13)  

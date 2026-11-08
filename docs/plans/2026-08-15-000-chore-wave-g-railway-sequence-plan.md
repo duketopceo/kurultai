@@ -9,6 +9,8 @@ execution: docs
 authority: "User /ce-plan 2026-08-15 — Railway + machines-to-one + agent IDs + desktop wrap; stop-if-out-of-hand"
 depth: standard
 origin: "docs/brainstorms/2026-08-07---tiered-access-hosted-hub-requirements.md · docs/plans/phase-6-next-work-orders.md · GBrain topologies + company-brain"
+status: completed
+merged_prs: [222]
 ---
 
 # Wave G sequence — Railway hub, then agent IDs, then desktop wrap

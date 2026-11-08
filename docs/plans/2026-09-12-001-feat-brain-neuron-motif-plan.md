@@ -7,6 +7,8 @@ execution: code
 product_contract_source: session
 depth: standard
 origin: "session 2026-09-12 first-principles pass (user-invoked) · docs/plans/2026-09-05-002-feat-brain-first-principles-astra-plan.md (precedent, landed) · AGENTS.md Brain doctrine · branch fix/brain-cortex-doctrine (pale-node/shimmer baseline, uncommitted)"
+status: completed
+merged_prs: [315]
 ---
 
 # feat: Brain neuron-motif visual language — soma, dendrite corona, traveling spikes

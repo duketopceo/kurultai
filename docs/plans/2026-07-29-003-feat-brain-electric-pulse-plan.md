@@ -1,3 +1,9 @@
+---
+
+status: completed
+merged_prs: [107]
+---
+
 # feat: Brain electric pulse (soft orbs + synapse zap + hover arc)
 
 **Date:** 2026-07-29  

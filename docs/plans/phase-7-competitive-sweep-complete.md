@@ -4,6 +4,7 @@ tags:
   - competitive-sweep
   - complete
   - docs
+status: completed
 ---
 
 # Competitive sweep — phase wrap-up

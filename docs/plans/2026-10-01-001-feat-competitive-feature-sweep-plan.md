@@ -1,6 +1,8 @@
 ---
 artifact_contract: ce-unified-plan/v1
 execution: code
+status: completed
+merged_prs: [408]
 ---
 
 # Competitive feature sweep — gbrain / OpenViking / agent-memory lane

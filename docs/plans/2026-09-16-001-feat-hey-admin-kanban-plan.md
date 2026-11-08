@@ -1,3 +1,9 @@
+---
+
+status: completed
+merged_prs: [334]
+---
+
 # Plan — Hey admin write lane + kanban view (#331)
 
 ## Goal

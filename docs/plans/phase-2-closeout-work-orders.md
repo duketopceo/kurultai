@@ -1,3 +1,8 @@
+---
+
+status: reference
+---
+
 # CE Plan: Phase 2 Closeout Work Orders
 
 **Status:** Executing — [2026-07-23-001-chore-phase2-closeout-plan.md](2026-07-23-001-chore-phase2-closeout-plan.md)  

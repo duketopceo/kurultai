@@ -6,6 +6,8 @@ artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
 execution: code
 authority: "User /lfg — clean up terminal commands; UI build and load; feature flags with v# next work orders; continue to production release"
+status: completed
+merged_prs: [196]
 ---
 
 # feat: v0.4.1 production release prep

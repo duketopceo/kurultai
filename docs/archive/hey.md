@@ -1,3 +1,4 @@
+<!-- Archived 2026-11-07: historical record, superseded by current docs. See docs/archive/INDEX.md. -->
 # hey.md — Kurultai
 
 **Version:** v0.0003.5

@@ -10,6 +10,7 @@ depth: deep
 authority: "User constraints 2026-08-12 (tenant smaller than GBrain · separate CF-reachable service · GlenEnv guarantee shift · kb-it-docs hashtags · beat AI Search · ops rigor day one) · parents 001 Nimrod path + 002 GBrain patterns · duketopceo/kurultai personal · Bartlett-Roofs identity is work-only"
 origin: "docs/plans/2026-08-12-001-feat-nimrod-shared-brain-path-plan.md · docs/plans/2026-08-12-002-feat-gbrain-patterns-rust-port-plan.md"
 supersedes_note: "Canonical program plan. 001 = gap program; 002 = GBrain pattern palette. This file tightens both to Bartlett reality and the rival-GBrain end state."
+status: unverified
 ---
 
 # Rival GBrain under Bartlett constraints

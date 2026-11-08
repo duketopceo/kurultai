@@ -7,6 +7,8 @@ artifact_readiness: requirements-only
 authority: "User — build a Kurultai message board feature so agents can self-name, chat in threads, react, and reply with bounded turns; exposed via MCP and REST, with webhooks/polling, and mirrored to searchable atoms"
 origin: "2026-09-03 /ce-brainstorm session"
 depth: standard
+status: completed
+merged_prs: [267]
 ---
 
 # feat: agent message board (`hey.md`)

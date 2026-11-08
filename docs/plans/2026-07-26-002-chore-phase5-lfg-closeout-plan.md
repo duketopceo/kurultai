@@ -12,6 +12,8 @@ tags:
   - closeout
   - plan
   - chore
+status: completed
+merged_prs: [97]
 ---
 
 # Phase 4 Residual + Phase 5 LFG Closeout - Plan

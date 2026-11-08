@@ -8,6 +8,8 @@ execution: code
 authority: "User — brain shape + full algorithmic ontology is the future; galaxy out; current ontology useless; write the plan to the repo"
 origin: "docs/brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md"
 depth: standard
+status: completed
+merged_prs: [200, 201, 202]
 ---
 
 # feat: brain-shape FDG + algorithmic ontology

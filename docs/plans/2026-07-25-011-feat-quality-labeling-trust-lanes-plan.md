@@ -9,7 +9,8 @@ execution: code
 authority: "Brain quality slice · post-train-ready data · upstream ce-brainstorm Trust lanes (A)"
 depth: standard
 origin: "LFG /lfg after synthesis: clean multi-year brain before organizer or post-train export"
-status: draft
+status: completed
+merged_prs: [86]
 ---
 
 # feat: Quality labeling bar with trust lanes (trusted vs quarantine)

@@ -8,6 +8,8 @@ product_contract_source: ce-plan-bootstrap
 execution: code
 authority: "GitHub #27 Phase 3 exit · #7; builds on Phase 1–2 main"
 depth: standard
+status: completed
+merged_prs: [60]
 ---
 
 # feat: Phase 3 Synthesis & Interface

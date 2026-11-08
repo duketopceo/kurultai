@@ -1,3 +1,8 @@
+---
+
+status: completed
+---
+
 # Phase 4 complete — wrap-up
 
 **Status:** ✅ Solo expansion on `main` (2026-07-24–25)  

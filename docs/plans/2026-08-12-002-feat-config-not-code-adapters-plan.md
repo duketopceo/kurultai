@@ -9,7 +9,8 @@ execution: code
 authority: "Dump adapters · inbox tray · loopback webhook · format parity"
 depth: standard
 origin: "Session-settled product contract for config-not-code dump edges"
-status: draft
+status: completed
+merged_prs: [194]
 ---
 
 # feat: Config-not-code adapters (inbox, loopback ingest, folder format parity)

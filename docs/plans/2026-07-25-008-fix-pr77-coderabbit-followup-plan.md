@@ -9,6 +9,8 @@ execution: code
 authority: "GitHub PR #77 unresolved CodeRabbit threads · parent plan docs/plans/2026-07-25-006-feat-v1-agent-zero-batch-plan.md"
 depth: standard
 origin: "LFG after Codex credit limit on PR #77; user approved remaining review fixes on feat/v1-agent-zero-batch"
+status: completed
+merged_prs: [99]
 ---
 
 # fix: PR #77 remaining CodeRabbit follow-up

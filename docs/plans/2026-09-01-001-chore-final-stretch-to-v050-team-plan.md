@@ -8,6 +8,8 @@ execution: code
 authority: "docs/plans/phase-6-next-work-orders.md · docs/plans/YEAR-1-MILESTONES.md · GitHub #180 · #181"
 depth: standard
 origin: "docs/plans/phase-6-next-work-orders.md"
+status: completed
+merged_prs: [253]
 ---
 
 # chore: Final stretch to v0.5.0 Team — release hardening, queue cleanup, container + OS tests

@@ -2,6 +2,8 @@
 artifact_contract: ce-unified-plan/v1
 product_contract_source: docs/brainstorms/2026-09-28---device-broker-agent-onboarding-requirements.md
 execution: code
+status: completed
+merged_prs: [381]
 ---
 
 # Device broker: one upstream session, per-chat minted keys — plan

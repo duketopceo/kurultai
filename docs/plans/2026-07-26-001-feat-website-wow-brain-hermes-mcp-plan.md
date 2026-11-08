@@ -9,6 +9,8 @@ execution: code
 authority: "LFG autonomous pipeline · user session feedback on website/ + brain explorer + Hermes Agent integration"
 depth: deep
 origin: "Direct user feedback after wiring website/ to the local daemon (brain.html/brain.js/vite.config.js already committed this session). User wants: landing cleanup, Simple/Technical view toggle, a 'wow' 3D synaptic map (bloom/glow/electric), fullscreen + suggested-atoms, and MCP + plugin ability for NousResearch Hermes Agent."
+status: completed
+merged_prs: [85]
 ---
 
 # feat: website wow-brain + Simple/Technical toggle + Hermes MCP/SKILL

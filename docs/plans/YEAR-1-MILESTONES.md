@@ -1,3 +1,8 @@
+---
+
+status: reference
+---
+
 # Kurultai Year 1 Milestones & Work Orders
 
 **Timeline:** July 2026 → July 2027  

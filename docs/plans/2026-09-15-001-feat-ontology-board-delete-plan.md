@@ -3,6 +3,8 @@ title: feat — ontology board v2: delete entities/links + edge menu
 date: 2026-09-15
 issue: https://github.com/duketopceo/kurultai/issues/320
 parent: docs/plans/2026-09-14-001-feat-ontology-flowsint-board-plan.md
+status: completed
+merged_prs: [321]
 ---
 
 # Ontology board v2 — delete entities/links + edge menu

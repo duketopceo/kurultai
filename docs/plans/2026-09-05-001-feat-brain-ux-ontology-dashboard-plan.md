@@ -8,6 +8,8 @@ execution: code
 product_contract_source: ce-plan-bootstrap
 depth: deep
 origin: "docs/brainstorms/2026-08-13---brain-shape-algorithmic-ontology.md · docs/plans/2026-08-13-004-feat-brain-shape-algorithmic-ontology-plan.md · session 2026-09-05 (1A/2A/3B)"
+status: completed
+merged_prs: [272]
 ---
 
 # feat: Brain UX — ontology cortex + dashboard rework

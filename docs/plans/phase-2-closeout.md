@@ -1,3 +1,8 @@
+---
+
+status: completed
+---
+
 # Phase 2 closeout — tracker hygiene
 
 **Product Phase 2 search is shipped** (#51). Testing gates are in the closeout branch (from #53).  

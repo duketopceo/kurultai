@@ -1,3 +1,9 @@
+---
+
+status: completed
+merged_prs: [136, 141]
+---
+
 # chore: Phase 6 atlas / ontology / connector gap work orders
 
 **Date:** 2026-07-31  

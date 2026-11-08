@@ -9,6 +9,8 @@ execution: code
 authority: "GitHub Milestone 5 · #9 remnant; README Phase 5 row; upstream Stratum/remembrallmcp"
 depth: standard
 origin: "User /lfg continue next workstreams after Agent Zero v1 — workstream 2 local embeddings"
+status: completed
+merged_prs: [84]
 ---
 
 # feat: Phase 5 local embeddings (fastembed/ONNX)

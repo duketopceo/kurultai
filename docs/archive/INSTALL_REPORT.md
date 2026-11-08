@@ -1,3 +1,4 @@
+<!-- Archived 2026-11-07: historical record, superseded by current docs. See docs/archive/INDEX.md. -->
 # Kurultai Install Verification Report
 
 > Historical verification — this report documents the v0.4.1 install path as of 2026-08-14; current release is v0.7.0. See [INSTALL_GUIDE.md](INSTALL_GUIDE.md).

@@ -2,7 +2,7 @@
 index: kurultai/v1
 folder: docs/plans
 parent: docs/INDEX.md
-updated: 2026-10-05
+updated: 2026-11-07
 version: 10
 ---
 
@@ -111,6 +111,7 @@ _None._
 
 ## Recent
 
+- 2026-11-07 — every plan now carries `status:` front matter (`completed` with `merged_prs`, `superseded`, `reference`, or `unverified` where no merged PR was found)
 - 2026-10-05 — `2026-10-05-001`: program roadmap plan (U1-U21) classifying every dated plan; `ROADMAP.md` links it first
 - 2026-10-03 — `2026-10-02-001`: supersede/bi-temporal-lite plan (U4) — written and implemented in one pass
 
