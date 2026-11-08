@@ -303,6 +303,7 @@ const WRITE_ROUTES: &[&str] = &[
     "/api/ontology/link",
     "/api/ontology/promote",
     "/api/touch",
+    "/api/onboarding/note",
 ];
 
 /// `/api/ontology/entity[/{id}]` and `/api/ontology/link[/{id}]` are the

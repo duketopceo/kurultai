@@ -446,7 +446,12 @@ async fn brain_ui_route_redirects_to_slash() {
 async fn brain_ui_index_route_responds_ok() {
     let app = app(empty_brain().await, HubGate::default());
     let resp = app
-        .oneshot(Request::builder().uri("/ui/").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/ui/?welcome=0")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);

@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: src
 parent: INDEX.md
-updated: 2026-10-03
-version: 9
+updated: 2026-11-07
+version: 10
 ---
 
 # `src`
@@ -59,11 +59,13 @@ version: 9
 | [`sweep.rs`](sweep.rs) | Consolidation sweep (U5): content-hash dedupe→supersede, stale ontology prune, tier/quarantine census, Hey report post | `src/memory` · `src/store` · `src/types` | `src/main.rs` · `src/daemon/mod.rs` | 2026-10-04 | 1 | 2026-10-04 added (U5) |
 | [`types.rs`](types.rs) | KnowledgeAtom, Config, search/ask types, visibility scope, OntologyProposal | `src/environment` | `src/brain/mod.rs` · `src/config/loader.rs` · `src/config/mod.rs` · `src/connectors/appflowy.rs` · `src/connectors/dayflow.rs` · `src/pipeline/mod.rs` · `tests/acceptance_visibility.rs` · `src/ontology/mod.rs` | 2026-10-03 | 6 | `KnowledgeAtom.superseded_at/superseded_by` (U4) ·2026-10-02 `Answer.gaps` field |
 | [`testutil.rs`](testutil.rs) | Test-only process-env isolation: `EnvGuard` serializes `set_var` mutations + restores on drop (nextest-safe) | — | `src/http` tests · `src/app` tests | 2026-09-30 | 1 | 2026-09-30 added for parallel env tests |
+| [`selfhost.rs`](selfhost.rs) | `KURULTAI_SELFHOST=1` bootstrap: first-run config (notes source) + minted access key | `src/config` · `src/mcp/init.rs` | `src/main.rs` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`webui.rs`](webui.rs) | `kurultai webui` — probe/spawn daemon, print URL, open browser | `src/error` | `src/main.rs` · `src/connect.rs` | 2026-09-16 | 2 | 2026-09-16 `open_browser` pub(crate) for `connect` · 2026-09-15 added (#329) |
 | [`write_policy.rs`](write_policy.rs) | Write provenance + SharedClosed quarantine containment | — | `src/mcp/server.rs` · `src/quality/promote.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-11-07 — `selfhost.rs`: zero-config container bootstrap
 - 2026-10-04 — U5 consolidation sweep: `sweep.rs` (dedupe→`mark_superseded`, `prune_stale_ontology`, tier census, Hey `kurultai-sweep` post); `store/` `duplicate_content_groups` + `prune_stale_ontology`; `daemon/mod.rs` sweep after nightly full sync; `pipeline/mod.rs` `store()` accessor; `main.rs` `sweep` subcommand
 - 2026-10-03 — U4 bi-temporal-lite: `types.rs` superseded_at/by fields; `main.rs` search+ask `--as-of`/`--include-superseded`; `store/` schema v17 + `mark_superseded` + supersede predicates; `ingest/dump.rs` `fm_*` metadata; `ontology/extract.rs` resolve_supersede_targets
 

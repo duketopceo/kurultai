@@ -938,6 +938,9 @@ async fn main() -> Result<()> {
             ref bind,
             demo,
         } => {
+            if !demo && kurultai::selfhost::enabled() {
+                kurultai::selfhost::bootstrap(cli.config.as_deref())?;
+            }
             let (demo_config, bind) = if demo {
                 let cfg = demo_config_path()?;
                 // Containerized demos (compose/k8s) need a non-loopback bind —

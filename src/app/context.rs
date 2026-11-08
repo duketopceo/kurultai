@@ -123,6 +123,13 @@ pub fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embed
         return build_perplexity_embedder(config);
     }
 
+    // An explicit `embed.backend = "local"` (config or KURULTAI_EMBED_BACKEND)
+    // wins over a key that merely happens to be present: the model name and
+    // dimension in config describe the local model, not an OpenRouter one.
+    if wants_local_embed(config) {
+        return build_local_embedder(config);
+    }
+
     // API keys come from env only — never from config files.
     let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
         .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"))
@@ -137,7 +144,6 @@ pub fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embed
             ));
             Ok(embedder)
         }
-        None if wants_local_embed(config) => build_local_embedder(config),
         None => {
             tracing::warn!(
                 env = %env,

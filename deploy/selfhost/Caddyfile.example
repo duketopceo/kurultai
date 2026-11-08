@@ -1,0 +1,13 @@
+# Caddy reverse proxy with automatic HTTPS for a self-hosted Kurultai.
+# Point DNS for brain.example.com at this host, then:
+#   caddy run --config deploy/selfhost/Caddyfile.example
+# The container publishes 127.0.0.1:8421 only, so Caddy on the same host reaches it.
+brain.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8421
+	# Server-sent events for the MCP endpoint need unbuffered streaming.
+	@sse path /mcp/sse
+	reverse_proxy @sse 127.0.0.1:8421 {
+		flush_interval -1
+	}
+}
