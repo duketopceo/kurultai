@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src/components
 parent: website/src/INDEX.md
-updated: 2026-09-15
-version: 10
+updated: 2026-11-07
+version: 11
 ---
 
 # `website/src/components`
@@ -40,6 +40,7 @@ version: 10
 
 ## Recent
 
+- 2026-11-07 — `BrainStage`: `?brain=v2` lazily loads `brain/v2/BrainV2` (code-split); `buildLinks` moved to `brain/v2/links.ts`; shared `BrainLike` surface
 - 2026-09-20 — `BrainStage` BrainHud feeds FPS samples to `perf.ts` reporter (#102 client telemetry)
 - 2026-09-15 — `OntologyBoard`: edge context menu (Delete link), node Delete entity w/ inline confirm, Escape closes overlays (#320)
 - 2026-09-14 — `OntologyBoard.tsx`: Flowsint-style 2D `@xyflow/react` board replaces the 3D ontology layout (context menus, relate dialog, add entity, persisted drag) (#316)

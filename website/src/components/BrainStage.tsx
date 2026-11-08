@@ -1,12 +1,24 @@
 import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { BrainView } from '../brain/BrainView';
+import { buildTagLinks } from '../brain/v2/links';
+import { brainVersion } from '../brain/v2/flag';
 import { OntologyBoard } from './OntologyBoard';
-import { selectIntentionalLinks } from '../brain/linkSelect';
 import { reportFps } from '../perf';
 import type { Atom, LayoutMode, OntologyResponse } from '../types';
 
 const dbg = (...args: unknown[]) => console.debug('[kurultai:brain]', ...args);
-const MAX_LINKS_PER_TAG = 30;
+
+/** Surface shared by BrainView (v1) and BrainV2. */
+export interface BrainLike {
+  setData(atoms: Atom[], links: { a: string; b: string; strength: number }[]): void;
+  setOntology(doc: OntologyResponse): void;
+  setLayout(mode: LayoutMode): void;
+  focusAtom(atom: Atom): void;
+  zoomToAtom(atom: Atom): void;
+  randomConnection(): void;
+  metrics(): { fps: number; nodes: number; renderedEdges: number };
+  dispose(): void;
+}
 
 export interface BrainStageHandle {
   focusAtom: (atom: Atom) => void;
@@ -33,7 +45,7 @@ interface Props {
 
 export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, onOntologyChanged, caption }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const brainRef = useRef<BrainView | null>(null);
+  const brainRef = useRef<BrainLike | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [showFallback, setShowFallback] = useState(true);
   const [ready, setReady] = useState(false);
@@ -57,24 +69,39 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
 
   useEffect(() => {
     if (!hostRef.current) return;
-    dbg('BrainView init');
-    const brain = new BrainView(hostRef.current, {
-      theme: 'dark',
+    let cancelled = false;
+    let brain: BrainLike | null = null;
+    const host = hostRef.current;
+    const common = {
       reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-      onHoverAtom: (atom, x, y) => { onHover(atom); handleTooltip(atom, x, y); },
-      onSelectAtom: (atom) => { onSelect(atom); },
+      onHoverAtom: (atom: Atom, x: number, y: number) => { onHover(atom); handleTooltip(atom, x, y); },
+      onSelectAtom: (atom: Atom) => { onSelect(atom); },
       onClearHover: () => { onHover(null); setTooltip(null); },
-      onZoomOut: () => {},
       onReady: () => { dbg('BrainView ready'); setReady(true); },
-      onError: (msg) => { dbg('BrainView error:', msg); console.error('[BrainView]', msg); },
-    });
-    brainRef.current = brain;
-    // Console handle for scene measurement — `__kurultaiBrain.metrics()`.
-    (window as unknown as { __kurultaiBrain?: BrainView }).__kurultaiBrain = brain;
+      onError: (msg: string) => { dbg('BrainView error:', msg); console.error('[BrainView]', msg); },
+    };
+    const attach = (b: BrainLike) => {
+      brain = b;
+      brainRef.current = b;
+      // Console handle for scene measurement: `__kurultaiBrain.metrics()`.
+      (window as unknown as { __kurultaiBrain?: BrainLike }).__kurultaiBrain = b;
+    };
+    if (brainVersion() === 'v2') {
+      dbg('BrainV2 init (code-split)');
+      // Dynamic import keeps v2 (and its OrbitControls) out of the v1 bundle.
+      import('../brain/v2/BrainV2').then(({ BrainV2: V2 }) => {
+        if (cancelled) return;
+        attach(new V2(host, common));
+      }).catch((e) => common.onError(String(e)));
+    } else {
+      dbg('BrainView init');
+      attach(new BrainView(host, { theme: 'dark', onZoomOut: () => {}, ...common }));
+    }
     return () => {
+      cancelled = true;
       dbg('BrainView dispose');
-      delete (window as unknown as { __kurultaiBrain?: BrainView }).__kurultaiBrain;
-      brain.dispose();
+      delete (window as unknown as { __kurultaiBrain?: BrainLike }).__kurultaiBrain;
+      brain?.dispose();
       brainRef.current = null;
     };
   }, []);
@@ -84,7 +111,7 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
     const shown = atoms.slice(0, renderCap);
     dbg(`setData: ${shown.length} atoms (cap ${renderCap})`);
     const t0 = performance.now();
-    const links = buildLinks(shown);
+    const links = buildTagLinks(shown);
     dbg(`buildLinks: ${links.length} links in ${(performance.now() - t0).toFixed(0)}ms`);
     brainRef.current.setData(shown, links);
   }, [atoms, renderCap, ready]);
@@ -182,7 +209,7 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
 });
 
 /** Live scene readout — FPS · synapses · nodes, polled from BrainView.metrics(). */
-function BrainHud({ getBrain }: { getBrain: () => BrainView | null }) {
+function BrainHud({ getBrain }: { getBrain: () => BrainLike | null }) {
   const [stats, setStats] = useState<{ fps: number; nodes: number; synapses: number } | null>(null);
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -202,35 +229,4 @@ function BrainHud({ getBrain }: { getBrain: () => BrainView | null }) {
       <span>{stats.synapses.toLocaleString()} SYNAPSES</span>
     </div>
   );
-}
-
-function buildLinks(atoms: Atom[]) {
-  const tagIndex = new Map<string, string[]>();
-  atoms.forEach((a) => {
-    a.tags.forEach((t) => {
-      const list = tagIndex.get(t) ?? [];
-      list.push(a.id);
-      tagIndex.set(t, list);
-    });
-  });
-  const pairCount = new Map<string, number>();
-  tagIndex.forEach((ids) => {
-    // cap per-tag pairs to avoid O(n²) explosion on dense tags like "code" or "rs"
-    const limit = Math.min(ids.length, MAX_LINKS_PER_TAG);
-    for (let i = 0; i < limit; i++) {
-      for (let j = i + 1; j < limit; j++) {
-        const key = ids[i] < ids[j] ? `${ids[i]}:${ids[j]}` : `${ids[j]}:${ids[i]}`;
-        pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
-      }
-    }
-  });
-  const links: { a: string; b: string; strength: number }[] = [];
-  for (const [key, count] of pairCount) {
-    const [a, b] = key.split(':');
-    links.push({ a, b, strength: count });
-  }
-  // Shared-tag derivation yields cliques; keep only load-bearing synapses
-  // (mutual top-K nominations + all links of low-degree bridge/leaf nodes)
-  // so the wiring reads as intentional paths, not a filled mesh.
-  return selectIntentionalLinks(links);
 }
