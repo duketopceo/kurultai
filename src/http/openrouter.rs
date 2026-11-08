@@ -2,6 +2,9 @@
 //!
 //! - `POST /api/openrouter/connect` — starts a flow, returns `{auth_url, expires_in}`.
 //!   A WRITE route (`auth::WRITE_ROUTES`): shared-write mode needs the admin token.
+//! - `POST /api/openrouter/key` `{key}` — the browser (first-party `@openrouter/sdk`
+//!   PKCE flow) hands over the exchanged key. WRITE route. Keys are read once at daemon
+//!   start (embedder/synthesizer), so the response carries `restart_required: true`.
 //! - `GET /api/openrouter/callback?code&state` — OpenRouter's redirect target. The
 //!   browser carries no bearer, so it is exempt from hub auth and self-gated by
 //!   the single-use, short-TTL `state` minted by `connect` (PKCE verifier lives
@@ -44,6 +47,7 @@ pub(crate) fn routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
 fn router_with<S: Clone + Send + Sync + 'static>(st: OrState) -> Router<S> {
     Router::new()
         .route("/api/openrouter/connect", post(connect))
+        .route("/api/openrouter/key", post(set_key))
         .route("/api/openrouter/callback", get(callback))
         .with_state(st)
 }
@@ -75,6 +79,36 @@ async fn connect(State(st): State<OrState>, headers: HeaderMap) -> Response {
         }))
         .into_response(),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "bad OpenRouter origin").into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct KeyBody {
+    key: String,
+}
+
+/// OpenRouter keys look like `sk-or-v1-<hex>`; accept a sane shape only.
+fn valid_key_shape(k: &str) -> bool {
+    (12..=256).contains(&k.len())
+        && k.starts_with("sk-or-")
+        && k.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+async fn set_key(State(st): State<OrState>, Json(body): Json<KeyBody>) -> Response {
+    let key = body.key.trim();
+    if !valid_key_shape(key) {
+        return (StatusCode::BAD_REQUEST, "not an OpenRouter key").into_response();
+    }
+    match st.store.store(key) {
+        Ok(where_) => {
+            tracing::info!(location = %where_, "OpenRouter key stored from browser");
+            Json(serde_json::json!({ "ok": true, "restart_required": true })).into_response()
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "OpenRouter key store failed");
+            (StatusCode::INTERNAL_SERVER_ERROR, "could not store key").into_response()
+        }
     }
 }
 
@@ -196,6 +230,42 @@ mod tests {
             )
             .await,
             StatusCode::BAD_REQUEST
+        );
+    }
+
+    #[tokio::test]
+    async fn key_route_validates_and_stores() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("openrouter.key");
+        let st = OrState {
+            flows: PendingFlows::default(),
+            store: Arc::new(FileKeyStore::new(path.clone())),
+            origin: "http://127.0.0.1:1".into(),
+            client: reqwest::Client::new(),
+        };
+        let app: Router = router_with::<()>(st);
+        let post_key = |k: &str| {
+            Request::post("/api/openrouter/key")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::json!({ "key": k }).to_string()))
+                .unwrap()
+        };
+        let r = app.clone().oneshot(post_key("nope")).await.unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert!(!path.exists());
+        let r = app
+            .clone()
+            .oneshot(post_key("sk-or-v1-abc123def456"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(r.into_body(), 1 << 16).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["restart_required"], true);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap().trim(),
+            "sk-or-v1-abc123def456"
         );
     }
 

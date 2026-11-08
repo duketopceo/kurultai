@@ -73,7 +73,7 @@ docker compose up -d</pre>
     <div class="grid">
       <div class="opt" id="o-fts"><div class="tag">Default</div><b>Keywords only</b><p>Fast, private, no downloads.</p></div>
       <div class="opt" id="o-local"><div class="tag">Offline</div><b>Local model (ONNX)</b><p id="local-note"></p></div>
-      <div class="opt" id="o-or"><div class="tag">Cloud</div><b>OpenRouter</b><p id="or-note"></p><a class="btn ghost" id="connect" href="/api/openrouter/connect" hidden>Connect OpenRouter</a></div>
+      <div class="opt" id="o-or"><div class="tag">Cloud</div><b>OpenRouter</b><p id="or-note"></p><a class="btn ghost" id="connect" href="/ui/?or_connect=start">Connect OpenRouter</a></div>
     </div>
     <p>Changing embeddings later means re-indexing into a fresh store; pick one before you add lots of data.</p>
   </section>
@@ -108,11 +108,8 @@ docker compose up -d</pre>
         : "This image has no local model. Rebuild with docker-compose.local-embed.yml (see the self-host guide).");
       text($("or-note"), s.openrouter_key_present
         ? "A key is configured."
-        : "Run `kurultai connect openrouter`, or set OPENROUTER_API_KEY.");
+        : "Connect below, run `kurultai connect openrouter`, or set OPENROUTER_API_KEY.");
     }).catch(function (e) { text($("strip"), e.message); });
-    fetch("/api/openrouter/connect", { method: "GET", redirect: "manual" }).then(function (r) {
-      if (r.status !== 404) $("connect").hidden = false;
-    }).catch(function () {});
   }
   $("savekey").onclick = function () {
     try { sessionStorage.setItem("kurultai.key", $("key").value.trim()); } catch (e) {}

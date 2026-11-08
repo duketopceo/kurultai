@@ -1,8 +1,28 @@
 # OpenRouter Connect
 
-First-party OpenRouter OAuth PKCE flow (OpenRouter ships only TS/Python SDKs, so
-Kurultai implements the [documented flow](https://openrouter.ai/docs/guides/overview/auth/oauth)
-directly in `src/openrouter_connect.rs`). It replaces pasting an `OPENROUTER_API_KEY`.
+First-party OpenRouter OAuth PKCE flow. The CLI and server-side flow are implemented
+in `src/openrouter_connect.rs` ([documented flow](https://openrouter.ai/docs/guides/overview/auth/oauth)).
+The web UI uses the official TypeScript SDK `@openrouter/sdk` in the browser (below).
+It replaces pasting an `OPENROUTER_API_KEY`.
+
+## Browser (web UI, via `@openrouter/sdk`)
+
+Menu -> "Connect OpenRouter" (or the welcome page button, which opens
+`/ui/?or_connect=start`). `website/src/openrouterConnect.ts` (SDK loaded by dynamic
+import, code-split from the main bundle):
+
+1. `oAuth.createSHA256CodeChallenge()`; the verifier is kept in `sessionStorage`.
+2. Redirect to the SDK-built auth URL, callback `${origin}/ui/?or_connect=1`.
+3. On return, the SDK exchanges the code in the browser, the key is `POST`ed to
+   `POST /api/openrouter/key` `{key}` (write route: admin token in shared-write
+   mode), then the verifier is cleared and the query stripped. The key is never
+   logged or rendered.
+4. The daemon stores it in the 0600 key file and answers
+   `{ok, restart_required: true}`: keys are read once at startup, so restart the
+   daemon (the UI says so).
+
+Accounts with "require key expiration" must turn it off for this flow: OAuth keys
+carry no expiry (the SDK has no option for it).
 
 ## CLI (local)
 

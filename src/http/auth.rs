@@ -310,6 +310,7 @@ const WRITE_ROUTES: &[&str] = &[
     "/api/onboarding/note",
     // Mints/stores an OpenRouter key; the callback is state-gated, not listed.
     "/api/openrouter/connect",
+    "/api/openrouter/key",
 ];
 
 /// `/api/ontology/entity[/{id}]` and `/api/ontology/link[/{id}]` are the
@@ -449,6 +450,7 @@ mod tests {
         assert!(!path_requires_hub_auth("/connect"));
         assert!(!path_requires_hub_auth("/api/openrouter/callback"));
         assert!(path_requires_hub_auth("/api/openrouter/connect"));
+        assert!(path_requires_hub_auth("/api/openrouter/key"));
 
         assert!(path_requires_hub_auth("/api/status"));
         assert!(path_requires_hub_auth("/api/search"));

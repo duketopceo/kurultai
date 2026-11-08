@@ -61,6 +61,9 @@ export interface V2ShellProps {
   chainMissing: boolean;
   onAsk: (atom: Atom, signal: AbortSignal) => Promise<string>;
   newBadge?: ReactNode;
+  orConnected?: boolean;
+  orMessage?: { ok: boolean; text: string } | null;
+  onConnectOpenRouter?: () => void;
 }
 
 export function V2Shell(p: V2ShellProps) {
@@ -199,6 +202,12 @@ export function V2Shell(p: V2ShellProps) {
                 <input type="checkbox" checked={p.mode32} onChange={(e) => p.onMode32(e.target.checked)} />
                 <span>32-bit mode</span>
               </label>
+              {p.onConnectOpenRouter && (
+                <button type="button" role="menuitem" disabled={p.orConnected} onClick={() => { setMenuOpen(false); p.onConnectOpenRouter?.(); }}>
+                  {p.orConnected ? 'OpenRouter connected' : 'Connect OpenRouter'}
+                </button>
+              )}
+              {p.orMessage && <span className={p.orMessage.ok ? 'v2-meta' : 'v2-meta v2-err'} role="status">{p.orMessage.text}</span>}
               <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); p.onOpenSettings(); }}>Access settings</button>
               <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setPaletteOpen(true); }}>Command palette</button>
               <span className="v2-meta">ctrl+k opens the palette</span>
