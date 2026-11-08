@@ -41,6 +41,7 @@ version: 11
 | [`HANDOFF-omarchy-macbook-m1.md`](HANDOFF-omarchy-macbook-m1.md) | m1→max migration handoff: shipped PRs, watcher hot-loop bug, new-machine connect bootstrap | — | — | 2026-09-19 | 1 | 2026-09-19 added |
 | [`multi-user-kurultai.md`](multi-user-kurultai.md) | Multi-user / hub product notes | — | — | 2026-08-29 | 2 | 2026-08-29 hosted-hub row points at railway-hub.md · 2026-08-16 indexed (v1 seed) |
 | [`upstream-inspiration.md`](upstream-inspiration.md) | Upstream inspiration notes | — | — | 2026-07-21 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`openrouter-connect.md`](openrouter-connect.md) | OpenRouter Connect: CLI, hosted flow, key storage, expiry handling | — | `src/openrouter_connect.rs` | 2026-11-07 | 1 | 2026-11-07 added |
 
 ## Recent
 

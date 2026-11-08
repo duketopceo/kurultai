@@ -62,6 +62,7 @@ version: 10
 | [`selfhost.rs`](selfhost.rs) | `KURULTAI_SELFHOST=1` bootstrap: first-run config (notes source) + minted access key | `src/config` · `src/mcp/init.rs` | `src/main.rs` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`webui.rs`](webui.rs) | `kurultai webui` — probe/spawn daemon, print URL, open browser | `src/error` | `src/main.rs` · `src/connect.rs` | 2026-09-16 | 2 | 2026-09-16 `open_browser` pub(crate) for `connect` · 2026-09-15 added (#329) |
 | [`write_policy.rs`](write_policy.rs) | Write provenance + SharedClosed quarantine containment | — | `src/mcp/server.rs` · `src/quality/promote.rs` | 2026-08-14 | 1 | 2026-08-16 indexed (v1 seed) |
+| [`openrouter_connect.rs`](openrouter_connect.rs) | OpenRouter OAuth PKCE Connect: S256 verifier/challenge, auth URL, code exchange, pending-state store, 0600 key file, expiry-401 message helper, loopback CLI | `src/error` · `src/security` · `src/webui` · `reqwest` · `sha2` · `base64` | `src/main.rs` · `src/http/openrouter.rs` · `src/embed/mod.rs` · `src/synthesize/mod.rs` | 2026-11-07 | 1 | 2026-11-07 added — no expiry param in OpenRouter docs |
 
 ## Recent
 
