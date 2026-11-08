@@ -22,6 +22,8 @@ export interface BrainLike {
   resetView?(): void;
   setFresh?(ids: Iterable<string>): void;
   setPixelMode?(on: boolean): void;
+  setTheme?(t: 'light' | 'dark'): void;
+  setEffects?(on: boolean): void;
   metrics(): { fps: number; nodes: number; renderedEdges: number };
   dispose(): void;
 }
@@ -54,9 +56,12 @@ interface Props {
   caption: string;
   /** v2: 32-bit render mode. */
   pixel?: boolean;
+  theme?: 'light' | 'dark';
+  /** false = reduce effects (freeze background flow + breathing). */
+  effects?: boolean;
 }
 
-export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, onOntologyChanged, caption, pixel }, ref) {
+export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, onOntologyChanged, caption, pixel, theme, effects }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const brainRef = useRef<BrainLike | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -126,6 +131,14 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
   useEffect(() => {
     if (ready) brainRef.current?.setPixelMode?.(!!pixel);
   }, [pixel, ready]);
+
+  useEffect(() => {
+    if (ready) brainRef.current?.setTheme?.(theme ?? 'dark');
+  }, [theme, ready]);
+
+  useEffect(() => {
+    if (ready) brainRef.current?.setEffects?.(effects !== false);
+  }, [effects, ready]);
 
   useEffect(() => {
     if (!brainRef.current || !ready) return;

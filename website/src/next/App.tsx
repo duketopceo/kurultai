@@ -20,6 +20,7 @@ import { brainVersion } from '../brain/v2/flag';
 import { describeChain, type ChainStep } from '../brain/v2/why';
 import { V2Shell } from './V2Shell';
 import { useMode32 } from '../brain/v2/mode32';
+import { useReduceEffects, useTheme } from '../brain/v2/theme';
 
 import { TopBar, CommandStrip, type NavKey, type SearchResult, type SearchState } from './gen/chrome/chrome';
 import { BrainHero } from './gen/brain-hero/brain-hero';
@@ -79,6 +80,8 @@ export function NextApp() {
   const [selected, setSelected] = useState<Atom | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mode32, setMode32] = useMode32();
+  const themeCtl = useTheme();
+  const [reduceFx, setReduceFx] = useReduceEffects();
   const brainRef = useRef<BrainStageHandle | null>(null);
   // ── v2: trace-to-another-node state ───────────────────────────────
   const [tracing, setTracing] = useState(false);
@@ -463,10 +466,16 @@ export function NextApp() {
               onOntologyChanged={setOntology}
               caption=""
               pixel={mode32}
+              theme={themeCtl.theme}
+              effects={!reduceFx}
             />
           )}
           mode32={mode32}
           onMode32={setMode32}
+          themePref={themeCtl.pref}
+          onThemePref={themeCtl.setPref}
+          reduceEffects={reduceFx}
+          onReduceEffects={setReduceFx}
           availableViews={['ontology']}
           renderView={(v) => (v === 'ontology' ? workSurface('ontology') : null)}
           renderSurface={workSurface}

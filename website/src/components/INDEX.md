@@ -40,6 +40,7 @@ version: 11
 
 ## Recent
 
+- 2026-11-08 — BrainStage `theme` / `effects` props
 - 2026-11-08 — BrainStage `pixel` prop (32-bit mode)
 - 2026-11-07 — `BrainStage`: `?brain=v2` lazily loads `brain/v2/BrainV2` (code-split); `buildLinks` moved to `brain/v2/links.ts`; shared `BrainLike` surface
 - 2026-09-20 — `BrainStage` BrainHud feeds FPS samples to `perf.ts` reporter (#102 client telemetry)

@@ -9,6 +9,7 @@ import type { Atom } from '../types';
 import type { SearchResult, SearchState } from './gen/chrome/chrome';
 import { PALETTE_COMMANDS, filterCommands, type PaletteCommand, type SurfaceKey, type ViewKey } from '../brain/v2/palette';
 import type { ChainStep } from '../brain/v2/why';
+import type { ThemePref } from '../brain/v2/theme';
 import './v2shell.css';
 
 export type PanelTab = 'inspect' | Exclude<SurfaceKey, 'ontology'>;
@@ -45,6 +46,10 @@ export interface V2ShellProps {
   onOpenSettings: () => void;
   mode32: boolean;
   onMode32: (on: boolean) => void;
+  themePref: ThemePref;
+  onThemePref: (p: ThemePref) => void;
+  reduceEffects: boolean;
+  onReduceEffects: (on: boolean) => void;
   selected: Atom | null;
   onCloseSelected: () => void;
   tracing: boolean;
@@ -173,6 +178,15 @@ export function V2Shell(p: V2ShellProps) {
           </button>
           {menuOpen && (
             <div className="v2-menu-pop" role="menu">
+              <div className="v2-themes" role="group" aria-label="Theme">
+                {(['light', 'dark', 'system'] as ThemePref[]).map((t) => (
+                  <button key={t} type="button" aria-pressed={p.themePref === t} className={p.themePref === t ? 'on' : ''} onClick={() => p.onThemePref(t)}>{t}</button>
+                ))}
+              </div>
+              <label className="v2-switch" role="menuitemcheckbox" aria-checked={p.reduceEffects}>
+                <input type="checkbox" checked={p.reduceEffects} onChange={(e) => p.onReduceEffects(e.target.checked)} />
+                <span>reduce effects</span>
+              </label>
               <label className="v2-switch" role="menuitemcheckbox" aria-checked={p.mode32}>
                 <input type="checkbox" checked={p.mode32} onChange={(e) => p.onMode32(e.target.checked)} />
                 <span>32-bit mode</span>
