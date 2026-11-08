@@ -10,7 +10,7 @@
  * ONLY for the selected path and the search target (DESIGN.md accent rule).
  */
 import {
-  AdditiveBlending, BufferAttribute, NearestFilter, OrthographicCamera, PlaneGeometry, Vector2, WebGLRenderTarget, BufferGeometry, DoubleSide, LineSegments, Mesh,
+  AdditiveBlending, NormalBlending, BufferAttribute, Color, NearestFilter, OrthographicCamera, PlaneGeometry, Vector2, WebGLRenderTarget, BufferGeometry, DoubleSide, LineSegments, Mesh,
   PerspectiveCamera, Points, Scene, ShaderMaterial, Vector3, WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -30,6 +30,21 @@ const LINE_CAP = 1024;
 
 /* ── 32-bit mode: PS1 vertex snap (shared uniform, 0 = off) + low-res target with Bayer dither / 8-8-4 palette ── */
 const SNAP = { value: 0 };
+/* ── theme: two monochrome looks. Dark = white additive light on black; light = near-black ink on paper ── */
+export type BrainTheme = 'light' | 'dark';
+const THEME = {
+  uInk: { value: new Vector3(0.96, 0.96, 0.96) },
+  uMute: { value: new Vector3(0.62, 0.62, 0.62) },
+  uLight: { value: 0 },
+};
+const PALETTE = {
+  dark: { ink: [0.97, 0.97, 0.97], mute: [0.58, 0.58, 0.60], bg: [0.012, 0.012, 0.012] },
+  light: { ink: [0.04, 0.04, 0.04], mute: [0.30, 0.30, 0.31], bg: [0.961, 0.961, 0.953] },
+} as const;
+let lightNow = false;
+const blendProps = () => (lightNow ? { blending: NormalBlending, premultipliedAlpha: true } : { blending: AdditiveBlending, premultipliedAlpha: false });
+const THEME_GLSL = 'uniform vec3 uInk;\nuniform vec3 uMute;\nuniform float uLight;\n';
+const withTheme = (src: string) => THEME_GLSL + src;
 const withSnap = (src: string) =>
   `uniform float uSnap;\nvec4 snapPos(vec4 p) { if (uSnap > 0.5) { vec2 g = floor(p.xy / p.w * uSnap + 0.5) / uSnap; p.xy = g * p.w; } return p; }\n` +
   src.replace(/gl_Position = ([^;]+);/, 'gl_Position = snapPos($1);');
@@ -37,6 +52,8 @@ const POST_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(
 const POST_FRAG = /* glsl */ `
 uniform sampler2D tDiffuse;
 uniform vec2 uRes;
+uniform float uBoost;
+uniform float uDither;
 varying vec2 vUv;
 float bayer(vec2 p) {
   vec2 q = mod(floor(p), 4.0);
@@ -46,10 +63,36 @@ float bayer(vec2 p) {
   return idx / 16.0 - 0.47;
 }
 void main() {
-  vec3 c = texture2D(tDiffuse, vUv).rgb * 1.35;
+  vec3 c = texture2D(tDiffuse, vUv).rgb * uBoost;
   float d = bayer(vUv * uRes);
-  vec3 lv = vec3(7.0, 7.0, 3.0); // 8x8x4 = 256 colours
-  c = floor(c * lv + 0.5 + d * 0.9) / lv;
+  vec3 lv = vec3(5.0, 6.0, 5.0); // 6x7x6 = 252 colours, neutral greys
+  c = floor(c * lv + 0.5 + d * uDither) / lv;
+  gl_FragColor = vec4(c, 1.0);
+}`;
+
+/* ── background flow: very slow, very low-contrast ink-wash field behind everything (one full-screen quad) ── */
+const BG_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.9999, 1.0); }';
+const BG_FRAG = /* glsl */ `
+uniform vec3 uBg;
+uniform float uTime;
+uniform float uAmp;
+uniform float uLight;
+uniform vec2 uAspect;
+varying vec2 vUv;
+float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p) { return 0.55 * vn(p) + 0.3 * vn(p * 2.03 + 7.1) + 0.15 * vn(p * 4.1 + 3.3); }
+void main() {
+  vec2 p = vUv * uAspect;
+  float t = uTime / 30.0; // ~30 s per unit of drift
+  vec2 q = vec2(vn(p * 1.4 + vec2(t, -0.7 * t)), vn(p * 1.4 + vec2(5.2 - 0.6 * t, 1.3 + 0.9 * t)));
+  float n = fbm(p * 1.1 + 1.8 * q + 0.5 * t);
+  float breath = 0.5 + 0.5 * sin(uTime * 0.45); // same phase as the scene breathing field
+  float v = n * uAmp * (0.8 + 0.2 * breath);
+  vec3 c = uLight > 0.5 ? uBg - vec3(v) : uBg + vec3(v);
   gl_FragColor = vec4(c, 1.0);
 }`;
 
@@ -93,7 +136,8 @@ void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   float base = mix(1.0, 2.4, uLod) * (0.6 + 0.9 * aImp);
   float boost = aFlag > 0.5 ? 2.2 : 1.0;
-  gl_PointSize = clamp(uSize * base * boost * (1.0 + 1.2 * vSpike) / -mv.z, 2.0, 56.0);
+  float breathe = 1.0 + 0.04 * sin(uTime * 0.7 + aPhase * 6.2831);
+  gl_PointSize = clamp(uSize * base * boost * breathe * (1.0 + 1.2 * vSpike) / -mv.z, 2.0, 56.0);
   gl_Position = projectionMatrix * mv;
 }`;
 
@@ -109,14 +153,15 @@ void main() {
   float core = exp(-d * d * 14.0);
   float halo = pow(1.0 - d, 2.2) * 0.55;
   float rays = (exp(-abs(c.x) * 70.0) + exp(-abs(c.y) * 70.0)) * pow(1.0 - d, 1.5) * (0.25 + 0.9 * vSpike);
-  vec3 white = vec3(0.96, 0.94, 1.0);
-  vec3 purple = vec3(0.60, 0.46, 1.0);
+  vec3 white = uInk;
+  vec3 purple = uMute;
   vec3 col = mix(purple, white, 0.25 + 0.6 * vTw + 0.5 * vSpike);
   float a = (core * 1.2 + halo * (0.5 + 0.5 * vTw) + rays) * mix(0.8, 1.0, uLod);
   if (vFlag > 0.5 && vFlag < 1.5) { col = white; a = core * 1.4 + halo + rays; }
   if (vFlag > 1.5 && vFlag < 2.5) { col = vec3(0.91, 0.64, 0.24); a = core * 1.4 + halo + rays; }
   if (vFlag > 2.5 && vFlag < 3.5) { col = mix(white, purple, 1.0 - vTw); a = core * 1.3 + halo + rays; }
   if (vFlag > 3.5) { col = vec3(0.91, 0.64, 0.24); a = core * 1.4 + halo + rays; }
+  if (uLight > 0.5) a = min(a, 1.0);
   gl_FragColor = vec4(col * a, a);
 }`;
 
@@ -138,7 +183,7 @@ void main() {
   float d = length(gl_PointCoord - 0.5);
   if (d > 0.5) discard;
   float a = pow(1.0 - d * 2.0, 2.0) * (0.04 + 0.22 * vS) * uFar;
-  gl_FragColor = vec4(vec3(0.545, 0.424, 0.941) * a, a);
+  gl_FragColor = vec4(uMute * a, a);
 }`;
 
 /* ── wire shell: thin edges coloured by the owning region's fill; lobe boundaries drawn brighter ── */
@@ -166,10 +211,11 @@ varying float vEdge;
 varying float vShim;
 varying float vFace;
 void main() {
-  vec3 dim = vec3(0.24, 0.20, 0.38);
-  vec3 hot = vec3(0.78, 0.70, 1.0);
+  vec3 dim = uMute * 0.85;
+  vec3 hot = uInk;
   vec3 col = mix(dim, hot, vFill);
   float a = (0.17 + 0.42 * vFill + 0.22 * vEdge * (0.5 + vFill) + 0.12 * vFill * vShim) * vFace;
+  if (uLight > 0.5) a *= 0.8;
   gl_FragColor = vec4(col * a, a);
 }`;
 const FRESNEL_VERT = /* glsl */ `
@@ -187,8 +233,9 @@ const FRESNEL_FRAG = /* glsl */ `
 varying float vFill;
 varying float vRim;
 void main() {
-  vec3 col = mix(vec3(0.30, 0.22, 0.60), vec3(0.72, 0.62, 1.0), vFill);
+  vec3 col = mix(uMute, uInk, vFill);
   float a = vRim * (0.10 + 0.45 * vFill) + 0.008 + 0.025 * vFill;
+  if (uLight > 0.5) a *= 0.4;
   gl_FragColor = vec4(col * a, a);
 }`;
 
@@ -223,16 +270,16 @@ void main() {
   float cyc = fract(uTime * (0.16 + 0.2 * vSeed) + vSeed * 7.0);
   float spike = exp(-pow((vT - cyc * 1.4 + 0.2) / 0.07, 2.0)) * uPulse;
   float a = uBase * flick + spike;
-  vec3 col = mix(uColor, vec3(0.97, 0.95, 1.0), clamp(spike, 0.0, 1.0));
+  vec3 col = mix(uColor, uInk, clamp(spike, 0.0, 1.0));
   gl_FragColor = vec4(col * a, a);
 }`;
 
-function synapseMaterial(color: [number, number, number], base: number, pulse: number, jitter: number): ShaderMaterial {
+function synapseMaterial(color: [number, number, number] | 'ink' | 'mute', base: number, pulse: number, jitter: number): ShaderMaterial {
   return new ShaderMaterial({
-    vertexShader: withSnap(SYN_VERT), fragmentShader: SYN_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
+    vertexShader: withSnap(SYN_VERT), fragmentShader: withTheme(SYN_FRAG), transparent: true, depthWrite: false, ...blendProps(),
     uniforms: {
-      uSnap: SNAP, uTime: { value: 0 }, uJitter: { value: jitter }, uBase: { value: base }, uPulse: { value: pulse },
-      uColor: { value: new Vector3(...color) },
+      ...THEME, uSnap: SNAP, uTime: { value: 0 }, uJitter: { value: jitter }, uBase: { value: base }, uPulse: { value: pulse },
+      uColor: { value: color === 'ink' ? THEME.uInk.value : color === 'mute' ? THEME.uMute.value : new Vector3(...color) },
     },
   });
 }
@@ -285,6 +332,10 @@ export class BrainV2 {
   private ro: ResizeObserver;
   private raf = 0;
   private pixel = false;
+  private bg!: Mesh;
+  private bgMat!: ShaderMaterial;
+  private theme: BrainTheme = 'dark';
+  private effects = true;
   private rt: WebGLRenderTarget | null = null;
   private postScene = new Scene();
   private postCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -321,7 +372,15 @@ export class BrainV2 {
       throw e;
     }
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-    this.renderer.setClearColor(0x000000, 1); // deep black
+    this.renderer.setClearColor(0x030303, 1);
+    this.bgMat = new ShaderMaterial({
+      vertexShader: BG_VERT, fragmentShader: BG_FRAG, depthTest: false, depthWrite: false,
+      uniforms: { uBg: { value: new Vector3() }, uTime: { value: 0 }, uAmp: { value: 0.025 }, uLight: THEME.uLight, uAspect: { value: new Vector2(1.6, 1) } },
+    });
+    this.bg = new Mesh(new PlaneGeometry(2, 2), this.bgMat);
+    this.bg.frustumCulled = false;
+    this.bg.renderOrder = -100;
+    this.scene.add(this.bg);
     host.appendChild(this.renderer.domElement);
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.dataset.brain = 'v2';
@@ -354,20 +413,20 @@ export class BrainV2 {
     shellGeo.setAttribute('aNormal', new BufferAttribute(en, 3));
     shellGeo.setAttribute('aEdge', new BufferAttribute(boundary, 1));
     this.shell = new LineSegments(shellGeo, new ShaderMaterial({
-      vertexShader: withSnap(SHELL_VERT), fragmentShader: SHELL_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
-      uniforms: { uSnap: SNAP, uTime: { value: 0 } },
+      vertexShader: withSnap(SHELL_VERT), fragmentShader: withTheme(SHELL_FRAG), transparent: true, depthWrite: false, ...blendProps(),
+      uniforms: { ...THEME, uSnap: SNAP, uTime: { value: 0 } },
     }));
     this.shell.frustumCulled = false;
     this.scene.add(this.shell);
 
     this.fresnel = new Mesh(fg, new ShaderMaterial({
-      vertexShader: withSnap(FRESNEL_VERT), fragmentShader: FRESNEL_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide, uniforms: { uSnap: SNAP },
+      vertexShader: withSnap(FRESNEL_VERT), fragmentShader: withTheme(FRESNEL_FRAG), transparent: true, depthWrite: false, ...blendProps(), side: DoubleSide, uniforms: { ...THEME, uSnap: SNAP },
     }));
     this.fresnel.frustumCulled = false;
     this.scene.add(this.fresnel);
     this.paintShell(null);
 
-    this.hoverLines = this.makeLines([0.86, 0.8, 1.0], 1.0, 1.6, 0.014);
+    this.hoverLines = this.makeLines('ink', 1.0, 1.6, 0.014);
     this.pathLines = this.makeLines([0.91, 0.64, 0.24], 1.5, 1.8, 0.012);
     this.scene.add(this.hoverLines, this.pathLines);
 
@@ -409,11 +468,12 @@ export class BrainV2 {
 
     this.loop = this.loop.bind(this);
     this.raf = requestAnimationFrame(this.loop);
+    this.setTheme('dark');
     queueMicrotask(() => { if (!this.disposed) opts.onReady(); });
   }
 
   /** Electric highlight lines: each synapse is SEG sub-segments so the shader can zig-zag it. */
-  private makeLines(color: [number, number, number], base: number, pulse: number, jitter: number): LineSegments {
+  private makeLines(color: [number, number, number] | 'ink' | 'mute', base: number, pulse: number, jitter: number): LineSegments {
     const g = new BufferGeometry();
     const verts = LINE_CAP * SEG * 2;
     g.setAttribute('position', new BufferAttribute(new Float32Array(verts * 3), 3));
@@ -433,6 +493,7 @@ export class BrainV2 {
     this.renderer.domElement.style.height = '100%';
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.bgMat.uniforms.uAspect.value.set(w / h, 1);
     this.sizeTarget();
   }
 
@@ -442,6 +503,40 @@ export class BrainV2 {
     const w = Math.max(1, Math.round(h * (this.host.clientWidth / Math.max(1, this.host.clientHeight))));
     this.rt.setSize(w, h);
     (this.postMat.uniforms.uRes.value as Vector2).set(w, h);
+  }
+
+  /** Light = near-black ink on paper (normal blending); dark = white additive light on black. */
+  setTheme(t: BrainTheme) {
+    this.theme = t;
+    lightNow = t === 'light';
+    const pal = PALETTE[t];
+    THEME.uInk.value.set(pal.ink[0], pal.ink[1], pal.ink[2]);
+    THEME.uMute.value.set(pal.mute[0], pal.mute[1], pal.mute[2]);
+    THEME.uLight.value = lightNow ? 1 : 0;
+    this.bgMat.uniforms.uBg.value.set(pal.bg[0], pal.bg[1], pal.bg[2]);
+    this.bgMat.uniforms.uAmp.value = this.effects ? (lightNow ? 0.02 : 0.025) : 0;
+    this.renderer.setClearColor(new Color(pal.bg[0], pal.bg[1], pal.bg[2]), 1);
+    if (this.postMat) { this.postMat.uniforms.uBoost.value = lightNow ? 1.0 : 1.35; this.postMat.uniforms.uDither.value = lightNow ? 0.3 : 0.9; }
+    this.scene.traverse((o) => {
+      const m = (o as unknown as { material?: ShaderMaterial }).material;
+      if (m && m.uniforms && m.uniforms.uInk) {
+        const b = blendProps();
+        m.blending = b.blending;
+        m.premultipliedAlpha = b.premultipliedAlpha;
+        m.needsUpdate = true;
+      }
+    });
+    const hs = this.host.style;
+    hs.setProperty('--v2-label-fg', lightNow ? '#0a0a0a' : '#f2f2f2');
+    hs.setProperty('--v2-label-bg', lightNow ? 'rgba(245,245,243,0.82)' : 'rgba(5,5,5,0.72)');
+    hs.setProperty('--v2-label-bd', lightNow ? 'rgba(10,10,10,0.35)' : 'rgba(255,255,255,0.28)');
+  }
+
+  /** "Reduce effects": freezes the background flow and breathing field (also implied by reduced motion). */
+  setEffects(on: boolean) {
+    this.effects = on;
+    this.bgMat.uniforms.uAmp.value = on ? (lightNow ? 0.02 : 0.025) : 0;
+    this.bg.visible = on; // flat clear colour when off: no full-screen pass at all
   }
 
   /** 32-bit mode: low-res nearest-upscaled, dithered 256-colour render with PS1 vertex snap and stepped animation. */
@@ -454,7 +549,7 @@ export class BrainV2 {
       this.rt = new WebGLRenderTarget(2, 2, { minFilter: NearestFilter, magFilter: NearestFilter });
       this.postMat = new ShaderMaterial({
         vertexShader: POST_VERT, fragmentShader: POST_FRAG, depthTest: false, depthWrite: false,
-        uniforms: { tDiffuse: { value: this.rt.texture }, uRes: { value: new Vector2(2, 2) } },
+        uniforms: { tDiffuse: { value: this.rt.texture }, uRes: { value: new Vector2(2, 2) }, uBoost: { value: lightNow ? 1.0 : 1.35 }, uDither: { value: lightNow ? 0.3 : 0.9 } },
       });
       this.postScene.add(new Mesh(new PlaneGeometry(2, 2), this.postMat));
     }
@@ -503,8 +598,8 @@ export class BrainV2 {
     }
     g.setAttribute('aImp', new BufferAttribute(imp, 1));
     this.cloud = new Points(g, new ShaderMaterial({
-      vertexShader: withSnap(VERT), fragmentShader: FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
-      uniforms: { uSnap: SNAP, uSize: { value: 0 }, uLod: { value: 0 }, uTime: { value: 0 } },
+      vertexShader: withSnap(VERT), fragmentShader: withTheme(FRAG), transparent: true, depthWrite: false, ...blendProps(),
+      uniforms: { ...THEME, uSnap: SNAP, uSize: { value: 0 }, uLod: { value: 0 }, uTime: { value: 0 } },
     }));
     this.cloud.frustumCulled = false;
     this.scene.add(this.cloud);
@@ -523,8 +618,8 @@ export class BrainV2 {
     gg.setAttribute('position', new BufferAttribute(gp, 3));
     gg.setAttribute('aStrength', new BufferAttribute(gs, 1));
     this.glow = new Points(gg, new ShaderMaterial({
-      vertexShader: withSnap(GLOW_VERT), fragmentShader: GLOW_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending,
-      uniforms: { uSnap: SNAP, uFar: { value: 1 } },
+      vertexShader: withSnap(GLOW_VERT), fragmentShader: withTheme(GLOW_FRAG), transparent: true, depthWrite: false, ...blendProps(),
+      uniforms: { ...THEME, uSnap: SNAP, uFar: { value: 1 } },
     }));
     this.glow.frustumCulled = false;
     this.scene.add(this.glow);
@@ -535,8 +630,8 @@ export class BrainV2 {
       el.textContent = `${r.key} \u00b7 ${r.count.toLocaleString()}`;
       Object.assign(el.style, {
         position: 'absolute', left: '0', top: '0', font: '11px ui-monospace, "JetBrains Mono", monospace',
-        color: '#ece7ff', whiteSpace: 'nowrap', transform: 'translate(-50%,-50%)', opacity: '0',
-        background: 'rgba(6,4,14,0.72)', border: '1px solid rgba(139,108,240,0.35)', borderRadius: '4px', padding: '1px 6px',
+        color: 'var(--v2-label-fg, #f2f2f2)', whiteSpace: 'nowrap', transform: 'translate(-50%,-50%)', opacity: '0',
+        background: 'var(--v2-label-bg, rgba(5,5,5,0.72))', border: '1px solid var(--v2-label-bd, rgba(255,255,255,0.28))', borderRadius: '4px', padding: '1px 6px',
         letterSpacing: '0.02em',
       });
       this.labelLayer.appendChild(el);
@@ -580,7 +675,7 @@ export class BrainV2 {
     g.setAttribute('position', new BufferAttribute(pos, 3));
     g.setAttribute('aT', new BufferAttribute(tt, 1));
     g.setAttribute('aSeed', new BufferAttribute(sd, 1));
-    this.ambient = new LineSegments(g, synapseMaterial([0.55, 0.45, 1.0], 0.12, 0.9, 0.0));
+    this.ambient = new LineSegments(g, synapseMaterial('mute', 0.12, 0.9, 0.0));
     this.ambient.frustumCulled = false;
     this.scene.add(this.ambient);
   }
@@ -774,6 +869,8 @@ export class BrainV2 {
       u.uLod.value = lodU;
       u.uTime.value = st;
     }
+    this.bgMat.uniforms.uTime.value = this.effects ? st : 0;
+    this.scene.scale.setScalar(1 + (this.effects && !this.opts.reducedMotion ? Math.sin(st * 0.45) * 0.005 : 0)); // breathing field: ~1% at ~0.07 Hz
     for (const o of [this.shell, this.ambient, this.hoverLines, this.pathLines]) {
       if (o) (o.material as ShaderMaterial).uniforms.uTime.value = st;
     }

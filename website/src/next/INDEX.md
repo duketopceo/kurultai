@@ -30,4 +30,5 @@ version: 3
 
 - 2026-11-07 — `App.tsx`: v2 default, what's-new badge, tier mid then all (50k)
 - 2026-11-07 — App mounts `repos/RepoFloorplan` from the v2 palette
+- 2026-11-08 — Light/Dark/System theme + reduce-effects in the menu; shell restyled monochrome
 - 2026-11-07 — `V2Shell` minimal chrome behind `?brain=v2` (App.tsx early-returns it)
