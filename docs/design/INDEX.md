@@ -13,6 +13,7 @@ version: 2
 ## Children
 
 - [`bases/`](bases/INDEX.md) — vendored DESIGN.md files (design law)
+- [`brain-redesign/`](brain-redesign/INDEX.md) — mockups for the three brain redesign directions
 
 ## Files
 
@@ -20,6 +21,7 @@ version: 2
 |------|------|-------|---------|-------|-----|-----------|
 | [`ui-definitions.md`](ui-definitions.md) | Per-surface definitions + dispositions for the UI/UX rebuild — acceptance spec for batch-generated designs and the stitched ui-next app | plan 2026-09-25-001 (U1) | website/src · design-lab | 2026-09-26 | 1 | audit found 3 competing palettes + 2 fake-data surfaces; dark-single-accent language defined |
 | [`research-bases.md`](research-bases.md) | Near-drop-in research: ThreeUI visual language, VoltOps console layout analog, bolt.new DESIGN.md token spec — verdict per surface | plan 2026-09-25-001 (U2) | design-lab · website/src/next | 2026-09-26 | 1 | token seed = bolt.new DESIGN.md purple-remapped |
+| [`brain-redesign-directions.md`](brain-redesign-directions.md) | Three brain redesign directions (proposal): rationale, LOD scaling, perf budget | `DESIGN.md` | brain-redesign/ | 2026-11-07 | 1 | added |
 
 ## Recent
 
