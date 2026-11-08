@@ -48,7 +48,8 @@ fn load_config_from_with_env(path: &Path, env_override: Option<&str>) -> Result<
     if !path.exists() {
         tracing::warn!(path = %path.display(), "config file not found, using defaults");
         let env = Environment::resolve(env_override)?;
-        let config = default_config(env)?;
+        let mut config = default_config(env)?;
+        apply_embed_env_overrides(&mut config, &|k| std::env::var(k).ok())?;
         validate(&config)?;
         return Ok(config);
     }
@@ -57,7 +58,8 @@ fn load_config_from_with_env(path: &Path, env_override: Option<&str>) -> Result<
     let file: FileConfig = toml::from_str(&raw)?;
     let explicit_storage = file.storage.path.is_some();
     let env = Environment::resolve(env_override.or(file.environment.as_deref()))?;
-    let config = file_to_runtime(file, env, explicit_storage)?;
+    let mut config = file_to_runtime(file, env, explicit_storage)?;
+    apply_embed_env_overrides(&mut config, &|k| std::env::var(k).ok())?;
     validate(&config)?;
     tracing::debug!(
         path = %path.display(),
@@ -66,6 +68,59 @@ fn load_config_from_with_env(path: &Path, env_override: Option<&str>) -> Result<
         "config loaded"
     );
     Ok(config)
+}
+
+/// Embedding choice from the environment, for containers with no config file.
+///
+/// `KURULTAI_EMBED_BACKEND` = `local` | `perplexity` | `openrouter` overrides
+/// `[embed].backend`; `KURULTAI_EMBED_MODEL` / `KURULTAI_EMBED_DIM` override the
+/// model and dimension. `local` with no explicit model picks `AllMiniLML6V2`
+/// (384 dims) when the configured model is a cloud one, so the pair stays
+/// consistent. Unset variables change nothing. The store's vector dimension is
+/// fixed at first index: switching embedders later needs a new `storage.path`.
+pub(crate) fn apply_embed_env_overrides(
+    config: &mut Config,
+    get: &dyn Fn(&str) -> Option<String>,
+) -> Result<()> {
+    let nonempty = |k: &str| {
+        get(k)
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    };
+    let model = nonempty("KURULTAI_EMBED_MODEL");
+    let dim = match nonempty("KURULTAI_EMBED_DIM") {
+        None => None,
+        Some(d) => Some(d.parse::<usize>().map_err(|_| {
+            KurultaiError::config(format!("KURULTAI_EMBED_DIM must be an integer, got {d:?}"))
+        })?),
+    };
+    if let Some(backend) = nonempty("KURULTAI_EMBED_BACKEND") {
+        match backend.to_ascii_lowercase().as_str() {
+            "local" => {
+                config.embed_backend = Some("local".into());
+                if model.is_none() && config.embed_model.contains('/') {
+                    config.embed_model = "AllMiniLML6V2".into();
+                    if dim.is_none() {
+                        config.embed_dim = 384;
+                    }
+                }
+            }
+            "perplexity" => config.embed_backend = Some("perplexity".into()),
+            "openrouter" | "cloud" => config.embed_backend = None,
+            other => {
+                return Err(KurultaiError::config(format!(
+                    "KURULTAI_EMBED_BACKEND must be local, perplexity, or openrouter, got {other:?}"
+                )));
+            }
+        }
+    }
+    if let Some(m) = model {
+        config.embed_model = m;
+    }
+    if let Some(d) = dim {
+        config.embed_dim = d;
+    }
+    Ok(())
 }
 
 fn default_config(env: Environment) -> Result<Config> {
@@ -599,5 +654,37 @@ cap = "cold"
 "#,
         );
         assert!(load_config_from(&path).is_err());
+    }
+
+    #[test]
+    fn embed_env_override_local_picks_consistent_model() {
+        let mut cfg = default_config(Environment::Dev).unwrap();
+        let env = |k: &str| (k == "KURULTAI_EMBED_BACKEND").then(|| "local".to_string());
+        apply_embed_env_overrides(&mut cfg, &env).unwrap();
+        assert_eq!(cfg.embed_backend.as_deref(), Some("local"));
+        assert_eq!(cfg.embed_model, "AllMiniLML6V2");
+        assert_eq!(cfg.embed_dim, 384);
+        validate(&cfg).unwrap();
+    }
+
+    #[test]
+    fn embed_env_override_unset_is_noop_and_bad_values_error() {
+        let mut cfg = default_config(Environment::Dev).unwrap();
+        apply_embed_env_overrides(&mut cfg, &|_| None).unwrap();
+        assert_eq!(cfg.embed_backend, None);
+        assert_eq!(cfg.embed_dim, 3072);
+        let bad = |k: &str| (k == "KURULTAI_EMBED_BACKEND").then(|| "banana".to_string());
+        assert!(apply_embed_env_overrides(&mut cfg, &bad).is_err());
+        let bad_dim = |k: &str| (k == "KURULTAI_EMBED_DIM").then(|| "x".to_string());
+        assert!(apply_embed_env_overrides(&mut cfg, &bad_dim).is_err());
+    }
+
+    #[test]
+    fn embed_env_override_openrouter_clears_backend() {
+        let mut cfg = default_config(Environment::Dev).unwrap();
+        cfg.embed_backend = Some("local".into());
+        let env = |k: &str| (k == "KURULTAI_EMBED_BACKEND").then(|| "openrouter".to_string());
+        apply_embed_env_overrides(&mut cfg, &env).unwrap();
+        assert_eq!(cfg.embed_backend, None);
     }
 }

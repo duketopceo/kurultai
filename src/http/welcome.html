@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Welcome to Kurultai</title>
+<style>
+  :root { color-scheme: dark; --bg:#000; --fg:#ececf1; --mute:#8b8b99; --line:#26262e; --pur:#a78bfa; --card:#0b0b10; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -.01em; }
+  h2 { font-size: 17px; margin: 0 0 6px; }
+  p { margin: 6px 0; color: var(--mute); }
+  .strip { display:flex; gap:12px; flex-wrap:wrap; margin:18px 0 28px; font-size:13px; color:var(--mute); }
+  .strip b { color:var(--fg); font-weight:600; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin:14px 0; }
+  .n { display:inline-block; width:22px; height:22px; border-radius:50%; background:var(--pur); color:#000; text-align:center; font-size:13px; font-weight:700; line-height:22px; margin-right:8px; }
+  input, textarea { width:100%; background:#000; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:9px 10px; font:inherit; margin:6px 0; }
+  textarea { min-height: 96px; resize: vertical; }
+  button, a.btn { background:var(--pur); color:#000; border:0; border-radius:8px; padding:9px 14px; font:inherit; font-weight:600; cursor:pointer; text-decoration:none; display:inline-block; }
+  button.ghost, a.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline:2px solid var(--pur); outline-offset:2px; }
+  pre { background:#000; border:1px solid var(--line); border-radius:8px; padding:10px; overflow-x:auto; font-size:13px; color:var(--fg); margin:8px 0; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-top:10px; }
+  .opt { border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .opt.on { border-color: var(--pur); }
+  .tag { font-size:11px; color:var(--pur); text-transform:uppercase; letter-spacing:.06em; }
+  #msg { min-height:1.4em; font-size:13px; }
+  .err { color:#f87171; } .ok { color:#86efac; }
+  ul.hits { padding-left:18px; color:var(--fg); } ul.hits li { margin:4px 0; }
+  #keybox { display:none; }
+  footer { margin-top:28px; display:flex; gap:10px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Welcome to Kurultai</h1>
+  <p>Your brain is empty. Three quick steps and it is useful. Nothing here needs an API key.</p>
+  <div class="strip" id="strip" aria-live="polite">Checking instance...</div>
+
+  <section id="keybox">
+    <h2>Access key</h2>
+    <p>This instance requires a key. It was printed once in the container log (<code>docker logs</code>) on first start.</p>
+    <input id="key" type="password" autocomplete="current-password" placeholder="Paste access key" aria-label="Access key">
+    <button id="savekey" type="button">Use key</button>
+  </section>
+
+  <section>
+    <h2><span class="n">1</span>Write your first note</h2>
+    <p>Notes are searchable right away (full-text search). Add at least one tag.</p>
+    <input id="title" placeholder="Title, e.g. How we deploy" maxlength="200" aria-label="Title">
+    <textarea id="body" placeholder="What should your future self (or an agent) remember?" aria-label="Note body"></textarea>
+    <input id="tags" placeholder="tags, comma separated" value="welcome" aria-label="Tags">
+    <button id="save" type="button">Save note</button>
+    <div id="msg"></div>
+    <ul class="hits" id="hits"></ul>
+  </section>
+
+  <section>
+    <h2><span class="n">2</span>Import a folder of notes</h2>
+    <p>Mount a folder of Markdown files at <code>/data/notes</code> (read-only is fine). It is indexed on start and watched for changes.</p>
+    <pre>docker compose down
+# in docker-compose.yml, under volumes:
+#   - ~/Documents/notes:/data/notes:ro
+docker compose up -d</pre>
+    <p>Markdown files need at least one tag (frontmatter <code>tags:</code> or a line like <code>#project #idea</code>) to be searchable by default.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">3</span>Pick how it understands meaning</h2>
+    <p>Keyword search works with no setup. Embeddings add search by meaning.</p>
+    <div class="grid">
+      <div class="opt" id="o-fts"><div class="tag">Default</div><b>Keywords only</b><p>Fast, private, no downloads.</p></div>
+      <div class="opt" id="o-local"><div class="tag">Offline</div><b>Local model (ONNX)</b><p id="local-note"></p></div>
+      <div class="opt" id="o-or"><div class="tag">Cloud</div><b>OpenRouter</b><p id="or-note"></p><a class="btn ghost" id="connect" href="/api/openrouter/connect" hidden>Connect OpenRouter</a></div>
+    </div>
+    <p>Changing embeddings later means re-indexing into a fresh store; pick one before you add lots of data.</p>
+  </section>
+
+  <footer>
+    <a class="btn" href="/ui/?welcome=0">Open the Brain</a>
+    <a class="btn ghost" href="https://github.com/duketopceo/kurultai/blob/main/docs/self-host.md" rel="noopener">Self-host guide</a>
+  </footer>
+</main>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function key() { try { return sessionStorage.getItem("kurultai.key") || ""; } catch (e) { return ""; } }
+  function api(path, opts) {
+    opts = opts || {}; opts.headers = opts.headers || {};
+    var k = key(); if (k) opts.headers["Authorization"] = "Bearer " + k;
+    return fetch(path, opts).then(function (r) {
+      if (r.status === 401) { $("keybox").style.display = "block"; throw new Error("Access key required"); }
+      return r;
+    });
+  }
+  function text(el, s) { el.textContent = s; }
+  function status() {
+    api("/api/onboarding").then(function (r) { return r.json(); }).then(function (s) {
+      var live = s.embedder && s.embedder.live;
+      text($("strip"), "v" + s.version + "  |  " + s.atoms + " notes  |  embeddings: " + (live ? s.embedder.name : "keywords only"));
+      $("o-fts").classList.toggle("on", !live);
+      $("o-local").classList.toggle("on", !!(live && /^local:/.test(s.embedder.name)));
+      $("o-or").classList.toggle("on", !!(live && !/^local:/.test(s.embedder.name)));
+      text($("local-note"), s.local_embed_available
+        ? "Set KURULTAI_EMBED_BACKEND=local and restart. Downloads a ~90 MB model once."
+        : "This image has no local model. Rebuild with docker-compose.local-embed.yml (see the self-host guide).");
+      text($("or-note"), s.openrouter_key_present
+        ? "A key is configured."
+        : "Run `kurultai connect openrouter`, or set OPENROUTER_API_KEY.");
+    }).catch(function (e) { text($("strip"), e.message); });
+    fetch("/api/openrouter/connect", { method: "GET", redirect: "manual" }).then(function (r) {
+      if (r.status !== 404) $("connect").hidden = false;
+    }).catch(function () {});
+  }
+  $("savekey").onclick = function () {
+    try { sessionStorage.setItem("kurultai.key", $("key").value.trim()); } catch (e) {}
+    $("keybox").style.display = "none"; status();
+  };
+  $("save").onclick = function () {
+    var msg = $("msg"); msg.className = ""; text(msg, "Saving...");
+    var tags = $("tags").value.split(",").map(function (t) { return t.trim(); }).filter(Boolean);
+    api("/api/onboarding/note", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: $("title").value, body: $("body").value, tags: tags })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) { msg.className = "err"; text(msg, res.j.error || "Could not save"); return; }
+        msg.className = "ok"; text(msg, "Saved. Try searching for it:");
+        status();
+        var q = ($("title").value.split(/\s+/)[0] || "").replace(/[^\w]/g, "");
+        return api("/api/search?limit=5&q=" + encodeURIComponent(q || "welcome")).then(function (r) { return r.json(); })
+          .then(function (hits) {
+            var ul = $("hits"); ul.textContent = "";
+            (hits || []).forEach(function (h) { var li = document.createElement("li"); li.textContent = h.atom.title; ul.appendChild(li); });
+          });
+      }).catch(function (e) { msg.className = "err"; text(msg, e.message); });
+  };
+  status();
+})();
+</script>
+</body>
+</html>

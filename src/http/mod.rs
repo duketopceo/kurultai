@@ -13,6 +13,7 @@ mod device_auth;
 mod hey;
 mod hub_listen;
 mod mcp;
+mod onboarding;
 mod ontology_write;
 mod proposals;
 mod ui;
@@ -255,6 +256,7 @@ fn router(state: AppState) -> Router {
         .merge(hey::routes())
         .merge(proposals::routes())
         .merge(ontology_write::routes())
+        .merge(onboarding::routes())
         .merge(ui::routes())
         .merge(device_auth::routes(state.clone()))
         .merge(device::routes(state.clone()))

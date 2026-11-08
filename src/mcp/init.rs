@@ -134,6 +134,19 @@ pub fn provision_docs(docs_arg: Option<&str>, config_path: &Path) -> Result<Docs
     })
 }
 
+/// Point `[sources.notes]` at `dir` (created if missing) without writing a
+/// starter note. Used by the self-host bootstrap so an empty brain stays empty
+/// until the user adds something.
+pub fn enable_notes_source(config_path: &Path, dir: &Path) -> Result<()> {
+    fs::create_dir_all(dir)?;
+    let raw = fs::read_to_string(config_path)?;
+    let updated = upsert_notes_source(&raw, &dir.to_string_lossy())?;
+    if updated != raw {
+        atomic_write(config_path, updated.as_bytes())?;
+    }
+    Ok(())
+}
+
 /// Printed after `kurultai init` so CLI tests can assert the same walkthrough.
 pub fn init_walkthrough(
     config_path: &Path,

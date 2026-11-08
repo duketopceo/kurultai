@@ -32,6 +32,10 @@ FTS search works with **no API key**. Vector recall, reranking, and LLM `ask` us
 
 ## Quick start
 
+**Docker, zero keys:** `docker compose up -d`, then open <http://127.0.0.1:8421/ui/> (first-run onboarding; keyword search works with no API keys). Offline embeddings, TLS, backups and upgrades: [docs/self-host.md](docs/self-host.md).
+
+**Native install:**
+
 **Install** (macOS / Linux — release binary or `cargo install`):
 
 ```bash

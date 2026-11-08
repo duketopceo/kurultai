@@ -2,8 +2,9 @@
 index: kurultai/v1
 folder: scripts
 parent: INDEX.md
-updated: 2026-10-19
-version: 5
+updated: 2026-11-08
+updated: 2026-11-07
+version: 7
 ---
 
 # `scripts`
@@ -26,12 +27,17 @@ version: 5
 | [`hammer-mcp.mjs`](hammer-mcp.mjs) | MCP stdio lane hammer — concurrent `tools/call` through real `kurultai mcp` subprocess | MCP JSON-RPC stdio | — | 2026-09-30 | 1 | plan 2026-09-30-001 U5 |
 | [`build-ui.sh`](build-ui.sh) | website/ → ui/ production copy for rust-embed | — | `website/` · `ui/` | 2026-10-19 | 3 | 2026-10-19 enforce node 22 (fail closed + mise/nvm hint) — ui-next hashes differ across node majors, CI check builds with 22 · 2026-09-04 prune legacy files and stale hashed bundles before rebuild · 2026-08-16 indexed (v1 seed) |
 | [`ui-batch.mjs`](ui-batch.mjs) | Batch UI design generator — OpenRouter chat completions over `design-lab/prompts/` → gitignored `design-lab/out/` variants | OPENROUTER_API_KEY · `--model` (Kimi/GPT) | `design-lab/` | 2026-10-02 | 2 | add HTTP-Referer/X-Title app attribution headers ·plan 2026-09-25-001 U3 scaffold |
+| [`bake-cortex.mjs`](bake-cortex.mjs) | Bake `website/src/assets/brain.glb` into `website/src/brain/v2/cortexData.ts` (meshoptimizer decimate, interior mask, k-means lobes); run from `website/` | `website/node_modules/meshoptimizer` · `website/src/brain/layout/sdf.ts` | `website/src/brain/v2/cortexData.ts` | 2026-11-08 | 1 | 2026-11-08 added |
 | [`ui-smoke.mjs`](ui-smoke.mjs) | Bounded headless UI smoke check (hard timeout, `--disable-gpu`, tab/aria probe) | daemon on :8421 | `ui/` | 2026-09-27 | 1 | 2026-09-27 added — replaces ad-hoc Playwright heredocs after a hung one orphaned a 700% CPU SwiftShader proc |
 | [`install.ps1`](install.ps1) | Windows installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`install.sh`](install.sh) | Unix installer | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-11-08 — `bake-cortex.mjs`: bake the brain v2 cortex (decimated mesh + lobes) from brain.glb
+- 2026-11-07 — `ui-smoke.mjs` defaults to v2 (`--brain v1` for the legacy tab probe); checks the new badge
+- 2026-11-07 — `ui-smoke.mjs` v2 mode also probes palette, drawer and clear control
+- 2026-11-07 — `ui-smoke.mjs`: `--brain v2 --synthetic N` loads `?brain=v2` (SwiftShader, still bounded) and prints fps/nodes/draw calls
 - 2026-10-19 — `build-ui.sh`: header note — build under node 22 (.nvmrc); ui-next-* hashes differ across node majors, CI embedded-asset check uses node 22
 - 2026-10-07 — `late-embed-server.py`: multi-vector sidecar for `[embed.late] backend="http"` (#424)
 

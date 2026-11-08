@@ -1,0 +1,18 @@
+# Offline embeddings: builds the image with the on-device ONNX model
+# (fastembed, AllMiniLML6V2, 384 dims). The first start downloads ~90 MB of
+# model weights into the data volume; after that it runs with no network.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local-embed.yml up -d --build
+#
+# Pick this BEFORE indexing much data: the store's vector size is fixed at
+# first index, so switching embedders later needs a fresh volume.
+services:
+  kurultai:
+    build:
+      context: .
+      dockerfile: deploy/server-001/Dockerfile.solo
+      args:
+        FEATURES: local-embed
+    image: kurultai:local-embed
+    environment:
+      KURULTAI_EMBED_BACKEND: local
