@@ -20,6 +20,7 @@ import { brainVersion } from '../brain/v2/flag';
 import { describeChain, type ChainStep } from '../brain/v2/why';
 import { V2Shell } from './V2Shell';
 import { RepoFloorplan } from '../repos/RepoFloorplan';
+import { useMode32 } from '../brain/v2/mode32';
 
 import { TopBar, CommandStrip, type NavKey, type SearchResult, type SearchState } from './gen/chrome/chrome';
 import { BrainHero } from './gen/brain-hero/brain-hero';
@@ -78,10 +79,10 @@ export function NextApp() {
   const [ontology, setOntology] = useState<OntologyResponse>({ ok: true, entities: [], links: [] });
   const [selected, setSelected] = useState<Atom | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [mode32, setMode32] = useMode32();
   const brainRef = useRef<BrainStageHandle | null>(null);
   // ── v2: trace-to-another-node state ───────────────────────────────
   const [tracing, setTracing] = useState(false);
-  const [reposOpen, setReposOpen] = useState(false);
   const [chain, setChain] = useState<ChainStep[] | null>(null);
   const [chainMissing, setChainMissing] = useState(false);
   const tracingFrom = useRef<Atom | null>(null);
@@ -402,6 +403,26 @@ export function NextApp() {
     .filter((e) => e.kind === 'class')
     .map((e) => ({ id: e.id, label: e.name }));
 
+  const workSurface = (tab: 'hey' | 'pulse' | 'ontology' | 'ask' | 'store') => (
+            <WorkSurface
+              hey={heyProps}
+              pulse={{
+                data: pulse,
+                onRetry: () => void loadPulse(),
+                subscribe: (onSnapshot) => {
+                  const id = setInterval(() => void loadPulse().then(() => {
+                    setPulse((cur) => { if (cur.status === 'ready') onSnapshot(cur.data); return cur; });
+                  }), 10_000);
+                  return () => clearInterval(id);
+                },
+              }}
+              ontology={ontologyProps}
+              ask={{ onAsk: (q, signal) => api.askBrain(q, signal) }}
+              store={storeProps}
+              defaultTab={tab}
+            />
+          );
+
   if (brainVersion() === 'v2') {
     return (
       <>
@@ -422,7 +443,6 @@ export function NextApp() {
             brainRef.current?.resetView();
           }}
           onOpenSettings={() => setSettingsOpen(true)}
-          onOpenRepos={() => setReposOpen(true)}
           selected={selected}
           onCloseSelected={() => { setSelected(null); setChain(null); setChainMissing(false); brainRef.current?.setPath([]); }}
           tracing={tracing}
@@ -443,29 +463,15 @@ export function NextApp() {
               onHover={() => undefined}
               onOntologyChanged={setOntology}
               caption=""
+              pixel={mode32}
             />
           )}
-          renderSurface={(tab) => (
-            <WorkSurface
-              hey={heyProps}
-              pulse={{
-                data: pulse,
-                onRetry: () => void loadPulse(),
-                subscribe: (onSnapshot) => {
-                  const id = setInterval(() => void loadPulse().then(() => {
-                    setPulse((cur) => { if (cur.status === 'ready') onSnapshot(cur.data); return cur; });
-                  }), 10_000);
-                  return () => clearInterval(id);
-                },
-              }}
-              ontology={ontologyProps}
-              ask={{ onAsk: (q, signal) => api.askBrain(q, signal) }}
-              store={storeProps}
-              defaultTab={tab}
-            />
-          )}
+          mode32={mode32}
+          onMode32={setMode32}
+          availableViews={['repos', 'ontology']}
+          renderView={(v) => (v === 'ontology' ? workSurface('ontology') : <RepoFloorplan onClose={() => undefined} />)}
+          renderSurface={workSurface}
         />
-        {reposOpen && <div className="v2-app v2-repos-host"><RepoFloorplan onClose={() => setReposOpen(false)} /></div>}
         {settingsOpen && (
           <div
             role="dialog"
