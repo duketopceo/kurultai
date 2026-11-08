@@ -19,6 +19,7 @@ import { UI_VERSION } from '../version';
 import { brainVersion } from '../brain/v2/flag';
 import { describeChain, type ChainStep } from '../brain/v2/why';
 import { V2Shell } from './V2Shell';
+import { connectStartRequested, fetchKeyPresent, finishConnectIfReturning, startConnect } from '../openrouterConnect';
 import { computeWhatsNew, readLastVisit, safeLocalStorage, writeLastVisit } from '../brain/v2/whatsNew';
 import { RepoFloorplan } from '../repos/RepoFloorplan';
 import { useMode32 } from '../brain/v2/mode32';
@@ -149,6 +150,30 @@ export function NextApp() {
   const [storeAtoms, setStoreAtoms] = useState<L<readonly { id: string; title: string; tier: 'hot' | 'warm' | 'cold'; indexedAt: string | null }[]>>(loading);
 
   useEffect(() => { initPerf(); }, []);
+
+  const [orConnected, setOrConnected] = useState(false);
+  const [orMessage, setOrMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const connectOpenRouter = useCallback(() => {
+    startConnect().catch(() => setOrMessage({ ok: false, text: 'Could not start OpenRouter connect.' }));
+  }, []);
+  useEffect(() => {
+    void fetchKeyPresent().then(setOrConnected);
+    if (connectStartRequested()) {
+      const u = new URL(window.location.href);
+      u.searchParams.delete('or_connect');
+      window.history.replaceState(null, '', u.pathname + u.search + u.hash);
+      connectOpenRouter();
+      return;
+    }
+    void finishConnectIfReturning().then((r) => {
+      if (r.kind === 'ok') {
+        setOrConnected(true);
+        setOrMessage({ ok: true, text: r.restartRequired ? 'OpenRouter connected. Restart the daemon to use it.' : 'OpenRouter connected.' });
+      } else if (r.kind === 'error') {
+        setOrMessage({ ok: false, text: r.message });
+      }
+    });
+  }, [connectOpenRouter]);
 
   // ── data loaders ──────────────────────────────────────────────────
   const loadStatus = useCallback(async () => {
@@ -448,6 +473,9 @@ export function NextApp() {
     return (
       <>
         <V2Shell
+          orConnected={orConnected}
+          orMessage={orMessage}
+          onConnectOpenRouter={connectOpenRouter}
           daemonStatus={daemon.status}
           query={query}
           onQueryChange={setQuery}

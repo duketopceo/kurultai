@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle, type CSSProperties } from 'react';
 import { BrainView } from '../brain/BrainView';
 import { buildTagLinks } from '../brain/v2/links';
 import { brainVersion } from '../brain/v2/flag';
@@ -70,6 +70,8 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [showFallback, setShowFallback] = useState(true);
   const [ready, setReady] = useState(false);
+  // Set when the renderer cannot start (no WebGL, chunk failed to load); shown instead of a blank canvas.
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   useImperativeHandle(ref, () => ({
     focusAtom: (atom: Atom) => {
@@ -103,7 +105,11 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
       onSelectAtom: (atom: Atom) => { onSelect(atom); },
       onClearHover: () => { onHover(null); setTooltip(null); },
       onReady: () => { dbg('BrainView ready'); setReady(true); },
-      onError: (msg: string) => { dbg('BrainView error:', msg); console.error('[BrainView]', msg); },
+      onError: (msg: string) => {
+        dbg('BrainView error:', msg);
+        console.error('[BrainView]', msg);
+        if (/webgl|failed to load|import|chunk/i.test(msg)) setRenderError(msg);
+      },
     };
     const attach = (b: BrainLike) => {
       brain = b;
@@ -210,6 +216,17 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
           </svg>
         </div>
       )}
+      {renderError && (
+        <div className="brain-nogl" role="alert" style={NOGL_STYLE}>
+          <strong>{/webgl/i.test(renderError) ? 'The 3D brain needs WebGL' : 'The 3D brain failed to load'}</strong>
+          <span>
+            {/webgl/i.test(renderError)
+              ? 'This browser has WebGL turned off. Turn on hardware acceleration in the browser settings (System), then reload. chrome://gpu shows whether WebGL is available.'
+              : 'Reload the page. If it keeps failing, the server may be mid-deploy.'}
+          </span>
+          <span style={{ opacity: 0.7 }}>Search, Repos, Ontology and the panel still work.</span>
+        </div>
+      )}
       <div id="brain-canvas" ref={hostRef} aria-label="3D memory graph" style={{ width: '100%', height: '100%' }} />
       {layout === 'ontology' ? (
         <div className="onto-board-host">
@@ -248,6 +265,13 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
     </div>
   );
 });
+
+// Inline so it works on every page that mounts BrainStage, whichever stylesheet it loads.
+const NOGL_STYLE: CSSProperties = {
+  position: 'absolute', inset: 0, zIndex: 2, display: 'flex', flexDirection: 'column',
+  alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '2rem',
+  textAlign: 'center', fontSize: '0.875rem', lineHeight: 1.5, color: 'inherit', maxWidth: '36rem', margin: '0 auto',
+};
 
 /** Live scene readout — FPS · synapses · nodes, polled from BrainView.metrics(). */
 function BrainHud({ getBrain }: { getBrain: () => BrainLike | null }) {
