@@ -482,8 +482,6 @@ export function NextApp() {
           reduceEffects={reduceFx}
           onReduceEffects={setReduceFx}
           onPanelInset={setPanelInset}
-          availableViews={['ontology']}
-          renderView={(v) => (v === 'ontology' ? workSurface('ontology') : null)}
           renderSurface={workSurface}
         />
         {settingsOpen && (
