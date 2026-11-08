@@ -77,6 +77,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-11-08 — Brain v2 visual pass: wire from the real cortex (`scripts/bake-cortex.mjs` -> `website/src/brain/v2/cortexData.ts`), lobe regions, electric atoms, label collision
 - 2026-11-07 — Brain v2 is now the default (`?brain=v1` keeps v1); what's-new badge; 50k tiered load
 - 2026-11-07 — Brain v2 Repos floorplan view (`website/src/repos/`), optional, separate from the brain
 - 2026-11-07 — Brain v2 minimal chrome: search + status dot + menu, Ctrl+K palette, drawer, selected-atom panel (`website/src/next/V2Shell.tsx`)
