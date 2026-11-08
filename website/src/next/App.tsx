@@ -479,8 +479,6 @@ export function NextApp() {
           onThemePref={themeCtl.setPref}
           reduceEffects={reduceFx}
           onReduceEffects={setReduceFx}
-          availableViews={['ontology']}
-          renderView={(v) => (v === 'ontology' ? workSurface('ontology') : null)}
           renderSurface={workSurface}
         />
         {settingsOpen && (
