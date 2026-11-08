@@ -115,6 +115,24 @@ impl Connector for MarkdownConnector {
         Ok(atoms)
     }
 
+    async fn live_rel_paths(&self) -> Result<Option<std::collections::HashSet<String>>> {
+        let root = self
+            .root_path
+            .as_ref()
+            .ok_or_else(|| KurultaiError::connector("markdown", "not initialized"))?;
+        let mut live = std::collections::HashSet::new();
+        dump::walk_dump_files(root, &[], &mut |path| {
+            live.insert(
+                path.strip_prefix(root)
+                    .unwrap_or(path)
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+            Ok(())
+        })?;
+        Ok(Some(live))
+    }
+
     async fn full_sync(&self) -> Result<Vec<KnowledgeAtom>> {
         let atoms = self.collect_atoms(None)?;
         *self

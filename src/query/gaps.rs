@@ -108,6 +108,7 @@ mod tests {
             score: 1.0,
             rank: 0,
             matched_by: vec!["fts".into()],
+            degraded: Vec::new(),
         }
     }
 

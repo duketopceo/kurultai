@@ -90,6 +90,38 @@ impl IndexPipeline {
         Ok(results)
     }
 
+    /// Delete atoms whose backing file no longer exists, for connectors that can
+    /// enumerate live paths. Incremental polls only return changed files, so
+    /// without this a deleted file lingers until the next full sync. Refuses to
+    /// act when the live set is empty but atoms exist (unmounted root guard).
+    /// Returns the number of atoms removed.
+    pub async fn reconcile_vanished(
+        &self,
+        source_name: &str,
+        connector: &dyn crate::connectors::Connector,
+    ) -> Result<usize> {
+        let Some(live) = connector.live_rel_paths().await? else {
+            return Ok(0);
+        };
+        let stored = self.store.list_source_rel_paths(source_name).await?;
+        if live.is_empty() && !stored.is_empty() {
+            tracing::warn!(
+                source = %source_name,
+                stored = stored.len(),
+                "live path set empty; skipping vanished-source removal (root unmounted?)"
+            );
+            return Ok(0);
+        }
+        let mut removed = 0usize;
+        for (id, rel) in stored {
+            if !live.contains(&rel) {
+                self.store.delete_atom(&id).await?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
+    }
+
     /// Index a single connector by name.
     pub async fn index_connector(
         &self,
@@ -119,6 +151,18 @@ impl IndexPipeline {
                 .delete_source(source_name)
                 .await
                 .map_err(|e| KurultaiError::Store(format!("delete_source failed: {e}")))?;
+        }
+
+        if !full {
+            match self.reconcile_vanished(source_name, connector).await {
+                Ok(n) if n > 0 => {
+                    tracing::info!(source = %source_name, removed = n, "removed atoms for vanished source files");
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(source = %source_name, error = %e, "vanished-source reconcile failed")
+                }
+            }
         }
 
         let mut enriched = atoms;
@@ -603,5 +647,99 @@ mod tests {
             !hits.is_empty(),
             "live embedder must write searchable atoms_vec rows"
         );
+    }
+
+    async fn md_pipeline(
+        root: &std::path::Path,
+    ) -> (IndexPipeline, Arc<SqliteVecStore>, MarkdownConnector) {
+        let db_dir = tempfile::tempdir().unwrap().keep();
+        let store = Arc::new(SqliteVecStore::open(db_dir.join("store.db"), 4).unwrap());
+        let pipeline = IndexPipeline::new(
+            Arc::clone(&store) as Arc<dyn Store>,
+            Arc::new(crate::embed::NullEmbedder::new(4)) as Arc<dyn Embedder>,
+        );
+        let mut connector = MarkdownConnector::new();
+        let mut extra = HashMap::new();
+        extra.insert("root_path".into(), root.to_string_lossy().into_owned());
+        connector
+            .init(&SourceConfig {
+                name: "notes".into(),
+                kind: SourceKind::Markdown,
+                enabled: true,
+                poll_interval_secs: 60,
+                extra,
+            })
+            .await
+            .unwrap();
+        (pipeline, store, connector)
+    }
+
+    #[tokio::test]
+    async fn incremental_poll_removes_atoms_for_deleted_file() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join("keep.md"),
+            "# Keep\n\nkeepertoken content here.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.path().join("gone.md"),
+            "# Gone\n\ngonetoken content here.\n",
+        )
+        .unwrap();
+        let (pipeline, store, connector) = md_pipeline(root.path()).await;
+        pipeline
+            .index_connector("notes", &connector, true)
+            .await
+            .unwrap();
+        let before = store.list_source_rel_paths("notes").await.unwrap();
+        assert!(before.iter().any(|(_, r)| r == "gone.md"));
+
+        std::fs::remove_file(root.path().join("gone.md")).unwrap();
+        pipeline
+            .index_connector("notes", &connector, false)
+            .await
+            .unwrap();
+
+        let after = store.list_source_rel_paths("notes").await.unwrap();
+        assert!(
+            !after.iter().any(|(_, r)| r == "gone.md"),
+            "stale atoms removed"
+        );
+        assert!(after.iter().any(|(_, r)| r == "keep.md"), "live file kept");
+        let hits = store
+            .fts_search_ids("gonetoken", 5, crate::store::SearchFilter::default())
+            .await
+            .unwrap();
+        assert!(hits.is_empty(), "deleted file no longer searchable");
+    }
+
+    #[tokio::test]
+    async fn empty_live_set_does_not_wipe_source() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join("a.md"),
+            "# A\n\nalphatoken content here.\n",
+        )
+        .unwrap();
+        let (pipeline, store, connector) = md_pipeline(root.path()).await;
+        pipeline
+            .index_connector("notes", &connector, true)
+            .await
+            .unwrap();
+        std::fs::remove_file(root.path().join("a.md")).unwrap();
+        let removed = pipeline
+            .reconcile_vanished("notes", &connector)
+            .await
+            .unwrap();
+        assert_eq!(
+            removed, 0,
+            "empty root is treated as unmounted, not deleted"
+        );
+        assert!(!store
+            .list_source_rel_paths("notes")
+            .await
+            .unwrap()
+            .is_empty());
     }
 }

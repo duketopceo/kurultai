@@ -100,6 +100,7 @@ pub fn fuse_rrf(lists: &[(Vec<(KnowledgeAtom, f64)>, &'static str)], k: f64) -> 
                 score: fused.score,
                 rank,
                 matched_by: fused.matched_by,
+                degraded: Vec::new(),
             })
         })
         .collect()

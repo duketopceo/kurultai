@@ -333,6 +333,10 @@ pub struct SearchResult {
     pub score: f64,
     pub rank: usize,
     pub matched_by: Vec<String>, // which retrieval methods matched ("vector", "fts", etc.)
+    /// Retrieval arms that failed and were skipped for this query (`fts`, `vector`,
+    /// `rerank`). Omitted when the search was fully healthy.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub degraded: Vec<String>,
 }
 
 /// A synthesized answer with citations.

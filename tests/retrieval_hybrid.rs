@@ -501,6 +501,7 @@ next chunk unique UNTAGNEXT
         score: 1.0,
         rank: 0,
         matched_by: vec!["fts".into()],
+        degraded: Vec::new(),
     }];
     let expanded = expand_markdown_context(&(Arc::clone(&store) as Arc<dyn Store>), forged)
         .await

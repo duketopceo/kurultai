@@ -27,4 +27,12 @@ pub trait Connector: Send + Sync {
 
     /// Full re-index: fetch everything this source has.
     async fn full_sync(&self) -> Result<Vec<KnowledgeAtom>>;
+
+    /// Relative paths (as stored in atom `rel_path` metadata) of every file the
+    /// source currently has. `None` (default) means the connector cannot enumerate,
+    /// so incremental polls never remove anything. Used to drop atoms whose
+    /// backing file vanished between full syncs.
+    async fn live_rel_paths(&self) -> Result<Option<std::collections::HashSet<String>>> {
+        Ok(None)
+    }
 }
