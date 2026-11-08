@@ -24,7 +24,6 @@ where
     Router::new()
         .route("/", get(|| async { Redirect::permanent("/ui/") }))
         .route("/ui", get(|| async { Redirect::permanent("/ui/") }))
-        .route("/ui/", get(|| async { serve_asset("ui-next.html") }))
         .route("/ui/{*path}", get(ui_path))
 }
 
@@ -37,6 +36,11 @@ async fn ui_path(Path(path): Path<String>) -> Response {
         return Redirect::permanent("/ui/").into_response();
     }
     serve_asset(clean)
+}
+
+/// The Brain UI entry document (`/ui/`).
+pub(super) fn index_response() -> Response {
+    serve_asset("ui-next.html")
 }
 
 fn serve_asset(path: &str) -> Response {
@@ -80,7 +84,7 @@ mod tests {
     async fn ui_root_serves_brain_html() {
         let app = routes::<()>();
         let resp = app
-            .oneshot(Request::builder().uri("/ui/").body(Body::empty()).unwrap())
+            .oneshot(Request::builder().uri("/ui/ui-next.html").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);

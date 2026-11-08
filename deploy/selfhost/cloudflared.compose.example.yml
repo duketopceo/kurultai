@@ -1,0 +1,16 @@
+# Cloudflare Tunnel sidecar: no open ports, TLS handled by Cloudflare.
+# 1. Cloudflare Zero Trust > Networks > Tunnels > create a tunnel, copy its token.
+# 2. Add a public hostname (brain.example.com) -> http://kurultai:8421
+# 3. Optional: protect it with a Cloudflare Access application, then set
+#    KURULTAI_CF_ACCESS_TEAM / KURULTAI_CF_ACCESS_AUDS on the kurultai service
+#    so browser logins ride Access instead of the access key.
+#
+#   CLOUDFLARED_TOKEN=... docker compose -f docker-compose.yml \
+#     -f deploy/selfhost/cloudflared.compose.example.yml up -d
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest  # pin a version in production
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN:?set CLOUDFLARED_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      - kurultai

@@ -1,8 +1,8 @@
 ---
 index: kurultai/v1
 folder: .
-updated: 2026-10-19
-version: 20
+updated: 2026-11-07
+version: 21
 ---
 
 # `.`
@@ -45,7 +45,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 |------|------|-------|---------|-------|-----|-----------|
 | [`.coderabbit.yaml`](.coderabbit.yaml) | CodeRabbit: auto-review off | — | — | 2026-08-01 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`.dockerignore`](.dockerignore) | Docker build context excludes for the hub image | — | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 hub image context |
-| [`.env.example`](.env.example) | Example env vars (API keys, hub bind, eval/web) | — | — | 2026-09-17 | 3 | 2026-09-17 eval/web block (`PERPLEXITY_API_KEY`, `KURULTAI_FEATURE_WEB_SEARCH`) · 2026-08-29 hub env block (HUB-3) · 2026-08-16 indexed (v1 seed) |
+| [`.env.example`](.env.example) | Every supported env var, commented and grouped (self-host, embeddings, auth, agents, hub) | — | — | 2026-09-17 | 3 | 2026-09-17 eval/web block (`PERPLEXITY_API_KEY`, `KURULTAI_FEATURE_WEB_SEARCH`) · 2026-08-29 hub env block (HUB-3) · 2026-08-16 indexed (v1 seed) |
 | [`.gitignore`](.gitignore) | Ignored build, env, agent workspace, eval report, design-lab output, worktree paths | — | — | 2026-10-19 | 8 | 2026-10-19 `.worktrees/` (salvaged from docs/tighten-agent-facing-docs) · 2026-09-26 `design-lab/out/` (batch variants are scratch) · 2026-09-18 root `node_modules/` (Argus tooling shim) · 2026-09-17 `evals/reports/` · 2026-09-01 unignore .devcontainer for dogfood · 2026-09-01 add .devcontainer ignore · 2026-08-16 ignore Python __pycache__ · 2026-08-16 indexed (v1 seed) |
 | [`.mailmap`](.mailmap) | Maps duketopceo@gmail.com commits to luke.k@bartlettroofs.com | — | — | 2026-10-07 | 1 | 2026-10-07 added (#423) |
 | [`.nvmrc`](.nvmrc) | Node 22 pin for website/ui build | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
@@ -69,6 +69,8 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting | — | — | 2026-07-22 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`argus-reviewer.config.ts`](argus-reviewer.config.ts) | Argus reviewer config — code-review-only (`run: 'false'`), OpenRouter BYOK, Jev secrets adjudication on | `.github/workflows/argus-reviewer.yml` · `package.json` | — | 2026-09-18 | 1 | 2026-09-18 Argus PR review wiring |
 | [`config.example.toml`](config.example.toml) | Example config.toml for sources and apps | — | — | 2026-09-18 | 3 | 2026-09-18 [judge] section docs · 2026-09-01 HUB-5 default_visibility_scope examples · 2026-08-16 indexed (v1 seed) |
+| [`docker-compose.yml`](docker-compose.yml) | Self-host quick start: `docker compose up -d`, zero keys | `ghcr.io/duketopceo/kurultai` | `docs/self-host.md` | 2026-11-07 | 1 | 2026-11-07 added |
+| [`docker-compose.local-embed.yml`](docker-compose.local-embed.yml) | Override: build with on-device ONNX embeddings | `deploy/server-001/Dockerfile.solo` | — | 2026-11-07 | 1 | 2026-11-07 added |
 | [`docker-compose.hub.yml`](docker-compose.hub.yml) | Local pgvector + hub daemon proof of Railway recipe | `Dockerfile` · `docs/deploy/railway-hub.md` | — | 2026-08-29 | 1 | 2026-08-29 HUB-3 compose proof |
 | [`hey.md`](hey.md) | Informal notes / scratch | — | — | 2026-08-08 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`package.json`](package.json) | npm shim — anchors `argus-reviewer-e2e@0.2.0` (npm release) so the Argus action's `npm ci`/`npx` resolve; not a JS app | `.github/workflows/argus-reviewer.yml` | `package-lock.json` · `.gitignore` | 2026-09-21 | 2 | 2026-09-21 re-pinned git SHA → npm 0.2.0 (Jev-bearing release) · 2026-09-18 Argus PR review wiring |
@@ -77,6 +79,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-11-07 — self-host: `docker-compose.yml`, local-embed override, `.env.example` completed, `docs/self-host.md`, first-run onboarding (`src/http/onboarding.rs`), `KURULTAI_SELFHOST` bootstrap, `KURULTAI_EMBED_*` env overrides
 - 2026-10-19 — repo cleanup: 10 dependabot PRs merged (cargo×5, web×4, website vite pending); issues #116/#117/#122/#132 closed as shipped, #137/#140 status-updated to current brain doctrine; 14 dead remote branches + 6 local deleted (mesh-schema kept — unique unmerged work); version refs reconciled to v0.7.0 (version.ts, INSTALL_GUIDE, AGENT_SETUP, mac-dev, skill readme), CHANGELOG gains missing 0.7.0 section, `.gitignore` `.worktrees/`, INSTALL_REPORT historical banner, LICENSE row → AGPL
 - 2026-10-07 — `docs/plans/2026-10-07-001`: multi-vector late-interaction embed plan (pplx-embed-v2-late rerank lane, `MultiVectorEmbedder` + `atoms_multivec` sidecar, fastembed/http backends, dense v1 primary untouched); tracking issue #424
 - 2026-10-06 — explainer film: `launch/src/videos/kurultai/explainer/` — "how does an agent remember between sessions?" (~80s, diagram-first, VO-timed draft); Diagram.tsx primitives
