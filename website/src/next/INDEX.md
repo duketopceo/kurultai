@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: website/src/next
 parent: website/src/INDEX.md
 updated: 2026-11-07
-version: 2
+version: 3
 ---
 
 # `website/src/next`
@@ -28,5 +28,6 @@ version: 2
 
 ## Recent
 
+- 2026-11-07 — `App.tsx`: v2 default, what's-new badge, tier mid then all (50k)
 - 2026-11-07 — App mounts `repos/RepoFloorplan` from the v2 palette
 - 2026-11-07 — `V2Shell` minimal chrome behind `?brain=v2` (App.tsx early-returns it)

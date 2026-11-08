@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: website/src/brain/v2
 parent: website/src/brain/INDEX.md
 updated: 2026-11-07
-version: 2
+version: 3
 ---
 
 # `website/src/brain/v2`
@@ -24,13 +24,16 @@ _None._
 | [`regions.test.ts`](regions.test.ts) | node:test: hull containment, determinism, region cap/fill, LOD, path, links | `website/src/brain/v2/regions.ts` · `website/src/brain/v2/path.ts` · `website/src/brain/v2/links.ts` | — | 2026-11-07 | 1 | 2026-11-07 added |
 | [`path.ts`](path.ts) | Client-side BFS shortest path over loaded edges (stand-in for a traverse API) | `website/src/types` | `website/src/brain/v2/BrainV2.ts` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`links.ts`](links.ts) | Shared-tag synapse derivation (moved from BrainStage) | `website/src/brain/linkSelect.ts` | `website/src/components/BrainStage.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
-| [`flag.ts`](flag.ts) | `?brain=v2` / `?brain=v1` selector | — | `website/src/components/BrainStage.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
+| [`flag.ts`](flag.ts) | v2 default; `?brain=v1` selects legacy | — | `website/src/components/BrainStage.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`flag.test.ts`](flag.test.ts) | node:test for the selector | `website/src/brain/v2/flag.ts` | — | 2026-11-07 | 1 | 2026-11-07 added |
 | [`palette.ts`](palette.ts) | Command-palette model: surfaces + filter (prefix then substring) | — | `website/src/next/V2Shell.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`why.ts`](why.ts) | Path ids to a why-connected chain (shared tags per hop) | `website/src/types` | `website/src/next/App.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
 | [`palette.test.ts`](palette.test.ts) | node:test for palette filter + chain | `website/src/brain/v2/palette.ts` · `website/src/brain/v2/why.ts` | — | 2026-11-07 | 1 | 2026-11-07 added |
+| [`whatsNew.ts`](whatsNew.ts) | Last-visit marker (localStorage, try/catch) + new/changed atom diff | — | `website/src/next/App.tsx` | 2026-11-07 | 1 | 2026-11-07 added (plan 2026-11-07-001 U4) |
+| [`whatsNew.test.ts`](whatsNew.test.ts) | node:test: first visit, throwing storage, new sources | `website/src/brain/v2/whatsNew.ts` | — | 2026-11-07 | 1 | 2026-11-07 added |
 
 ## Recent
 
+- 2026-11-07 — v2 is the default renderer (`?brain=v1` keeps v1); what's-new badge (U4)
 - 2026-11-07 — palette + why-connected helpers for the minimal chrome (U2)
 - 2026-11-07 — brain v2 core: wireframe cortex + tag regions + one-draw atom cloud, 50k synthetic atoms (plan 2026-11-07-001 U1)

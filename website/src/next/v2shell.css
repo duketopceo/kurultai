@@ -46,3 +46,5 @@
 .fp-label { fill: var(--text-3); font: 10px ui-monospace, monospace; }
 .fp-tile { fill: #8b6cf0; stroke: #15171d; stroke-width: 0.5; }
 .fp-tile:hover { fill-opacity: 1 !important; fill: var(--text-1); }
+
+.v2-new-list { top: 32px; right: 90px; max-height: 50vh; overflow: auto; min-width: 220px; }

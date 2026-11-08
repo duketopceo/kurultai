@@ -25,7 +25,7 @@ const SHOT = process.argv.includes('--shot')
 // still bounded by the hard timeout); `--synthetic N` injects N synthetic atoms
 // and reports fps / node count / draw calls from `__kurultaiBrain.metrics()`.
 const flagVal = (name) => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : null);
-const BRAIN = flagVal('--brain');
+const BRAIN = flagVal('--brain') || 'v2'; // v2 is the default renderer; `--brain v1` checks the legacy page
 const SYNTH = Number(flagVal('--synthetic') || 0);
 const HARD_LIMIT_MS = 120_000;
 const NAV_TIMEOUT_MS = 20_000;
@@ -46,7 +46,7 @@ const { chromium } = require(require.resolve('playwright', { paths: PW_PATHS }))
 const errors = [];
 const browser = await chromium.launch({
   // DOM/tab checks don't need SwiftShader burning cores; the v2 canvas does.
-  args: BRAIN ? ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--disable-gpu'],
+  args: BRAIN === 'v2' ? ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--disable-gpu'],
   timeout: NAV_TIMEOUT_MS,
 });
 try {
@@ -56,6 +56,7 @@ try {
   page.on('console', (m) => { if (m.type() === 'error' && BRAIN) errors.push('console: ' + m.text().slice(0, 1200)); });
   page.on('pageerror', (e) => errors.push(String(e).slice(0, 200)));
 
+  if (BRAIN === 'v2') await page.addInitScript(() => { try { localStorage.setItem('kurultai.brain.lastVisit', '1000'); } catch { /* ignore */ } });
   const target = BRAIN ? `${URL_ARG}${URL_ARG.includes('?') ? '&' : '?'}brain=${BRAIN}` : URL_ARG;
   await page.goto(target, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2000);
@@ -90,6 +91,9 @@ try {
     // v2 chrome: search + status dot + menu; surfaces behind the palette/drawer.
     const dot = await page.locator('.v2-dot').count();
     console.log('v2 status-dot', dot);
+    const badge = await page.getByRole('button', { name: /\d+ new/ }).count();
+    console.log('v2 new-badge', badge);
+    if (badge) { await page.getByRole('button', { name: /\d+ new/ }).first().click(); await page.waitForTimeout(500); if (SHOT) await page.screenshot({ path: SHOT.replace(/\.png$/, '-new.png') }); await page.getByRole('button', { name: /\d+ new/ }).first().click(); }
     await page.keyboard.press('Control+k');
     const palette = await page.getByRole('dialog', { name: 'Command palette' }).count();
     console.log('v2 palette-open', palette);
@@ -107,7 +111,7 @@ try {
     await page.keyboard.press('Control+k');
     await page.keyboard.type('repos');
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(2500);
     console.log('v2 repos-view', await page.locator('.v2-repos').count());
     if (SHOT) await page.screenshot({ path: SHOT.replace(/\.png$/, '-repos.png') });
   } else {

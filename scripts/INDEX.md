@@ -3,7 +3,7 @@ index: kurultai/v1
 folder: scripts
 parent: INDEX.md
 updated: 2026-11-07
-version: 6
+version: 7
 ---
 
 # `scripts`
@@ -33,6 +33,7 @@ version: 6
 
 ## Recent
 
+- 2026-11-07 — `ui-smoke.mjs` defaults to v2 (`--brain v1` for the legacy tab probe); checks the new badge
 - 2026-11-07 — `ui-smoke.mjs` v2 mode also probes palette, drawer and clear control
 - 2026-11-07 — `ui-smoke.mjs`: `--brain v2 --synthetic N` loads `?brain=v2` (SwiftShader, still bounded) and prints fps/nodes/draw calls
 - 2026-10-19 — `build-ui.sh`: header note — build under node 22 (.nvmrc); ui-next-* hashes differ across node majors, CI embedded-asset check uses node 22
