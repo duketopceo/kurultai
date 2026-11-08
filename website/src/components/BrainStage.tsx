@@ -24,6 +24,7 @@ export interface BrainLike {
   setPixelMode?(on: boolean): void;
   setTheme?(t: 'light' | 'dark'): void;
   setEffects?(on: boolean): void;
+  setRightInset?(px: number): void;
   metrics(): { fps: number; nodes: number; renderedEdges: number };
   dispose(): void;
 }
@@ -59,9 +60,11 @@ interface Props {
   theme?: 'light' | 'dark';
   /** false = reduce effects (freeze background flow + breathing). */
   effects?: boolean;
+  /** v2: px of the right edge covered by the side panel (re-centres the brain). */
+  rightInset?: number;
 }
 
-export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, onOntologyChanged, caption, pixel, theme, effects }, ref) {
+export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStage({ atoms, renderCap, layout, ontology, atomTotal, onSelect, onHover, onOntologyChanged, caption, pixel, theme, effects, rightInset }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const brainRef = useRef<BrainLike | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -139,6 +142,10 @@ export const BrainStage = forwardRef<BrainStageHandle, Props>(function BrainStag
   useEffect(() => {
     if (ready) brainRef.current?.setEffects?.(effects !== false);
   }, [effects, ready]);
+
+  useEffect(() => {
+    if (ready) brainRef.current?.setRightInset?.(rightInset ?? 0);
+  }, [rightInset, ready]);
 
   useEffect(() => {
     if (!brainRef.current || !ready) return;

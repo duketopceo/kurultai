@@ -6,7 +6,8 @@ export const THEME_KEY = 'kurultai-theme';
 export const EFFECTS_KEY = 'kurultai.v2.reduceEffects';
 
 export function parseThemePref(raw: string | null): ThemePref {
-  return raw === 'light' || raw === 'dark' ? raw : 'system';
+  // Light is the default for new visitors; 'system' is stored explicitly.
+  return raw === 'dark' || raw === 'system' ? raw : 'light';
 }
 
 export function resolveTheme(pref: ThemePref, systemLight: boolean): 'light' | 'dark' {
@@ -30,7 +31,7 @@ export function useTheme(): { pref: ThemePref; setPref: (p: ThemePref) => void; 
   }, []);
   const theme = resolveTheme(pref, sys);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
-  const setPref = useCallback((p: ThemePref) => { set(THEME_KEY, p === 'system' ? null : p); setPrefState(p); }, []);
+  const setPref = useCallback((p: ThemePref) => { set(THEME_KEY, p); setPrefState(p); }, []);
   return { pref, setPref, theme };
 }
 

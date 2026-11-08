@@ -40,6 +40,7 @@ _None._
 
 ## Recent
 
+- 2026-11-08 — Light is the default theme for new visitors (remembered Dark/System kept); `setRightInset` re-centres in the canvas beside the panel
 - 2026-11-08 — monochrome Light/Dark themes (no purple), background ink-wash flow, breathing field; `theme.ts`
 - 2026-11-08 — 32-bit mode: `BrainV2.setPixelMode` (low-res dithered 256-colour, vertex snap, stepped time) + `mode32.ts`; palette gains view/32-bit commands
 - 2026-11-08 — visual pass: wire from the real cortex (brain.glb decimated), tag regions = k-means lobes, electric atoms/synapses, collision-free labels

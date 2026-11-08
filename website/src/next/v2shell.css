@@ -7,8 +7,8 @@
 .v2-search { position: relative; display: flex; gap: 8px; align-items: center; }
 .v2-search input, .v2-palette input { background: var(--canvas-3); color: var(--text-1); border: 1px solid var(--v2-line); border-radius: 6px; padding: 6px 10px; min-width: 220px; font: inherit; }
 .v2-search input:focus-visible, .v2-palette input:focus-visible, .v2-app button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.v2-app button { background: transparent; color: var(--text-2); border: 1px solid var(--v2-line); border-radius: 6px; padding: 4px 10px; font: 12px/16px ui-monospace, "JetBrains Mono", monospace; cursor: pointer; }
-.v2-app button:hover { color: var(--text-1); border-color: var(--text-4); }
+.v2-app button:where(:not(.ws button)) { background: transparent; color: var(--text-2); border: 1px solid var(--v2-line); border-radius: 6px; padding: 4px 10px; font: 12px/16px ui-monospace, "JetBrains Mono", monospace; cursor: pointer; }
+.v2-app button:where(:not(.ws button)):hover { color: var(--text-1); border-color: var(--text-4); }
 .v2-results { position: absolute; top: 36px; left: 0; width: 100%; margin: 0; padding: 4px; list-style: none; background: var(--canvas-3); border: 1px solid var(--v2-line); border-radius: 8px; z-index: 5; }
 .v2-results button { width: 100%; text-align: left; border: 0; font: inherit; color: var(--text-1); }
 .v2-right { position: relative; display: flex; gap: 10px; align-items: center; }
@@ -73,9 +73,9 @@
 :root[data-mode="32bit"] .v2-app { font-size: 15px; }
 :root[data-mode="32bit"] .v2-app button, :root[data-mode="32bit"] .v2-search input, :root[data-mode="32bit"] .v2-palette input,
 :root[data-mode="32bit"] .v2-menu-pop, :root[data-mode="32bit"] .v2-palette, :root[data-mode="32bit"] .v2-results, :root[data-mode="32bit"] .v2-seg { border: 2px solid var(--v2-px) !important; }
-:root[data-mode="32bit"] .v2-app button { box-shadow: 2px 2px 0 var(--v2-pxs); text-transform: lowercase; }
+:root[data-mode="32bit"] .v2-app button:where(:not(.ws button)) { box-shadow: 2px 2px 0 var(--v2-pxs); text-transform: lowercase; }
 :root[data-mode="32bit"] .v2-app button:active { box-shadow: none; transform: translate(2px, 2px); }
-:root[data-mode="32bit"] .v2-app button:hover { border-color: var(--v2-hi) !important; color: #fff; }
+:root[data-mode="32bit"] .v2-app button:where(:not(.ws button)):hover { border-color: var(--v2-hi) !important; color: #fff; }
 :root[data-mode="32bit"] .v2-panel { border-left: 2px solid var(--v2-px); }
 :root[data-mode="32bit"] .v2-panel-head { border-bottom: 2px solid var(--v2-px); }
 :root[data-mode="32bit"] .v2-seg button { box-shadow: none; border: 0 !important; }

@@ -77,6 +77,7 @@ Live product queue: [`docs/plans/phase-6-next-work-orders.md`](docs/plans/phase-
 
 ## Recent
 
+- 2026-11-08 — Brain v2: Light default theme, panel re-centres the brain, light-theme contrast fix
 - 2026-11-08 — Brain v2 monochrome Light/Dark themes (no purple), ink-wash background flow, breathing field
 - 2026-11-08 — Brain v2 unified shell (one top bar, view switch, one right panel) + 32-bit mode (pixel render + pixel UI)
 - 2026-11-08 — Brain v2 visual pass: wire from the real cortex (`scripts/bake-cortex.mjs` -> `website/src/brain/v2/cortexData.ts`), lobe regions, electric atoms, label collision
