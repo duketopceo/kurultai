@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: website/src/assets
 parent: website/src/INDEX.md
-updated: 2026-08-16
-version: 1
+updated: 2026-11-08
+version: 2
 ---
 
 # `website/src/assets`
@@ -13,7 +13,7 @@ version: 1
 
 ## Children
 
-_None._
+- [`fonts/`](fonts/INDEX.md) — bundled OFL pixel font for the 32-bit mode
 
 ## Files
 
@@ -23,5 +23,6 @@ _None._
 
 ## Recent
 
+- 2026-11-08 — `fonts/` child added (Pixelify Sans, OFL)
 - 2026-08-16 — indexed this folder (v1 seed)
 

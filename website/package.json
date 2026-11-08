@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/brain/layout/*.test.ts src/brain/*.test.ts src/components/chatboard/*.test.ts src/components/hey-kanban/*.test.ts src/*.test.ts"
+    "test": "node --experimental-strip-types --test src/brain/layout/*.test.ts src/brain/*.test.ts src/brain/v2/*.test.ts src/repos/*.test.ts src/components/chatboard/*.test.ts src/components/hey-kanban/*.test.ts src/*.test.ts"
   },
   "dependencies": {
     "@mshafiqyajid/react-kanban": "^1.0.0",
