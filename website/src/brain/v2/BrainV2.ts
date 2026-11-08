@@ -20,7 +20,7 @@ import { LOBES, MESH_IDX, MESH_POS, MESH_VERTEX_LOBE } from './cortex.ts';
 import { lodTier, parcellate, placeAll, type LodTier, type Parcellation } from './regions.ts';
 
 const FOV = 45;
-const START_DISTANCE = 2.85;
+const START_DISTANCE = 3.05;
 const START_DIR = new Vector3(-0.42, 0.5, 1).normalize(); // front-lateral, slightly above: lobes + both hemispheres read
 const PICK_RADIUS_PX = 12;
 const MAX_LABELS = 10;
@@ -336,8 +336,8 @@ export class BrainV2 {
     this.scene.add(this.fresnel);
     this.paintShell(null);
 
-    this.hoverLines = this.makeLines([0.62, 0.5, 1.0], 0.55, 1.4, 0.014);
-    this.pathLines = this.makeLines([0.91, 0.64, 0.24], 0.9, 1.6, 0.012);
+    this.hoverLines = this.makeLines([0.86, 0.8, 1.0], 1.0, 1.6, 0.014);
+    this.pathLines = this.makeLines([0.91, 0.64, 0.24], 1.5, 1.8, 0.012);
     this.scene.add(this.hoverLines, this.pathLines);
 
     this.labelLayer = document.createElement('div');
@@ -477,8 +477,9 @@ export class BrainV2 {
       el.textContent = `${r.key} \u00b7 ${r.count.toLocaleString()}`;
       Object.assign(el.style, {
         position: 'absolute', left: '0', top: '0', font: '11px ui-monospace, "JetBrains Mono", monospace',
-        color: '#d9d2f3', whiteSpace: 'nowrap', transform: 'translate(-50%,-50%)', opacity: '0',
-        textShadow: '0 0 6px #000, 0 0 2px #000', letterSpacing: '0.02em',
+        color: '#ece7ff', whiteSpace: 'nowrap', transform: 'translate(-50%,-50%)', opacity: '0',
+        background: 'rgba(6,4,14,0.72)', border: '1px solid rgba(139,108,240,0.35)', borderRadius: '4px', padding: '1px 6px',
+        letterSpacing: '0.02em',
       });
       this.labelLayer.appendChild(el);
       return el;
@@ -710,7 +711,7 @@ export class BrainV2 {
     const h = this.host.clientHeight || 1;
     if (this.cloud) {
       const u = (this.cloud.material as ShaderMaterial).uniforms;
-      u.uSize.value = h * 0.017;
+      u.uSize.value = h * 0.02;
       u.uLod.value = lodU;
       u.uTime.value = this.time;
     }
@@ -753,7 +754,7 @@ export class BrainV2 {
         if (v.z > 1) continue;
         const x = (v.x * 0.5 + 0.5) * w;
         const y = (-v.y * 0.5 + 0.5) * h;
-        const tw = this.labels[i].textContent!.length * 6.6 + 10;
+        const tw = this.labels[i].textContent!.length * 6.6 + 16;
         const rect = { x: x - tw / 2, y: y - 9, w: tw, h: 18 };
         if (rect.x < 4 || rect.x + rect.w > w - 4 || rect.y < 4 || rect.y + rect.h > h - 4) continue;
         if (this.labelRects.some((o) => rect.x < o.x + o.w + 6 && rect.x + rect.w + 6 > o.x && rect.y < o.y + o.h + 4 && rect.y + rect.h + 4 > o.y)) continue;
@@ -766,6 +767,15 @@ export class BrainV2 {
       }
     }
     this.labels.forEach((el, i) => { if (!shown.has(i)) el.style.opacity = '0'; });
+  }
+
+  /** Client-space pixel of an atom (null when off-screen); for tests and screenshot drivers. */
+  atomScreenPoint(id: string): { x: number; y: number } | null {
+    const i = this.idIndex.get(id);
+    const s = i === undefined ? null : this.project(i);
+    if (!s) return null;
+    const r = this.renderer.domElement.getBoundingClientRect();
+    return { x: r.left + s.x, y: r.top + s.y };
   }
 
   metrics(): BrainV2Metrics {

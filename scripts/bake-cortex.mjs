@@ -34,9 +34,15 @@ console.log('extent', mx.map((v, k) => +((v - mn[k]) * S).toFixed(3)));
 
 // interior mask from the full-res mesh
 const sdf = bakeSdfFromPositions(pos, idx, RES);
+const raw = new Uint8Array(RES ** 3);
+for (let i = 0; i < raw.length; i++) if (sdf.values[i] < 0) raw[i] = 1;
+// erode one voxel layer: the decimated skin sits inside the full-res surface, keep atoms off it
+const at = (x, y, z) => (x < 0 || y < 0 || z < 0 || x >= RES || y >= RES || z >= RES ? 0 : raw[x + RES * (y + RES * z)]);
 const inside = new Uint8Array(RES ** 3);
 let nIn = 0;
-for (let i = 0; i < inside.length; i++) if (sdf.values[i] < 0) { inside[i] = 1; nIn++; }
+for (let z = 0; z < RES; z++) for (let y = 0; y < RES; y++) for (let x = 0; x < RES; x++) {
+  if (at(x, y, z) && at(x - 1, y, z) && at(x + 1, y, z) && at(x, y - 1, z) && at(x, y + 1, z) && at(x, y, z - 1) && at(x, y, z + 1)) { inside[x + RES * (y + RES * z)] = 1; nIn++; }
+}
 console.log('interior voxels', nIn, 'cell', sdf.cell.toFixed(4));
 
 // decimate
