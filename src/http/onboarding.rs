@@ -7,7 +7,8 @@
 //!   creating a first note, importing a folder, and choosing embeddings.
 //! * `GET /api/onboarding` reports what the page needs (atom count, active
 //!   embedder, whether this build can embed locally, whether an OpenRouter key
-//!   exists). It never returns key material.
+//!   exists, whether hosted MCP is enabled). It never returns key or MCP
+//!   secret material.
 //! * `POST /api/onboarding/note` stores the first note through the same
 //!   `remember` path agents use, so quality gates and write containment apply.
 //!
@@ -77,6 +78,9 @@ async fn api_onboarding(State(state): State<AppState>) -> Json<serde_json::Value
         "embedder": { "name": embedder.name(), "live": embedder.is_live(), "dim": embedder.dim() },
         "local_embed_available": cfg!(feature = "local-embed"),
         "openrouter_key_present": openrouter_key_present(),
+        // Whether hosted MCP is on, and where. The secret is never returned.
+        "mcp_http_enabled": super::mcp::mcp_http_enabled(),
+        "mcp_path": "/mcp",
     }))
 }
 
@@ -236,5 +240,37 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+    }
+
+    async fn onboarding_json(app: &Router) -> (String, serde_json::Value) {
+        let r = get(app, "/api/onboarding").await;
+        let body = axum::body::to_bytes(r.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        let v = serde_json::from_str(&text).unwrap();
+        (text, v)
+    }
+
+    #[tokio::test]
+    async fn mcp_enabled_when_secret_set_and_secret_never_returned() {
+        let _env = crate::testutil::EnvGuard::apply(&[(
+            "KURULTAI_MCP_HTTP_SECRET",
+            Some("s3cr3t-mcp-token-value"),
+        )]);
+        let (app, _d) = app();
+        let (text, v) = onboarding_json(&app).await;
+        assert_eq!(v["mcp_http_enabled"], true);
+        assert_eq!(v["mcp_path"], "/mcp");
+        assert!(!text.contains("s3cr3t-mcp-token-value"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn mcp_disabled_without_secret() {
+        let _env = crate::testutil::EnvGuard::apply(&[("KURULTAI_MCP_HTTP_SECRET", None)]);
+        let (app, _d) = app();
+        let (_, v) = onboarding_json(&app).await;
+        assert_eq!(v["mcp_http_enabled"], false);
+        assert_eq!(v["mcp_path"], "/mcp");
     }
 }

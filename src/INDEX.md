@@ -66,6 +66,7 @@ version: 10
 
 ## Recent
 
+- 2026-11-09 — live OpenRouter key reload: shared `KeyHolder` (security/embed/rerank/synthesize/app/http); `/api/onboarding` MCP flags
 - 2026-11-07 — `selfhost.rs`: zero-config container bootstrap
 - 2026-10-04 — U5 consolidation sweep: `sweep.rs` (dedupe→`mark_superseded`, `prune_stale_ontology`, tier census, Hey `kurultai-sweep` post); `store/` `duplicate_content_groups` + `prune_stale_ontology`; `daemon/mod.rs` sweep after nightly full sync; `pipeline/mod.rs` `store()` accessor; `main.rs` `sweep` subcommand
 - 2026-10-03 — U4 bi-temporal-lite: `types.rs` superseded_at/by fields; `main.rs` search+ask `--as-of`/`--include-superseded`; `store/` schema v17 + `mark_superseded` + supersede predicates; `ingest/dump.rs` `fm_*` metadata; `ontology/extract.rs` resolve_supersede_targets

@@ -151,6 +151,20 @@ async fn mcp_sse(
     Ok(response)
 }
 
+/// Set by `serve` once the MCP routes are mounted from a config-file secret,
+/// so `/api/onboarding` can report enablement without holding the secret.
+static MCP_MOUNTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) fn mark_mounted() {
+    MCP_MOUNTED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether hosted MCP is enabled. A boolean only — never the secret.
+pub(crate) fn mcp_http_enabled() -> bool {
+    MCP_MOUNTED.load(std::sync::atomic::Ordering::Relaxed)
+        || resolve_mcp_http_secret(None).is_some()
+}
+
 /// Resolve MCP HTTP shared secret from env (preferred) then config.
 pub fn resolve_mcp_http_secret(config_secret: Option<&str>) -> Option<String> {
     if let Ok(env) = std::env::var("KURULTAI_MCP_HTTP_SECRET") {

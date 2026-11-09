@@ -30,6 +30,7 @@ version: 10
 
 ## Recent
 
+- 2026-11-09 — Connect an agent menu panel (MCP endpoint + snippets); no more restart copy after key save
 - 2026-10-19 — README: build-ui.sh runs under node 22 (script now fails closed on other majors)
 - 2026-09-27 — ui-next parallel surface: `ui-next.html` entry + `src/next/` app (design-lab stitch, plan U4)
 

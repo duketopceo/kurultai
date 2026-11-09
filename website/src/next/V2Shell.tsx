@@ -64,6 +64,7 @@ export interface V2ShellProps {
   orConnected?: boolean;
   orMessage?: { ok: boolean; text: string } | null;
   onConnectOpenRouter?: () => void;
+  mcpInfo?: { enabled: boolean; path: string } | null;
 }
 
 export function V2Shell(p: V2ShellProps) {
@@ -71,6 +72,7 @@ export function V2Shell(p: V2ShellProps) {
   const [panel, setPanel] = useState<PanelTab | null>(null);
   const [width, setWidth] = useState<number>(() => readPanelW());
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pq, setPq] = useState('');
   const [answer, setAnswer] = useState<{ id: string; text: string } | { id: string; error: string } | null>(null);
@@ -207,6 +209,9 @@ export function V2Shell(p: V2ShellProps) {
                   {p.orConnected ? 'OpenRouter connected' : 'Connect OpenRouter'}
                 </button>
               )}
+              {p.mcpInfo && (
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setAgentOpen(true); }}>Connect an agent</button>
+              )}
               {p.orMessage && <span className={p.orMessage.ok ? 'v2-meta' : 'v2-meta v2-err'} role="status">{p.orMessage.text}</span>}
               <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); p.onOpenSettings(); }}>Access settings</button>
               <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setPaletteOpen(true); }}>Command palette</button>
@@ -263,6 +268,31 @@ export function V2Shell(p: V2ShellProps) {
             ) : panel !== 'inspect' ? p.renderSurface(panel) : null}
           </div>
         </aside>
+      )}
+
+      {agentOpen && p.mcpInfo && (
+        <div className="v2-scrim" onClick={(e) => { if (e.target === e.currentTarget) setAgentOpen(false); }}>
+          <div className="v2-palette" role="dialog" aria-label="Connect an agent">
+            {p.mcpInfo.enabled ? (() => {
+              const url = `${window.location.origin}${p.mcpInfo.path}`;
+              return (
+                <>
+                  <span className="v2-meta">MCP endpoint</span>
+                  <pre className="v2-meta">{url}</pre>
+                  <span className="v2-meta">Claude Code</span>
+                  <pre className="v2-meta">{`claude mcp add --transport http kurultai ${url} --header "Authorization: Bearer <your token>"`}</pre>
+                  <span className="v2-meta">Codex / generic JSON</span>
+                  <pre className="v2-meta">{JSON.stringify({ url, headers: { Authorization: 'Bearer <your token>' } }, null, 2)}</pre>
+                  <span className="v2-meta">Replace {'<your token>'} with your own token. It is never shown here.</span>
+                  <a className="v2-meta" href="https://github.com/duketopceo/kurultai/blob/main/docs/AGENT_CONNECTION_PROMPT.md" target="_blank" rel="noreferrer">Agent connection guide</a>
+                </>
+              );
+            })() : (
+              <span className="v2-meta">MCP over HTTP is off. Set KURULTAI_MCP_HTTP_SECRET on the server to enable it.</span>
+            )}
+            <button type="button" onClick={() => setAgentOpen(false)}>Close</button>
+          </div>
+        </div>
       )}
 
       {paletteOpen && (
