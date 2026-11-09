@@ -3,18 +3,20 @@
 //! - `POST /api/openrouter/connect` — starts a flow, returns `{auth_url, expires_in}`.
 //!   A WRITE route (`auth::WRITE_ROUTES`): shared-write mode needs the admin token.
 //! - `POST /api/openrouter/key` `{key}` — the browser (first-party `@openrouter/sdk`
-//!   PKCE flow) hands over the exchanged key. WRITE route. Keys are read once at daemon
-//!   start (embedder/synthesizer), so the response carries `restart_required: true`.
+//!   PKCE flow) hands over the exchanged key. WRITE route. The key is stored, then
+//!   swapped into the shared `KeyHolder` that the embedder, reranker and
+//!   synthesizer read per request, so `restart_required` is `false`.
 //! - `GET /api/openrouter/callback?code&state` — OpenRouter's redirect target. The
 //!   browser carries no bearer, so it is exempt from hub auth and self-gated by
 //!   the single-use, short-TTL `state` minted by `connect` (PKCE verifier lives
 //!   only in memory). The key is written to the 0600 key file and is never
-//!   logged or returned. Restart the daemon to pick the key up.
+//!   logged or returned. It is swapped into the shared `KeyHolder` live.
 
 use crate::openrouter_connect::{
     build_auth_url, complete_flow, failure_html, FileKeyStore, KeyStore, PendingFlows,
     OPENROUTER_ORIGIN, STATE_TTL, SUCCESS_HTML,
 };
+use crate::security::KeyHolder;
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
@@ -29,6 +31,7 @@ pub(crate) struct OrState {
     store: Arc<dyn KeyStore>,
     origin: String,
     client: reqwest::Client,
+    key: KeyHolder,
 }
 
 pub(crate) fn routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
@@ -41,6 +44,7 @@ pub(crate) fn routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
         store,
         origin: OPENROUTER_ORIGIN.to_string(),
         client: reqwest::Client::new(),
+        key: KeyHolder::global(),
     })
 }
 
@@ -50,6 +54,20 @@ fn router_with<S: Clone + Send + Sync + 'static>(st: OrState) -> Router<S> {
         .route("/api/openrouter/key", post(set_key))
         .route("/api/openrouter/callback", get(callback))
         .with_state(st)
+}
+
+/// Stores through `inner`, then swaps the key into the live holder.
+struct SwapStore<'a> {
+    inner: &'a dyn KeyStore,
+    key: &'a KeyHolder,
+}
+
+impl KeyStore for SwapStore<'_> {
+    fn store(&self, key: &str) -> crate::Result<String> {
+        let where_ = self.inner.store(key)?;
+        self.key.set_file_key(key);
+        Ok(where_)
+    }
 }
 
 struct Unavailable;
@@ -102,8 +120,9 @@ async fn set_key(State(st): State<OrState>, Json(body): Json<KeyBody>) -> Respon
     }
     match st.store.store(key) {
         Ok(where_) => {
+            st.key.set_file_key(key);
             tracing::info!(location = %where_, "OpenRouter key stored from browser");
-            Json(serde_json::json!({ "ok": true, "restart_required": true })).into_response()
+            Json(serde_json::json!({ "ok": true, "restart_required": false })).into_response()
         }
         Err(e) => {
             tracing::warn!(error = %e, "OpenRouter key store failed");
@@ -124,7 +143,10 @@ async fn callback(State(st): State<OrState>, Query(q): Query<HashMap<String, Str
         &st.flows,
         &st.client,
         &st.origin,
-        st.store.as_ref(),
+        &SwapStore {
+            inner: st.store.as_ref(),
+            key: &st.key,
+        },
         state,
         code,
     )
@@ -178,6 +200,7 @@ mod tests {
             store: Arc::new(FileKeyStore::new(path.clone())),
             origin: fake_or().await,
             client: reqwest::Client::new(),
+            key: KeyHolder::default(),
         };
         let app: Router = router_with::<()>(st.clone());
 
@@ -242,6 +265,7 @@ mod tests {
             store: Arc::new(FileKeyStore::new(path.clone())),
             origin: "http://127.0.0.1:1".into(),
             client: reqwest::Client::new(),
+            key: KeyHolder::default(),
         };
         let app: Router = router_with::<()>(st);
         let post_key = |k: &str| {
@@ -262,11 +286,48 @@ mod tests {
         let bytes = axum::body::to_bytes(r.into_body(), 1 << 16).await.unwrap();
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["ok"], true);
-        assert_eq!(v["restart_required"], true);
+        assert_eq!(v["restart_required"], false);
         assert_eq!(
             std::fs::read_to_string(&path).unwrap().trim(),
             "sk-or-v1-abc123def456"
         );
+    }
+
+    #[tokio::test]
+    async fn key_route_swaps_live_holder_without_restart() {
+        use crate::embed::{Embedder, OpenRouterEmbedder};
+        let dir = tempfile::tempdir().unwrap();
+        let holder = KeyHolder::default();
+        let embedder = OpenRouterEmbedder::with_holder(holder.clone(), "m".into(), 4);
+        assert!(!embedder.is_live());
+        let st = OrState {
+            flows: PendingFlows::default(),
+            store: Arc::new(FileKeyStore::new(dir.path().join("openrouter.key"))),
+            origin: "http://127.0.0.1:1".into(),
+            client: reqwest::Client::new(),
+            key: holder.clone(),
+        };
+        let app: Router = router_with::<()>(st);
+        let post_key = |k: &str| {
+            Request::post("/api/openrouter/key")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::json!({ "key": k }).to_string()))
+                .unwrap()
+        };
+        // Invalid shape: 400 and the holder stays empty.
+        let r = app.clone().oneshot(post_key("nope")).await.unwrap();
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        assert!(holder.get().is_none());
+        assert!(!embedder.is_live());
+        // Valid key: same embedder instance goes live with the new key.
+        let r = app
+            .clone()
+            .oneshot(post_key("sk-or-v1-abc123def456"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(holder.get().unwrap().expose(), "sk-or-v1-abc123def456");
+        assert!(embedder.is_live());
     }
 
     #[tokio::test]
@@ -277,6 +338,7 @@ mod tests {
             store: Arc::new(FileKeyStore::new(dir.path().join("k"))),
             origin: "http://127.0.0.1:1".into(),
             client: reqwest::Client::new(),
+            key: KeyHolder::default(),
         };
         let (state, _) = st.flows.begin();
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;

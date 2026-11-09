@@ -1,13 +1,13 @@
 use crate::config::{ensure_storage_parent, expand_path, load_config_with_env};
 use crate::connectors::ConnectorRegistry;
-use crate::embed::{Embedder, NullEmbedder, OpenRouterEmbedder};
+use crate::embed::{Embedder, OpenRouterEmbedder};
 use crate::environment::Environment;
 use crate::error::{KurultaiError, Result};
 use crate::pipeline::IndexPipeline;
 use crate::rerank::{NullReranker, OpenRouterReranker, Reranker};
-use crate::security::{api_key_from_env_optional, api_key_from_keyfile};
+use crate::security::api_key_from_env_optional;
 use crate::store::{migrations, SqliteVecStore, Store};
-use crate::synthesize::{synthesizer_from_env, Synthesizer};
+use crate::synthesize::{synthesizer_with_holder, Synthesizer};
 use crate::types::Config;
 use std::path::Path;
 use std::sync::Arc;
@@ -62,7 +62,8 @@ impl App {
             Arc::new(SqliteVecStore::open(storage_path, config.embed_dim)?)
         };
 
-        let embedder = build_embedder(&config, environment)?;
+        let key = crate::security::KeyHolder::global();
+        let embedder = build_embedder_with(&config, environment, key.clone())?;
         let late_embedder = build_late_embedder(&config)?;
         // Late-interaction lane replaces the LLM reranker when enabled; it is
         // a second-stage rescore over the same fused candidate set.
@@ -72,9 +73,9 @@ impl App {
                 Arc::clone(&store),
             )) as Arc<dyn Reranker>
         } else {
-            build_reranker(&config)
+            build_reranker(&config, key.clone())
         };
-        let synthesizer = synthesizer_from_env(None);
+        let synthesizer = synthesizer_with_holder(None, key);
         let connectors = ConnectorRegistry::from_config(&config).await?;
         let mut pipeline = IndexPipeline::new(Arc::clone(&store), Arc::clone(&embedder));
         pipeline.with_late_embedder(Arc::clone(&late_embedder));
@@ -115,6 +116,16 @@ impl App {
 }
 
 pub fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embedder>> {
+    build_embedder_with(config, env, crate::security::KeyHolder::resolve())
+}
+
+/// OpenRouter-backed embedder reading `key` per request. With no key yet it
+/// reports not-live (FTS-only) and goes live as soon as a key is swapped in.
+pub fn build_embedder_with(
+    config: &Config,
+    env: Environment,
+    key: crate::security::KeyHolder,
+) -> Result<Arc<dyn Embedder>> {
     if config
         .embed_backend
         .as_deref()
@@ -130,28 +141,18 @@ pub fn build_embedder(config: &Config, env: Environment) -> Result<Arc<dyn Embed
         return build_local_embedder(config);
     }
 
-    // API keys come from env only — never from config files.
-    let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
-        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"))
-        .or_else(api_key_from_keyfile);
-
-    match api_key {
-        Some(key) => {
-            let embedder: Arc<dyn Embedder> = Arc::new(OpenRouterEmbedder::new(
-                key.expose().to_string(),
-                config.embed_model.clone(),
-                config.embed_dim,
-            ));
-            Ok(embedder)
-        }
-        None => {
-            tracing::warn!(
-                env = %env,
-                "no OPENROUTER_API_KEY or KURULTAI_API_KEY — FTS-only mode (NullEmbedder)"
-            );
-            Ok(Arc::new(NullEmbedder::new(config.embed_dim)))
-        }
+    // Key resolution (env, then key file) lives in `KeyHolder`.
+    if !key.is_set() {
+        tracing::warn!(
+            env = %env,
+            "no OPENROUTER_API_KEY or KURULTAI_API_KEY — FTS-only until a key is connected"
+        );
     }
+    Ok(Arc::new(OpenRouterEmbedder::with_holder(
+        key,
+        config.embed_model.clone(),
+        config.embed_dim,
+    )))
 }
 
 fn build_perplexity_embedder(config: &Config) -> Result<Arc<dyn Embedder>> {
@@ -248,7 +249,7 @@ fn build_late_embedder(config: &Config) -> Result<Arc<dyn crate::embed::MultiVec
     }
 }
 
-fn build_reranker(config: &Config) -> Arc<dyn Reranker> {
+fn build_reranker(config: &Config, key: crate::security::KeyHolder) -> Arc<dyn Reranker> {
     let Some(model) = config
         .reranker_model
         .as_ref()
@@ -256,24 +257,13 @@ fn build_reranker(config: &Config) -> Arc<dyn Reranker> {
     else {
         return Arc::new(NullReranker::new());
     };
-    let api_key = api_key_from_env_optional("OPENROUTER_API_KEY")
-        .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"))
-        .or_else(api_key_from_keyfile);
-    match api_key {
-        Some(key) => Arc::new(OpenRouterReranker::new(
-            key.expose().to_string(),
-            model.clone(),
-        )),
-        None => {
-            tracing::warn!("reranker_model set but no API key — rerank disabled");
-            Arc::new(NullReranker::new())
-        }
-    }
+    Arc::new(OpenRouterReranker::with_holder(key, model.clone()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::embed::NullEmbedder;
     use crate::types::Config;
 
     fn sample_config(backend: Option<&str>) -> Config {
