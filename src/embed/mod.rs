@@ -43,7 +43,7 @@ pub(crate) fn reject_empty_embed_texts(texts: &[&str]) -> Result<()> {
 
 /// Uses OpenRouter API for embeddings (fast, no local GPU).
 pub struct OpenRouterEmbedder {
-    api_key: String,
+    key: crate::security::KeyHolder,
     model: String,
     dimension: usize,
     client: reqwest::Client,
@@ -51,12 +51,18 @@ pub struct OpenRouterEmbedder {
 
 impl OpenRouterEmbedder {
     pub fn new(api_key: String, model: String, dimension: usize) -> Self {
+        Self::with_holder(crate::security::KeyHolder::fixed(api_key), model, dimension)
+    }
+
+    /// Reads the key from `key` on every request, so a swapped key applies
+    /// immediately. Not live (FTS-only) while the holder is empty.
+    pub fn with_holder(key: crate::security::KeyHolder, model: String, dimension: usize) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(60))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
-            api_key,
+            key,
             model,
             dimension,
             client,
@@ -74,12 +80,17 @@ impl OpenRouterEmbedder {
             "input": texts,
         });
 
+        let api_key = self
+            .key
+            .get()
+            .ok_or_else(|| KurultaiError::Embed("no OpenRouter API key set".into()))?;
+
         let mut last_err = String::new();
         for attempt in 0..MAX_RETRIES {
             let response = self
                 .client
                 .post(OPENROUTER_URL)
-                .bearer_auth(&self.api_key)
+                .bearer_auth(api_key.expose())
                 .header("Content-Type", "application/json")
                 .header("HTTP-Referer", "https://github.com/duketopceo/kurultai")
                 .header("X-Title", "Kurultai")
@@ -162,13 +173,17 @@ impl OpenRouterEmbedder {
 #[async_trait::async_trait]
 impl Embedder for OpenRouterEmbedder {
     fn name(&self) -> &str {
-        &self.model
+        if self.key.is_set() {
+            &self.model
+        } else {
+            "none"
+        }
     }
     fn dim(&self) -> usize {
         self.dimension
     }
     fn is_live(&self) -> bool {
-        true
+        self.key.is_set()
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>> {

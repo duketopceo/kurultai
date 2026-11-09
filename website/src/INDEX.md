@@ -26,7 +26,7 @@ version: 12
 | [`App.tsx`](App.tsx) | Brain dashboard shell: top pill, brain, floating inspector, right Command rail, bottom Mission Control | `website/src/state` · `website/src/api` · `website/src/perf` · `website/src/components/TopBar` · `website/src/components/BrainStage` · `website/src/components/CommandStrip` · `website/src/components/CommandRail` · `website/src/components/MissionControl` | — | 2026-09-20 | 6 | 2026-09-20 perf wiring: `initPerf`, `setPerfTier`, `tier_load_ms` sample per fetch (#102) · 2026-09-14 pass `onOntologyChanged` to BrainStage board (#316) · 2026-09-13 v2 chrome layout 2026-09-13 v2 chrome layout · 2026-09-11 mount ProposalsPanel (#118) · 2026-09-05 fetchGraph limit by load tier · 2026-09-04 token prompt + logout wiring · 2026-08-16 indexed (v1 seed) |
 | [`api.ts`](api.ts) | Fetch wrappers for daemon /api/* | `website/src/types` · `website/src/auth` · `website/src/proposals` | — | 2026-09-14 | 7 | 2026-09-14 `createOntologyEntity`/`createOntologyLink` human-lane fns (#316) · 2026-09-11 O3 proposal fns (#118) 2026-09-11 O3 proposal fns: fetchOntologyProposals/decideOntologyProposal (#118) · 2026-09-11 hey write fns: postHeyMessage/reactHeyMessage/fetchHeyUnread · 2026-09-05 tiered / limited graph query helpers · 2026-09-04 use auth module; 401 → token-invalid · 2026-08-16 indexed (v1 seed) |
 | [`auth.ts`](auth.ts) | Human token storage, probe open/locked, auth events | — | `website/src/main.tsx` · `website/src/api.ts` | 2026-09-04 | 1 | 2026-09-04 human access probe + settings events |
-| [`openrouterConnect.ts`](openrouterConnect.ts) | Connect OpenRouter: SDK PKCE (dynamic import), posts key to daemon | `website/src/auth` | `website/src/next/App.tsx` | 2026-11-07 | 1 | 2026-11-07 added |
+| [`openrouterConnect.ts`](openrouterConnect.ts) | Connect OpenRouter: SDK PKCE (dynamic import), posts key to daemon | `website/src/auth` | `website/src/next/App.tsx` | 2026-11-09 | 2 | 2026-11-09 `fetchMcpInfo`; no restart copy · 2026-11-07 added |
 | [`assets.d.ts`](assets.d.ts) | Asset module declarations | — | — | 2026-08-12 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`main.tsx`](main.tsx) | Vite entry; probe auth; human gate only when locked | `website/src/App` · `website/src/auth` · `website/src/components/HumanAccess` | — | 2026-09-04 | 3 | 2026-09-04 probe open vs locked; HumanLoginGate · 2026-08-16 indexed (v1 seed) |
 | [`perf.ts`](perf.ts) | Client perf reporter — nav/tier-load ms, FPS, long tasks, heap → POST /api/metrics/client (30s flush + pagehide) | `website/src/auth` | `website/src/App` · `website/src/components/BrainStage` | 2026-09-20 | 1 | 2026-09-20 added (#102 client half) |
@@ -41,6 +41,8 @@ version: 12
 
 ## Recent
 
+- 2026-11-09 — `next/`: Connect an agent panel
+- 2026-11-09 — `openrouterConnect.ts`: `fetchMcpInfo()` for the Connect an agent menu item
 - 2026-11-07 — `repos/` child: Repos floorplan view
 - 2026-10-19 — `version.ts` UI_VERSION 0.6.0 → 0.7.0 (was stale since the v0.7.0 release)
 - 2026-09-20 — client perf telemetry (#102): `perf.ts` reporter (nav_ms, tier_load_ms, fps, long_tasks, heap_mb → `POST /api/metrics/client`); `App.tsx` inits + tags tier + reports per-load ms; `BrainStage` BrainHud feeds FPS samples

@@ -186,6 +186,7 @@ pub async fn serve_with(
     };
     let mut app = router(state);
     if let Some(secret) = mcp::resolve_mcp_http_secret(opts.mcp_http_secret.as_deref()) {
+        mcp::mark_mounted();
         tracing::info!("mcp HTTP/SSE enabled at POST /mcp and GET /mcp/sse (bearer auth)");
         app = app.merge(mcp::routes(mcp::McpHttpState::new(
             Arc::clone(&brain),

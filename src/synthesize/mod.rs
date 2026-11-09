@@ -4,7 +4,6 @@
 //! Degrade path: extractive bullets from hits (no API key).
 
 use crate::error::{KurultaiError, Result};
-use crate::security::SecretString;
 use crate::types::{Answer, Citation, SearchResult};
 use serde::Deserialize;
 use std::time::Duration;
@@ -57,22 +56,24 @@ impl Synthesizer for ExtractiveSynthesizer {
 
 /// OpenRouter chat synthesizer.
 pub struct OpenRouterSynthesizer {
-    api_key: SecretString,
+    key: crate::security::KeyHolder,
     model: String,
     client: reqwest::Client,
 }
 
 impl OpenRouterSynthesizer {
     pub fn new(api_key: String, model: String) -> Self {
+        Self::with_holder(crate::security::KeyHolder::fixed(api_key), model)
+    }
+
+    /// Reads the key from `key` on every request; answers extractively while
+    /// the holder is empty.
+    pub fn with_holder(key: crate::security::KeyHolder, model: String) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(60))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
-        Self {
-            api_key: SecretString::new(api_key),
-            model,
-            client,
-        }
+        Self { key, model, client }
     }
 }
 
@@ -94,13 +95,24 @@ struct ChatMessage {
 #[async_trait::async_trait]
 impl Synthesizer for OpenRouterSynthesizer {
     fn name(&self) -> &str {
-        "openrouter"
+        if self.key.is_set() {
+            "openrouter"
+        } else {
+            "extractive"
+        }
+    }
+
+    fn is_live(&self) -> bool {
+        self.key.is_set()
     }
 
     async fn synthesize(&self, question: &str, hits: &[SearchResult]) -> Result<Answer> {
         if hits.is_empty() {
             return Ok(empty_answer(question));
         }
+        let Some(api_key) = self.key.get() else {
+            return Ok(extractive_answer(question, hits));
+        };
         let citations = citations_from_hits(hits);
         let context = hits
             .iter()
@@ -136,7 +148,7 @@ If excerpts are insufficient, say so briefly. Keep the answer concise.";
         let resp = self
             .client
             .post(OPENROUTER_CHAT_URL)
-            .header("Authorization", format!("Bearer {}", self.api_key.expose()))
+            .header("Authorization", format!("Bearer {}", api_key.expose()))
             .header("Content-Type", "application/json")
             .header("HTTP-Referer", "https://github.com/duketopceo/kurultai")
             .header("X-Title", "Kurultai")
@@ -187,20 +199,21 @@ If excerpts are insufficient, say so briefly. Keep the answer concise.";
     }
 }
 
-/// Prefer live synthesizer when keyed; otherwise extractive.
+/// Live synthesizer reading `key` per request; extractive while it is empty.
+pub fn synthesizer_with_holder(
+    model: Option<&str>,
+    key: crate::security::KeyHolder,
+) -> std::sync::Arc<dyn Synthesizer> {
+    let model = model
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or("openai/gpt-4o-mini")
+        .to_string();
+    std::sync::Arc::new(OpenRouterSynthesizer::with_holder(key, model))
+}
+
+/// Resolve the key now (env, then key file) and build the synthesizer.
 pub fn synthesizer_from_env(model: Option<&str>) -> std::sync::Arc<dyn Synthesizer> {
-    let key = crate::security::api_key_from_env_optional("OPENROUTER_API_KEY")
-        .or_else(|| crate::security::api_key_from_env_optional("KURULTAI_API_KEY"));
-    match key {
-        Some(k) => {
-            let model = model
-                .filter(|m| !m.trim().is_empty())
-                .unwrap_or("openai/gpt-4o-mini")
-                .to_string();
-            std::sync::Arc::new(OpenRouterSynthesizer::new(k.expose().to_string(), model))
-        }
-        None => std::sync::Arc::new(ExtractiveSynthesizer::new()),
-    }
+    synthesizer_with_holder(model, crate::security::KeyHolder::resolve())
 }
 
 pub fn empty_answer(question: &str) -> Answer {
@@ -447,5 +460,61 @@ mod tests {
         assert_eq!(a.citations.len(), 1);
         assert_eq!(a.citations[0].source, "markdown");
         assert!(a.confidence > 0.0);
+    }
+
+    #[test]
+    fn synthesizer_from_env_uses_key_file_when_no_env() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("openrouter.key");
+        std::fs::write(&path, "sk-or-v1-fromfile123\n").unwrap();
+        let path_s: &'static str = Box::leak(path.to_string_lossy().into_owned().into_boxed_str());
+        let _env = crate::testutil::EnvGuard::apply(&[
+            ("OPENROUTER_API_KEY", None),
+            ("KURULTAI_API_KEY", None),
+            ("KURULTAI_API_KEY_FILE", Some(path_s)),
+        ]);
+        let s = synthesizer_from_env(None);
+        assert!(s.is_live(), "key file must enable the synthesizer");
+        assert_eq!(s.name(), "openrouter");
+    }
+
+    #[test]
+    fn synthesizer_from_env_extractive_without_any_key() {
+        let _env = crate::testutil::EnvGuard::apply(&[
+            ("OPENROUTER_API_KEY", None),
+            ("KURULTAI_API_KEY", None),
+            (
+                "KURULTAI_API_KEY_FILE",
+                Some("/nonexistent/kurultai-no-key"),
+            ),
+        ]);
+        assert!(!synthesizer_from_env(None).is_live());
+    }
+
+    #[test]
+    fn env_key_wins_over_key_file_and_swap_goes_live() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("openrouter.key");
+        std::fs::write(&path, "sk-or-v1-fromfile123").unwrap();
+        let path_s: &'static str = Box::leak(path.to_string_lossy().into_owned().into_boxed_str());
+        let _env = crate::testutil::EnvGuard::apply(&[
+            ("OPENROUTER_API_KEY", Some("sk-or-v1-fromenv456")),
+            ("KURULTAI_API_KEY", None),
+            ("KURULTAI_API_KEY_FILE", Some(path_s)),
+        ]);
+        let holder = crate::security::KeyHolder::resolve();
+        assert_eq!(holder.get().unwrap().expose(), "sk-or-v1-fromenv456");
+        // A Connect swap updates the file slot but never overrides env.
+        holder.set_file_key("sk-or-v1-swapped789");
+        assert_eq!(holder.get().unwrap().expose(), "sk-or-v1-fromenv456");
+    }
+
+    #[test]
+    fn swap_makes_empty_synthesizer_live() {
+        let holder = crate::security::KeyHolder::default();
+        let s = synthesizer_with_holder(None, holder.clone());
+        assert!(!s.is_live());
+        holder.set_file_key("sk-or-v1-swapped789");
+        assert!(s.is_live());
     }
 }

@@ -21,11 +21,12 @@ _None._
 |------|------|-------|---------|-------|-----|-----------|
 | [`late.rs`](late.rs) | Multi-vector late-interaction lane: `MultiVectorEmbedder` trait, `maxsim` scorer, `LateHttpEmbedder` (pplx-embed-v2 sidecar), `LateBgem3Embedder` (local-embed feature) | `src/error` · fastembed | `src/rerank/mod.rs` · `src/pipeline/mod.rs` · `src/app/context.rs` | 2026-10-07 | 1 | pplx-embed-v2-late drop → rerank lane (#424) |
 | [`local.rs`](local.rs) | Optional fastembed ONNX local embedder | `src/embed` · `src/error` | `src/app/context.rs` · `src/doctor.rs` · `src/http/ingest.rs` · `src/mcp/brain.rs` · `src/pipeline/mod.rs` | 2026-07-25 | 1 | 2026-08-16 indexed (v1 seed) |
-| [`mod.rs`](mod.rs) | Embedder trait, OpenRouter, NullEmbedder | `src/error` | `src/app/context.rs` · `src/doctor.rs` · `src/embed/local.rs` · `src/http/ingest.rs` · `src/mcp/brain.rs` | 2026-11-07 | 2 | 2026-11-07 401 expiring-key message via `explain_openrouter_error` · 2026-08-16 indexed (v1 seed) |
+| [`mod.rs`](mod.rs) | Embedder trait, OpenRouter, NullEmbedder | `src/error` | `src/app/context.rs` · `src/doctor.rs` · `src/embed/local.rs` · `src/http/ingest.rs` · `src/mcp/brain.rs` | 2026-11-09 | 3 | 2026-11-09 `OpenRouterEmbedder` reads `KeyHolder` per request · 2026-11-07 401 expiring-key message via `explain_openrouter_error` · 2026-08-16 indexed (v1 seed) |
 | [`perplexity.rs`](perplexity.rs) | Perplexity pplx-embed-v1 embedder (int8 base64 → f32 decode) | `src/error` · `base64` · `reqwest` | `src/app/context.rs` | 2026-10-02 | 1 | 2026-10-02 added |
 
 ## Recent
 
+- 2026-11-09 — `mod.rs`: OpenRouterEmbedder reads shared key per request (live OpenRouter key reload)
 - 2026-11-07 — `mod.rs`: 401 expiring-key message via `explain_openrouter_error`
 - 2026-10-07 — `late.rs`: `MultiVectorEmbedder` + `maxsim` + http/local backends for `[embed.late]` rerank lane (#424)
 

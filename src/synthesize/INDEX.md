@@ -19,10 +19,11 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`mod.rs`](mod.rs) | ask / who-knows synthesis | `src/error` · `src/security` · `src/types` | `src/mcp/interface.rs` · `src/query/mod.rs` | 2026-11-07 | 3 | 2026-11-07 401 expiring-key warn via `explain_openrouter_error` · 2026-10-02 `Answer` literals gain `gaps: vec![]` |
+| [`mod.rs`](mod.rs) | ask / who-knows synthesis | `src/error` · `src/security` · `src/types` | `src/mcp/interface.rs` · `src/query/mod.rs` | 2026-11-09 | 4 | 2026-11-09 synthesizer resolves env→key file via `KeyHolder` (fixes key-file ignored) · 2026-11-07 401 expiring-key warn via `explain_openrouter_error` · 2026-10-02 `Answer` literals gain `gaps: vec![]` |
 
 ## Recent
 
+- 2026-11-09 — `mod.rs`: synthesizer now honors the key file and reads the shared key per request (live OpenRouter key reload)
 - 2026-11-07 — `mod.rs`: 401 expiring-key warn via `explain_openrouter_error`
 - 2026-10-02 — `mod.rs`: `gaps` field on Answer constructors
 

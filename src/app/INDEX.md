@@ -19,11 +19,12 @@ _None._
 
 | File | Does | Needs | Touches | Stamp | Ver | Changelog |
 |------|------|-------|---------|-------|-----|-----------|
-| [`context.rs`](context.rs) | AppContext: config + store + embedder wiring | `src/config` · `src/connectors` · `src/embed` · `src/environment` · `src/error` · `src/store` | — | 2026-10-02 | 4 | 2026-10-02 `perplexity` embed backend → PerplexityEmbedder via PERPLEXITY_API_KEY |
+| [`context.rs`](context.rs) | AppContext: config + store + embedder wiring | `src/config` · `src/connectors` · `src/embed` · `src/environment` · `src/error` · `src/store` | — | 2026-11-09 | 5 | 2026-11-09 one global `KeyHolder` shared by embedder/reranker/synthesizer · 2026-10-02 `perplexity` embed backend → PerplexityEmbedder via PERPLEXITY_API_KEY |
 | [`mod.rs`](mod.rs) | CLI App orchestration (index/search/ask/status) | — | — | 2026-08-13 | 1 | 2026-08-16 indexed (v1 seed) |
 
 ## Recent
 
+- 2026-11-09 — `context.rs`: all three OpenRouter clients share one `KeyHolder` (live OpenRouter key reload)
 - 2026-10-07 — `context.rs`: `build_late_embedder` (`off|http|local`); live lane swaps reranker to `LateInteractionReranker`, attaches to pipeline (#424)
 
 - 2026-10-02 — `context.rs`: perplexity backend wiring (explicit backend wins, fails loud on missing key)

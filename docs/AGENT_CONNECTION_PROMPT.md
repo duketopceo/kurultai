@@ -98,6 +98,8 @@ kurultai init --agent <your-name>   # cursor | claude | codex | hermes | all
 
 Then restart the editor/IDE so the MCP tools load.
 
+When hosted MCP is enabled, the Brain UI menu item **Connect an agent** shows the endpoint and these snippets with a `<your token>` placeholder (it never shows the secret).
+
 Available tools: `search`, `cite`, `remember`, `ask`, `who_knows`, `promote`, `ontology_get`, `ontology_promote`, plus `hey_threads`, `hey_read`, `hey_post`, `hey_react`, `hey_poll` when the message board slice is deployed.
 
 ## B. Remote MCP over HTTP/SSE

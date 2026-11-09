@@ -1,7 +1,6 @@
 //! Optional LLM rerank of fused search candidates (Phase 2 / #6).
 
 use crate::error::{KurultaiError, Result};
-use crate::security::SecretString;
 use serde::Deserialize;
 use std::time::Duration;
 
@@ -52,22 +51,23 @@ const EXCERPT_CAP: usize = 400;
 
 /// OpenRouter chat-completions reranker (JSON id list).
 pub struct OpenRouterReranker {
-    api_key: SecretString,
+    key: crate::security::KeyHolder,
     model: String,
     client: reqwest::Client,
 }
 
 impl OpenRouterReranker {
     pub fn new(api_key: String, model: String) -> Self {
+        Self::with_holder(crate::security::KeyHolder::fixed(api_key), model)
+    }
+
+    /// Reads the key from `key` on every request.
+    pub fn with_holder(key: crate::security::KeyHolder, model: String) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(45))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
-        Self {
-            api_key: SecretString::new(api_key),
-            model,
-            client,
-        }
+        Self { key, model, client }
     }
 }
 
@@ -75,6 +75,10 @@ impl OpenRouterReranker {
 impl Reranker for OpenRouterReranker {
     fn name(&self) -> &str {
         "openrouter"
+    }
+
+    fn is_live(&self) -> bool {
+        self.key.is_set()
     }
 
     async fn rerank(&self, query: &str, candidates: &[(String, String)]) -> Result<Vec<String>> {
@@ -103,10 +107,14 @@ impl Reranker for OpenRouterReranker {
             "temperature": 0
         });
 
+        let api_key = self
+            .key
+            .get()
+            .ok_or_else(|| KurultaiError::Query("no OpenRouter API key set".into()))?;
         let resp = self
             .client
             .post(OPENROUTER_CHAT_URL)
-            .bearer_auth(self.api_key.expose())
+            .bearer_auth(api_key.expose())
             .header("Content-Type", "application/json")
             .header("HTTP-Referer", "https://github.com/duketopceo/kurultai")
             .header("X-Title", "Kurultai")

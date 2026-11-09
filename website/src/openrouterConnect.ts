@@ -78,6 +78,20 @@ export async function finishConnectIfReturning(): Promise<ConnectResult> {
   }
 }
 
+export type McpInfo = { enabled: boolean; path: string };
+
+/** Hosted MCP availability from `/api/onboarding` (a flag only; the secret is never returned). */
+export async function fetchMcpInfo(): Promise<McpInfo | null> {
+  try {
+    const r = await fetch('/api/onboarding', { cache: 'no-store', headers: authHeaders() });
+    if (!r.ok) return null;
+    const b = (await r.json()) as { mcp_http_enabled?: boolean; mcp_path?: string };
+    return { enabled: b.mcp_http_enabled === true, path: b.mcp_path || '/mcp' };
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchKeyPresent(): Promise<boolean> {
   try {
     const r = await fetch('/api/onboarding', { cache: 'no-store', headers: authHeaders() });

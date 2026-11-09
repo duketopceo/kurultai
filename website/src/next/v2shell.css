@@ -31,6 +31,7 @@
 .v2-scrim { position: absolute; inset: 0; background: var(--scrim, rgba(0,0,0,.6)); display: flex; justify-content: center; align-items: flex-start; padding-top: 16vh; z-index: 30; }
 .v2-palette { width: min(480px, calc(100% - 32px)); background: var(--canvas-3); border: 1px solid var(--v2-line); border-radius: 8px; padding: 8px; }
 .v2-palette input { width: 100%; box-sizing: border-box; }
+.v2-palette pre { margin: 4px 0 8px; white-space: pre-wrap; word-break: break-all; }
 .v2-palette ul { list-style: none; margin: 6px 0 0; padding: 0; }
 .v2-palette li button { width: 100%; display: flex; justify-content: space-between; border: 0; font: 14px/20px ui-sans-serif, system-ui, sans-serif; }
 @media (prefers-reduced-motion: reduce) { .v2-app * { transition: none !important; animation: none !important; } }

@@ -1,5 +1,6 @@
 use crate::error::{KurultaiError, Result};
 use std::fmt;
+use std::sync::{Arc, OnceLock, RwLock};
 
 /// Wrapper around API keys and tokens. Never implement `Debug` that leaks values.
 #[derive(Clone)]
@@ -58,6 +59,61 @@ pub fn api_key_from_keyfile() -> Option<SecretString> {
     let raw = std::fs::read_to_string(&path).ok()?;
     let key = raw.trim();
     (!key.is_empty()).then(|| SecretString::new(key.to_string()))
+}
+
+#[derive(Default)]
+struct HeldKeys {
+    env: Option<SecretString>,
+    file: Option<SecretString>,
+}
+
+/// Shared, swappable OpenRouter key. The embedder, reranker and synthesizer
+/// all read it per request, so a key saved through Connect takes effect
+/// without a restart. Precedence is fixed: env key over key-file key.
+#[derive(Clone, Default)]
+pub struct KeyHolder(Arc<RwLock<HeldKeys>>);
+
+impl KeyHolder {
+    /// The one resolver: env (`OPENROUTER_API_KEY`, then `KURULTAI_API_KEY`)
+    /// and the key file, read now.
+    pub fn resolve() -> Self {
+        let env = api_key_from_env_optional("OPENROUTER_API_KEY")
+            .or_else(|| api_key_from_env_optional("KURULTAI_API_KEY"));
+        Self(Arc::new(RwLock::new(HeldKeys {
+            env,
+            file: api_key_from_keyfile(),
+        })))
+    }
+
+    /// A holder pinned to one key (tests, explicit constructors).
+    pub fn fixed(key: String) -> Self {
+        Self(Arc::new(RwLock::new(HeldKeys {
+            env: Some(SecretString::new(key)),
+            file: None,
+        })))
+    }
+
+    /// Process-wide holder shared by `App` and the Connect routes.
+    pub fn global() -> Self {
+        static GLOBAL: OnceLock<KeyHolder> = OnceLock::new();
+        GLOBAL.get_or_init(KeyHolder::resolve).clone()
+    }
+
+    /// Current key: env wins over the file key.
+    pub fn get(&self) -> Option<SecretString> {
+        let g = self.0.read().unwrap_or_else(|e| e.into_inner());
+        g.env.clone().or_else(|| g.file.clone())
+    }
+
+    pub fn is_set(&self) -> bool {
+        self.get().is_some()
+    }
+
+    /// Swap the key-file slot after Connect stores a new key.
+    pub fn set_file_key(&self, key: &str) {
+        let mut g = self.0.write().unwrap_or_else(|e| e.into_inner());
+        g.file = Some(SecretString::new(key.to_string()));
+    }
 }
 
 /// Key file for a `kurultai connect` agent credential — lives under
