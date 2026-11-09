@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: deploy/server-001
 parent: deploy/INDEX.md
-updated: 2026-11-07
-version: 4
+updated: 2026-11-09
+version: 5
 ---
 
 # `deploy/server-001`
@@ -28,10 +28,11 @@ version: 4
 | [`redeploy.sh`](redeploy.sh) | Build or `--pull` image, cold-backup volumes, swap, health-gate, auto-rollback; `backup`/`rollback` modes. | host Docker, `.env` | — | 2026-11-07 | 2 | 2026-11-07 backup + health gate + rollback + GHCR pull · 2026-09-04 redeploy #268 +
 | [`REINDEX-FROM-OTHER-REPOS.md`](REINDEX-FROM-OTHER-REPOS.md) | Webhook/reindex dispatch snippet for other repos | `gh` PAT, `kurultai-reindex` dispatch | — | 2026-09-04 | 1 | 2026-09-04 reindex trigger docs |
 | [`sync-and-reindex-repos.sh`](sync-and-reindex-repos.sh) | Mirror `duketopceo/*` under `/home/khan/kurultai-repos` + `index --full`; merges managed `[sources.*]` sections instead of overwriting config.toml | git, Docker | — | 2026-10-06 | 2 | 2026-10-06 config merge (was clobbering `[embed]` → embed_dim crash loop) · 2026-09-04 Brain Repos lattice |
-| [`github-deploy-workflow.yml.example`](github-deploy-workflow.yml.example) | Actions template: main push → SSH redeploy + reindex; `repository_dispatch` reindex-only | secrets | — | 2026-09-04 | 1 | 2026-09-04 CI/CD hook |
+| [`README-CICD.md`](README-CICD.md) | Deploy-from-git: self-hosted runner on server-001 + one-time owner steps (token, labels, svc.sh, `production` env) | GitHub admin, `khan` shell | — | 2026-11-09 | 1 | 2026-11-09 added |
 
 ## Recent
 
+- 2026-11-09 — deploy from git: self-hosted runner workflow replaces the SSH example (removed); see `README-CICD.md`
 - 2026-11-07 — Dockerfile.solo cargo-chef/pinned; redeploy.sh backup+gate+rollback; see `docs/deploy.md`
 - 2026-09-29 — ported from kurultai-private into the public repo; kurultai-private archived. Host `.env` on server-001 is unchanged and remains the only place real secrets live.
 - 2026-09-05 — add `add-agent-api-hostnames.sh` for agent-only `api-knowledge`/`api-work` hostnames

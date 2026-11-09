@@ -1,11 +1,23 @@
+# Deploys the Kurultai solo instances (personal :8421, work :8422) on server-001
+# from git. Runs ONLY on a self-hosted runner on server-001 (user khan) and
+# NEVER on pull_request: untrusted PR code must not reach that host.
+# One-time runner setup: deploy/server-001/README-CICD.md
 name: Deploy knowledge.shippedit.dev
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '**/INDEX.md'
+      - 'LICENSE'
   workflow_dispatch:
   repository_dispatch:
     types: [kurultai-reindex]
+
+permissions:
+  contents: read
 
 concurrency:
   group: kurultai-server-001-deploy
@@ -13,42 +25,48 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # Dispatch events run the workflow from the default branch, so github.sha is
+    # main's head; a manual run from any other ref is refused below.
+    if: github.repository == 'duketopceo/kurultai'
+    runs-on: [self-hosted, server-001, kurultai-deploy]
     environment: production
+    timeout-minutes: 30
+    env:
+      CHECKOUT: /home/khan/kurultai
+      DEPLOY_SHA: ${{ github.sha }}
+      DEPLOY_REF: ${{ github.ref }}
+      EVENT_NAME: ${{ github.event_name }}
     steps:
-      - name: Require deploy secrets
-        env:
-          HOST: ${{ secrets.KURULTAI_DEPLOY_HOST }}
-          KEY: ${{ secrets.KURULTAI_DEPLOY_SSH_KEY }}
+      - name: Fast-forward server checkout to the pushed SHA
         run: |
-          if [ -z "$HOST" ] || [ -z "$KEY" ]; then
-            echo "Missing KURULTAI_DEPLOY_HOST / KURULTAI_DEPLOY_SSH_KEY — skipping."
-            echo "skip=true" >> "$GITHUB_ENV"
-          else
-            echo "skip=false" >> "$GITHUB_ENV"
+          set -euo pipefail
+          if [[ "$DEPLOY_REF" != "refs/heads/main" ]]; then
+            echo "ERROR: deploys run from main only (got $DEPLOY_REF)" >&2
+            exit 1
           fi
-      - name: SSH deploy + reindex
-        if: env.skip != 'true'
-        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
-        with:
-          host: ${{ secrets.KURULTAI_DEPLOY_HOST }}
-          username: ${{ secrets.KURULTAI_DEPLOY_USER || 'khan' }}
-          key: ${{ secrets.KURULTAI_DEPLOY_SSH_KEY }}
-          script_stop: true
-          script: |
-            set -euo pipefail
-            cd /home/khan/kurultai
-            git fetch origin
-            git reset --hard origin/main
-            if [[ ! -f deploy/server-001/redeploy.sh ]]; then
-              echo "ERROR: deploy/server-001 missing on host" >&2
-              exit 1
-            fi
-            chmod +x deploy/server-001/redeploy.sh deploy/server-001/sync-and-reindex-repos.sh
-            if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
-              deploy/server-001/sync-and-reindex-repos.sh
-            else
-              # Public product tree has no deploy/; keep host overlay, rebuild from public SHA
-              deploy/server-001/redeploy.sh
-              deploy/server-001/sync-and-reindex-repos.sh
-            fi
+          cd "$CHECKOUT"
+          git fetch --no-tags origin main
+          if [[ "$(git rev-parse --abbrev-ref HEAD)" != "main" ]]; then
+            echo "ERROR: $CHECKOUT is not on branch main" >&2
+            exit 1
+          fi
+          # Never force: a dirty tree or diverged history fails the job.
+          git merge --ff-only "$DEPLOY_SHA"
+          echo "checkout now at $(git rev-parse --short HEAD)"
+
+      - name: Redeploy (build, swap, health gate, auto-rollback)
+        if: env.EVENT_NAME != 'repository_dispatch'
+        working-directory: /home/khan/kurultai
+        # redeploy.sh exits non-zero when the health gate fails, failing the job.
+        run: deploy/server-001/redeploy.sh
+
+      - name: Reindex repos mirror
+        working-directory: /home/khan/kurultai
+        run: deploy/server-001/sync-and-reindex-repos.sh
+
+      - name: Confirm instances healthy
+        run: |
+          set -euo pipefail
+          docker exec kurultai-personal curl -fsS http://127.0.0.1:8421/health >/dev/null
+          docker exec kurultai-work curl -fsS http://127.0.0.1:8422/health >/dev/null
+          echo "personal + work healthy"

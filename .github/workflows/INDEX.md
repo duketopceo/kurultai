@@ -2,8 +2,8 @@
 index: kurultai/v1
 folder: .github/workflows
 parent: .github/INDEX.md
-updated: 2026-11-07
-version: 6
+updated: 2026-11-09
+version: 7
 ---
 
 # `.github/workflows`
@@ -21,7 +21,7 @@ _None._
 |------|------|-------|---------|-------|-----|-----------|
 | [`argus-reviewer.yml`](argus-reviewer.yml) | Argus reviewer on PRs — code-review-only (`run: 'false'`), SHA-pinned `duketopceo/Argus/action@75492b8a` (v0.2.0) | `secrets.OPENROUTER_API_KEY` · `argus-reviewer.config.ts` · `package.json` | `argus-reviewer-report/` artifact · `argus-reviewer` commit status | 2026-09-21 | 2 | 2026-09-21 SHA pin + npm 0.2.0 · 2026-09-18 Argus PR review wiring |
 | [`ci.yml`](ci.yml) | CI: fmt/clippy/nextest, Brain UI, macOS smoke, cargo-audit, postgres, agent-index | `.github/workflows/ci.yml` | `scripts/audit-agent-index.py` · `website/package.json` | 2026-09-13 | 4 | 2026-09-13 run `npm ci` in `website/` before tests so `three` resolves · 2026-09-11 website unit tests step covers all src/**/*.test.ts · 2026-08-16 added Agent index job · 2026-08-16 indexed (v1 seed) |
-| [`deploy-server-001.yml`](deploy-server-001.yml) | Deploy knowledge.shippedit.dev + work.shippedit.dev on server-001: main push → SSH redeploy + reindex; `repository_dispatch` reindex-only | `secrets.KURULTAI_DEPLOY_HOST` · `secrets.KURULTAI_DEPLOY_SSH_KEY` · host `.env` in `deploy/server-001/` | `deploy/server-001/` scripts · server-001 containers | 2026-09-29 | 1 | 2026-09-29 ported from archived kurultai-private |
+| [`deploy-server-001.yml`](deploy-server-001.yml) | Deploy to server-001 on main push (docs-only ignored) / dispatch via self-hosted runner `[self-hosted, server-001, kurultai-deploy]`, `production` env, serialized; ff-only checkout then `redeploy.sh` (fails on health gate); `repository_dispatch` reindex-only; no PR trigger | self-hosted runner · `/home/khan/kurultai` · host `.env` | `deploy/server-001/` scripts · server-001 containers | 2026-11-09 | 2 | 2026-11-09 SSH on ubuntu-latest to self-hosted runner · 2026-09-29 ported from archived kurultai-private |
 | [`deploy.yml`](deploy.yml) | Deploy pipeline: staging branch → staging env, main → production env. | — | — | 2026-07-19 | 1 | 2026-08-16 indexed (v1 seed) |
 | [`publish-image.yml`](publish-image.yml) | Build and push versioned solo image to GHCR on `v*` tag (never deploys). | `deploy/server-001/Dockerfile.solo` | — | 2026-11-07 | 1 | 2026-11-07 added |
 | [`release.yml`](release.yml) | Build platform binaries and attach them to a GitHub Release. | — | — | 2026-07-26 | 1 | 2026-08-16 indexed (v1 seed) |
