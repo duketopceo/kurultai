@@ -32,6 +32,7 @@ version: 14
 
 ## Recent
 
+- 2026-11-09 — `v2/` background: monochrome ribbon field + lane default themes
 - 2026-11-08 — `v2/` visual pass: real cortex wire, lobe regions, electric shaders, label collision
 - 2026-11-07 — `v2/` child added: wireframe cortex, tag regions, single-draw atom cloud behind `?brain=v2`
 - 2026-09-14 — `layout/ontoBoard.ts`: 2D ontology board layout helpers consumed by `components/OntologyBoard` (#316)

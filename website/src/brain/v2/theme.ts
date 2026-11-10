@@ -5,9 +5,15 @@ export type ThemePref = 'system' | 'light' | 'dark';
 export const THEME_KEY = 'kurultai-theme';
 export const EFFECTS_KEY = 'kurultai.v2.reduceEffects';
 
-export function parseThemePref(raw: string | null): ThemePref {
-  // Light is the default for new visitors; 'system' is stored explicitly.
-  return raw === 'dark' || raw === 'system' ? raw : 'light';
+/** Lane default for a visitor with no stored choice: work.* opens light, knowledge.* opens dark, anything else light. */
+export function laneDefaultTheme(hostname: string): 'light' | 'dark' {
+  const h = hostname.toLowerCase();
+  return h === 'knowledge' || h.startsWith('knowledge.') ? 'dark' : 'light';
+}
+
+export function parseThemePref(raw: string | null, hostname = ''): ThemePref {
+  // A stored choice wins ('system' is stored explicitly); otherwise the lane decides.
+  return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : laneDefaultTheme(hostname);
 }
 
 export function resolveTheme(pref: ThemePref, systemLight: boolean): 'light' | 'dark' {
@@ -19,7 +25,7 @@ const set = (k: string, v: string | null) => { try { if (v === null) window.loca
 const systemLight = () => { try { return window.matchMedia('(prefers-color-scheme: light)').matches; } catch { return false; } };
 
 export function useTheme(): { pref: ThemePref; setPref: (p: ThemePref) => void; theme: 'light' | 'dark' } {
-  const [pref, setPrefState] = useState<ThemePref>(() => parseThemePref(get(THEME_KEY)));
+  const [pref, setPrefState] = useState<ThemePref>(() => parseThemePref(get(THEME_KEY), typeof location === 'undefined' ? '' : location.hostname));
   const [sys, setSys] = useState<boolean>(() => systemLight());
   useEffect(() => {
     let mq: MediaQueryList | null = null;

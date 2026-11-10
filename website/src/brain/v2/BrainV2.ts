@@ -10,12 +10,13 @@
  * ONLY for the selected path and the search target (DESIGN.md accent rule).
  */
 import {
-  AdditiveBlending, NormalBlending, BufferAttribute, Color, NearestFilter, OrthographicCamera, PlaneGeometry, Vector2, WebGLRenderTarget, BufferGeometry, DoubleSide, LineSegments, Mesh,
+  AdditiveBlending, NormalBlending, BufferAttribute, Color, NearestFilter, OrthographicCamera, PlaneGeometry, Vector2, Vector4, WebGLRenderTarget, BufferGeometry, DoubleSide, LineSegments, Mesh,
   PerspectiveCamera, Points, Scene, ShaderMaterial, Vector3, WebGLRenderer,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { Atom, Link } from '../../types.ts';
 import { buildAdjacency, shortestPath, type Adjacency } from './path.ts';
+import { BG_FRAG, BG_VERT, FIELD_PEAK, TOP_BAR_PX } from './ribbonField.ts';
 import { LOBES, MESH_IDX, MESH_POS, MESH_VERTEX_LOBE } from './cortex.ts';
 import { lodTier, parcellate, placeAll, type LodTier, type Parcellation } from './regions.ts';
 
@@ -70,31 +71,7 @@ void main() {
   gl_FragColor = vec4(c, 1.0);
 }`;
 
-/* ── background flow: very slow, very low-contrast ink-wash field behind everything (one full-screen quad) ── */
-const BG_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.9999, 1.0); }';
-const BG_FRAG = /* glsl */ `
-uniform vec3 uBg;
-uniform float uTime;
-uniform float uAmp;
-uniform float uLight;
-uniform vec2 uAspect;
-varying vec2 vUv;
-float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float vn(vec2 p) {
-  vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y);
-}
-float fbm(vec2 p) { return 0.55 * vn(p) + 0.3 * vn(p * 2.03 + 7.1) + 0.15 * vn(p * 4.1 + 3.3); }
-void main() {
-  vec2 p = vUv * uAspect;
-  float t = uTime / 30.0; // ~30 s per unit of drift
-  vec2 q = vec2(vn(p * 1.4 + vec2(t, -0.7 * t)), vn(p * 1.4 + vec2(5.2 - 0.6 * t, 1.3 + 0.9 * t)));
-  float n = fbm(p * 1.1 + 1.8 * q + 0.5 * t);
-  float breath = 0.5 + 0.5 * sin(uTime * 0.45); // same phase as the scene breathing field
-  float v = n * uAmp * (0.8 + 0.2 * breath);
-  vec3 c = uLight > 0.5 ? uBg - vec3(v) : uBg + vec3(v);
-  gl_FragColor = vec4(c, 1.0);
-}`;
+/* ── background: monochrome ribbon field (ribbonField.ts), drawn by one full-screen quad behind everything ── */
 
 export const FLAG = { none: 0, hover: 1, path: 2, fresh: 3, target: 4 } as const;
 
@@ -336,6 +313,8 @@ export class BrainV2 {
   private bgMat!: ShaderMaterial;
   private theme: BrainTheme = 'dark';
   private effects = true;
+  private cortexCenter = new Vector3();
+  private cortexRadius = 1;
   private rt: WebGLRenderTarget | null = null;
   private postScene = new Scene();
   private postCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -377,7 +356,11 @@ export class BrainV2 {
     this.renderer.setClearColor(0x030303, 1);
     this.bgMat = new ShaderMaterial({
       vertexShader: BG_VERT, fragmentShader: BG_FRAG, depthTest: false, depthWrite: false,
-      uniforms: { uBg: { value: new Vector3() }, uTime: { value: 0 }, uAmp: { value: 0.025 }, uLight: THEME.uLight, uAspect: { value: new Vector2(1.6, 1) } },
+      uniforms: {
+        uBg: { value: new Vector3() }, uInkC: { value: new Vector3() }, uTime: { value: 0 }, uPeak: { value: FIELD_PEAK.dark },
+        uCss: { value: new Vector2(1, 1) }, uBrain: { value: new Vector4(-1e4, -1e4, 1, 1) },
+        uInsets: { value: new Vector2(0, TOP_BAR_PX) }, uCell: { value: 6 },
+      },
     });
     this.bg = new Mesh(new PlaneGeometry(2, 2), this.bgMat);
     this.bg.frustumCulled = false;
@@ -395,6 +378,15 @@ export class BrainV2 {
     this.controls.enablePan = true;
 
     const edges = cortexEdges();
+    {
+      const lo = [Infinity, Infinity, Infinity];
+      const hi = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < MESH_POS.length; i++) { const k = i % 3; lo[k] = Math.min(lo[k], MESH_POS[i]); hi[k] = Math.max(hi[k], MESH_POS[i]); }
+      this.cortexCenter.set((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2);
+      let r2 = 0;
+      for (let i = 0; i < MESH_POS.length; i += 3) r2 = Math.max(r2, this.cortexCenter.distanceToSquared(new Vector3(MESH_POS[i], MESH_POS[i + 1], MESH_POS[i + 2])));
+      this.cortexRadius = Math.sqrt(r2);
+    }
     const fg = new BufferGeometry();
     fg.setAttribute('position', new BufferAttribute(MESH_POS, 3));
     fg.setIndex(new BufferAttribute(MESH_IDX, 1));
@@ -495,7 +487,7 @@ export class BrainV2 {
     this.renderer.domElement.style.height = '100%';
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.bgMat.uniforms.uAspect.value.set(w / h, 1);
+    (this.bgMat.uniforms.uCss.value as Vector2).set(w, h);
     if (this.insetNow) this.applyInset();
     this.sizeTarget();
   }
@@ -517,7 +509,8 @@ export class BrainV2 {
     THEME.uMute.value.set(pal.mute[0], pal.mute[1], pal.mute[2]);
     THEME.uLight.value = lightNow ? 1 : 0;
     this.bgMat.uniforms.uBg.value.set(pal.bg[0], pal.bg[1], pal.bg[2]);
-    this.bgMat.uniforms.uAmp.value = this.effects ? (lightNow ? 0.02 : 0.025) : 0;
+    this.bgMat.uniforms.uInkC.value.set(pal.ink[0], pal.ink[1], pal.ink[2]);
+    this.bgMat.uniforms.uPeak.value = FIELD_PEAK[t];
     this.renderer.setClearColor(new Color(pal.bg[0], pal.bg[1], pal.bg[2]), 1);
     if (this.postMat) { this.postMat.uniforms.uBoost.value = lightNow ? 1.0 : 1.35; this.postMat.uniforms.uDither.value = lightNow ? 0.3 : 0.9; }
     this.scene.traverse((o) => {
@@ -549,11 +542,28 @@ export class BrainV2 {
     this.camera.updateProjectionMatrix();
   }
 
-  /** "Reduce effects": freezes the background flow and breathing field (also implied by reduced motion). */
+  /** "Reduce effects": freezes the background field (one still frame) and the breathing field (also implied by reduced motion). */
   setEffects(on: boolean) {
     this.effects = on;
-    this.bgMat.uniforms.uAmp.value = on ? (lightNow ? 0.02 : 0.025) : 0;
-    this.bg.visible = on; // flat clear colour when off: no full-screen pass at all
+  }
+
+  /** Project the cortex bounding sphere to a screen ellipse (CSS px, y up) so the background field can stay quiet behind it. */
+  private updateBackdrop(st: number) {
+    const u = this.bgMat.uniforms;
+    const w = Math.max(1, this.host.clientWidth);
+    const h = Math.max(1, this.host.clientHeight);
+    this.camera.updateMatrixWorld();
+    const c = this.cortexCenter.clone().project(this.camera);
+    const right = new Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).multiplyScalar(this.cortexRadius).add(this.cortexCenter).project(this.camera);
+    const up = new Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1).multiplyScalar(this.cortexRadius).add(this.cortexCenter).project(this.camera);
+    const cx = (c.x * 0.5 + 0.5) * w;
+    const cy = (c.y * 0.5 + 0.5) * h;
+    const rx = Math.max(8, Math.abs((right.x - c.x) * 0.5 * w));
+    const ry = Math.max(8, Math.abs((up.y - c.y) * 0.5 * h));
+    (u.uBrain.value as Vector4).set(cx, cy, rx, ry);
+    (u.uInsets.value as Vector2).set(this.insetNow, TOP_BAR_PX);
+    u.uCell.value = this.pixel ? 9 : 6;
+    u.uTime.value = this.effects && !this.opts.reducedMotion ? st : 0;
   }
 
   /** 32-bit mode: low-res nearest-upscaled, dithered 256-colour render with PS1 vertex snap and stepped animation. */
@@ -890,7 +900,7 @@ export class BrainV2 {
       u.uLod.value = lodU;
       u.uTime.value = st;
     }
-    this.bgMat.uniforms.uTime.value = this.effects ? st : 0;
+    this.updateBackdrop(st);
     this.scene.scale.setScalar(1 + (this.effects && !this.opts.reducedMotion ? Math.sin(st * 0.45) * 0.005 : 0)); // breathing field: ~1% at ~0.07 Hz
     for (const o of [this.shell, this.ambient, this.hoverLines, this.pathLines]) {
       if (o) (o.material as ShaderMaterial).uniforms.uTime.value = st;
