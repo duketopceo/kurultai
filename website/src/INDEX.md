@@ -41,6 +41,7 @@ version: 12
 
 ## Recent
 
+- 2026-11-09 — `brain/v2/`: ribbon-field background, lane default themes
 - 2026-11-09 — `next/`: Connect an agent panel
 - 2026-11-09 — `openrouterConnect.ts`: `fetchMcpInfo()` for the Connect an agent menu item
 - 2026-11-07 — `repos/` child: Repos floorplan view
