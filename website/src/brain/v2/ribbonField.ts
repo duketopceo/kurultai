@@ -41,13 +41,15 @@ void main() {
   cov += strand(uv, 0.46, 0.13, 1.4, 0.00006, t + 3.2, 0.003) * 0.9;
   cov += strand(uv, 0.62, 0.11, 2.3, 0.00007, t + 1.8, 0.004);
   cov += strand(uv, 0.78, 0.09, 1.7, 0.00006, t + 4.6, 0.003) * 0.8;
+  cov += strand(uv, 0.15, 0.06, 2.1, 0.00007, t + 2.4, 0.003) * 0.9;
+  cov += strand(uv, 0.90, 0.05, 1.6, 0.00006, t + 0.2, 0.003) * 0.8;
   cov += strand(uv, 0.54, 0.22, 1.1, 0.00010, t + 5.4, 0.006) * 0.55;
   cov = clamp(cov, 0.0, 1.0);
 
   // mask: quiet inside / near the brain's ellipse, zero under the panel and the top bar
   float d = length((px - uBrain.xy) / uBrain.zw);
-  float m = smoothstep(0.8, 2.0, d);
-  m *= m * sqrt(m);                                   // pow 2.5: ~2% at the ellipse edge
+  float m = smoothstep(0.9, 1.9, d);
+  m *= sqrt(m);                                       // pow 1.5: a few % at the ellipse edge
   float panel = 1.0 - smoothstep(uCss.x - uInsets.x - 48.0, uCss.x - uInsets.x, px.x);
   m *= mix(1.0, panel, step(0.5, uInsets.x));
   m *= 1.0 - smoothstep(uCss.y - uInsets.y - 28.0, uCss.y - uInsets.y, px.y);

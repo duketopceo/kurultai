@@ -558,8 +558,8 @@ export class BrainV2 {
     const up = new Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1).multiplyScalar(this.cortexRadius).add(this.cortexCenter).project(this.camera);
     const cx = (c.x * 0.5 + 0.5) * w;
     const cy = (c.y * 0.5 + 0.5) * h;
-    const rx = Math.max(8, Math.abs((right.x - c.x) * 0.5 * w));
-    const ry = Math.max(8, Math.abs((up.y - c.y) * 0.5 * h));
+    const rx = Math.max(8, Math.abs((right.x - c.x) * 0.5 * w) * 0.85);
+    const ry = Math.max(8, Math.abs((up.y - c.y) * 0.5 * h) * 0.85);
     (u.uBrain.value as Vector4).set(cx, cy, rx, ry);
     (u.uInsets.value as Vector2).set(this.insetNow, TOP_BAR_PX);
     u.uCell.value = this.pixel ? 9 : 6;
