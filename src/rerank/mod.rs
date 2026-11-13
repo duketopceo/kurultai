@@ -289,6 +289,7 @@ mod tests {
             score,
             rank: 0,
             matched_by: vec!["fts".into()],
+            degraded: Vec::new(),
         }
     }
 

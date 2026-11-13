@@ -7,7 +7,9 @@ mod rrf;
 
 pub use context::expand_markdown_context;
 pub use gaps::analyze_gaps;
-pub use hybrid::{hybrid_search, hybrid_search_filtered};
+pub use hybrid::{
+    hybrid_search, hybrid_search_filtered, hybrid_search_outcome, stamp_degraded, HybridOutcome,
+};
 pub use rrf::{candidate_limit, fuse_rrf, fuse_rrf_ids, FusedId, RRF_K};
 
 use crate::embed::Embedder;

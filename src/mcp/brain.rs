@@ -9,7 +9,7 @@ use crate::mcp::interface::{AgentRead, AgentWrite};
 use crate::memory::{GraphNode, MemoryTier, TierPolicy};
 use crate::project::{normalize_project, resolve_project, PROJECT_METADATA_KEY};
 use crate::quality::{apply_gate, evaluate, promote_atom, PromoteResult};
-use crate::query::{expand_markdown_context, hybrid_search_filtered};
+use crate::query::{expand_markdown_context, hybrid_search_outcome, stamp_degraded};
 use crate::rerank::Reranker;
 use crate::store::{SearchFilter, Store};
 use crate::synthesize::{who_knows_from_hits, Synthesizer, WhoKnowsEntry};
@@ -154,6 +154,7 @@ fn web_hit_to_result(hit: &crate::web::WebHit) -> SearchResult {
         score: 0.0,
         rank: 0,
         matched_by: vec!["web".into()],
+        degraded: Vec::new(),
     }
 }
 
@@ -269,7 +270,17 @@ impl BrainService {
         limit: usize,
         filter: SearchFilter,
     ) -> Result<Vec<SearchResult>> {
-        let results = hybrid_search_filtered(
+        Ok(self.hybrid_hits_outcome(query, limit, filter).await?.0)
+    }
+
+    /// Hybrid search + context expand, also returning degraded arms.
+    async fn hybrid_hits_outcome(
+        &self,
+        query: &str,
+        limit: usize,
+        filter: SearchFilter,
+    ) -> Result<(Vec<SearchResult>, Vec<String>)> {
+        let outcome = hybrid_search_outcome(
             &self.store,
             &self.embedder,
             &self.reranker,
@@ -278,7 +289,10 @@ impl BrainService {
             filter,
         )
         .await?;
-        expand_markdown_context(&self.store, results).await
+        let degraded = outcome.degraded;
+        let mut results = expand_markdown_context(&self.store, outcome.results).await?;
+        stamp_degraded(&mut results, &degraded);
+        Ok((results, degraded))
     }
 
     /// Search returning token-capped views (primary MCP payload).
@@ -308,7 +322,11 @@ impl BrainService {
             .await?;
         Ok(results
             .into_iter()
-            .map(|r| AgentAtomView::from_atom(&r.atom, r.score, DEFAULT_EXCERPT_CAP))
+            .map(|r| {
+                let mut v = AgentAtomView::from_atom(&r.atom, r.score, DEFAULT_EXCERPT_CAP);
+                v.degraded = r.degraded;
+                v
+            })
             .collect())
     }
 
@@ -399,6 +417,21 @@ impl BrainService {
         source: Option<&str>,
         hub_team_id: Option<&str>,
     ) -> Result<Vec<SearchResult>> {
+        Ok(self
+            .search_scoped_hub_outcome(query, limit, include_quarantine, source, hub_team_id)
+            .await?
+            .0)
+    }
+
+    /// Like [`Self::search_scoped_hub`] plus the degraded arms (empty when healthy).
+    pub async fn search_scoped_hub_outcome(
+        &self,
+        query: &str,
+        limit: usize,
+        include_quarantine: bool,
+        source: Option<&str>,
+        hub_team_id: Option<&str>,
+    ) -> Result<(Vec<SearchResult>, Vec<String>)> {
         let filter = SearchFilter::trusted(!include_quarantine).with_hub_team(hub_team_id);
         let src = source.map(str::trim).filter(|s| !s.is_empty());
         let fetch = if src.is_some() {
@@ -406,12 +439,12 @@ impl BrainService {
         } else {
             (limit.max(1) * 4).min(40)
         };
-        let mut results = self.hybrid_hits_filtered(query, fetch, filter).await?;
+        let (mut results, degraded) = self.hybrid_hits_outcome(query, fetch, filter).await?;
         results = self.apply_retrieval_policy(results, limit, src);
         let ids: Vec<String> = results.iter().map(|r| r.atom.id.clone()).collect();
         self.touch_non_noisy(&results).await;
         self.activity.record("search", query, ids, None);
-        Ok(results)
+        Ok((results, degraded))
     }
 
     /// Search with an explicit filter (temporal flags from CLI, tests).
@@ -1014,6 +1047,7 @@ mod tests {
                 score: 1.0,
                 rank: 0,
                 matched_by: vec!["fts".into()],
+                degraded: Vec::new(),
             }
         }
         let pond: Vec<_> = (0..8).map(|i| hit(&format!("p{i}"), "pond")).collect();

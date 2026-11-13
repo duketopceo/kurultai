@@ -51,6 +51,10 @@ pub struct AgentAtomView {
     pub question: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolution: Option<String>,
+    /// Retrieval arms that failed for this search (`fts`, `vector`, `rerank`).
+    /// Omitted when healthy (additive, backward-compatible).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub degraded: Vec<String>,
 }
 
 /// Default excerpt cap for MCP read responses (characters, not tokens — tune per model later).
@@ -87,6 +91,7 @@ impl AgentAtomView {
             project: atom.project_id().to_string(),
             question: atom.question.clone(),
             resolution: atom.resolution.clone(),
+            degraded: Vec::new(),
         }
     }
 }
@@ -135,5 +140,19 @@ mod tests {
         atom.visibility = crate::types::VisibilityScope::Team;
         let view = AgentAtomView::from_atom(&atom, 0.5, 80);
         assert_eq!(view.visibility, "team");
+    }
+
+    #[test]
+    fn view_degraded_field_is_additive() {
+        let atom = KnowledgeAtom::default();
+        let mut v = AgentAtomView::from_atom(&atom, 1.0, 10);
+        let healthy = serde_json::to_value(&v).unwrap();
+        assert!(healthy.get("degraded").is_none());
+        v.degraded = vec!["vector".into()];
+        let json = serde_json::to_value(&v).unwrap();
+        assert_eq!(json["degraded"][0], "vector");
+        // Old payloads (no field) still deserialize.
+        let back: AgentAtomView = serde_json::from_value(healthy).unwrap();
+        assert!(back.degraded.is_empty());
     }
 }

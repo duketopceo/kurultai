@@ -411,6 +411,12 @@ pub trait Store: Send + Sync {
     /// Delete atoms for a given source (for re-index).
     async fn delete_source(&self, source: &str) -> Result<()>;
 
+    /// `(atom_id, rel_path)` for every atom of `source` that carries `rel_path`
+    /// metadata (file-backed sources). Default empty for stubs.
+    async fn list_source_rel_paths(&self, _source: &str) -> Result<Vec<(String, String)>> {
+        Ok(vec![])
+    }
+
     /// Total atom count.
     async fn count(&self) -> Result<u64>;
 
@@ -1746,6 +1752,24 @@ impl Store for SqliteVecStore {
             }
         }
         Ok(out)
+    }
+
+    async fn list_source_rel_paths(&self, source: &str) -> Result<Vec<(String, String)>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, json_extract(metadata_json, '$.rel_path') FROM knowledge_atoms
+                 WHERE source = ?1 AND json_extract(metadata_json, '$.rel_path') IS NOT NULL",
+            )
+            .map_err(|e| KurultaiError::Store(format!("list_source_rel_paths: {e}")))?;
+        let rows = stmt
+            .query_map([source], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })
+            .map_err(|e| KurultaiError::Store(format!("list_source_rel_paths map: {e}")))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| KurultaiError::Store(format!("list_source_rel_paths collect: {e}")))?;
+        Ok(rows)
     }
 
     async fn delete_source(&self, source: &str) -> Result<()> {

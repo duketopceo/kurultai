@@ -503,6 +503,7 @@ async fn api_atoms(
                         score: 1.0,
                         rank: i,
                         matched_by: vec!["list".to_string()],
+                        degraded: Vec::new(),
                     })
                     .collect(),
             )
@@ -1038,18 +1039,31 @@ struct RecallBody {
     include_quarantine: bool,
 }
 
+/// JSON hits plus an `X-Kurultai-Degraded` header (comma-separated arms) so an
+/// empty array from a failed arm is distinguishable from a true miss.
+fn search_response(results: Vec<SearchResult>, degraded: &[String]) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let mut resp = Json(results).into_response();
+    if !degraded.is_empty() {
+        if let Ok(v) = axum::http::HeaderValue::from_str(&degraded.join(",")) {
+            resp.headers_mut().insert("x-kurultai-degraded", v);
+        }
+    }
+    resp
+}
+
 async fn search_post(
     State(state): State<AppState>,
     principal: MaybeHubPrincipal,
     Json(body): Json<SearchBody>,
-) -> Result<Json<Vec<SearchResult>>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<axum::response::Response, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("search_post", request_id=%request_id);
     state.status.touch_client_activity();
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Search);
     match state
         .brain
-        .search_scoped_hub(
+        .search_scoped_hub_outcome(
             &body.query,
             body.limit,
             body.include_quarantine,
@@ -1058,9 +1072,9 @@ async fn search_post(
         )
         .await
     {
-        Ok(results) => {
+        Ok((results, degraded)) => {
             timer.success(results.len() as u64);
-            Ok(Json(results))
+            Ok(search_response(results, &degraded))
         }
         Err(e) => {
             timer.failure();
@@ -1103,14 +1117,14 @@ async fn search_get(
     State(state): State<AppState>,
     principal: MaybeHubPrincipal,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<axum::response::Response, (StatusCode, Json<serde_json::Value>)> {
     let request_id = Uuid::new_v4().to_string();
     let _span = tracing::info_span!("search_get", request_id=%request_id);
     state.status.touch_client_activity();
     let timer = TimedObserve::start(Arc::clone(&state.metrics), MetricOp::Search);
     match state
         .brain
-        .search_scoped_hub(
+        .search_scoped_hub_outcome(
             &query.q,
             query.limit,
             query.include_quarantine,
@@ -1119,9 +1133,9 @@ async fn search_get(
         )
         .await
     {
-        Ok(results) => {
+        Ok((results, degraded)) => {
             timer.success(results.len() as u64);
-            Ok(Json(results))
+            Ok(search_response(results, &degraded))
         }
         Err(e) => {
             timer.failure();
