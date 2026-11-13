@@ -13,7 +13,7 @@
   "dependencies": {
     "@mshafiqyajid/react-kanban": "^1.0.0",
     "@openrouter/sdk": "1.5.65",
-    "@xyflow/react": "^12.12.0",
+    "@xyflow/react": "^12.12.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "three": "^0.186.1"
