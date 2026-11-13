@@ -109,3 +109,7 @@ prefer them for structural questions — symbol lookup, caller/callee traces,
 impact analysis — instead of grep/read loops. Reindex after large refactors
 (`index_repository`); treat `.codebase-memory/graph.db.zst` as a local cache
 artifact, never commit it.
+
+## Communication Style
+
+Write in plain English first, then brief technical details second. Avoid code-block walls and asterisk-heavy (`* **Label:**`) bullet formatting in responses.
